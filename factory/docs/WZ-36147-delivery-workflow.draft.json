@@ -1,5 +1,6 @@
 {
   "execution": {
+    "humanCheckpointPolicyRequired": true,
     "plugin": "forge"
   },
   "schemaVersion": "1",
@@ -136,7 +137,7 @@
       "name": "Approve complete design packet",
       "responsibility": {
         "kind": "human",
-        "name": "Authorized packet authority"
+        "name": "Factory user"
       }
     },
     {
@@ -188,7 +189,7 @@
       }
     },
     {
-      "dependsOn": ["implementation-build"],
+      "dependsOn": ["implementation-review"],
       "entry": [
         "Use the accepted Build commit and this Run's workstream. Factory checks the corresponding integration branch and GitHub CI through AgentOS; a pending or conflicting deployment keeps this step waiting."
       ],
@@ -202,9 +203,57 @@
         "kind": "agent",
         "name": "ForgeDeploymentObserver"
       }
+    },
+    {
+      "dependsOn": ["implementation-review"],
+      "entry": [
+        "Present the approved packet, accepted work commit and exact reviewed PR to an authenticated Factory user."
+      ],
+      "exit": [
+        "Record that user's decision, identity and server time against the presented candidate and PR; a changed packet, work commit or review requires a new decision."
+      ],
+      "id": "technical-validation",
+      "mission": "Ask a human whether this reviewed implementation is technically acceptable.",
+      "name": "Validate implementation technically",
+      "responsibility": {
+        "kind": "human",
+        "name": "Factory user"
+      }
+    },
+    {
+      "dependsOn": ["integration-observation"],
+      "entry": [
+        "Present the same work candidate, the successful deployment receipt, its tag and target to an authenticated Factory user."
+      ],
+      "exit": [
+        "Record that user's decision, identity and server time against the presented candidate and deployment. A later unrelated tag does not change this decision."
+      ],
+      "id": "functional-validation",
+      "mission": "Ask a human whether the deployed work meets the functional intent.",
+      "name": "Validate functionality",
+      "responsibility": {
+        "kind": "human",
+        "name": "Factory user"
+      }
+    },
+    {
+      "dependsOn": ["technical-validation", "functional-validation"],
+      "entry": [
+        "Factory checks both authenticated decisions against the current packet, work commit, PR and deployment receipt."
+      ],
+      "exit": [
+        "Complete only if both audited decisions approve the same current work candidate, whose verification and review were accepted; otherwise keep the Run incomplete."
+      ],
+      "id": "delivery-completion",
+      "mission": "Request Factory's deterministic final join after both human validations; do not claim authority from agent prose.",
+      "name": "Complete validated delivery",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeCloser"
+      }
     }
   ],
-  "title": "Forge delivery — review and integration draft",
-  "version": "0.6.0",
+  "title": "Forge delivery — complete gate draft",
+  "version": "0.7.0",
   "workflowType": "forge.delivery"
 }

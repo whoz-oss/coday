@@ -309,19 +309,19 @@ class SessionRunService(
             while (iterations++ < guard) {
                 reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
-                if (statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
-                    if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision())) {
-                        suspended = true
-                        return@run
-                    }
-                    continue
-                }
+                val hadWaitingHuman = statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }
+                val waitingForHuman = hadWaitingHuman &&
+                    !resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision())
+                if (hadWaitingHuman && !waitingForHuman) continue
                 val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull()
                     ?: steps.firstOrNull { step ->
                         statuses.statuses[step.id] == WorkflowStatuses.NEEDS_RESEARCH &&
                             capabilityExecutionService.hasAcceptedFinalResult(scope, namespaceId, workflowId, step.id)
                     }?.id
-                    ?: return@run
+                if (readyId == null) {
+                    if (waitingForHuman) suspended = true
+                    return@run
+                }
                 val step = steps.first { it.id == readyId }
                 // Lot F: bind a `code` step's repoRoot to the run's worktree
                 // explicitly. Resolved once, right before the step executes
@@ -357,12 +357,7 @@ class SessionRunService(
                     effectiveTicket,
                     expectedRevision(),
                     workflowType,
-                )?.let { terminal ->
-                    if (terminal == WorkflowStatuses.WAITING_HUMAN) {
-                        suspended = true
-                        return@run
-                    }
-                }
+                )
             }
         }
         val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else SessionSequencer.terminalStatus(steps, statuses.statuses)

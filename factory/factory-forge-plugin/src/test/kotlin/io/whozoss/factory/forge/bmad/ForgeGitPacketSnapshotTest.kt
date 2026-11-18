@@ -164,6 +164,34 @@ class ForgeGitPacketSnapshotTest {
         ))).isInstanceOf(StepEvidenceObservation.Invalid::class.java)
     }
 
+    @Test
+    fun `Build rechecks the approved packet through the Case Git reader`() {
+        val documents = documents()
+        val pinned = "a".repeat(40)
+        val manifest = manifest(pinned, documents)
+        val canonical = (ForgeGitPacketSnapshot(object : ForgeGitPacketSnapshot.GitObjects {
+            override fun commitExists(worktree: Path, commit: String) = commit == pinned
+            override fun readBlob(worktree: Path, commit: String, path: String, maxBytes: Int) = documents[path]
+        }).verify(manifest, "whoz", repo) as ForgeGitPacketSnapshot.Result.Valid)
+        val packet = mapOf("repository" to "whoz", "commit" to pinned,
+            "manifestSha256" to canonical.sha256,
+            "canonicalManifest" to canonical.canonicalManifest.toString(Charsets.UTF_8))
+        val remote = object : TrustedGitObjectReader {
+            override fun sourceRepository() = "whoz"
+            override fun commitExists(commit: String) = commit == pinned
+            override fun readBlob(commit: String, path: String, maxBytes: Int) = documents[path]
+        }
+        val context = observationContext(manifest).copy(
+            run = RunView("run-1", "forge.delivery", domainState = mapOf("approvedPacketCandidate" to packet)),
+            stepId = "implementation-build", agentName = "ForgeBuilder",
+            worktreePath = repo.resolve("not-mounted-in-factory").toString(), gitObjects = remote,
+        )
+        assertThat(ForgeBuildPacketEvidenceObserver().observe(context))
+            .isEqualTo(StepEvidenceObservation.Observed(packet.filterKeys { it != "canonicalManifest" }))
+        assertThat(ForgeBuildPacketEvidenceObserver().observe(context.copy(gitObjects = null)))
+            .isInstanceOf(StepEvidenceObservation.Unavailable::class.java)
+    }
+
     private fun observationContext(rawManifest: ByteArray) = StepEvidenceObservationContext(
         run = RunView("run-1", "forge.delivery"), flowType = "forge.delivery", stepId = "packet-assembly",
         agentName = "ProductEngineer", attemptId = "attempt-1", worktreePath = repo.toString(),

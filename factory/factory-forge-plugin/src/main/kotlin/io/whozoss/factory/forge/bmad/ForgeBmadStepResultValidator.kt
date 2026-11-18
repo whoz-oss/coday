@@ -77,6 +77,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 "implementation-verification" -> validateDeliveryVerification(context)
                 "implementation-review" -> validateDeliveryReview(context)
                 "integration-observation" -> validateDeliveryDeployment(context)
+                "delivery-completion" -> validateDeliveryCompletion(context)
                 else -> StepValidationVerdict.Accepted()
             }
 
@@ -512,6 +513,21 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         if (planned.isNullOrEmpty() || manifestSha.isNullOrBlank()) {
             return StepValidationVerdict.Rejected("BUILD_INPUT_UNAVAILABLE")
         }
+        val identity = mapOf("repository" to packet["repository"], "commit" to packet["commit"],
+            "manifestSha256" to manifestSha)
+        if (identity.any { (key, value) -> value == null || context.externalEvidence[key] != value }) {
+            return StepValidationVerdict.Rejected("APPROVED_PACKET_GIT_UNAVAILABLE")
+        }
+        val approvals = context.run.humanDecisions.filter {
+            it["stepId"] == "packet-approval" && it["outcome"] == "pass"
+        }
+        val approvalFacts = approvals.singleOrNull()?.get("facts") as? Map<*, *>
+        val approvalSource = approvals.singleOrNull()?.get("source") as? Map<*, *>
+        if (approvalFacts == null || approvalSource?.get("kind") != "factory-human" ||
+            (approvalSource["actorId"] as? String).isNullOrBlank() ||
+            (approvalFacts["decidedAt"] as? String).isNullOrBlank() ||
+            approvalFacts["gate"] != "packet-approval" || identity.any { (key, value) -> approvalFacts[key] != value }
+        ) return StepValidationVerdict.Rejected("PACKET_APPROVAL_MISSING_OR_STALE")
         val report = extractOutputs(context.report)["build_report"] as? Map<*, *>
             ?: return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
         val items = report["items"] as? List<*>
@@ -609,6 +625,34 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
             put("review_report", LinkedHashMap(report).apply { put("observed_pr", observed) })
         })
+    }
+
+    private fun validateDeliveryCompletion(context: StepValidationContext): StepValidationVerdict {
+        if (context.agentName != "ForgeCloser") return StepValidationVerdict.Rejected("INVALID_DELIVERY_CLOSER")
+        checkReadOnlyWorkspace(context)?.let { return it }
+        val policy = ForgeDeliveryHumanCheckpointPolicy()
+        val expected = listOf("technical-validation", "functional-validation").map { step ->
+            val verdict = policy.present(io.whozoss.factory.sdk.spi.HumanCheckpointContext(
+                context.run, context.flowType, step,
+            )) as? io.whozoss.factory.sdk.spi.HumanCheckpointVerdict.Allowed
+                ?: return StepValidationVerdict.Rejected("CANDIDATE_EVIDENCE_MISSING")
+            step to verdict.facts
+        }
+        if (expected[0].second["candidateId"] != expected[1].second["candidateId"]) {
+            return StepValidationVerdict.Rejected("CANDIDATE_IDENTITY_MISMATCH")
+        }
+        for ((step, presented) in expected) {
+            val matching = context.run.humanDecisions.filter { it["stepId"] == step && it["outcome"] == "pass" }
+            if (matching.size != 1) return StepValidationVerdict.Rejected("HUMAN_APPROVAL_MISSING")
+            val decision = matching.single()
+            val facts = decision["facts"] as? Map<*, *> ?: return StepValidationVerdict.Rejected("HUMAN_APPROVAL_INVALID")
+            val source = decision["source"] as? Map<*, *> ?: return StepValidationVerdict.Rejected("HUMAN_APPROVAL_INVALID")
+            if (source["kind"] != "factory-human" || (source["actorId"] as? String).isNullOrBlank() ||
+                (facts["decidedAt"] as? String).isNullOrBlank() || facts["gate"] != step ||
+                presented.any { (key, value) -> facts[key] != value }
+            ) return StepValidationVerdict.Rejected("HUMAN_APPROVAL_STALE")
+        }
+        return StepValidationVerdict.Accepted()
     }
 
     private fun rejectDeliveryPlan(context: StepValidationContext, code: String): StepValidationVerdict.Rejected =

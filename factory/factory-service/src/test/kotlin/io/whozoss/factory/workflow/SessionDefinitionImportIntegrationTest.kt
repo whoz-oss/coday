@@ -333,6 +333,36 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `independent human gates can both open and their join waits for both replies`() {
+        writeScript("pass-both", "exit 0")
+        writeManifest("check-both" to "./factory/verification/pass-both")
+        val workflowId = "wf-parallel-human-gates"
+        startSession("parallel-human-gates", workflowId, listOf(
+            stepJson("a", "agent", "EntryAgent", emptyList()),
+            stepJson("technical", "human", "Technical validation", listOf("a")),
+            stepJson("functional", "human", "Functional validation", listOf("a")),
+            stepJson("joint", "code", "check-both", listOf("technical", "functional")),
+        ))
+        val service = agentSessionService(AgentTurnResult.Completed("PASS", mapOf("caseStatus" to "IDLE")))
+
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status)
+            .isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(interactionRepository.list(scope, namespace, workflowId, openOnly = true).map { it.stepId })
+            .containsExactlyInAnyOrder("technical", "functional")
+        assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.PENDING)
+
+        answerHuman(workflowId, "technical", "approve")
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status)
+            .isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.PENDING)
+
+        answerHuman(workflowId, "functional", "approve")
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status)
+            .isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.COMPLETED)
+    }
+
+    @Test
     fun `a session run emits a workflow-projection-updated SSE frame`() {
         writeScript("pass", "exit 0")
         writeManifest("check" to "./factory/verification/pass")

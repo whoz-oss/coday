@@ -1,6 +1,6 @@
 # WZ-36147 Lot 3 — delivery decisions and remaining seams
 
-Status: **CE04/CE05 product behavior clarified; runtime implementation and proof pending**.
+Status: **CE04–CE07 product behavior clarified; draft implementation present, full runtime proof pending**.
 This records the requester's 2026-11-18 correction to the earlier technical
 proposal. It is not permission to publish the incomplete `forge.delivery`
 definition. The Ready judgment remains the first configurable ProductEngineer
@@ -23,6 +23,25 @@ state, remote-host Git reads, the complete human gate, Git recheck on later
 resume/Build and the observed CI/deployment candidate remain pending. This
 approval does not publish the draft delivery definition.
 
+**Implementation update, 2026-11-18:** the remote Case Git reader, the
+dedicated ForgeBuilder/ForgeVerifier agent definitions, the fixed Build,
+verification, review and integration-observation draft steps, and focused
+GitHub deployment/PR readers now exist on the Lot 3 PR branches. The preceding
+paragraph records the earlier decision point; its pending list is historical.
+An opt-in generic checkpoint hook now binds the packet interaction and reply
+to its exact Git identity. It also binds technical and functional replies to
+the same work candidate, with the successful deployment receipt on the
+functional side. The final joint checks both audited decisions. No full
+runtime approval or recovery proof exists, so the workflow remains unpublished.
+
+**Human authority clarification, 2026-11-18:** in the first pilot, any
+authenticated person with access to the Factory Run may approve the packet or
+the technical and functional validations. One person may take several such
+decisions. Record the authenticated actor, decision and server timestamp in
+the Run audit. Gate-specific roles and workstream permission governance are
+deferred; the exact packet/candidate binding and stale-reply rejection remain
+required.
+
 ## CE04 — concurrent deliveries are allowed
 
 Two different delivery Runs may target the same ticket, including the same
@@ -35,12 +54,12 @@ the user may deliberately compare approaches or retry after an unproductive
 Case. No Jira status transition starts a delivery Run automatically.
 
 The existing integration characterization with two active parent Runs on one
-ticket is a historical test of a different launch path. It does not prove CE04
-for the required direct workflow path. Still unproved: two independent
-`forge.delivery` workflow instances can start for the same ticket, each gains
-its own AgentOS Case and worktree, and an optional warning respects the
-caller's access. The first ProductEngineer step rechecks Ready and source
-sufficiency for each instance independently.
+ticket is a historical test of a different launch path. A newer direct-launch
+test proves two different workflow identities can start for the same ticket.
+Still unproved: each such Forge delivery gains its own AgentOS Case and
+worktree, and an optional warning respects the caller's access. The first
+ProductEngineer step rechecks Ready and source sufficiency for each instance
+independently.
 
 ## CE05 — pin the Git packet; do not require a blob copy for Forge
 
@@ -75,7 +94,7 @@ trusted Git-read boundary still require a concrete design and tests.
 ## Other seams and required proof
 
 - **CE04:** two different requests for the same ticket and definition create
-  independent parent Runs and worktrees; exact-request replay remains
+  independent workflow Runs and worktrees; exact-request replay remains
   idempotent. A duplicate warning, if implemented, is nonblocking and
   permission-filtered. Negative ProductEngineer evidence stops only its Run;
   a human retry starts a fresh preflight attempt.
@@ -90,8 +109,9 @@ trusted Git-read boundary still require a concrete design and tests.
   full lifecycle, so neither can receive the whole plan unchanged. These
   items are not dynamically created workflow steps. Approved packet identity
   and current Git availability must guard Build. Independent verification
-  follows as another fixed phase. The coordinator, item receipts, retry and
-  correction contract still need implementation and runtime proof.
+  follows as another fixed phase. The coordinator definitions and receipt
+  validators exist in the draft; delegated execution, retry and correction
+  still need runtime proof.
 - **CE07:** trusted Git and CI observations establish that a successful
   integration deployment tag contains this Run's work commit. The human sees
   that tag as a reference, and both authorized decisions bind to the presented
@@ -99,8 +119,10 @@ trusted Git-read boundary still require a concrete design and tests.
   claim that the human tested an exact image. A changed work head or packet for
   this Run requires a new assessment; stale replies cannot complete.
 
-The generic human-reply path still needs the transactional gate policy
-characterized by Lot 4. The official workflow remains unpublished until the
-complete delivery path has API, persistence, restart, race and integration
-proof. No further product decision about duplicate blocking or mandatory
-Factory blob storage is required to proceed with those tests.
+The opt-in human-reply policy is now implemented for the draft delivery
+workflow. It binds each answer to the packet or work candidate presented,
+records the authenticated actor and server time, and refuses a stale answer.
+The official workflow remains unpublished until the complete delivery path
+has API, persistence, restart, race and integration proof. No further product
+decision about duplicate blocking or mandatory Factory blob storage is
+required to proceed with those tests.
