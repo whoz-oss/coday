@@ -125,7 +125,7 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
             if (result.exitCode == 0) {
                 GradleToolResult.Success(report)
             } else {
-                val hint = runner.compositeBuildHint(result.exitCode, !subproject.isNullOrBlank(), gradlew)
+                val hint = runner.compositeBuildHint(result.exitCode, !subproject.isNullOrBlank(), gradlew, result.rawOutput)
                 GradleToolResult.Failure("FAILURE (exit ${result.exitCode})\n$report" + (hint?.let { "\n\n$it" } ?: ""))
             }
         } catch (e: InterruptedException) {

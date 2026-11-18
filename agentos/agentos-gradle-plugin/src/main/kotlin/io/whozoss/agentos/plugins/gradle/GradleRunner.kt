@@ -117,16 +117,20 @@ class GradleRunner(
     }
 
     /**
-     * Hint to append to a failed run that targeted no module ([targetsModule] false) while the build includes
-     * other builds: a task run without a module may target the root build only, so the agent must name the module.
-     * Null when the run succeeded, targeted a module, or the build includes nothing.
+     * Hint to append to a run that failed because Gradle could not find the task or project asked for, when the run
+     * targeted no module ([targetsModule] false) while the build includes other builds: a task run without a module
+     * may target the root build only, so the agent must name the module. A plain compile or test failure gets no
+     * hint: the module is not the problem.
+     * Null when the run succeeded, targeted a module, did not fail on a missing task or project (see [output]), or
+     * the build includes nothing.
      */
     fun compositeBuildHint(
         exitCode: Int,
         targetsModule: Boolean,
         gradlew: String,
+        output: String,
     ): String? {
-        if (exitCode == 0 || targetsModule) return null
+        if (exitCode == 0 || targetsModule || !TASK_NOT_FOUND.containsMatchIn(output)) return null
         val included = includedBuilds(workDirFor(gradlew))
         if (included.isEmpty()) return null
         return "Note: this build includes other builds (${included.joinToString(", ")}). " +
@@ -203,6 +207,12 @@ class GradleRunner(
 
         /** `includeBuild("x")` (Kotlin DSL) and `includeBuild 'x'` / `includeBuild('x')` (Groovy DSL). */
         private val INCLUDE_BUILD = Regex("""includeBuild\s*\(?\s*["']([^"']+)["']""")
+
+        /**
+         * What Gradle says when the task or the project of a selector does not exist: `Task 'x' not found in root
+         * project 'y'`, `Project 'x' not found in root project 'y'`, `Cannot locate tasks that match ':x:test'...`.
+         */
+        private val TASK_NOT_FOUND = Regex("""(?:Task|Project) '[^']*' not found in|Cannot locate tasks that match""")
 
         /**
          * Variables of the service environment that Gradle gets by default: what a build needs to start and to reach

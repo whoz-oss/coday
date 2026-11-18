@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.gradle
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.ints.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -221,5 +222,32 @@ class CompilerDiagnosticParserUnitSpec :
 
             summary shouldContain "Some error"
             summary shouldNotContain "Other files"
+        }
+
+        "parse then buildSummary of 5000 errors keeps the exact counts and a bounded list" {
+            val raw = (1..5000).joinToString("\n") { "e: file:///project/src/Foo.kt:$it:1 Unresolved reference 'x$it'." }
+
+            val diagnostics = parser.parse(raw)
+            val summary = parser.buildSummary(exitCode = 1, diagnostics = diagnostics, rawOutput = raw)
+
+            diagnostics shouldHaveSize 5000
+            summary shouldContain "Errors: 5000"
+            summary shouldContain "Unresolved reference 'x1'."
+            summary shouldNotContain "Unresolved reference 'x5000'."
+            summary shouldContain "4900 more diagnostic(s) not shown"
+            summary.lines().size shouldBeLessThan 120
+        }
+
+        "buildSummary shares the bound between the target file and the other files" {
+            val onTarget = (1..60).map { CompilerDiagnosticParser.Diagnostic(Severity.ERROR, "/p/Target.kt", it, 1, "target $it") }
+            val onOthers = (1..60).map { CompilerDiagnosticParser.Diagnostic(Severity.ERROR, "/p/Other.kt", it, 1, "other $it") }
+
+            val summary =
+                parser.buildSummary(exitCode = 1, diagnostics = onOthers + onTarget, rawOutput = "", fileFilter = "Target.kt")
+
+            summary shouldContain "target 60"
+            summary shouldContain "other 40"
+            summary shouldNotContain "other 41"
+            summary shouldContain "20 more diagnostic(s) not shown"
         }
     })

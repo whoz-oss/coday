@@ -44,6 +44,8 @@ Pass an optional list of test filters.
 To test several modules in ONE Gradle invocation (configuration paid once), pass 'targets' instead of
 'testFilter'/'subproject': each target is {subproject, testFilter} and its filters apply to its module only.
 'targets' cannot be combined with 'testFilter' or 'subproject'.
+A 'testFilter' without 'subproject' on a multi-module build is applied by Gradle to every module, and a module with no
+matching test can fail the run: to filter the tests of one or several modules, use 'subproject' or 'targets'.
 
 Filter syntax:
   - Use fully-qualified class name: 'fr.tokazio.okia.cli.TerminalOperationsTests'
@@ -71,7 +73,9 @@ To check again, re-run this tool."""
                         ToolSchema.stringArray(
                             "Optional test filters (Gradle '--tests' syntax): fully-qualified class name or wildcard, " +
                                 "e.g. 'fr.tokazio.okia.cli.TerminalOperationsTests' or 'fr.tokazio.okia.cli.*'. " +
-                                "Leave null to run all tests.",
+                                "Leave null to run all tests. Without 'subproject', Gradle applies the filters to every " +
+                                "module of a multi-module build, and a module with no match can fail the run: " +
+                                "prefer 'subproject' or 'targets'.",
                         ),
                     "subproject" to
                         ToolSchema.string(
@@ -163,7 +167,7 @@ To check again, re-run this tool."""
                 )
             }
 
-            val hint = runner.compositeBuildHint(result.exitCode, tasks.any { it.subproject != null }, gradlew)
+            val hint = runner.compositeBuildHint(result.exitCode, tasks.any { it.subproject != null }, gradlew, result.rawOutput)
             val xmlReports = parser.collect(reportsDir)
             logger.info { "[GradleTestTool] xml reports found: ${xmlReports.size}" }
 

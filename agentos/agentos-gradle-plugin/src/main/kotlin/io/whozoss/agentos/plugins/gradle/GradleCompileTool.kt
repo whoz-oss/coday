@@ -139,7 +139,7 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
             }
             val diagnostics = diagnosticParser.parse(result.rawOutput)
             val summary = diagnosticParser.buildSummary(result.exitCode, diagnostics, result.rawOutput, fileFilter)
-            val hint = runner.compositeBuildHint(result.exitCode, effectiveSubproject != null, gradlew)
+            val hint = runner.compositeBuildHint(result.exitCode, effectiveSubproject != null, gradlew, result.rawOutput)
             GradleToolResult.ofExit(result.exitCode, if (hint == null) summary else "$summary\n\n$hint")
         } catch (e: InterruptedException) {
             // GradleRunner already killed the process tree and re-set the interrupt flag
@@ -156,6 +156,7 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
      *
      * Returns null if [resolvedFile] is given but no Gradle module can be found for it.
      * Returns (null, null) when both inputs are null (whole-project compile).
+     * A file of the root project gives (null, file): the root is compiled and the file filters the diagnostics.
      */
     internal fun resolveTargets(
         resolvedSubproject: String?,
@@ -175,17 +176,33 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
                 if (it.isAbsolute) it else runner.projectDir.resolve(it)
             }
         val module = detectModule(fileObj) ?: return null
-        return module to resolvedFile
+        return when (module) {
+            is OwningModule.Root -> null to resolvedFile
+            is OwningModule.Module -> module.path to resolvedFile
+        }
+    }
+
+    /** The Gradle project that owns a source file. */
+    internal sealed interface OwningModule {
+        /** The file belongs to the root project of the build: it has no module path. */
+        data object Root : OwningModule
+
+        /** The file belongs to the module [path] (`name`, or `feature:core` when nested). */
+        data class Module(
+            val path: String,
+        ) : OwningModule
     }
 
     /**
      * Walks up from [file]'s directory looking for the nearest `build.gradle.kts` or `build.gradle`.
-     * Returns the Gradle module name (`:name`) or null when no build script is found before the build root.
+     * Returns [OwningModule.Module] with the Gradle path of the module (`name`), [OwningModule.Root] when the nearest
+     * build script is the one of the build directory itself, or null when no build script is found before the build
+     * root.
      *
      * The build root is the directory of the integration that contains `gradlew` and `settings.gradle(.kts)`
      * ([resolveProjectRoot]). A [file] outside it, symbolic links resolved, is refused: the walk never leaves the build.
      */
-    internal fun detectModule(file: File): String? {
+    internal fun detectModule(file: File): OwningModule? {
         val projectRoot = resolveProjectRoot() ?: return null
         if (!isInsideBuild(file)) return null
         var dir: File? = if (file.isDirectory) file else file.parentFile
@@ -193,10 +210,10 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
             val hasBuild =
                 dir.resolve("build.gradle.kts").isFile ||
                     dir.resolve("build.gradle").isFile
-            if (hasBuild && dir != projectRoot) {
+            if (hasBuild) {
+                if (dir == projectRoot) return OwningModule.Root
                 // Build the Gradle path relative to the project root.
-                val rel = dir.relativeTo(projectRoot).path.replace(File.separatorChar, ':')
-                return if (rel.isBlank()) null else rel
+                return OwningModule.Module(dir.relativeTo(projectRoot).path.replace(File.separatorChar, ':'))
             }
             dir = dir.parentFile
         }
@@ -229,7 +246,8 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
             } else {
                 "testClasses"
             }
-        return listOf(gradlew, task, "--continue", "--quiet", "--console=plain")
+        // No --quiet: the Kotlin and javac warnings are logged at WARN level, which --quiet hides.
+        return listOf(gradlew, task, "--continue", "--console=plain")
     }
 
     companion object : KLogging() {
