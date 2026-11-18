@@ -41,9 +41,13 @@ import java.util.UUID
  *
  * ## Pipeline (at most three LLM calls)
  *
- * 1. [candidates], no LLM: the agents deployed to the caller, split into LOOP agents (persisted ones only: a
- *    filesystem agent cannot back a scheduled prompt) and target agents (every non-LOOP agent). A provided name that
- *    is not a candidate is a 400. No LOOP or no target candidate is a 422.
+ * 1. [candidates], no LLM: the agents of the **namespace**, not the ones deployed to the caller. Generating is a
+ *    design act, authorized by Namespace WRITE (checked by the controller); the scheduled prompt then runs for the
+ *    user the loop agent is deployed to, not for the designer. The namespace must hold exactly one LOOP agent
+ *    (persisted ones only: a filesystem agent cannot back a scheduled prompt), which is the loop agent. The target
+ *    agents are the other published agents of the namespace and of the platform, a namespace agent shadowing a
+ *    platform one of the same name. A provided name that is not a candidate is a 400. No LOOP agent, several LOOP
+ *    agents, or no target agent is a 422.
  * 2. [plan]: with the namespace default model ([ModelResolver]), the LLM proposes what is missing among the loop
  *    agent, the target agent, the prompt, the name, the recurrence and the planning. Skipped when nothing is missing
  *    but the name, which is then derived from the description.
@@ -81,12 +85,15 @@ import java.util.UUID
  * not be used: the search answer when it was unusable, else the planning answer when it was unusable. A returned
  * proposal never comes with a raw response.
  *
- * ## Known limitation
+ * ## Known limitations
  *
  * The scheduler fails every run of a LOOP agent reaching more than one user (`ScheduledPromptExecutor.materialize`).
- * The candidates are not filtered on that: the only reusable count of an agent's users
- * (`UserGroupRepository.findUsersByAgentId`) ignores direct namespace deployments, so it would wrongly discard or
- * keep agents. TODO: filter LOOP candidates on a single reached user once a count matching `materialize` exists.
+ * The generation does not check that the namespace's LOOP agent reaches a single user: the only reusable count of an
+ * agent's users (`UserGroupRepository.findUsersByAgentId`) ignores direct namespace deployments, so it would wrongly
+ * refuse or accept. TODO: check it once a count matching `materialize` exists.
+ *
+ * The search step resolves the loop agent's tools with the caller's overlays, not with those of the user the loop
+ * runs for: the tool names and schemas are the same, only per-user credentials could differ.
  */
 @Service
 class ScheduledPromptGenerationService(
@@ -108,7 +115,7 @@ class ScheduledPromptGenerationService(
         request: ScheduledPromptGenerationRequest,
     ): ScheduledPromptGenerationResult {
         val inputs = inputs(request)
-        val candidates = candidates(namespaceId, userId, request, inputs)
+        val candidates = candidates(namespaceId, request, inputs)
         val plan = plan(namespaceId, userId, request, inputs, candidates)
         val fields = resolveFields(request, inputs, candidates, plan)
         val complete = fields.complete()
@@ -187,20 +194,28 @@ class ScheduledPromptGenerationService(
         val obviousLoop: AgentConfig? get() = providedLoop ?: loops.singleOrNull()
     }
 
-    /** Throws [UnprocessableEntityException] (422) when a side has no candidate, [BadRequestException] (400) on an unknown name. */
+    /**
+     * The agents of the namespace, whatever is deployed to the caller: see step 1 of the class KDoc.
+     *
+     * Throws [UnprocessableEntityException] (422) when the namespace has no LOOP agent, several, or no target agent,
+     * [BadRequestException] (400) on an unknown name.
+     */
     private fun candidates(
         namespaceId: UUID,
-        userId: UUID,
         request: ScheduledPromptGenerationRequest,
         inputs: Inputs,
     ): Candidates {
-        val accessible =
-            withShadowing(agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null))
-        val loops = accessible.filter { it.resolvedExecutionMode == ExecutionMode.LOOP && !it.isFilesystemOnly }
-        val targets = accessible.filter { it.resolvedExecutionMode != ExecutionMode.LOOP }
+        val namespaceAgents = agentConfigService.findByNamespace(namespaceId, withDisabled = false)
+        val platformAgents = agentConfigService.findByNamespace(null, withDisabled = false)
+        val loops = namespaceAgents.filter { it.resolvedExecutionMode == ExecutionMode.LOOP && !it.isFilesystemOnly }
+        val targets =
+            withShadowing(namespaceAgents + platformAgents).filter { it.resolvedExecutionMode != ExecutionMode.LOOP }
         when {
-            loops.isEmpty() -> throw UnprocessableEntityException("No LOOP agent available to you in this namespace: a scheduled loop needs one.")
-            targets.isEmpty() -> throw UnprocessableEntityException("No agent available to you in this namespace to start for each search result.")
+            loops.isEmpty() -> throw UnprocessableEntityException("No LOOP agent in this namespace: a scheduled loop needs one.")
+            loops.size > 1 -> throw UnprocessableEntityException(
+                "This namespace has ${loops.size} LOOP agents ${loops.map { it.name }}: a scheduled loop needs exactly one.",
+            )
+            targets.isEmpty() -> throw UnprocessableEntityException("No agent in this namespace to start for each search result.")
         }
         return Candidates(
             loops = loops,
@@ -777,7 +792,7 @@ class ScheduledPromptGenerationService(
         /** Bound on a generated name: the planning prompt asks for it, and it is enforced here. */
         const val MAX_GENERATED_NAME_LENGTH = 80
 
-        private const val ONLY_CANDIDATE_RATIONALE = "only LOOP agent available"
+        private const val ONLY_CANDIDATE_RATIONALE = "only LOOP agent of the namespace"
 
         /** Keys of the planning answer's `rationale` object, per field. */
         private val RATIONALE_KEYS =

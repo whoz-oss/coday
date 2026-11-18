@@ -158,8 +158,10 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
         beforeTest {
             clearAllMocks()
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns
-                    listOf(loopA, loopB, luigi, mario)
+            // The candidates are the agents of the namespace: findDeployedByNamespaceIdAndUserIdAndName is not stubbed,
+            // so that a lookup of what is deployed to the caller fails the test.
+            every { agentConfigService.findByNamespace(namespaceId, false) } returns listOf(loopB, luigi, mario)
+            every { agentConfigService.findByNamespace(null, false) } returns emptyList()
             every {
                 modelResolver.resolve(
                     namespaceId,
@@ -226,7 +228,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
                     any(),
                     any()
                 )
-            } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
+            } returns planAnswer(mapOf("targetAgentName" to "Ghost"))
             service.generate(namespaceId, userId, request()).rawResponse.shouldBeNull()
         }
 
@@ -271,7 +273,8 @@ class ScheduledPromptGenerationServiceUnitSpec :
                         GeneratedField.SEARCH to GeneratedFieldSource.INFERRED,
                     )
             result.decisions.first { it.field == GeneratedField.TARGET_AGENT }.value shouldBe "Luigi"
-            result.decisions.first { it.field == GeneratedField.LOOP_AGENT }.rationale shouldBe "because"
+            result.decisions.first { it.field == GeneratedField.LOOP_AGENT }.rationale shouldBe
+                    "only LOOP agent of the namespace"
         }
 
         "provided values win over the LLM's answer" {
@@ -295,7 +298,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
                     namespaceId,
                     userId,
                     request(
-                        loopAgentName = "LoopA",
+                        loopAgentName = "LoopB",
                         targetAgentName = "Luigi",
                         prompt = "p",
                         recurrence = recurrence,
@@ -321,32 +324,40 @@ class ScheduledPromptGenerationServiceUnitSpec :
                     ScheduledPromptGenerationService.MAX_GENERATED_NAME_LENGTH
         }
 
-        "a single LOOP candidate is picked without asking the LLM for it" {
-            every {
-                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
-                    namespaceId,
-                    userId,
-                    null
-                )
-            } returns listOf(loopA, luigi)
+        "the loop agent is the only LOOP agent of the namespace, picked without asking the LLM, even if the LLM names another" {
+            coEvery { structuredLlmClient.call(any(), any(), any(), any()) } returns
+                    planAnswer(mapOf("loopAgentName" to "Ghost"))
 
             val result = service.generate(namespaceId, userId, request())
 
-            result.scheduledPrompt.shouldNotBeNull().agentConfigId shouldBe loopA.metadata.id
-            result.decisions.first { it.field == GeneratedField.LOOP_AGENT }.rationale shouldBe "only LOOP agent available"
+            result.scheduledPrompt.shouldNotBeNull().agentConfigId shouldBe loopB.metadata.id
+            result.decisions.first { it.field == GeneratedField.LOOP_AGENT }.rationale shouldBe
+                    "only LOOP agent of the namespace"
         }
 
-        "a namespace agent shadows a platform agent of the same name, and filesystem agents are no LOOP candidates" {
-            val platformLoop = agent("LoopA", ExecutionMode.LOOP, platform = true)
-            val filesystemLoop = agent("FsLoop", ExecutionMode.LOOP, filesystem = true)
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, null) } returns
-                    listOf(platformLoop, loopA, filesystemLoop, luigi)
+        "the candidates do not depend on what is deployed to the caller: a designer without the loop agent can generate" {
+            val result = service.generate(namespaceId, userId, request())
 
-            service.generate(
-                namespaceId,
-                userId,
-                request()
-            ).scheduledPrompt.shouldNotBeNull().agentConfigId shouldBe loopA.metadata.id
+            result.scheduledPrompt.shouldNotBeNull().agentConfigId shouldBe loopB.metadata.id
+            coVerify(exactly = 0) { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) }
+        }
+
+        "filesystem and platform LOOP agents are no candidates, and a namespace target shadows a platform one" {
+            val platformLoop = agent("PlatformLoop", ExecutionMode.LOOP, platform = true)
+            val filesystemLoop = agent("FsLoop", ExecutionMode.LOOP, filesystem = true)
+            val platformLuigi = agent("Luigi", ExecutionMode.ADVANCED, platform = true)
+            val platformPeach = agent("Peach", ExecutionMode.SIMPLE, platform = true)
+            every { agentConfigService.findByNamespace(namespaceId, false) } returns listOf(loopB, filesystemLoop, luigi)
+            every { agentConfigService.findByNamespace(null, false) } returns listOf(platformLoop, platformLuigi, platformPeach)
+
+            val proposal = service.generate(namespaceId, userId, request(targetAgentName = "Luigi")).scheduledPrompt.shouldNotBeNull()
+            proposal.agentConfigId shouldBe loopB.metadata.id
+
+            // a platform agent is a target when no namespace agent shadows it
+            service.generate(namespaceId, userId, request(targetAgentName = "Peach"))
+                .scheduledPrompt.shouldNotBeNull().flowConfiguration!!["act"]["agentName"].asText() shouldBe "Peach"
+            // the namespace Luigi, not the platform one, is the target the search step is told about
+            coVerify { loopConfigGenerationService.generate(any(), any(), any(), match { it.contains(luigi.metadata.id.toString()) }, any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -395,7 +406,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 namespaceId,
                 userId,
                 request(
-                    loopAgentName = "LoopA",
+                    loopAgentName = "LoopB",
                     recurrence = recurrence,
                     planning = planning,
                     baseFlowConfiguration = base
@@ -501,10 +512,10 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
         "an unknown provided agent is a 400 naming the available ones" {
             forAll(
-                row(request(loopAgentName = "Ghost"), "LoopA"),
+                row(request(loopAgentName = "Ghost"), "LoopB"),
                 row(request(targetAgentName = "Ghost"), "Luigi"),
                 // a LOOP agent is not a target, nor a target a loop agent
-                row(request(targetAgentName = "LoopA"), "Mario"),
+                row(request(targetAgentName = "LoopB"), "Mario"),
                 row(request(loopAgentName = "Luigi"), "LoopB"),
             ) { req, available ->
                 shouldThrow<BadRequestException> {
@@ -517,20 +528,18 @@ class ScheduledPromptGenerationServiceUnitSpec :
             }
         }
 
-        "no LOOP agent, or no target agent, available is a 422" {
+        "no LOOP agent, several LOOP agents, or no target agent in the namespace is a 422, before any LLM call" {
             forAll(
-                row(listOf(luigi, mario)),
-                row(listOf(loopA, loopB)),
-            ) { agents ->
-                every {
-                    agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
-                        namespaceId,
-                        userId,
-                        null
-                    )
-                } returns agents
-                shouldThrow<UnprocessableEntityException> { service.generate(namespaceId, userId, request()) }
+                row(listOf(luigi, mario), "No LOOP agent"),
+                row(listOf(loopA, loopB, luigi), "exactly one"),
+                row(listOf(loopB), "No agent"),
+            ) { agents, expected ->
+                every { agentConfigService.findByNamespace(namespaceId, false) } returns agents
+                shouldThrow<UnprocessableEntityException> {
+                    service.generate(namespaceId, userId, request())
+                }.message shouldContain expected
             }
+            coVerify(exactly = 0) { structuredLlmClient.call(any(), any(), any(), any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -539,8 +548,8 @@ class ScheduledPromptGenerationServiceUnitSpec :
 
         "an LLM choice outside the candidates, or a missing one, yields no proposal and a warning" {
             forAll(
-                row(mapOf<String, Any?>("loopAgentName" to "Ghost"), "Ghost"),
-                row(mapOf<String, Any?>("targetAgentName" to "LoopA"), "LoopA"),
+                row(mapOf<String, Any?>("targetAgentName" to "Ghost"), "Ghost"),
+                row(mapOf<String, Any?>("targetAgentName" to "LoopB"), "LoopB"),
                 row(mapOf<String, Any?>("targetAgentName" to null), "did not choose"),
                 row(mapOf<String, Any?>("prompt" to null), "prompt"),
             ) { overrides, expected ->
@@ -627,7 +636,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
                     any(),
                     any()
                 )
-            } returns planAnswer(mapOf("loopAgentName" to "Ghost"))
+            } returns planAnswer(mapOf("targetAgentName" to "Ghost"))
 
             val result = service.generate(namespaceId, userId, request())
 
