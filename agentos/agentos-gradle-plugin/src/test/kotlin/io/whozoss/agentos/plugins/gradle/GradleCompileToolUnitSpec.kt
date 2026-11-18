@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.gradle
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainInOrder
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
@@ -36,11 +37,12 @@ class GradleCompileToolUnitSpec :
             cmd shouldContainInOrder listOf("/fake/gradlew", ":engine:testClasses")
         }
 
-        "buildCommand includes --continue --quiet --console=plain flags" {
+        "buildCommand includes --continue --console=plain flags, and not --quiet which hides compiler warnings" {
             val tool = GradleCompileTool(GradleRunner(File("/fake")))
             val cmd = tool.buildCommand(gradlew = "/fake/gradlew", subproject = null)
 
-            cmd shouldContainInOrder listOf("--continue", "--quiet", "--console=plain")
+            cmd shouldContainInOrder listOf("--continue", "--console=plain")
+            cmd shouldNotContain "--quiet"
         }
 
         // ── resolveTargets ────────────────────────────────────────────────────────────────────
@@ -86,7 +88,7 @@ class GradleCompileToolUnitSpec :
                     }
 
                 val tool = GradleCompileTool(GradleRunner(root))
-                tool.detectModule(srcFile) shouldBe "cli"
+                tool.detectModule(srcFile) shouldBe GradleCompileTool.OwningModule.Module("cli")
             } finally {
                 root.deleteRecursively()
             }
@@ -109,7 +111,7 @@ class GradleCompileToolUnitSpec :
             }
         }
 
-        "detectModule returns null when file is directly in the root (no sub-module)" {
+        "detectModule answers the root build for a file directly in the root project" {
             val root = Files.createTempDirectory("agentos-compile-root-file").toFile()
             try {
                 root.resolve("settings.gradle.kts").createNewFile()
@@ -122,7 +124,7 @@ class GradleCompileToolUnitSpec :
 
                 val tool = GradleCompileTool(GradleRunner(root))
                 // Root module has no meaningful sub-name → null
-                tool.detectModule(srcFile) shouldBe null
+                tool.detectModule(srcFile) shouldBe GradleCompileTool.OwningModule.Root
             } finally {
                 root.deleteRecursively()
             }
@@ -141,7 +143,7 @@ class GradleCompileToolUnitSpec :
                     }
 
                 val tool = GradleCompileTool(GradleRunner(root))
-                tool.detectModule(srcFile) shouldBe "feature:core"
+                tool.detectModule(srcFile) shouldBe GradleCompileTool.OwningModule.Module("feature:core")
             } finally {
                 root.deleteRecursively()
             }
@@ -197,6 +199,26 @@ class GradleCompileToolUnitSpec :
                 result shouldNotBe null
                 result!!.first shouldBe "cli"
                 result.second shouldBe srcFile.absolutePath
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+        "resolveTargets compiles the root and keeps the file as filter for a file of the root project" {
+            val root = Files.createTempDirectory("agentos-compile-root-target").toFile()
+            try {
+                root.resolve("settings.gradle.kts").createNewFile()
+                root.resolve("build.gradle.kts").createNewFile()
+                val srcFile =
+                    root.resolve("src/main/kotlin/Root.kt").also {
+                        it.parentFile.mkdirs()
+                        it.createNewFile()
+                    }
+
+                val tool = GradleCompileTool(GradleRunner(root))
+
+                tool.resolveTargets(resolvedSubproject = null, resolvedFile = srcFile.absolutePath) shouldBe
+                    (null to srcFile.absolutePath)
             } finally {
                 root.deleteRecursively()
             }

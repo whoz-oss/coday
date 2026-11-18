@@ -463,14 +463,46 @@ class GradleRunnerUnitSpec :
             }
         }
 
-        "compositeBuildHint names the included builds when a run without module fails" {
+        "compositeBuildHint names the included builds when a run without module fails on a missing task" {
             withTempDir("agentos-composite-hint") { root ->
                 root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
 
-                val hint = GradleRunner(root).compositeBuildHint(1, false, root.resolve("gradlew").absolutePath)
+                val hint =
+                    GradleRunner(root).compositeBuildHint(
+                        1,
+                        false,
+                        root.resolve("gradlew").absolutePath,
+                        "* What went wrong:\nTask 'testClasses' not found in root project 'agentos'.",
+                    )
 
                 hint!! shouldContain "agentos-sdk"
                 hint shouldContain "subproject"
+            }
+        }
+
+        "compositeBuildHint also answers when Gradle cannot locate the tasks of a selector" {
+            withTempDir("agentos-composite-locate") { root ->
+                root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
+
+                GradleRunner(root).compositeBuildHint(
+                    1,
+                    false,
+                    root.resolve("gradlew").absolutePath,
+                    "Cannot locate tasks that match ':agentos-sdk:test' as project 'agentos-sdk' not found in root project 'agentos'.",
+                ) shouldContain "agentos-sdk"
+            }
+        }
+
+        "compositeBuildHint is silent on a plain compile or test failure, the module is not the problem" {
+            withTempDir("agentos-composite-plain-failure") { root ->
+                root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
+
+                GradleRunner(root).compositeBuildHint(
+                    1,
+                    false,
+                    root.resolve("gradlew").absolutePath,
+                    "e: file:///src/Foo.kt:12:5 Unresolved reference 'bar'\nExecution failed for task ':compileKotlin'.",
+                ) shouldBe null
             }
         }
 
@@ -478,14 +510,15 @@ class GradleRunnerUnitSpec :
             withTempDir("agentos-composite-silent") { root ->
                 val gradlew = root.resolve("gradlew").absolutePath
                 val runner = GradleRunner(root)
+                val notFound = "Task 'testClasses' not found in root project 'agentos'."
                 root.resolve("settings.gradle.kts").writeText("""includeBuild("agentos-sdk")""")
 
-                runner.compositeBuildHint(0, false, gradlew) shouldBe null
-                runner.compositeBuildHint(1, true, gradlew) shouldBe null
+                runner.compositeBuildHint(0, false, gradlew, notFound) shouldBe null
+                runner.compositeBuildHint(1, true, gradlew, notFound) shouldBe null
 
                 root.resolve("settings.gradle.kts").writeText("// nothing included")
 
-                runner.compositeBuildHint(1, false, gradlew) shouldBe null
+                runner.compositeBuildHint(1, false, gradlew, notFound) shouldBe null
             }
         }
 

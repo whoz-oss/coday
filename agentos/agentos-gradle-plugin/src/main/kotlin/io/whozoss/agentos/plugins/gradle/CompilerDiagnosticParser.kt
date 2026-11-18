@@ -103,14 +103,23 @@ internal class CompilerDiagnosticParser {
 
             appendLine()
             appendLine("── Diagnostics ───────────────────────────────────────")
-            primary.forEach { d -> appendLine(d.format()) }
+            // The counts above are exact; the list is bounded so a broken build cannot flood the agent context.
+            val primaryShown = primary.take(MAX_LISTED_DIAGNOSTICS)
+            val secondaryShown = secondary.take(MAX_LISTED_DIAGNOSTICS - primaryShown.size)
+            primaryShown.forEach { d -> appendLine(d.format()) }
 
             if (secondary.isNotEmpty()) {
                 val otherErrors = secondary.count { it.severity == Severity.ERROR }
                 val otherWarnings = secondary.count { it.severity == Severity.WARNING }
                 appendLine()
                 appendLine("── Other files: $otherErrors error(s), $otherWarnings warning(s) ──")
-                secondary.forEach { d -> appendLine(d.format()) }
+                secondaryShown.forEach { d -> appendLine(d.format()) }
+            }
+
+            val hidden = primary.size + secondary.size - primaryShown.size - secondaryShown.size
+            if (hidden > 0) {
+                appendLine()
+                appendLine("… $hidden more diagnostic(s) not shown (listed: $MAX_LISTED_DIAGNOSTICS)")
             }
         }.trimEnd()
     }
@@ -138,5 +147,10 @@ internal class CompilerDiagnosticParser {
     ) {
         ERROR("ERROR"),
         WARNING("WARN"),
+    }
+
+    private companion object {
+        /** Max diagnostics listed in a summary, whatever their number. */
+        const val MAX_LISTED_DIAGNOSTICS = 100
     }
 }

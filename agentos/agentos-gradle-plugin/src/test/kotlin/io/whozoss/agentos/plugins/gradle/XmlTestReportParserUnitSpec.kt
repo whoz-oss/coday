@@ -577,4 +577,31 @@ class XmlTestReportParserUnitSpec :
                 dir.deleteRecursively()
             }
         }
+
+        // ── buildSummary — bounded answer ──────────────────────────────────────────────────────────────────────
+
+        "buildSummary of 200 distinct failures keeps the exact counts and a bounded list" {
+            val dir = tmpDir()
+            try {
+                val testcases =
+                    (1..200).joinToString("\n") { i ->
+                        """<testcase classname="com.example.Big" name="test$i"><failure message="distinct message $i" type="AssertionError">at com.example.Big.test$i(Big.kt:$i)</failure></testcase>"""
+                    }
+                val report =
+                    dir.writeXml(
+                        "TEST-Big.xml",
+                        """<?xml version="1.0"?><testsuite name="com.example.Big" tests="200" skipped="0" failures="200" errors="0">$testcases</testsuite>""",
+                    )
+
+                val summary = XmlTestReportParser().buildSummary(1, listOf(report))
+
+                summary shouldContain "Tests: 200  Passed: 0  Skipped: 0  Failed: 200"
+                summary shouldContain "distinct message 1"
+                summary shouldContain "distinct message 50"
+                summary shouldNotContain "distinct message 51"
+                summary shouldContain "150 more distinct failure(s) not shown"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
     })

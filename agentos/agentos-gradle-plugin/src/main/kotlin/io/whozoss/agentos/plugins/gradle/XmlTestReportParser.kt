@@ -85,16 +85,22 @@ internal class XmlTestReportParser {
                 appendLine()
                 appendLine("── Failures ──────────────────────────────────────────")
                 // Identical failures (same message, same head frame) are listed once: one root cause, N tests.
-                val groups = failures.groupBy { it.message to it.stack.firstOrNull() }.values
+                val groups = failures.groupBy { it.message to it.stack.firstOrNull() }.values.toList()
+                // The counts above are exact; the list is bounded so many distinct failures cannot flood the agent context.
+                val shown = groups.take(MAX_LISTED_FAILURES)
                 // Few failures: full detail. Many: a smaller share of the budget each.
-                val messageCap = max(MIN_MESSAGE_CHARS, TOTAL_MESSAGE_BUDGET / groups.size)
-                groups.forEachIndexed { idx, group ->
+                val messageCap = max(MIN_MESSAGE_CHARS, TOTAL_MESSAGE_BUDGET / shown.size)
+                shown.forEachIndexed { idx, group ->
                     val f = group.first()
                     appendLine()
                     appendLine("${idx + 1}. ${if (group.size == 1) f.title else "×${group.size} : ${group.joinToString { it.title }}"}")
                     if (f.type.isNotBlank()) appendLine("   type    : ${f.type}")
                     if (f.message.isNotBlank()) appendLine("   message : ${f.message.capped(messageCap).indented()}")
                     if (f.stack.isNotEmpty()) appendLine("   stack   : ${f.stack.joinToString("\n").indented()}")
+                }
+                if (groups.size > shown.size) {
+                    appendLine()
+                    appendLine("… ${groups.size - shown.size} more distinct failure(s) not shown (listed: $MAX_LISTED_FAILURES)")
                 }
             }
             if (exitCode != 0 && (failures.isEmpty() || unreadable > 0) && rawOutput.isNotBlank()) {
@@ -159,6 +165,9 @@ internal class XmlTestReportParser {
         private const val MAX_FRAMES = 5
         private const val TOTAL_MESSAGE_BUDGET = 6000
         private const val MIN_MESSAGE_CHARS = 400
+
+        /** Max distinct failures listed in a summary, whatever their number. */
+        private const val MAX_LISTED_FAILURES = 50
 
         // shortcut: hardcoded, java.* also hides useful JDK frames (java.util.concurrent), upgrade if that hurts
         private val NOISE_PREFIXES =
