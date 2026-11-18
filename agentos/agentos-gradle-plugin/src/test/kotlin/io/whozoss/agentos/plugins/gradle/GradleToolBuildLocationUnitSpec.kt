@@ -38,7 +38,7 @@ class GradleToolBuildLocationUnitSpec :
                     GradleCompileTool(runner).compile(subproject = subproject, timeoutSeconds = 60)
                 },
                 Call("gradle_tests") { runner, subproject ->
-                    GradleTestTool(runner, newRunId = { "run-1" }).runTests(testFilter = null, subproject = subproject, timeoutSeconds = 60)
+                    GradleTestTool(runner).runTests(testFilter = null, subproject = subproject, timeoutSeconds = 60)
                 },
                 Call("gradle_dependency_insight") { runner, subproject ->
                     GradleDependencyInsightTool(runner).dependencyInsight(dependency = "x", subproject = subproject, timeoutSeconds = 60)

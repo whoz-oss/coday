@@ -35,6 +35,35 @@ class CompilerDiagnosticParserUnitSpec :
             diagnostics[0].severity shouldBe Severity.WARNING
         }
 
+        "parse recognises Kotlin 2.x error line with file URI prefix and no colon after the column" {
+            val raw = "e: file:///home/dev/project/src/main/kotlin/Foo.kt:12:5 Unresolved reference 'bar'."
+            val diagnostics = parser.parse(raw)
+
+            diagnostics shouldHaveSize 1
+            diagnostics[0].severity shouldBe Severity.ERROR
+            diagnostics[0].file shouldBe "/home/dev/project/src/main/kotlin/Foo.kt"
+            diagnostics[0].line shouldBe 12
+            diagnostics[0].column shouldBe 5
+            diagnostics[0].message shouldBe "Unresolved reference 'bar'."
+        }
+
+        "parse recognises Kotlin 2.x warning line with file URI prefix" {
+            val raw = "w: file:///project/src/main/kotlin/Bar.kt:3:1 Variable 'x' is never used"
+            val diagnostics = parser.parse(raw)
+
+            diagnostics shouldHaveSize 1
+            diagnostics[0].severity shouldBe Severity.WARNING
+            diagnostics[0].file shouldBe "/project/src/main/kotlin/Bar.kt"
+        }
+
+        "parse keeps a Kotlin 1.x message that contains a colon" {
+            val raw = "e: /project/Foo.kt:1:2: Expecting ':' here"
+            val diagnostics = parser.parse(raw)
+
+            diagnostics shouldHaveSize 1
+            diagnostics[0].message shouldBe "Expecting ':' here"
+        }
+
         "parse handles .kts extension" {
             val raw = "e: /project/build.gradle.kts:7:3: Type mismatch"
             val diagnostics = parser.parse(raw)

@@ -1,33 +1,27 @@
 package io.whozoss.agentos.plugins.gradle
 
 /**
- * Strips JVM restricted-method warnings from Gradle output.
- *
- * These warnings are emitted by the JVM when native libraries call restricted APIs
- * (e.g. `System::load`). They pollute tool output without adding diagnostic value.
- *
- * Removed pattern:
+ * The JVM restricted-method warnings, printed when a native library calls a restricted API (e.g. `System::load`):
  *   WARNING: A restricted method in java.lang.System has been called
  *   WARNING: java.lang.System::load has been called by ...
  *   WARNING: Use --enable-native-access=ALL-UNNAMED ...
  *   WARNING: Restricted methods will be blocked ...
+ * Any other `WARNING:` line (Gradle, a plugin, a tool) is a real warning and is kept.
  */
-internal fun String.filterJvmNoise(): String {
-    val lines = lines()
-    val filtered = mutableListOf<String>()
-    var i = 0
-    while (i < lines.size) {
-        val line = lines[i]
-        if (line.startsWith("WARNING:")) {
-            i++
-            continue
-        }
-        filtered += line
-        i++
-    }
-    // Collapse runs of 3+ blank lines down to 2 (avoids large gaps left by removed WARNING blocks)
-    return filtered
+private val JVM_NOISE =
+    Regex(
+        """^WARNING: (?:A restricted method in .*|\S+::\S+ has been called by .*|Use --enable-native-access.*|Restricted methods will be blocked.*)$""",
+    )
+
+private val BLANK_RUNS = Regex("\n{3,}")
+
+/**
+ * Strips the JVM restricted-method warnings ([JVM_NOISE]) from Gradle output: they pollute tool output without
+ * adding diagnostic value. Runs of 3+ blank lines left by the removal are collapsed to 2.
+ */
+internal fun String.filterJvmNoise(): String =
+    lines()
+        .filterNot { JVM_NOISE.matches(it) }
         .joinToString("\n")
-        .replace(Regex("\n{3,}"), "\n\n")
+        .replace(BLANK_RUNS, "\n\n")
         .trim()
-}

@@ -5,9 +5,13 @@ package io.whozoss.agentos.plugins.gradle
  *
  * Supported formats:
  *
- * Kotlin (kotlinc):
+ * Kotlin (kotlinc 1.x):
  *   `e: /abs/path/to/File.kt:12:5: error message`
  *   `w: /abs/path/to/File.kt:12:5: warning message`
+ *
+ * Kotlin (kotlinc 2.x): `file://` prefix, no colon after the column:
+ *   `e: file:///abs/path/to/File.kt:12:5 error message`
+ *   `w: file:///abs/path/to/File.kt:12:5 warning message`
  *
  * Java (javac via Gradle):
  *   `/abs/path/to/File.java:12: error: message`
@@ -16,9 +20,9 @@ package io.whozoss.agentos.plugins.gradle
  * Lines that match neither pattern are captured as raw lines for fallback display.
  */
 internal class CompilerDiagnosticParser {
-    // Kotlin: "e: /path:line:col: message"  or  "w: /path:line:col: message"
+    // Kotlin: "e: /path:line:col: message" (1.x) or "e: file:///path:line:col message" (2.x), same for "w:"
     private val kotlinPattern =
-        Regex("""^([ew]):\s+(.+\.(?:kt|kts)):(\d+):(\d+):\s+(.+)$""")
+        Regex("""^([ew]):\s+(?:file://)?(.+\.(?:kt|kts)):(\d+):(\d+):?\s+(.+)$""")
 
     // Java: "/path.java:line: error|warning: message"
     private val javaPattern =
