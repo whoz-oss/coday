@@ -1,5 +1,6 @@
 package io.whozoss.factory.capability
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
@@ -39,6 +40,9 @@ import io.whozoss.factory.sdk.spi.BriefContext
 import io.whozoss.factory.sdk.spi.BriefContribution
 import io.whozoss.factory.sdk.spi.FactoryBriefContributor
 import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
+import io.whozoss.factory.sdk.spi.FactoryStepEvidenceObserver
+import io.whozoss.factory.sdk.spi.StepEvidenceObservation
+import io.whozoss.factory.sdk.spi.StepEvidenceObservationContext
 import io.whozoss.factory.sdk.spi.RunUpdate
 import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.sdk.spi.StepValidationContext
@@ -61,6 +65,8 @@ import io.whozoss.factory.workspace.WorkspaceDeltaCollector
 import io.whozoss.factory.worktree.AgentOsWorkspaceIdentityValidator
 import io.whozoss.factory.worktree.ParentRunWorkspacePreflight
 import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
+import io.whozoss.factory.worktree.LocalWorktreeResourceIdentityResolver
+import io.whozoss.factory.environment.domain.WorkEnvironmentState
 import io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyConflict
 import io.whozoss.factory.verification.manifest.VERIFICATION_MANIFEST_INVALID
 import io.whozoss.factory.verification.manifest.VERIFICATION_MANIFEST_MISSING
@@ -201,6 +207,8 @@ class CapabilityExecutionService(
     @param:Autowired(required = false)
     private val registeredStepResultValidators: List<FactoryStepResultValidator> = emptyList(),
     @param:Autowired(required = false)
+    private val registeredStepEvidenceObservers: List<FactoryStepEvidenceObserver> = emptyList(),
+    @param:Autowired(required = false)
     private val agentOsWorkspaceIdentityValidator: AgentOsWorkspaceIdentityValidator? = null,
     @param:Autowired(required = false)
     private val worktreeExecutionOccupancyService: WorktreeExecutionOccupancyService? = null,
@@ -279,11 +287,25 @@ class CapabilityExecutionService(
     ): Boolean {
         val steps = projectedSteps(scope, attempt.namespaceId, attempt.workflowId)
         val step = steps.find { it.id == attempt.stepId } ?: return false
+        val reservation = AgentReservation(
+            attempt.attemptId, attempt.caseId, ownerToken, attempt.capabilityToken, attempt.parentCaseId,
+            turnStarted = true,
+            occupancy = if (attempt.environmentRef != null && attempt.occupancyResourceIdentity != null &&
+                attempt.occupancyOwnerKind != null && attempt.occupancyOwnerId != null && attempt.occupancyGeneration != null
+            ) WorktreeExecutionOccupancyHandle(
+                attempt.environmentRef, attempt.occupancyResourceIdentity, scope,
+                attempt.occupancyOwnerKind, attempt.occupancyOwnerId, attempt.occupancyGeneration,
+            ) else null,
+        )
+        val instance = workflowRepository.findInstance(scope, attempt.namespaceId, attempt.workflowId)
+        val externalObservation = (observation.verdict as? AgentOsExecutionVerdict.Succeeded)
+            ?.takeUnless { it.evidence["status"] == NEEDS_RESEARCH_MARKER }
+            ?.let { observeStepEvidence(scope, attempt.namespaceId, instance, step, attempt.agentName, reservation, it.outputs) }
         newTransaction<Unit> {
             finalizeAgentAttempt(
                 scope, attempt.namespaceId, attempt.workflowId, step,
-                AgentReservation(attempt.attemptId, attempt.caseId, ownerToken, attempt.capabilityToken, attempt.parentCaseId, turnStarted = true),
-                observation.verdict, runtimeProof = observation.runtimeProof,
+                reservation, observation.verdict, runtimeProof = observation.runtimeProof,
+                externalObservation = externalObservation,
             )
         }
         return true
@@ -663,6 +685,67 @@ class CapabilityExecutionService(
         return registeredStepResultValidators + fromPlugins
     }
 
+    private fun allStepEvidenceObservers(): List<FactoryStepEvidenceObserver> =
+        registeredStepEvidenceObservers + pluginManager?.let {
+            runCatching { it.getExtensions(FactoryStepEvidenceObserver::class.java) }.getOrDefault(emptyList())
+        }.orEmpty()
+
+    private fun observeStepEvidence(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowInstance: WorkflowInstanceRecord?,
+        step: WorkflowStepDefinition,
+        agentName: String,
+        reservation: AgentReservation,
+        report: Map<String, Any?>,
+    ): StepEvidenceObservation? {
+        val flowType = (workflowInstance?.instance?.get("workflowType") as? String).orEmpty()
+        val matching = allStepEvidenceObservers().filter {
+            runCatching { it.supports(flowType, step.id, agentName) }.getOrDefault(false)
+        }
+        if (matching.isEmpty()) return null
+        if (matching.size != 1) return StepEvidenceObservation.Unavailable(
+            "EVIDENCE_OBSERVER_AMBIGUOUS", "More than one observer owns this step.",
+        )
+        val environmentId = reservation.occupancy?.environmentId
+            ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "No Run-bound worktree occupation exists.")
+        val environment = workEnvironmentRepository?.findByEnvironmentId(scope, environmentId)
+            ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree is unavailable.")
+        val parentRunId = parentRunIdOf(workflowInstance)
+        if (environment.lifecycleState != WorkEnvironmentState.READY || environment.namespaceId != namespaceId ||
+            environment.workflowId != parentRunId || environment.worktreePath.isBlank()
+        ) return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree is not READY.")
+        val worktree = runCatching { Path.of(environment.worktreePath) }.getOrNull()
+            ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound worktree path is invalid.")
+        val identity = runCatching { LocalWorktreeResourceIdentityResolver().resolve(worktree) }.getOrNull()
+        if (identity == null || identity != reservation.occupancy.resourceIdentity) return StepEvidenceObservation.Unavailable(
+            "WORKTREE_IDENTITY_CHANGED", "The Run-bound worktree identity changed.",
+        )
+        val context = StepEvidenceObservationContext(
+            run = resolveRunView(scope, namespaceId, workflowInstance),
+            flowType = flowType,
+            stepId = step.id,
+            agentName = agentName,
+            attemptId = reservation.attemptId,
+            worktreePath = worktree.toString(),
+            report = report,
+        )
+        return try {
+            when (val observed = matching.single().observe(context)) {
+                is StepEvidenceObservation.Observed -> {
+                    val bytes = ObjectMapper().writeValueAsBytes(observed.facts)
+                    if (bytes.size > 512 * 1024) StepEvidenceObservation.Invalid(
+                        "EXTERNAL_EVIDENCE_TOO_LARGE", "External evidence exceeds 512 KiB.",
+                    ) else observed
+                }
+                else -> observed
+            }
+        } catch (error: Exception) {
+            logger.warn(error) { "Step evidence observation failed for '${step.id}'" }
+            StepEvidenceObservation.Unavailable("EVIDENCE_OBSERVATION_UNAVAILABLE", error.message ?: "External observation failed.")
+        }
+    }
+
     private fun resolveRunView(
         scope: TenantScope,
         namespaceId: String,
@@ -697,6 +780,7 @@ class CapabilityExecutionService(
         toolEvents: List<ToolEventView>,
         watchedPaths: List<String>,
         attemptId: String,
+        externalEvidence: Map<String, Any?> = emptyMap(),
     ): StepValidationVerdict {
         val validators = allStepResultValidators()
         val workflowInstance = workflowRepository.findInstance(scope, namespaceId, workflowId)
@@ -740,6 +824,7 @@ class CapabilityExecutionService(
                 report = outputs,
                 workspaceDelta = workspaceDelta,
                 toolEvents = toolEvents,
+                externalEvidence = externalEvidence,
             )
             val verdict = try {
                 validator.validate(context)
@@ -1376,6 +1461,11 @@ class CapabilityExecutionService(
                 }
         }.getOrDefault(emptyList())
 
+        // External IO is deliberately completed before the finalization transaction.
+        val externalObservation = (observation.verdict as? AgentOsExecutionVerdict.Succeeded)
+            ?.takeUnless { it.evidence["status"] == NEEDS_RESEARCH_MARKER }
+            ?.let { observeStepEvidence(scope, namespaceId, workflowInstance, step, agentId, occupiedReservation, it.outputs) }
+
         // Phase 3 - one short transaction for validator Run updates, evidence and attempt finalization.
         val parentRunId = parentRunIdOf(workflowInstance)
         val finalize = {
@@ -1390,7 +1480,8 @@ class CapabilityExecutionService(
                 runtimeProof = observation.runtimeProof,
                 workspaceDelta = workspaceDelta,
                 toolEvents = toolEvents,
-                    watchedPaths = watchedPaths,
+                watchedPaths = watchedPaths,
+                externalObservation = externalObservation,
                 )
             }
         }
@@ -2130,6 +2221,7 @@ class CapabilityExecutionService(
         toolEvents: List<ToolEventView> = emptyList(),
         watchedPaths: List<String> = emptyList(),
         runtimeProof: VerdictDeriver.RuntimeCaseTerminationProof? = null,
+        externalObservation: StepEvidenceObservation? = null,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
         if (workspaceDeltaCollector != null && ( workspaceDelta.changedFilesDuringTurn.isNotEmpty() || workspaceDelta.watchedFiles.isNotEmpty())) {
@@ -2192,6 +2284,30 @@ class CapabilityExecutionService(
         }
         return when (verdict) {
             is AgentOsExecutionVerdict.Succeeded -> {
+                if (externalObservation is StepEvidenceObservation.Unavailable) {
+                    val parentRunId = parentRunIdOf(workflowRepository.findInstance(scope, namespaceId, workflowId))
+                    if (parentRunId != null) runService?.applyStepValidationUpdate(
+                        scope = scope, namespaceId = namespaceId, runId = parentRunId,
+                        sourceFragmentId = workflowId,
+                        update = RunUpdate(addedFindings = listOf(NewFinding(
+                            id = "technical-pause:${reservation.attemptId}", code = externalObservation.code,
+                            severity = FindingSeverity.MAJOR, message = externalObservation.message, stepId = step.id,
+                        ))),
+                        idempotencyKey = "external-unavailable:${reservation.attemptId}",
+                        joinCallerTransaction = true,
+                    )
+                    val evidenceId = persistEvidence("technical_pause", mapOf(
+                        "code" to externalObservation.code,
+                        "message" to externalObservation.message,
+                        "outputs" to verdict.outputs,
+                    ))
+                    return CapabilityExecution(
+                        CapabilityOutcome.AgentDeferred(step.id, step.responsibility.name,
+                            externalObservation.code, externalObservation.message),
+                        evidenceId = evidenceId,
+                        attemptId = reservation.attemptId,
+                    )
+                }
                 if (verdict.evidence["status"] == NEEDS_RESEARCH_MARKER) {
                     // Authoritative NEEDS_RESEARCH verdict: the step is BLOCKED, not
                     // failed. Persist the original proof and record the predecessor
@@ -2229,7 +2345,14 @@ class CapabilityExecutionService(
                     )
                 } else {
                     // Synchronous plugin step-result validation (Lot 2, §5.3 & §6.1)
-                    val validationVerdict = evaluateStepResultValidators(
+                    val validationVerdict = if (externalObservation is StepEvidenceObservation.Invalid) {
+                        StepValidationVerdict.Rejected(externalObservation.code, listOf(NewFinding(
+                            code = externalObservation.code,
+                            severity = FindingSeverity.MAJOR,
+                            message = externalObservation.message,
+                            stepId = step.id,
+                        )))
+                    } else evaluateStepResultValidators(
                         scope = scope,
                         namespaceId = namespaceId,
                         workflowId = workflowId,
@@ -2240,6 +2363,7 @@ class CapabilityExecutionService(
                         toolEvents = toolEvents,
                         watchedPaths = watchedPaths,
                         attemptId = reservation.attemptId,
+                        externalEvidence = (externalObservation as? StepEvidenceObservation.Observed)?.facts.orEmpty(),
                     )
                     if (validationVerdict is StepValidationVerdict.Rejected) {
                         val wfInst = workflowRepository.findInstance(scope, namespaceId, workflowId)
@@ -2295,7 +2419,9 @@ class CapabilityExecutionService(
                     }
                     val evidenceId = persistEvidence(
                         "pass",
-                        mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence, "validatorsAccepted" to true),
+                        mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence,
+                            "externalEvidence" to (externalObservation as? StepEvidenceObservation.Observed)?.facts.orEmpty(),
+                            "validatorsAccepted" to true),
                     )
                     durableAgentAttemptService.finalize(
                         scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,

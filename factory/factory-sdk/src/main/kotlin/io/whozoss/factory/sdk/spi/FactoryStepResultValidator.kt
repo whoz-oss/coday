@@ -59,6 +59,8 @@ data class StepValidationContext(
     val report: Map<String, Any?> = emptyMap(),
     val workspaceDelta: WorkspaceDelta = WorkspaceDelta(),
     val toolEvents: List<ToolEventView> = emptyList(),
+    /** Facts independently observed before the finalization transaction. */
+    val externalEvidence: Map<String, Any?> = emptyMap(),
 )
 
 /**

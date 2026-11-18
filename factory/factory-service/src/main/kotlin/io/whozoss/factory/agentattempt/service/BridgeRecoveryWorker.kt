@@ -270,6 +270,9 @@ class BridgeRecoveryWorker(
             attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         }
         if (capabilityExecutionService?.finalizeRecoveredAttempt(candidate.scope, attempt, owner, observation) == true) {
+            if (attempts.find(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)?.status?.terminal != true) {
+                return Outcome.SKIPPED // External evidence is still unavailable; never enqueue a false success.
+            }
             enqueueContinuationBestEffort(candidate)
             releaseOccupancyIfResultAccepted(candidate)
             return Outcome.FINALIZED
@@ -501,6 +504,7 @@ class BridgeRecoveryWorker(
                     is AgentOsExecutionVerdict.WaitingHuman -> error("handled above")
                 }
                 if (capabilityExecutionService?.finalizeRecoveredAttempt(candidate.scope, attempt, owner, observation) == true) {
+                    if (attempts.find(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)?.status?.terminal != true) return
                     enqueueContinuationBestEffort(candidate)
                     releaseOccupancyIfResultAccepted(candidate)
                     return
