@@ -43,6 +43,20 @@ historical test result, not evidence for the now-required delivery launch.
 The Git packet observer can now receive the root Case worktree of a direct
 workflow when AgentOS reports it READY and the path resolves locally in
 Factory. Its observed facts are stored in the workflow's agent-result evidence.
+For a hosted setup without a shared filesystem, the AgentOS workspace API
+currently reports the worktree path, changes and working-tree file content,
+but offers no read of a blob at a specified commit. The Factory Forge plugin
+therefore cannot verify the approved historical document bytes through that
+API. A current-file read cannot substitute for the pinned Git commit after
+agents continue writing. A narrow authorized pinned-object read at the Git
+workspace owner, or another trusted Git read transport, is required for that
+deployment shape; no such transport is part of this draft.
+`CapabilityValidationFinalizationRollbackIntegrationTest.direct workflow pauses
+when AgentOS reports a worktree path Factory cannot read` confirms the direct
+Run records `WORKTREE_UNAVAILABLE` as a technical pause and writes no accepted
+agent result; the plugin observer is never invoked. This is a fail-closed
+boundary, not a remote Git-read implementation.
+
 The recovery path invokes the same observation method, but its direct-workflow
 case has not yet been exercised by an integration test. This is a
 local/shared-filesystem seam, not a remote Git-object read or an approved-packet gate.
@@ -191,6 +205,11 @@ worktree advance, and rejects a missing commit, missing document, wrong source
 repository and mismatched content digest. This does not yet prove a trusted
 Whoz workstream binding, a manifest identity persisted in the parent Run, a
 human decision on that identity, Git-outage pausing or restart behavior.
+An additional regression recreated a local Git `replace` ref that made the
+original commit name resolve to another commit's document bytes; it failed
+before the fix. The packet reader now sets `GIT_NO_REPLACE_OBJECTS=1`, and the
+same test passes with `CONTENT_MISMATCH`. This protects the local pinned-commit
+check; it does not address the remote-host read gap above.
 
 ### CE06 standard-worker step guards
 

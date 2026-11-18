@@ -98,6 +98,7 @@ internal class ProcessGitObjects : ForgeGitPacketSnapshot.GitObjects {
     private fun runGit(worktree: Path, args: List<String>, maxBytes: Int): ByteArray? {
         val process = ProcessBuilder(listOf("git", "-C", worktree.toString()) + args)
             .redirectErrorStream(true)
+            .apply { environment()["GIT_NO_REPLACE_OBJECTS"] = "1" }
             .start()
         val reader = Executors.newSingleThreadExecutor { task -> Thread(task, "forge-git-snapshot").apply { isDaemon = true } }
         return try {
