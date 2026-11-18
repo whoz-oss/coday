@@ -1,3 +1,15 @@
+## 3.48.1 (2026-11-18)
+
+### 🩹 Fixes
+
+- any namespace writer can generate a scheduled prompt config (WZ-35375) ([8222984a8](https://github.com/whoz-oss/coday/commit/8222984a8))
+- any namespace writer can generate a scheduled prompt config (WZ-… ([#1679](https://github.com/whoz-oss/coday/pull/1679))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.48.0 (2026-11-18)
 
 ### 🚀 Features
