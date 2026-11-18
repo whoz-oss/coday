@@ -67,7 +67,7 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
             }
 
             ForgeBmadCatalogContributor.FLOW_TECH_DESIGN -> {
-                if (context.agentName == "Searcher") {
+                if (context.stepId == "codebase-research") {
                     sections += """
                         ## Forge BMAD — Codebase Research Contract (Read-Only)
                         - Research the codebase for `$specPath`. Do NOT modify any file (`$specPath` write-lock is enforced).
@@ -88,7 +88,7 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
                 @Suppress("UNCHECKED_CAST")
                 val planStep = context.fragmentInputs["step"] as? Map<String, Any?>
                 val allowedFiles = (planStep?.get("file_paths") as? List<*>)?.filterIsInstance<String>().orEmpty()
-                if (context.agentName == "ForgeBuilder") {
+                if (context.stepId == "step-implementation" || context.stepId == "step-correction") {
                     sections += buildString {
                         appendLine("## Forge BMAD — Unified Builder Contract (Step #$stepIndex)")
                         appendLine("- Use the appropriate `front` or `back` skill according to the target files.")

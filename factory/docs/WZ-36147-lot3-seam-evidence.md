@@ -75,6 +75,20 @@ test uses in-memory fixture bytes; it does not prove a Whoz Git snapshot,
 ArtifactStore publication, a packet ID bound to a human decision, or restart
 behavior. Those require the remaining CE05/CE07 integration seams.
 
+### CE06 standard-worker step guards
+
+The Forge brief and result validator now select implementation, correction,
+verification and codebase-research obligations by flow/step identity rather
+than `ForgeBuilder`, `ForgeVerifier` or `Searcher` agent names. Backend and
+Frontend therefore receive the declared file scope and cannot pass an
+out-of-scope edit by using a different agent name. Verification and research
+remain read-only for renamed agents. A `forge.delivery` implementation or
+correction step also fails closed when its file scope is absent, unsafe or
+duplicated; legacy `forge-bmad` Runs retain their existing optional-scope
+behavior. These are synchronous plugin guards over Factory's captured workspace
+delta, not proof that the new fleet is routed or that the complete delivery
+Run is executable.
+
 | Contract | Observed result | Remaining proof |
 | --- | --- | --- |
 | Tenant artifact bytes (CE05, T08/T09) | `Neo4jArtifactStoreIntegrationTest` passes put/open/hash, tenant metadata, retention and legal-hold cases. `ArtifactStore` accepts bytes with `TenantScope` and returns ID and hash. | Publish a pinned Whoz Git snapshot, attach its IDs to the parent Run, and verify stored bytes/provenance on resume. No plugin-facing publication port was found. |
@@ -88,11 +102,14 @@ Focused Gradle commands:
 ./gradlew :factory-service:test --tests 'io.whozoss.factory.artifact.infrastructure.persistence.Neo4jArtifactStoreIntegrationTest' --tests 'io.whozoss.factory.workflow.domain.WorkflowRoutingTest' :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeBmadFlowAndValidatorTest' --no-daemon
 ./gradlew :factory-service:test --tests 'io.whozoss.factory.workflow.domain.ForgeDeliveryDraftDefinitionTest' --no-daemon
 ./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgePacketManifestTest' --no-daemon
+./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeStepRoleGuardTest' --tests 'io.whozoss.factory.forge.bmad.ForgeBmadFlowAndValidatorTest' --no-daemon
 ```
 
-All three commands passed. The JSON draft passes Factory's authoritative definition
-validator. The earlier Kotlin preflight suite was removed with its
-implementation; the draft is not a registered or executable delivery workflow.
+All four commands passed. The guard command exercised 4 new step-role cases
+and 18 existing Forge scenario cases. The JSON draft passes Factory's
+authoritative definition validator. The earlier Kotlin preflight suite was
+removed with its implementation; the draft is not a registered or executable
+delivery workflow.
 
 These results do **not** satisfy T08/T09/T14/T19–T23. They need persisted API,
 race, restart, and integration-receipt proofs on the actual versioned delivery

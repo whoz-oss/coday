@@ -24,14 +24,13 @@ import org.pf4j.Extension
  * 2. **Expected amendment section:** the patch of `SPEC.md` must contain the
  *    expected section header (`## Product`, `## UX`, `## Technical`) when a
  *    patch is available.
- * 3. **Write-lock on `SPEC.md`:** any non-authoring worker (`ForgeBuilder`,
- *    `ForgeVerifier`, `ForgeReviewer`, `Searcher`) is forbidden from mutating
- *    `SPEC.md` (`sha256After == sha256Before`).
+ * 3. **Write-lock on `SPEC.md`:** implementation, verification and review steps
+ *    cannot mutate `SPEC.md`, regardless of the assigned agent name.
  * 4. **Grooming report integrity:** `product-grooming` must materialize the
  *    grooming file with a non-null `sha256After`, recorded in `domainState`.
- * 5. **Step file-scope enforcement (`file_paths`):** during `ForgeBuilder`
- *    turns, `changedFilesDuringTurn.keys` must be a subset of the step's
- *    declared `file_paths` (when non-empty).
+ * 5. **Step file-scope enforcement (`file_paths`):** implementation and
+ *    correction steps constrain changed files to the declared scope, regardless
+ *    of the assigned agent name (when non-empty).
  * 6. **Structured delivery plan validation (D8):** `technical-design` must
  *    produce a non-empty `delivery_plan.steps[]` list in its structured report.
  */
@@ -56,7 +55,6 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 )),
             )
         }
-        val role = context.agentName
         val domainState = context.run.domainState
         val specPath = (domainState["spec_path"] as? String)
             ?: (context.fragmentInputs["spec_path"] as? String)
@@ -118,11 +116,11 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                     )
                 }
                 val nextState = LinkedHashMap(domainState)
-                if (context.stepId == "ux-assessment" || role == "ForgeUXDesigner") {
+                if (context.stepId == "ux-assessment") {
                     val uxApplicable = outputs["ux_applicable"] as? Boolean ?: false
                     nextState["ux_applicable"] = uxApplicable
                 }
-                if (context.stepId == "technical-assessment" || role == "ForgeTechDesigner") {
+                if (context.stepId == "technical-assessment") {
                     val trivial = outputs["trivial"] as? Boolean ?: false
                     val techApplicable = outputs["tech_spec_applicable"] as? Boolean ?: !trivial
                     nextState["tech_spec_applicable"] = techApplicable
@@ -141,7 +139,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 )
 
             ForgeBmadCatalogContributor.FLOW_TECH_DESIGN -> {
-                if (context.agentName == "Searcher" || context.stepId == "codebase-research") {
+                if (context.stepId == "codebase-research") {
                     val readOnlyViolation = checkReadOnlyWorkspace(context)
                     if (readOnlyViolation != null) return readOnlyViolation
                     return StepValidationVerdict.Accepted()
@@ -216,19 +214,49 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 val lockViolation = checkSpecWriteLock(context, specPath, watched[specPath])
                 if (lockViolation != null) return lockViolation
 
-                if (role == "ForgeVerifier") {
+                if (context.run.runType == "forge.delivery" && context.stepId !in setOf(
+                        "step-implementation", "step-correction", "step-verification",
+                    )
+                ) {
+                    return StepValidationVerdict.Rejected(
+                        reasonCode = "UNKNOWN_DELIVERY_STEP",
+                        findings = listOf(NewFinding(
+                            code = "UNKNOWN_DELIVERY_STEP",
+                            severity = FindingSeverity.CRITICAL,
+                            message = "Step '${context.stepId}' has no delivery role guard in '${context.flowType}'.",
+                            stepId = context.stepId,
+                        )),
+                    )
+                }
+
+                if (context.stepId == "step-verification") {
                     val readOnlyViolation = checkReadOnlyWorkspace(context)
                     if (readOnlyViolation != null) return readOnlyViolation
                 }
 
-                if (role == "ForgeBuilder") {
+                if (context.stepId == "step-implementation" || context.stepId == "step-correction") {
                     @Suppress("UNCHECKED_CAST")
                     val planStep = context.fragmentInputs["step"] as? Map<String, Any?>
-                    val allowedFiles = (planStep?.get("file_paths") as? List<*>)
+                    val rawPaths = planStep?.get("file_paths") as? List<*>
+                    val allowedFiles = rawPaths
                         ?.mapNotNull { it?.toString()?.trim() }
                         ?.filter { it.isNotEmpty() }
                         ?.toSet()
                         .orEmpty()
+                    if (context.run.runType == "forge.delivery" &&
+                        (rawPaths.isNullOrEmpty() || rawPaths.any { it !is String || !safeRelativePath(it) } ||
+                            allowedFiles.size != rawPaths.size)
+                    ) {
+                        return StepValidationVerdict.Rejected(
+                            reasonCode = "MISSING_STEP_SCOPE",
+                            findings = listOf(NewFinding(
+                                code = "MISSING_STEP_SCOPE",
+                                severity = FindingSeverity.CRITICAL,
+                                message = "Delivery step '${context.stepId}' requires distinct, safe relative file_paths before code changes.",
+                                stepId = context.stepId,
+                            )),
+                        )
+                    }
                     if (allowedFiles.isNotEmpty()) {
                         val touched = context.workspaceDelta.changedFilesDuringTurn.keys
                         val outOfScope = touched.filterNot { it in allowedFiles || it == memlogPath }
@@ -239,7 +267,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                                     NewFinding(
                                         code = "STEP_SCOPE_VIOLATION",
                                         severity = FindingSeverity.MAJOR,
-                                        message = "ForgeBuilder modified files outside step file_paths: ${outOfScope.joinToString(", ")}",
+                                        message = "Step '${context.stepId}' modified files outside step file_paths: ${outOfScope.joinToString(", ")}",
                                         stepId = context.stepId,
                                         filePath = outOfScope.first(),
                                         details = mapOf("outOfScopeFiles" to outOfScope, "allowedFiles" to allowedFiles.toList()),
@@ -369,6 +397,10 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
             ),
         )
     }
+
+    private fun safeRelativePath(path: String): Boolean = path.isNotBlank() && path == path.trim() &&
+        !path.startsWith('/') && !path.contains('\\') && !path.contains('\u0000') &&
+        path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }
 
     private fun checkSpecWriteLock(
         context: StepValidationContext,
