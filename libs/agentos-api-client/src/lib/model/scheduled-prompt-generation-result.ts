@@ -11,6 +11,10 @@ import { GeneratedFieldDecision } from './generated-field-decision'
 import { ScheduledPrompt } from './scheduled-prompt'
 
 export interface ScheduledPromptGenerationResult {
+  /**
+   * Name of the flow configuration preset the generation started from. Null when `baseFlowConfiguration` was given, no presets were given, or no preset could be chosen (see `warnings`). Returned whether or not there is a proposal.
+   */
+  chosenPreset?: string | null
   decisions: Array<GeneratedFieldDecision>
   rawResponse?: string | null
   /**

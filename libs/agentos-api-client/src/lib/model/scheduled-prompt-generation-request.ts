@@ -8,11 +8,16 @@
  * Do not edit the class manually.
  */
 import { Recurrence } from './recurrence'
+import { FlowConfigurationPreset } from './flow-configuration-preset'
 import { Planning } from './planning'
 
 export interface ScheduledPromptGenerationRequest {
   baseFlowConfiguration?: any | null
   description: string
+  /**
+   * Named base flow configurations, used only when `baseFlowConfiguration` is absent. The LLM chooses one from the description (a single preset is chosen as is), and its `baseFlowConfiguration` then acts exactly like the request\'s `baseFlowConfiguration`: an explicit request field still wins over it. The chosen name is returned as `chosenPreset`.
+   */
+  flowConfigurationPresets?: Array<FlowConfigurationPreset> | null
   /**
    * LOOP agent running the automation. Inferred when absent.
    */
