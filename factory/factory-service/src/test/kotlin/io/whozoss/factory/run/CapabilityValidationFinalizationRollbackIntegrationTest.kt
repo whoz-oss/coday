@@ -145,6 +145,75 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
     }
 
     @Test
+    fun `direct workflow pauses when AgentOS reports a worktree path Factory cannot read`() {
+        val directWorkflowId = "direct-remote-git-observation"
+        val rootCaseId = CapabilityExecutionService.stableCaseId(directWorkflowId, step.id)
+        workflowRepository.insertInstance(
+            scope,
+            WorkflowInstanceRecord(
+                namespaceId = namespace,
+                workflowId = directWorkflowId,
+                revision = 1,
+                status = "active",
+                creationCommandHash = "direct-remote-observation-hash",
+                instance = mapOf("workflowId" to directWorkflowId, "workflowType" to "test.direct"),
+                projection = mapOf("steps" to listOf(mapOf(
+                    "id" to step.id,
+                    "name" to step.name,
+                    "responsibility" to mapOf("kind" to "agent", "name" to "Writer"),
+                    "dependsOn" to emptyList<String>(),
+                ))),
+                rootCaseId = rootCaseId,
+            ),
+        )
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+            val binding = firstArg<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>()
+            CaseHandle(binding.caseId, binding.namespaceId, false)
+        }
+        every { adapter.observeTurnResult(any(), any(), any(), any()) } returns
+            io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+                AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "packet")),
+                io.whozoss.factory.adapter.agentos.VerdictDeriver.RuntimeCaseTerminationProof(
+                    caseId = rootCaseId,
+                    attemptId = CapabilityExecutionService.stableAttemptId(directWorkflowId, step.id),
+                    eventId = "remote-idle",
+                    status = "IDLE",
+                ),
+            )
+        val workspaceProxy = mockk<AgentOsProxyClient>(relaxed = true)
+        every { workspaceProxy.fetchWorkspaceChanges(rootCaseId, any()) } returns mapOf(
+            "equipped" to true,
+            "status" to "READY",
+            "path" to worktreeRoot.resolve("not-mounted-in-factory").toString(),
+            "changes" to mapOf("files" to emptyList<Any>()),
+        )
+        val observer = object : FactoryStepEvidenceObserver {
+            override fun supports(flowType: String, stepId: String, agentName: String) = flowType == "test.direct"
+            override fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation =
+                error("A non-local worktree must never reach the Git observer")
+        }
+        val capability = CapabilityExecutionService(
+            resolver = CapabilityResolver(), workflowRepository = workflowRepository,
+            evidenceRepository = evidenceRepository, interactionRepository = interactionRepository,
+            attemptRepository = attemptRepository, durableAgentAttemptService = DurableAgentAttemptService(realAttemptRepository),
+            agentOsExecutionAdapter = adapter, transactionManager = transactionManager,
+            registeredStepEvidenceObservers = listOf(observer),
+            workspaceDeltaCollector = WorkspaceDeltaCollector(workspaceProxy),
+        )
+
+        val result = capability.resolveAndRecord(scope, namespace, directWorkflowId, step, Path.of("."))
+
+        assertThat(result.outcome).isInstanceOf(CapabilityOutcome.AgentDeferred::class.java)
+        assertThat((result.outcome as CapabilityOutcome.AgentDeferred).code).isEqualTo("WORKTREE_UNAVAILABLE")
+        val evidence = evidenceRepository.list(scope, namespace, directWorkflowId)
+        assertThat(evidence).hasSize(1)
+        assertThat(evidence.single().outcome).isEqualTo("technical_pause")
+        assertThat(evidence.single().facts["code"]).isEqualTo("WORKTREE_UNAVAILABLE")
+        assertThat(evidence).noneMatch { it.kind == "agent-result" && it.outcome == "pass" }
+    }
+
+    @Test
     fun `Git outage defers advancement then recovery reobserves after rollback and commits once`() {
         Files.createDirectories(worktreeRoot)
         val rootCaseId = "root-finalization-rollback"

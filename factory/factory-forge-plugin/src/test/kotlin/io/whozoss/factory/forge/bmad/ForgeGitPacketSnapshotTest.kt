@@ -43,6 +43,25 @@ class ForgeGitPacketSnapshotTest {
     }
 
     @Test
+    fun `local Git replace refs cannot substitute another commit for the pinned packet`() {
+        initRepo()
+        val original = documents()
+        writeDocuments(original)
+        git("add", ".")
+        git("commit", "-qm", "original packet")
+        val pinned = git("rev-parse", "HEAD").trim()
+        val replacement = original + ("specs/SPEC.md" to "# Different source".toByteArray())
+        writeDocuments(replacement)
+        git("add", ".")
+        git("commit", "-qm", "replacement packet")
+        val replacementCommit = git("rev-parse", "HEAD").trim()
+        git("replace", pinned, replacementCommit)
+
+        assertThat(verifier.verify(manifest(pinned, replacement), "whoz", repo))
+            .isEqualTo(ForgeGitPacketSnapshot.Result.Invalid("CONTENT_MISMATCH"))
+    }
+
+    @Test
     fun `missing committed document and wrong repository fail closed`() {
         initRepo()
         val documents = documents()
