@@ -9,7 +9,7 @@ import org.pf4j.Extension
  * PF4J extension contributing the 10 static BMAD flow fragments of
  * `forge-bmad` runs.
  *
- * Notice that implementation and correction use the unified `ForgeBuilder` and
+ * Notice that implementation and correction use the unified `ForgeDeveloper` and
  * `ForgeVerifier` agents (D8), keeping the catalog minimal and 100% static.
  */
 @Extension
@@ -162,7 +162,7 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
             }
             """.trimIndent(),
 
-            // 7. forge.implement-step (Unified ForgeBuilder + parameterized code verify + ForgeVerifier, D8)
+            // 7. forge.implement-step (Unified ForgeDeveloper + parameterized code verify + ForgeVerifier, D8)
             """
             {
               "schemaVersion": "1",
@@ -174,7 +174,7 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
                 {
                   "id": "step-implementation",
                   "name": "Delivery step implementation",
-                  "responsibility": { "kind": "agent", "name": "ForgeBuilder" },
+                  "responsibility": { "kind": "agent", "name": "ForgeDeveloper" },
                   "dependsOn": []
                 },
                 {
@@ -193,7 +193,7 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
             }
             """.trimIndent(),
 
-            // 8. forge.correction (Unified ForgeBuilder + parameterized code verify + ForgeVerifier, D8)
+            // 8. forge.correction (Unified ForgeDeveloper + parameterized code verify + ForgeVerifier, D8)
             """
             {
               "schemaVersion": "1",
@@ -205,7 +205,7 @@ class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
                 {
                   "id": "step-correction",
                   "name": "Delivery step correction",
-                  "responsibility": { "kind": "agent", "name": "ForgeBuilder" },
+                  "responsibility": { "kind": "agent", "name": "ForgeDeveloper" },
                   "dependsOn": []
                 },
                 {

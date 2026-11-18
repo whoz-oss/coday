@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test
 /**
  * Comprehensive unit & scenario tests for the Forge BMAD plugin extensions
  * (Lot 2, Lot 3, Lot 4, Lot 6):
- * - [ForgeBmadCatalogContributor]: 10 static flows with unified `ForgeBuilder`/`ForgeVerifier`
+ * - [ForgeBmadCatalogContributor]: 10 static flows with unified `ForgeDeveloper`/`ForgeVerifier`
  * - [ForgeBmadBriefContributor]: BMAD brief sections and `watchedPaths`
  * - [ForgeBmadStepResultValidator]: phantom artifact detection, `SPEC.md` write-lock,
  *   expected section check, structured `delivery_plan.steps[]` check, and `file_paths` scope check
@@ -74,7 +74,7 @@ class ForgeBmadFlowAndValidatorTest {
         val implementStep = current.single { it["workflowType"] == "forge.implement-step" }
         val steps = (implementStep["steps"] as List<*>).filterIsInstance<Map<*, *>>()
         val builderResp = steps.first { it["id"] == "step-implementation" }["responsibility"] as Map<*, *>
-        assertThat(builderResp["name"]).isEqualTo("ForgeBuilder")
+        assertThat(builderResp["name"]).isEqualTo("ForgeDeveloper")
         for (flow in current) {
             for (step in (flow["steps"] as List<*>).filterIsInstance<Map<*, *>>()) {
                 assertThat(step["entry"] as List<*>).isNotEmpty
@@ -122,7 +122,7 @@ class ForgeBmadFlowAndValidatorTest {
     }
 
     @Test
-    fun `validator enforces SPEC_md write-lock on non-authoring agents like ForgeBuilder and Searcher`() {
+    fun `validator enforces SPEC_md write-lock on non-authoring agents like ForgeDeveloper and Searcher`() {
         val run = RunView(runId = "r-1", runType = "forge-controller-v1")
         val deltaWithUnauthorizedSpecEdit = WorkspaceDelta(
             captureStatus = WorkspaceCaptureStatus.COMPLETE,
@@ -142,7 +142,7 @@ class ForgeBmadFlowAndValidatorTest {
                 run = run,
                 flowType = "forge.implement-step",
                 stepId = "step-implementation",
-                agentName = "ForgeBuilder",
+                agentName = "ForgeDeveloper",
                 workspaceDelta = deltaWithUnauthorizedSpecEdit,
             ),
         )
@@ -151,7 +151,7 @@ class ForgeBmadFlowAndValidatorTest {
     }
 
     @Test
-    fun `validator enforces step file_paths scope on ForgeBuilder`() {
+    fun `validator enforces step file_paths scope on ForgeDeveloper`() {
         val run = RunView(runId = "r-1", runType = "forge-controller-v1")
         val deltaWithOutOfScopeFile = WorkspaceDelta(
             captureStatus = WorkspaceCaptureStatus.COMPLETE,
@@ -168,7 +168,7 @@ class ForgeBmadFlowAndValidatorTest {
                 run = run,
                 flowType = "forge.implement-step",
                 stepId = "step-implementation",
-                agentName = "ForgeBuilder",
+                agentName = "ForgeDeveloper",
                 fragmentInputs = mapOf(
                     "step_index" to 0,
                     "step" to mapOf("file_paths" to listOf("src/allowed.kt")),
@@ -399,7 +399,7 @@ class ForgeBmadFlowAndValidatorTest {
                 run = initialView.copy(domainState = state),
                 flowType = "forge.implement-step",
                 stepId = "step-implementation",
-                agentName = "ForgeBuilder",
+                agentName = "ForgeDeveloper",
                 fragmentInputs = mapOf("step_index" to 0, "step" to multiSteps[0]),
             ),
         )

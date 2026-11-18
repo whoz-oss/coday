@@ -24,7 +24,7 @@ resume/Build and the observed CI/deployment candidate remain pending. This
 approval does not publish the draft delivery definition.
 
 **Implementation update, 2026-11-18:** the remote Case Git reader, the
-dedicated ForgeBuilder/ForgeVerifier agent definitions, the fixed Build,
+dedicated ForgeDeveloper/ForgeVerifier agent definitions, the fixed Build,
 verification, review and integration-observation draft steps, and focused
 GitHub deployment/PR readers now exist on the Lot 3 PR branches. The preceding
 paragraph records the earlier decision point; its pending list is historical.
