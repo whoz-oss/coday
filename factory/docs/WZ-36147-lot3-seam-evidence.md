@@ -292,3 +292,73 @@ the service does not inspect the running integration target or a built image.
 Using its success flag as a Forge deployment receipt would therefore be a
 false positive. The Whoz test design requires CI provenance and an observed
 deployment receipt for the exact integrated SHA and build digest (T19/T24).
+
+### Integration observation from the Talent Portal example (2026-11-18)
+
+The requester identified Whoz PR #8488 as an in-flight work-branch example.
+Its observed head is `cbf17264d4dbbb58cc63cadfdfe92ea63d8c8977` on
+`work/talent-portal/WZ-35341_no_npx`; the remote
+`integration/talent-portal` head was still
+`d48c202351acf0af3bc91b78aa2337c0840a53e3` at the last read. Thus no
+integration of this PR was observed yet. GitHub's private PR/check API was not
+available through the current read-only access; a passing validation job or
+deployment for #8488 has **not** been observed.
+
+The Whoz `.github/workflows/validate.yml` runs on PR open, synchronize,
+reopen and ready-for-review. Its `push-work-to-integration` job depends on the
+required validation jobs and invokes `tools-validate:exec-push-work-to-integration`
+only on their success. That executor calls GitHub's branch merge API with the
+work branch as head and `integration/<workstream>` as base, leaving the PR
+open. Existing integration merge commits have two parents and contain `Source`
+and `Target` in their message; the second parent is the included work-branch
+commit. Parentage, rather than the human-readable message alone, proves which
+work revision was included. A 204 response also means the source was already
+contained; the observer must then check ancestry instead of expecting a new
+merge commit. More recent integration commits can include additional work, so
+the candidate must pin the exact integrated tree, not simply the work SHA.
+
+The Whoz `Build` workflow runs on pushes to `integration/**`. After a successful
+build it dispatches `Deploy` with the exact generated RC tag. Tag promotion
+creates the RC Git tag at `github.sha`, so the tag resolves to the built
+integration commit. `Deploy` serializes runs per target and invokes the
+workstream deployment script with that tag; the script writes the tag into
+runtime dynamic properties. A successful dispatch only proves that deployment
+was requested; a successful job alone does not prove the target still runs
+that release when a human later validates it. The current dynamic properties
+expose the tag, but no observed image-digest manifest or Factory reader was
+found. This is the concrete missing receipt for T19/T24.
+
+#### First-version environment-independent contract
+
+The delivery definition can have an integration-observation step after code
+verification and before the two human validation branches. Its input is the
+Run-bound work branch and approved packet; its output is one immutable
+candidate identity or a durable wait with a technical reason. Factory only
+stores the evidence and schedules/retries the step. A Forge-owned observer
+uses an environment profile selected from trusted Run configuration:
+
+| Profile | Evidence needed to open validation |
+| --- | --- |
+| Hosted Forge | Confirm the work commit is an ancestor of the integration commit; resolve the build's RC tag to that exact integration commit; obtain the built artifact digest/manifest; observe the workstream target running that tag and matching built digests. Pin all of these to one candidate generation. |
+| Local | Pin the worktree/repository commit and the locally built version; record an explicit developer attestation that the services were started and checked at a named local target. Label this as *manual local evidence*, never as a CI deployment receipt. A changed commit or rerun starts a new candidate generation. |
+
+The observer can poll on step entry and explicit retry/resume in version one;
+CI webhooks are an optimization, not a prerequisite. Missing CI, pending
+integration, failed deployment or unavailable Git leaves the step waiting or
+technically blocked with the precise cause. In particular, #8488 must not
+open functional validation while the old integration release remains live.
+The technical human request may open once the PR's agent review applies to
+the pinned head, but both final decisions must reference the same current
+candidate generation. A later integration deployment or PR head change
+invalidates affected decisions. Hosted Forge must re-observe the live target
+before each human decision and the final join; local mode rechecks the pinned
+worktree/version and explicit manual evidence. This preserves the same
+workflow shape without making Factory understand Whoz CI job names.
+
+The first implementation boundary is therefore a Forge evidence reader plus
+a durable candidate wait. The Whoz CI/deploy chain must emit or expose a
+machine-readable build manifest and a post-deploy readback that binds target,
+RC tag, integration commit and built digests. Until that exists, hosted
+candidate sealing cannot truthfully pass T19/T24 and the official workflow
+must remain unpublished. Treating dispatch or elapsed time as deployment
+would open functional validation against potentially older code.
