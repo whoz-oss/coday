@@ -265,11 +265,16 @@ class ForgeStepRoleGuardTest {
             "repository" to "biznet-io/whoz", "branch" to "work/talent-portal/ticket")
         fun verdict(report: Map<String, Any?>) = validator.validate(StepValidationContext(
             run = run, flowType = "forge.delivery", stepId = "implementation-review",
-            agentName = "ForgeReviewer", report = businessReport(mapOf("review_report" to report)),
+            agentName = "Reviewer", report = businessReport(mapOf("review_report" to report)),
             externalEvidence = observed,
         ))
         assertThat(((verdict(clean) as StepValidationVerdict.Accepted).newDomainState?.get("review_report") as Map<*, *>) ["observed_pr"])
             .isEqualTo(observed)
+        assertThat((validator.validate(StepValidationContext(
+            run = run, flowType = "forge.delivery", stepId = "implementation-review",
+            agentName = "ForgeReviewer", report = businessReport(mapOf("review_report" to clean)),
+            externalEvidence = observed,
+        )) as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_REVIEWER")
         for (invalid in listOf(
             clean + ("pr_head_commit" to "b".repeat(40)),
             clean + ("votes" to (votes + ("security_permissions" to "FAIL"))),
