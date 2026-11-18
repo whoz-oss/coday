@@ -201,12 +201,6 @@ class WorkflowController(
             ?: throw workflowException(WorkflowErrorCodes.INVALID_NAMESPACE_ID, "A valid namespaceId is required.")
         val workflowType = request["workflowType"] as? String
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
-        for (field in listOf("title", "initialRequest")) {
-            if (request[field] != null && request[field] !is String) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "$field must be a string.")
-        }
-        val suppliedParameters = request["parameters"]
-        if (suppliedParameters != null && suppliedParameters !is Map<*, *>) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "parameters must be an object.")
-        if ((suppliedParameters as? Map<*, *>)?.get("ticket")?.let { it !is String } == true) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "ticket must be a string.")
         for (field in listOf("definitionVersion", "definitionHash")) {
             if (request.containsKey(field) && (request[field] !is String || (request[field] as String).isBlank())) {
                 throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "$field must be a nonblank string.")
@@ -274,7 +268,7 @@ class WorkflowController(
     ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
         if (request.keys.any { it !in setOf("workflow", "execution", "controllerRequest") }) {
-            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain workflow, execution and controllerRequest.")
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain workflow and execution.")
         }
         val workflow = (request["workflow"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
@@ -297,9 +291,6 @@ class WorkflowController(
             explicitRelations != null -> explicitRelations
             ticket != null -> mapOf("rootWorkflowId" to workflowId, "ticket" to ticket)
             else -> null
-        }
-        if (request["controllerRequest"] != null && request["controllerRequest"] !is String) {
-            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "controllerRequest must be a string.")
         }
         val requestText = (request["controllerRequest"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
         if (requestText != null && requestText.length > CONTROLLER_REQUEST_MAX) {

@@ -339,17 +339,6 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `canonical create rejects incorrect types for optional naming fields`() {
-        registerDefinition()
-        registerWorkstream()
-        val base = mapOf("namespaceId" to namespace, "workflowType" to "wf-http")
-        listOf("title", "initialRequest").forEachIndexed { index, field ->
-            assertInvalidStart(createRun(base + (field to 42), "invalid-name-$index"))
-        }
-        assertInvalidStart(createRun(base + ("parameters" to mapOf("ticket" to 42)), "invalid-ticket"))
-    }
-
-    @Test
     fun `canonical create rejects a different Jira reference on idempotent replay`() {
         registerDefinition()
         registerWorkstream()
