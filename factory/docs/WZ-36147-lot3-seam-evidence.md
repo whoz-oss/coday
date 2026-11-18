@@ -21,11 +21,16 @@ packet gate and must remain unpublished. The single-workflow engine supports
 ordered and parallel steps, one bounded conditional split/join, durable human
 waits and step retry. It does not currently express an arbitrary number of
 planned implementation steps or a cyclic correction path as distinct dynamic
-nodes in the same definition. Those capabilities must be added to the
-single-workflow execution model, or represented as bounded work within a
-fixed step while keeping each substep's evidence in the same workflow. The
-choice must be verified against CE06/CE07 and their required proofs before
-publication; it is not a reason to silently switch back to parent fragments.
+nodes in the same definition. The requester clarified that the immediate aim
+is adapting the Forge agents, not extending the Factory engine for dynamic
+workflow nodes. This delivery therefore keeps fixed workflow phases: one
+Build step processes the ordered plan items and records item-level progress
+and evidence in the same Run; independent verification, review, integration
+observation and human decisions remain separate fixed phases. Item rows in a
+Build report are not separate workflow steps and have no independent engine
+status or retry. The Build/verification correction and resume contract must
+still satisfy CE06/CE07 before publication; the single-workflow requirement
+does not justify switching back to parent fragments.
 
 Some prior evidence below characterizes the parent-Run route and remains a
 historical test result, not evidence for the now-required delivery launch.
