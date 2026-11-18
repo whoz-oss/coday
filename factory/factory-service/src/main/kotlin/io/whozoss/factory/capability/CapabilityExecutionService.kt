@@ -35,6 +35,7 @@ import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.run.service.RunService
 import io.whozoss.factory.sdk.spi.BriefContext
 import io.whozoss.factory.sdk.spi.BriefContribution
@@ -43,6 +44,7 @@ import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
 import io.whozoss.factory.sdk.spi.FactoryStepEvidenceObserver
 import io.whozoss.factory.sdk.spi.StepEvidenceObservation
 import io.whozoss.factory.sdk.spi.StepEvidenceObservationContext
+import io.whozoss.factory.sdk.spi.TrustedGitObjectReader
 import io.whozoss.factory.sdk.spi.RunUpdate
 import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.sdk.spi.StepValidationContext
@@ -209,6 +211,8 @@ class CapabilityExecutionService(
     private val registeredStepResultValidators: List<FactoryStepResultValidator> = emptyList(),
     @param:Autowired(required = false)
     private val registeredStepEvidenceObservers: List<FactoryStepEvidenceObserver> = emptyList(),
+    @param:Autowired(required = false)
+    private val agentOsProxyClient: AgentOsProxyClient? = null,
     @param:Autowired(required = false)
     private val agentOsWorkspaceIdentityValidator: AgentOsWorkspaceIdentityValidator? = null,
     @param:Autowired(required = false)
@@ -710,6 +714,7 @@ class CapabilityExecutionService(
             "EVIDENCE_OBSERVER_AMBIGUOUS", "More than one observer owns this step.",
         )
         val parentRunId = parentRunIdOf(workflowInstance)
+        var remoteGitObjects: TrustedGitObjectReader? = null
         val worktree = if (parentRunId != null) {
             val environmentId = reservation.occupancy?.environmentId
                 ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "No Run-bound worktree occupation exists.")
@@ -740,8 +745,14 @@ class CapabilityExecutionService(
             }
             val path = runCatching { Path.of(snapshot.worktreePath) }.getOrNull()
                 ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The root Case worktree path is invalid.")
-            if (runCatching { LocalWorktreeResourceIdentityResolver().resolve(path) }.getOrNull() == null) {
-                return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The root Case worktree cannot be resolved locally.")
+            remoteGitObjects = remoteGitObjectReader(namespaceId, caseId, scope, workflowInstance)
+            if (remoteGitObjects == null &&
+                (flowType == "forge.delivery" ||
+                    runCatching { LocalWorktreeResourceIdentityResolver().resolve(path) }.getOrNull() == null)
+            ) {
+                return StepEvidenceObservation.Unavailable(
+                    "GIT_READ_UNAVAILABLE", "The root Case Git objects cannot be read locally or through AgentOS.",
+                )
             }
             path
         }
@@ -753,6 +764,7 @@ class CapabilityExecutionService(
             attemptId = reservation.attemptId,
             worktreePath = worktree.toString(),
             report = report,
+            gitObjects = remoteGitObjects,
         )
         return try {
             when (val observed = matching.single().observe(context)) {
@@ -770,6 +782,28 @@ class CapabilityExecutionService(
         }
     }
 
+    private fun remoteGitObjectReader(
+        namespaceId: String,
+        caseId: String,
+        scope: TenantScope,
+        workflowInstance: WorkflowInstanceRecord?,
+    ): TrustedGitObjectReader? {
+        val proxy = agentOsProxyClient ?: return null
+        val userId = resolveExternalUserId(scope, workflowInstance)?.takeIf { it.isNotBlank() } ?: return null
+        val association = runCatching { proxy.fetchNamespaceGit(namespaceId, userId) }.getOrNull() ?: return null
+        if (association["associated"] != true) return null
+        val url = association["repositoryUrl"] as? String ?: return null
+        val repository = url.substringAfterLast('/').substringAfterLast(':').removeSuffix(".git")
+            .takeIf { it.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")) } ?: return null
+        return object : TrustedGitObjectReader {
+            override fun sourceRepository(): String = repository
+            override fun commitExists(commit: String): Boolean =
+                proxy.pinnedGitCommitAvailable(caseId, commit, userId) == true
+            override fun readBlob(commit: String, path: String, maxBytes: Int): ByteArray? =
+                proxy.readPinnedGitBlob(caseId, commit, path, userId)?.takeIf { it.size <= maxBytes }
+        }
+    }
+
     private fun resolveRunView(
         scope: TenantScope,
         namespaceId: String,
@@ -777,10 +811,18 @@ class CapabilityExecutionService(
     ): RunView {
         val runId = parentRunIdOf(workflowInstance)
         val runRecord = if (runId != null) runService?.getRun(scope, namespaceId, runId) else null
+        val directStateEvidence = if (runRecord == null && workflowInstance != null) {
+            evidenceRepository.list(scope, namespaceId, workflowInstance.workflowId)
+                .filter { it.kind == AGENT_RESULT_EVIDENCE_KIND && it.outcome == "pass" &&
+                    it.facts["acceptedDomainState"] is Map<*, *> }
+        } else emptyList()
+        val directState = directStateEvidence.lastOrNull()?.facts?.get("acceptedDomainState") as? Map<*, *>
         return runRecord?.toView() ?: RunView(
             runId = runId ?: (workflowInstance?.workflowId ?: ""),
             runType = (workflowInstance?.instance?.get("workflowType") as? String) ?: "",
             ticket = (workflowInstance?.instance?.get("ticket") as? String),
+            domainState = directState?.entries?.associate { it.key.toString() to it.value }.orEmpty(),
+            domainRevision = directStateEvidence.size.toLong(),
         )
     }
 
@@ -837,6 +879,8 @@ class CapabilityExecutionService(
             .orEmpty()
         var currentRunView = resolveRunView(scope, namespaceId, workflowInstance)
         val parentRunId = parentRunIdOf(workflowInstance)
+        val directBaseRevision = currentRunView.domainRevision
+        var directStateChanged = false
 
         for (validator in matching) {
             val context = StepValidationContext(
@@ -869,6 +913,14 @@ class CapabilityExecutionService(
             when (verdict) {
                 is StepValidationVerdict.Rejected -> return verdict
                 is StepValidationVerdict.Accepted -> {
+                    val nextDomainState = verdict.newDomainState
+                    if (parentRunId == null && nextDomainState != null) {
+                        if (verdict.expectedDomainRevision != null &&
+                            verdict.expectedDomainRevision != directBaseRevision
+                        ) return StepValidationVerdict.Rejected("DOMAIN_REVISION_CONFLICT")
+                        currentRunView = currentRunView.copy(domainState = nextDomainState)
+                        directStateChanged = true
+                    }
                     if (parentRunId != null && (verdict.newDomainState != null || verdict.addedFindings.isNotEmpty() || verdict.findingResolutions.isNotEmpty())) {
                         val updatedRun = runService?.applyStepValidationUpdate(
                             scope = scope,
@@ -891,7 +943,11 @@ class CapabilityExecutionService(
                 }
             }
         }
-        return StepValidationVerdict.Accepted()
+        return if (parentRunId == null && directStateChanged) {
+            val bytes = ObjectMapper().writeValueAsBytes(currentRunView.domainState)
+            if (bytes.size > 512 * 1024) StepValidationVerdict.Rejected("DOMAIN_STATE_TOO_LARGE")
+            else StepValidationVerdict.Accepted(newDomainState = currentRunView.domainState)
+        } else StepValidationVerdict.Accepted()
     }
 
     private fun renderBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String {
@@ -2441,10 +2497,12 @@ class CapabilityExecutionService(
                             attemptId = reservation.attemptId,
                         )
                     }
+                    val acceptedState = (validationVerdict as? StepValidationVerdict.Accepted)?.newDomainState
                     val evidenceId = persistEvidence(
                         "pass",
                         mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence,
                             "externalEvidence" to (externalObservation as? StepEvidenceObservation.Observed)?.facts.orEmpty(),
+                            "acceptedDomainState" to acceptedState,
                             "validatorsAccepted" to true),
                     )
                     durableAgentAttemptService.finalize(

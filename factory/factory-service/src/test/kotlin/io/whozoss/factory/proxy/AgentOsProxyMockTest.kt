@@ -63,6 +63,24 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `pinned Git reads relay identity and preserve exact binary bytes`() {
+        val (client, server) = buildClient()
+        val sha = "a".repeat(40)
+        val bytes = byteArrayOf(0, 1, -1, 10)
+        server.expect(requestTo("http://agentos.test/api/cases/case-1/workspace/git-commit?commit=$sha"))
+            .andExpect(header("X-External-User-Id", "user-7"))
+            .andRespond(withSuccess("""{"commit":"$sha","exists":true}""", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("http://agentos.test/api/cases/case-1/workspace/git-blob?commit=$sha&path=specs%2FSPEC.md"))
+            .andExpect(header("X-External-User-Id", "user-7"))
+            .andRespond(withSuccess(bytes, MediaType.APPLICATION_OCTET_STREAM))
+
+        assertThat(client.pinnedGitCommitAvailable("case-1", sha, "user-7")).isTrue()
+        assertThat(client.readPinnedGitBlob("case-1", sha, "specs/SPEC.md", "user-7"))
+            .containsExactly(*bytes)
+        server.verify()
+    }
+
+    @Test
     fun `getRunCost parses the run-cost reply into the local dto`() {
         val (client, server) = buildClient()
         server.expect(requestTo("http://agentos.test/api/cases/case-1/run-cost"))

@@ -146,6 +146,38 @@ class HttpAgentOsProxyClient(
             if (error.message?.contains("400") == true) null else throw error
         }
 
+    override fun pinnedGitCommitAvailable(caseId: String, commit: String, externalUserId: String?): Boolean? =
+        try {
+            val response = relay(
+                "/api/cases/$caseId/workspace/git-commit?commit=$commit",
+                externalUserId,
+                object : ParameterizedTypeReference<Map<String, Any?>>() {},
+            )
+            response["commit"] == commit && response["exists"] == true
+        } catch (_: AgentOsNotFound) {
+            null
+        }
+
+    override fun readPinnedGitBlob(caseId: String, commit: String, path: String, externalUserId: String?): ByteArray? =
+        try {
+            val encodedPath = java.net.URLEncoder.encode(path, Charsets.UTF_8)
+            // A String URI template would encode '%' again and change the
+            // repository path seen by AgentOS (specs%2Ffile -> specs%252Ffile).
+            val uri = java.net.URI.create(
+                "${baseUrl.trimEnd('/')}/api/cases/$caseId/workspace/git-blob?commit=$commit&path=$encodedPath",
+            )
+            val spec = client.get().uri(uri)
+            if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+            spec.retrieve().body(ByteArray::class.java)
+        } catch (_: AgentOsNotFound) {
+            null
+        } catch (error: RestClientResponseException) {
+            if (error.statusCode == HttpStatusCode.valueOf(404)) null
+            else throw AgentOsUnavailableException("AgentOS ${error.statusCode.value()}", error)
+        } catch (error: Exception) {
+            throw AgentOsUnavailableException(error.message ?: error.toString(), error)
+        }
+
     /**
      * Run-cost read (W-metrics). Unlike the other relays this NEVER throws: an
      * unknown case (404), an unreachable AgentOS or any error degrades to null

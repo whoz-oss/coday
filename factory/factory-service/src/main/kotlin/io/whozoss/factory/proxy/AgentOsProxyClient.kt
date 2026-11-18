@@ -50,6 +50,12 @@ interface AgentOsProxyClient {
      */
     fun fetchWorkspaceDiff(caseId: String, path: String, externalUserId: String? = null): Map<String, Any?>? = null
 
+    /** Read one immutable object from the Case family's Git workspace, never its moving working-tree file. */
+    fun pinnedGitCommitAvailable(caseId: String, commit: String, externalUserId: String?): Boolean? = null
+
+    /** Missing or inaccessible objects return null; transport failures may throw. */
+    fun readPinnedGitBlob(caseId: String, commit: String, path: String, externalUserId: String?): ByteArray? = null
+
     /**
      * Read the aggregated run cost of a case tree
      * (`GET /api/cases/{caseId}/run-cost`). AgentOS already aggregates the

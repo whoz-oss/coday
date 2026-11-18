@@ -205,12 +205,100 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
         val result = capability.resolveAndRecord(scope, namespace, directWorkflowId, step, Path.of("."))
 
         assertThat(result.outcome).isInstanceOf(CapabilityOutcome.AgentDeferred::class.java)
-        assertThat((result.outcome as CapabilityOutcome.AgentDeferred).code).isEqualTo("WORKTREE_UNAVAILABLE")
+        assertThat((result.outcome as CapabilityOutcome.AgentDeferred).code).isEqualTo("GIT_READ_UNAVAILABLE")
         val evidence = evidenceRepository.list(scope, namespace, directWorkflowId)
         assertThat(evidence).hasSize(1)
         assertThat(evidence.single().outcome).isEqualTo("technical_pause")
-        assertThat(evidence.single().facts["code"]).isEqualTo("WORKTREE_UNAVAILABLE")
+        assertThat(evidence.single().facts["code"]).isEqualTo("GIT_READ_UNAVAILABLE")
         assertThat(evidence).noneMatch { it.kind == "agent-result" && it.outcome == "pass" }
+    }
+
+    @Test
+    fun `direct workflow reads pinned Git objects through AgentOS when worktree is remote`() {
+        val directWorkflowId = "direct-remote-git-success"
+        val nextStep = WorkflowStepDefinition("read-after-restart", "Read state",
+            WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Writer"), listOf(step.id))
+        val rootCaseId = CapabilityExecutionService.stableCaseId(directWorkflowId, step.id)
+        val actor = "factory-test-actor"
+        val pinned = "a".repeat(40)
+        workflowRepository.insertInstance(scope, WorkflowInstanceRecord(
+            namespaceId = namespace, workflowId = directWorkflowId, revision = 1, status = "active",
+            creationCommandHash = "direct-remote-success-hash",
+            instance = mapOf("workflowId" to directWorkflowId, "workflowType" to "test.direct",
+                "controllerExecution" to mapOf("actorId" to actor)),
+            projection = mapOf("steps" to listOf(step, nextStep).map { current -> mapOf(
+                "id" to current.id, "name" to current.name,
+                "responsibility" to mapOf("kind" to "agent", "name" to "Writer"),
+                "dependsOn" to current.dependsOn,
+            ) }), rootCaseId = rootCaseId,
+        ))
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+            val binding = firstArg<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>()
+            CaseHandle(binding.caseId, binding.namespaceId, false)
+        }
+        every { adapter.observeTurnResult(any(), any(), any(), any()) } answers {
+            val turn = firstArg<io.whozoss.factory.adapter.agentos.TurnToken>()
+            io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+                AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "packet")),
+                io.whozoss.factory.adapter.agentos.VerdictDeriver.RuntimeCaseTerminationProof(
+                    caseId = turn.caseId,
+                    attemptId = turn.attemptId,
+                    eventId = "remote-success-idle", status = "IDLE",
+                ),
+            )
+        }
+        val proxy = mockk<AgentOsProxyClient>(relaxed = true)
+        every { proxy.fetchWorkspaceChanges(rootCaseId, actor) } returns mapOf(
+            "equipped" to true, "status" to "READY",
+            "path" to worktreeRoot.resolve("only-on-agentos").toString(),
+            "changes" to mapOf("files" to emptyList<Any>()),
+        )
+        every { proxy.fetchNamespaceGit(namespace, actor) } returns mapOf(
+            "associated" to true, "repositoryUrl" to "git@github.com:biznet-io/whoz.git",
+        )
+        every { proxy.pinnedGitCommitAvailable(rootCaseId, pinned, actor) } returns true
+        every { proxy.readPinnedGitBlob(rootCaseId, pinned, "specs/SPEC.md", actor) } returns
+            "# Approved source".toByteArray()
+        val observer = object : FactoryStepEvidenceObserver {
+            override fun supports(flowType: String, stepId: String, agentName: String) = flowType == "test.direct"
+            override fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation {
+                if (context.stepId == nextStep.id) {
+                    assertThat(context.run.domainState["approvedPacketCandidate"]).isEqualTo(pinned)
+                    return StepEvidenceObservation.Observed(mapOf("stateRecovered" to true))
+                }
+                assertThat(context.gitObjects?.sourceRepository()).isEqualTo("whoz")
+                assertThat(context.gitObjects?.commitExists(pinned)).isTrue()
+                assertThat(context.gitObjects?.readBlob(pinned, "specs/SPEC.md", 1_024))
+                    .isEqualTo("# Approved source".toByteArray())
+                return StepEvidenceObservation.Observed(mapOf("verifiedCommit" to pinned))
+            }
+        }
+        val validator = object : FactoryStepResultValidator {
+            override fun supports(flowType: String, stepId: String, agentName: String) = flowType == "test.direct"
+            override fun validate(context: StepValidationContext): StepValidationVerdict =
+                if (context.stepId == step.id) StepValidationVerdict.Accepted(
+                    newDomainState = mapOf("approvedPacketCandidate" to pinned),
+                    expectedDomainRevision = 0,
+                ) else StepValidationVerdict.Accepted()
+        }
+        val capability = CapabilityExecutionService(
+            resolver = CapabilityResolver(), workflowRepository = workflowRepository,
+            evidenceRepository = evidenceRepository, interactionRepository = interactionRepository,
+            attemptRepository = attemptRepository, durableAgentAttemptService = DurableAgentAttemptService(realAttemptRepository),
+            agentOsExecutionAdapter = adapter, transactionManager = transactionManager,
+            registeredStepEvidenceObservers = listOf(observer),
+            registeredStepResultValidators = listOf(validator),
+            workspaceDeltaCollector = WorkspaceDeltaCollector(proxy), agentOsProxyClient = proxy,
+        )
+
+        capability.resolveAndRecord(scope, namespace, directWorkflowId, step, Path.of("."))
+        capability.resolveAndRecord(scope, namespace, directWorkflowId, nextStep, Path.of("."))
+
+        val accepted = evidenceRepository.list(scope, namespace, directWorkflowId)
+            .first { it.kind == "agent-result" && it.outcome == "pass" }
+        assertThat((accepted.facts["externalEvidence"] as Map<*, *>)["verifiedCommit"]).isEqualTo(pinned)
+        assertThat((accepted.facts["acceptedDomainState"] as Map<*, *>)["approvedPacketCandidate"]).isEqualTo(pinned)
     }
 
     @Test

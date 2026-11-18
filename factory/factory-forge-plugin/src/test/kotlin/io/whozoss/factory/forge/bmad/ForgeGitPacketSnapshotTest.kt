@@ -10,6 +10,7 @@ import java.security.MessageDigest
 import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.sdk.spi.StepEvidenceObservation
 import io.whozoss.factory.sdk.spi.StepEvidenceObservationContext
+import io.whozoss.factory.sdk.spi.TrustedGitObjectReader
 
 class ForgeGitPacketSnapshotTest {
     @TempDir lateinit var repo: Path
@@ -139,6 +140,28 @@ class ForgeGitPacketSnapshotTest {
         git("commit", "-qm", "design packet")
         val result = ForgePacketEvidenceObserver().observe(observationContext(manifest(git("rev-parse", "HEAD").trim(), documents)))
         assertThat(result).isEqualTo(StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Run's Git origin cannot be observed."))
+    }
+
+    @Test
+    fun `observer verifies a remote Case Git packet without mounting its worktree`() {
+        val documents = documents()
+        val pinned = "a".repeat(40)
+        val remote = object : TrustedGitObjectReader {
+            override fun sourceRepository(): String = "whoz"
+            override fun commitExists(commit: String): Boolean = commit == pinned
+            override fun readBlob(commit: String, path: String, maxBytes: Int): ByteArray? =
+                documents[path]?.takeIf { commit == pinned && it.size <= maxBytes }
+        }
+        val context = observationContext(manifest(pinned, documents)).copy(
+            worktreePath = repo.resolve("not-mounted-in-factory").toString(), gitObjects = remote,
+        )
+
+        assertThat(ForgePacketEvidenceObserver().observe(context))
+            .isInstanceOf(StepEvidenceObservation.Observed::class.java)
+        val altered = documents + ("specs/SPEC.md" to "# Uncommitted assertion".toByteArray())
+        assertThat(ForgePacketEvidenceObserver().observe(context.copy(
+            report = observationContext(manifest(pinned, altered)).report,
+        ))).isInstanceOf(StepEvidenceObservation.Invalid::class.java)
     }
 
     private fun observationContext(rawManifest: ByteArray) = StepEvidenceObservationContext(
