@@ -304,6 +304,14 @@ integration of this PR was observed yet. GitHub's private PR/check API was not
 available through the current read-only access; a passing validation job or
 deployment for #8488 has **not** been observed.
 
+The requester subsequently supplied the `Push Work to Integration` job
+capture for this PR. It shows the attempted merge of
+`work/talent-portal/WZ-35341_no_npx` into `integration/talent-portal`
+returning HTTP 409 with `"message": "Merge conflict"`, and the job exiting
+with code 1. This is positive evidence of a **failed integration attempt**,
+not merely a pending CI check. It does not identify the conflicting files or
+show that a later attempt succeeded.
+
 The Whoz `.github/workflows/validate.yml` runs on PR open, synchronize,
 reopen and ready-for-review. Its `push-work-to-integration` job depends on the
 required validation jobs and invokes `tools-validate:exec-push-work-to-integration`
@@ -347,8 +355,21 @@ CI webhooks are an optimization, not a prerequisite. Missing CI, pending
 integration, failed deployment or unavailable Git leaves the step waiting or
 technically blocked with the precise cause. In particular, #8488 must not
 open functional validation while the old integration release remains live.
-The technical human request may open once the PR's agent review applies to
-the pinned head, but both final decisions must reference the same current
+For a 409 merge conflict, retain the Run and its completed upstream evidence,
+record `INTEGRATION_CONFLICT` with the source/target branch and attempted work
+SHA, and wait for a conflict resolution or a new work commit followed by a
+successful integration attempt. Do not retry the same unchanged conflict in
+a tight loop or treat this job's success prerequisites as proof of a merge.
+After a new attempt, independently confirm ancestry of the then-current work
+commit in the integration branch before looking for build and deployment
+evidence; a stale failed job must not permanently block a later valid
+candidate. The wait is scoped to this Run's integration-dependent path, not
+to unrelated Runs on the workstream.
+
+The PR's agent review and technical preparation can proceed while integration
+is blocked. The technical **human** request opens only once that review
+applies to the pinned head and a candidate has been sealed; the current
+`ForgeHumanAuthority` requires both human decisions to reference that same
 candidate generation. A later integration deployment or PR head change
 invalidates affected decisions. Hosted Forge must re-observe the live target
 before each human decision and the final join; local mode rechecks the pinned
