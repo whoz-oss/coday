@@ -126,6 +126,71 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  describe('Wizz response effects', () => {
+    it('starts once on an eligible completion and consumes the candidate while disabled', () => {
+      jest.useFakeTimers()
+      const original = globalThis.EventSource
+      const source = Object.assign(new EventTarget(), { close: jest.fn(), onopen: null as (() => void) | null })
+      globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+      const ref = makeComponent()
+      try {
+        ref.instance['connectSse']()
+        const emit = (type: string, id: string, fields: object = {}) =>
+          source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+        const eligible = (prefix: string) => {
+          emit('ThinkingEvent', `${prefix}-thinking`)
+          emit('MessageEvent', `${prefix}-message`, {
+            actor: { id: 'agent-1', role: 'AGENT' },
+            content: [{ type: 'Text', content: 'Done' }],
+          })
+          emit('AgentFinishedEvent', `${prefix}-finished`, { agentId: 'agent-1' })
+        }
+
+        eligible('off')
+        expect(ref.instance['wizzEffect']()).toBeNull()
+        ref.instance['toggleWizz']()
+        emit('AgentFinishedEvent', 'off-finished-again', { agentId: 'agent-1' })
+        expect(ref.instance['wizzEffect']()).toBeNull()
+
+        eligible('on')
+        expect(ref.instance['wizzEffect']()).toBe(1)
+        jest.advanceTimersByTime(350)
+        expect(ref.instance['wizzEffect']()).toBeNull()
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        jest.useRealTimers()
+      }
+    })
+
+    it('cancels Wizz on transport reset and case reinitialisation', () => {
+      jest.useFakeTimers()
+      const original = globalThis.EventSource
+      const source = Object.assign(new EventTarget(), {
+        close: jest.fn(),
+        onerror: null as ((event: Event) => void) | null,
+      })
+      globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+      const ref = makeComponent()
+      try {
+        ref.instance['wizzEnabled'].set(true)
+        ref.instance['startWizzEffect']()
+        source.onerror!(new Event('error'))
+        expect(ref.instance['wizzEffect']()).toBeNull()
+
+        ref.instance['wizzEnabled'].set(true)
+        ref.instance['startWizzEffect']()
+        ref.instance['reinitialise']()
+        expect(ref.instance['wizzEnabled']()).toBe(false)
+        expect(ref.instance['wizzEffect']()).toBeNull()
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        jest.useRealTimers()
+      }
+    })
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })
