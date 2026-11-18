@@ -44,7 +44,7 @@ class ForgeStepRoleGuardTest {
     }
 
     @Test
-    fun `delivery implementation plan rejects empty duplicate and unsafe steps`() {
+    fun `delivery implementation plan requires scoped stack and ordered dependencies`() {
         fun verdict(steps: List<Map<String, Any?>>) = validator.validate(StepValidationContext(
             run = run.copy(runType = "forge.delivery"),
             flowType = "forge.delivery",
@@ -55,18 +55,32 @@ class ForgeStepRoleGuardTest {
         val step = mapOf<String, Any?>(
             "id" to "implement-1",
             "title" to "Implement scoped change",
+            "stack" to "backend",
+            "depends_on" to null,
             "file_paths" to listOf("src/allowed.kt"),
             "verification" to "./gradlew test",
         )
-        val accepted = verdict(listOf(step)) as StepValidationVerdict.Accepted
+        val second = step + mapOf(
+            "id" to "implement-2",
+            "stack" to "frontend",
+            "depends_on" to "implement-1",
+            "file_paths" to listOf("frontend/allowed.ts"),
+            "verification" to "pnpm test",
+        )
+        val accepted = verdict(listOf(step, second)) as StepValidationVerdict.Accepted
         assertThat((accepted.newDomainState?.get("delivery_plan") as Map<*, *>)["steps"])
-            .isEqualTo(listOf(step))
+            .isEqualTo(listOf(step, second))
         assertThat((verdict(emptyList()) as StepValidationVerdict.Rejected).reasonCode)
             .isEqualTo("MISSING_DELIVERY_PLAN_STEPS")
         for (steps in listOf(
             listOf(step, step),
             listOf(step + ("file_paths" to listOf("src/../outside.kt"))),
             listOf(step + ("verification" to "")),
+            listOf(step - "stack"),
+            listOf(step + ("stack" to "full-stack")),
+            listOf(step - "depends_on"),
+            listOf(step + ("depends_on" to "implement-2")),
+            listOf(second, step),
         )) {
             assertThat((verdict(steps) as StepValidationVerdict.Rejected).reasonCode)
                 .isEqualTo("INVALID_DELIVERY_PLAN_STEP")
