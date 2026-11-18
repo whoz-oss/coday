@@ -341,19 +341,11 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
 
         // Track every AgentOS case binding observed across all fragments
         val observedBindings = mutableListOf<TrustedCaseBinding>()
-        val observedBriefs = java.util.concurrent.CopyOnWriteArrayList<String>()
         val fakeAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
         every { fakeAdapter.createOrRecoverExecution(any(), any(), any()) } answers {
             val binding = invocation.args[0] as TrustedCaseBinding
             observedBindings += binding
             CaseHandle(caseId = binding.caseId, namespaceId = binding.namespaceId, recovered = false)
-        }
-        every { fakeAdapter.startTurn(any<TrustedCaseBinding>(), any(), any()) } answers {
-            observedBriefs.add(invocation.args[2] as String)
-            io.whozoss.factory.adapter.agentos.TurnToken.unbaselined(
-                (invocation.args[0] as TrustedCaseBinding).caseId,
-                (invocation.args[0] as TrustedCaseBinding).attemptId,
-            )
         }
         every { fakeAdapter.observeTurnResult(any(), any(), any(), any()) } returns io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
             AgentOsExecutionVerdict.Succeeded(
@@ -462,7 +454,6 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
                 runType = "test-bmad-v1",
                 title = "Vertical Lot 1 Run",
                 ticket = "WZ-101",
-                initialRequest = "Ensure all customer instructions survive fragment transitions.",
             ),
             repoRoot = fallbackRepoRoot.toString(),
         )
@@ -475,7 +466,6 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
                 runType = "test-bmad-v1",
                 title = "Vertical Lot 1 Run",
                 ticket = "WZ-101",
-                initialRequest = "Ensure all customer instructions survive fragment transitions.",
             ),
             repoRoot = fallbackRepoRoot.toString(),
         )
@@ -491,9 +481,6 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
         //    - Suspends in `WAITING_HUMAN` on `gate-approval`
         val f1FirstPass = sessionRunService.runSession(scope, namespace, fragment1Id, fallbackRepoRoot, "WZ-101")
         assertThat(f1FirstPass.status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
-        assertThat(observedBriefs).isNotEmpty.allSatisfy {
-            assertThat(it).contains("## User request", "Ensure all customer instructions survive fragment transitions.")
-        }
 
         val runDuringHumanWait = runService.getRun(scope, namespace, runId)!!
         assertThat(runDuringHumanWait.status).isEqualTo(RunStatuses.WAITING_HUMAN)
@@ -585,9 +572,6 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
         // Verify ALL agent steps across ALL 5 fragments shared the exact same parent Run rootCaseId
         // and bound to the parent Run's WorkEnvironment!
         assertThat(observedBindings).isNotEmpty
-        assertThat(observedBriefs).hasSizeGreaterThan(2).allSatisfy {
-            assertThat(it).contains("## User request", "Ensure all customer instructions survive fragment transitions.")
-        }
         assertThat(observedBindings.map { it.parentCaseId }).containsOnly(expectedRootCaseId)
         assertThat(observedBindings.map { it.environmentRef }).containsOnly(workEnvironmentRepository.findLatestByWorkflowId(scope, runId)!!.environmentId)
     }

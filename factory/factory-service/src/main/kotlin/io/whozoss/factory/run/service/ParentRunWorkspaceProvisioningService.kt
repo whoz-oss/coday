@@ -92,16 +92,10 @@ class ParentRunWorkspaceProvisioningService(
             } else check(existing.namespaceId == saved.namespaceId && existing.parentCaseId == root && existing.workflowId == saved.runId) { "Run environment identity mismatch" }
             saved
         }!!
-        val explicitTitle = command.title.takeIf { command.caseTitleExplicit != false }
-        val namingInput = command.initialRequest.takeIf { command.caseTitleExplicit == false }
         val caseTitle = if (command.caseTitleExplicit == null) rootCaseTitle(command.ticket, command.title) ?: run.title
-            else rootCaseTitle(command.ticket, explicitTitle)
-        if (command.caseTitleExplicit == null) {
-            proxy.ensureRunRootCase(root, run.namespaceId, requireNotNull(caseTitle), actorId)
-        } else {
-            proxy.ensureRunRootCase(root, run.namespaceId, caseTitle, actorId, namingInput,
-                rootCaseTitle(command.ticket, null).takeIf { namingInput != null })
-        }
+            else rootCaseTitle(command.ticket, command.title.takeIf { command.caseTitleExplicit }, command.initialRequest)
+                ?: "Case $root"
+        proxy.ensureRunRootCase(root, run.namespaceId, caseTitle, actorId)
         val started = timing.nanoTime()
         while (true) {
             if (Thread.currentThread().isInterrupted) throw InterruptedException("Run provisioning interrupted; intent retained")

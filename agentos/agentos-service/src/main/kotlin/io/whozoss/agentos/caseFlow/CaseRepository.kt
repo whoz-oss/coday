@@ -9,18 +9,6 @@ import java.util.UUID
  * Parent type is UUID representing the namespaceId.
  */
 interface CaseRepository : EntityRepository<Case, UUID> {
-    /** Bounded pending asynchronous naming intents. */
-    fun findPendingNaming(limit: Int): List<Case> = emptyList()
-
-    /** Purges bounded pending naming inputs created before the cutoff, without renaming. */
-    fun purgeExpiredNaming(cutoff: java.time.Instant, limit: Int): Long = 0
-
-    /** Completes a claimed naming intent only if the database still recognizes its live owner. */
-    fun completeNaming(candidate: Case, title: String): Case? = null
-
-    /** Claims an unleased or expired intent by optimistic version; null on conflict. */
-    fun claimNaming(candidate: Case, owner: String, now: java.time.Instant, leaseUntil: java.time.Instant): Case? = null
-
     /**
      * Find cases in a namespace that [userId] is allowed to see.
      *

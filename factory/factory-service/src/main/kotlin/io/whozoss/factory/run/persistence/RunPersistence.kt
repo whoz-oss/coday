@@ -47,7 +47,6 @@ data class RunNode(
     val appliedValidationUpdates: String = "[]",
     val activeEscalation: String? = null,
     val maxTotalFragments: Int = RunRecord.DEFAULT_MAX_TOTAL_FRAGMENTS,
-    val initialRequest: String? = null,
     /** Exact `workflowType@version` pins for fast deletion checks; empty on legacy/unpinned nodes. */
     val pinnedDefinitions: List<String> = emptyList(),
     val createdAt: Instant = Instant.now(),
@@ -77,7 +76,6 @@ data class RunNode(
             mapper.readValue(it, RunEscalationRecord::class.java)
         },
         maxTotalFragments = maxTotalFragments,
-        initialRequest = initialRequest,
     )
 
     companion object {
@@ -119,7 +117,6 @@ data class RunNode(
             appliedValidationUpdates = mapper.writeValueAsString(record.appliedValidationUpdates),
             activeEscalation = record.activeEscalation?.let { mapper.writeValueAsString(it) },
             maxTotalFragments = record.maxTotalFragments,
-            initialRequest = record.initialRequest,
             pinnedDefinitions = record.flowVersions.entries
                 .filter { it.key.isNotBlank() && it.value.isNotBlank() }
                 .map { "${it.key}@${it.value}" },

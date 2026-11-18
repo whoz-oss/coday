@@ -23,14 +23,6 @@ data class Case(
     val namespaceId: UUID,
     val status: CaseStatus = CaseStatus.CREATED,
     val title: String = "Case ${metadata.id}",
-    /** Durable generation fence, changed for every explicit manual title edit. */
-    val titleEditGeneration: String? = null,
-    /** Pending naming input, removed after completion or manual rename. */
-    @get:com.fasterxml.jackson.annotation.JsonIgnore
-    val namingInstructions: String? = null,
-    val namingPrefix: String? = null,
-    val namingLeaseOwner: String? = null,
-    val namingLeaseUntil: java.time.Instant? = null,
     /**
      * Id of the parent case when this case was created by a delegation tool.
      * Null for top-level cases created directly by a user.

@@ -18,7 +18,6 @@ import io.whozoss.factory.sdk.spi.RunUpdate
 import io.whozoss.factory.sdk.spi.StepOutcomeView
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
-import io.whozoss.factory.workflow.domain.ControllerRequestInput
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionInput
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
@@ -187,7 +186,6 @@ class RunService(
             amendmentSeq = 0L,
             rootCaseId = rootCaseId,
             maxTotalFragments = command.maxTotalFragments,
-            initialRequest = command.initialRequest,
         )
 
         val provisionedRun = provisioning.ensureReady(scope, initialRun, command, repoRoot, authenticatedActor)
@@ -762,15 +760,6 @@ class RunService(
             title = "${run.title} [#$ordinal $flowType]",
             relations = relations,
             ticket = run.ticket,
-            controllerRequest = run.initialRequest?.let { instructions ->
-                ControllerRequestInput(
-                    text = instructions,
-                    namespaceId = namespaceId,
-                    observedAt = nowIso(),
-                    actorId = actorId ?: error("Authenticated fragment attribution is required"),
-                    source = "factory-parent-run",
-                )
-            },
             expectedAmendmentSeq = run.amendmentSeq,
         )
         val controllerExecution = ControllerExecutionInput(

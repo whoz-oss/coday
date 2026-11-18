@@ -58,10 +58,7 @@ class HttpAgentOsProxyClient(
 
     private class AgentOsNotFound : RuntimeException()
 
-    override fun ensureRunRootCase(caseId: String, namespaceId: String, title: String, externalUserId: String) =
-        ensureRunRootCase(caseId, namespaceId, title, externalUserId, null, null)
-
-    override fun ensureRunRootCase(caseId: String, namespaceId: String, title: String?, externalUserId: String, namingInstructions: String?, namingPrefix: String?) {
+    override fun ensureRunRootCase(caseId: String, namespaceId: String, title: String, externalUserId: String) {
         require(externalUserId.isNotBlank()) { "Authenticated provisioning identity is required" }
         fun read(): Map<String, Any?>? = try {
             relay("/api/cases/$caseId", externalUserId, object : ParameterizedTypeReference<Map<String, Any?>>() {})
@@ -77,12 +74,7 @@ class HttpAgentOsProxyClient(
             val remote = client.post().uri("/api/cases")
                 .header("X-External-User-Id", externalUserId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(buildMap<String, Any> {
-                    put("id", caseId); put("namespaceId", namespaceId); put("worktree", true)
-                    title?.let { put("title", it) }
-                    namingInstructions?.let { put("namingInstructions", it) }
-                    namingPrefix?.let { put("namingPrefix", it) }
-                })
+                .body(mapOf("id" to caseId, "namespaceId" to namespaceId, "title" to title, "worktree" to true))
                 .retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
                 ?: error("AgentOS returned no root case")
             validate(remote)

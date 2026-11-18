@@ -257,6 +257,7 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
             Triple(false, "WZ-35428", "Analyze login"), Triple(false, null, "Analyze login"),
             Triple(false, "WZ-35428", null), Triple(false, null, null),
             Triple(true, "WZ-35428", "Analyze login"), Triple(true, null, "Analyze login"),
+            Triple(true, "WZ-35428", null), Triple(true, null, null),
         )
         combinations.forEachIndexed { index, (explicit, ticket, instructions) ->
             val workflowId = isolatedWorkflowId("wf-naming-$index")
@@ -264,10 +265,9 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
             val adapter = CaseFamilyAdapter()
             service(adapter).resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
             val binding = adapter.bindings.single()
-            val expectedTitle = if (explicit) listOfNotNull(ticket, "Session naming-$index").joinToString(" ") else ticket
+            val expectedTitle = if (explicit) listOfNotNull(ticket, "Session naming-$index").joinToString(" ")
+                else listOfNotNull(ticket, instructions).joinToString(" ").ifEmpty { null }
             assertThat(binding.title).isEqualTo(expectedTitle)
-            assertThat(binding.namingInstructions).isEqualTo(if (explicit) null else instructions)
-            assertThat(binding.namingPrefix).isEqualTo(ticket.takeIf { !explicit && instructions != null })
         }
     }
 

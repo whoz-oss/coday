@@ -98,8 +98,6 @@ class DefaultAgentOsExecutionAdapter(
         body["namespaceId"] = binding.namespaceId
         binding.title?.takeIf { it.isNotBlank() }?.let { body["title"] = it }
         body["id"] = binding.caseId
-        binding.namingInstructions?.let { body["namingInstructions"] = it }
-        binding.namingPrefix?.let { body["namingPrefix"] = it }
         if (!binding.parentCaseId.isNullOrBlank()) body["parentCaseId"] = binding.parentCaseId
         val spec = client.post()
             .uri("/api/cases")

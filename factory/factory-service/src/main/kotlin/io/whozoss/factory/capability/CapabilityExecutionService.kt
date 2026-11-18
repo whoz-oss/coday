@@ -6,7 +6,7 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.ObservationEscalationPolicy
 import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.adapter.agentos.stepCaseTitle
-import io.whozoss.factory.adapter.agentos.rootCaseNaming
+import io.whozoss.factory.adapter.agentos.rootCaseTitle
 import io.whozoss.factory.adapter.agentos.TurnToken
 import io.whozoss.factory.adapter.agentos.AgentOsObservationResult
 import io.whozoss.factory.adapter.agentos.VerdictDeriver
@@ -1867,20 +1867,10 @@ class CapabilityExecutionService(
                 )?.id
             ) {
                 val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)?.instance
-                instance?.let { rootCaseNaming(it).first }
+                instance?.let { rootCaseTitle(it) }
             } else {
                 stepCaseTitle(stepLabel = step.name, attemptNumber = persistedAttempt.attemptNumber)
             },
-            namingInstructions = if (reservation.parentCaseId == null) {
-                workflowRepository.findInstance(scope, namespaceId, workflowId)?.instance?.let { instance ->
-                    rootCaseNaming(instance).second
-                }
-            } else null,
-            namingPrefix = if (reservation.parentCaseId == null) {
-                workflowRepository.findInstance(scope, namespaceId, workflowId)?.instance?.let { instance ->
-                    rootCaseNaming(instance).third
-                }
-            } else null,
             attemptId = reservation.attemptId,
             capabilityToken = reservation.capabilityToken,
             agentName = agentId,

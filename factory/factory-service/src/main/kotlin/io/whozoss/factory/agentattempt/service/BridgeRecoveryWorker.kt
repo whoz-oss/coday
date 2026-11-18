@@ -5,7 +5,7 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.adapter.agentos.stepCaseTitle
-import io.whozoss.factory.adapter.agentos.rootCaseNaming
+import io.whozoss.factory.adapter.agentos.rootCaseTitle
 import io.whozoss.factory.adapter.agentos.TurnToken
 import io.whozoss.factory.adapter.agentos.AgentOsObservationResult
 import io.whozoss.factory.adapter.agentos.VerdictDeriver
@@ -428,10 +428,8 @@ class BridgeRecoveryWorker(
                 val label = steps.firstOrNull { it["id"] == attempt.stepId }?.get("name") as? String
                 stepCaseTitle(stepLabel = label?.takeIf { it.isNotBlank() } ?: attempt.stepId, attemptNumber = attempt.attemptNumber)
             } else {
-                rootCaseNaming(instance.instance).first
+                rootCaseTitle(instance.instance)
             },
-            namingInstructions = if (attempt.parentCaseId == null) rootCaseNaming(instance.instance).second else null,
-            namingPrefix = if (attempt.parentCaseId == null) rootCaseNaming(instance.instance).third else null,
             capabilityToken = attempt.capabilityToken,
             agentName = attempt.agentName,
             environmentRef = attempt.environmentRef,

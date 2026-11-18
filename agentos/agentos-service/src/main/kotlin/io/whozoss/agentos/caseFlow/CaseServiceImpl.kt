@@ -1312,7 +1312,7 @@ class CaseServiceImpl(
         val agentFinishedCount = events.count { it is AgentFinishedEvent }
 
         val shouldTrigger =
-            case.namingInstructions == null && case.titleEditGeneration == null && (titleIsBlank || titleIsGenerated) &&
+            (titleIsBlank || titleIsGenerated) &&
                 (titleIsBlank || userMessageCount == 1 || agentFinishedCount == 1)
 
         if (shouldTrigger) {

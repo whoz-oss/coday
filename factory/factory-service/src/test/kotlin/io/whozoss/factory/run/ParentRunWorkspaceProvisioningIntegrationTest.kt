@@ -40,7 +40,7 @@ class ParentRunWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTest
     @Test
     fun `startRun resumes failed provisioning before single decision fragment and durable outbox`() {
         val proxy = mockk<AgentOsProxyClient>()
-        val command = RunStartCommand("vertical-provision", "test", "Vertical", initialRequest = "Analyze the complete requirements")
+        val command = RunStartCommand("vertical-provision", "test", "Vertical")
         val selector = object : io.whozoss.factory.sdk.spi.FactoryFlowSelector {
             override fun runTypes() = setOf("test")
             override fun selectorVersion() = "1"
@@ -95,8 +95,6 @@ class ParentRunWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTest
         assertThat(started.rootCaseId).isEqualTo(intent.rootCaseId)
         assertThat(started.decisions).hasSize(1)
         assertThat(started.fragments).hasSize(1)
-        val fragment = workflows.findInstance(scope, "ns", started.fragments.single().fragmentId)!!
-        assertThat((fragment.instance["controllerRequest"] as Map<*, *>) ["text"]).isEqualTo("Analyze the complete requirements")
         assertThat(outbox.count()).isEqualTo(1L)
         val ready = environments.findLatestByWorkflowId(scope, command.runId)!!
         assertThat(ready.environmentId).isEqualTo(environment.environmentId)
@@ -173,6 +171,33 @@ class ParentRunWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTest
             .ensureReady(scope, run, command, null, "alice")
 
         verify(exactly = 1) { proxy.ensureRunRootCase(run.rootCaseId!!, "ns", "WZ-35428 Short title", "alice") }
+    }
+
+    @Test
+    fun `root without an explicit title uses an instruction excerpt or AgentOS default`() {
+        val proxy = mockk<AgentOsProxyClient>()
+        every { proxy.ensureRunRootCase(any(), any(), any(), any()) } returns Unit
+        every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
+        val service = ParentRunWorkspaceProvisioningService(runs, environments, intents, proxy, mapper, transactions)
+
+        listOf(
+            Triple("WZ-35428", "Analyze login failures", "WZ-35428 Analyze login failures"),
+            Triple(null, "Analyze login failures", "Analyze login failures"),
+            Triple("WZ-35428", null, "WZ-35428"),
+        ).forEachIndexed { index, (ticket, instructions, expectedTitle) ->
+            val command = RunStartCommand("untitled-$index", "test", "test (untitled-$index)", ticket = ticket,
+                caseTitleExplicit = false, initialRequest = instructions)
+            val run = RunRecord("ns", command.runId, command.runType, "1", command.title, ticket = ticket,
+                rootCaseId = java.util.UUID.randomUUID().toString())
+            service.ensureReady(scope, run, command, null, "alice")
+            verify(exactly = 1) { proxy.ensureRunRootCase(run.rootCaseId!!, "ns", expectedTitle, "alice") }
+        }
+
+        val command = RunStartCommand("untitled-empty", "test", "test (untitled-empty)", caseTitleExplicit = false)
+        val run = RunRecord("ns", command.runId, command.runType, "1", command.title,
+            rootCaseId = java.util.UUID.randomUUID().toString())
+        service.ensureReady(scope, run, command, null, "alice")
+        verify(exactly = 1) { proxy.ensureRunRootCase(run.rootCaseId!!, "ns", "Case ${run.rootCaseId}", "alice") }
     }
 
     @Test

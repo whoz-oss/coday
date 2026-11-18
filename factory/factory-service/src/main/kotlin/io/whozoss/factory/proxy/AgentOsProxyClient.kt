@@ -13,11 +13,6 @@ interface AgentOsProxyClient {
         error("AgentOS root workspace provisioning is not implemented by this transport")
     }
 
-    /** Provision a root with optional durable asynchronous naming input. */
-    fun ensureRunRootCase(caseId: String, namespaceId: String, title: String?, externalUserId: String, namingInstructions: String?, namingPrefix: String?) {
-        ensureRunRootCase(caseId, namespaceId, title ?: "Case $caseId", externalUserId)
-    }
-
     /** List agent configs for a namespace. */
     fun fetchAgents(namespaceId: String, externalUserId: String?): Any?
 

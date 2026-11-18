@@ -18,7 +18,6 @@ import {
   output,
   signal,
   Signal,
-  WritableSignal,
   viewChild,
   ChangeDetectionStrategy,
 } from '@angular/core'
@@ -430,33 +429,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly isEditing = signal(false)
   protected readonly draftTitle = signal('')
   protected readonly draftThreshold = signal<string>('')
-  protected readonly titleError: WritableSignal<string | null> = signal(null)
-  protected readonly thresholdError: WritableSignal<string | null> = signal(null)
-  private readonly headerTitleButton = viewChild<ElementRef<HTMLButtonElement>>('headerTitleButton')
-  private titleEdited = false
-  private thresholdBadInput = false
-
-  protected onDraftThresholdInput(event: Event): void {
-    const input = event.target as HTMLInputElement
-    this.draftThreshold.set(input.value)
-    this.thresholdBadInput = input.validity.badInput
-    this.thresholdError.set(null)
-  }
-
-  protected onDraftTitleInput(value: string): void {
-    this.draftTitle.set(value)
-    this.titleError.set(null)
-    this.titleEdited = true
-  }
 
   protected startEdit(): void {
     const c = this.activeCase()
     if (!c) return
     this.draftTitle.set(c.title ?? '')
-    this.titleError.set(null)
-    this.thresholdError.set(null)
-    this.thresholdBadInput = false
-    this.titleEdited = false
     this.draftThreshold.set(c.runCostThreshold != null ? String(c.runCostThreshold) : '')
     this.isEditing.set(true)
   }
@@ -469,56 +446,25 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const c = this.activeCase()
     if (!c?.id) return
     const title = this.draftTitle().trim()
-    if (this.titleEdited && !title) {
-      this.titleError.set('Case title cannot be empty.')
-      return
-    }
+    if (!title) return // empty title not allowed
     const rawThreshold = this.draftThreshold().trim()
-    if (this.thresholdBadInput) {
-      this.thresholdError.set('Cost limit must be a non-negative number.')
-      return
-    }
     // Empty threshold: the server does not support removing the threshold via this endpoint
     // (a missing key is treated as "keep existing"). We simply omit the field from the patch
     // so the server keeps its value and the UI stays coherent after the response is merged back.
     // A non-empty value must be a valid positive number.
     if (rawThreshold !== '') {
       const parsed = parseFloat(rawThreshold)
-      if (isNaN(parsed) || parsed < 0) {
-        this.thresholdError.set('Cost limit must be a non-negative number.')
-        return
-      }
+      if (isNaN(parsed) || parsed < 0) return
     }
-    this.thresholdError.set(null)
     const parsedThreshold = rawThreshold === '' ? undefined : parseFloat(rawThreshold)
     this.isEditing.set(false)
-    this.restoreHeaderFocus()
-    this.updateRequested.emit({
-      id: c.id,
-      ...(this.titleEdited ? { title } : {}),
-      runCostThreshold: parsedThreshold,
-    })
+    this.updateRequested.emit({ id: c.id, title, runCostThreshold: parsedThreshold })
   }
 
-  /** Explicitly confirm the title independently of an unrelated cost-limit edit. */
-  protected confirmTitle(): void {
-    if (!this.draftTitle().trim()) {
-      this.titleError.set('Case title cannot be empty.')
-      return
-    }
-    this.titleEdited = true
-    this.commitEdit()
-  }
-
-  private restoreHeaderFocus(): void {
-    afterNextRender(() => this.headerTitleButton()?.nativeElement.focus(), { injector: this.injector })
-  }
-
-  protected onEditKeydown(event: KeyboardEvent, titleField = false): void {
+  protected onEditKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter') {
       event.preventDefault()
-      if (titleField) this.confirmTitle()
-      else this.commitEdit()
+      this.commitEdit()
     } else if (event.key === 'Escape') {
       event.preventDefault()
       this.cancelEdit()

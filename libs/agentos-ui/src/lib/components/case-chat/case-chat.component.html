@@ -24,25 +24,11 @@
             type="text"
             placeholder="Case title"
             [value]="draftTitle()"
-            (input)="onDraftTitleInput($any($event.target).value)"
-            (keydown)="onEditKeydown($event, true)"
+            (input)="draftTitle.set($any($event.target).value)"
+            (keydown)="onEditKeydown($event)"
             aria-label="Case title"
-            [attr.aria-invalid]="titleError() ? 'true' : null"
-            [attr.aria-describedby]="titleError() ? 'case-header-title-error' : null"
             autocomplete="off"
           />
-          @if (titleError(); as error) {
-            <span id="case-header-title-error" role="alert">{{ error }}</span>
-          }
-          <button
-            type="button"
-            class="case-chat__header-edit-save"
-            title="Confirm this title, even if unchanged"
-            aria-label="Confirm this title, even if unchanged"
-            (click)="confirmTitle()"
-          >
-            <span class="material-icons" aria-hidden="true">check_circle</span>
-          </button>
           <input
             class="case-chat__header-edit-threshold"
             type="number"
@@ -50,15 +36,10 @@
             step="0.01"
             placeholder="Cost limit"
             [value]="draftThreshold()"
-            (input)="onDraftThresholdInput($event)"
+            (input)="draftThreshold.set($any($event.target).value)"
             (keydown)="onEditKeydown($event)"
             aria-label="Run cost threshold"
-            [attr.aria-invalid]="thresholdError() ? 'true' : null"
-            [attr.aria-describedby]="thresholdError() ? 'case-header-threshold-error' : null"
           />
-          @if (thresholdError(); as error) {
-            <span id="case-header-threshold-error" role="alert">{{ error }}</span>
-          }
           <button type="button" class="case-chat__header-edit-save" title="Save" (click)="commitEdit()">
             <span class="material-icons" aria-hidden="true">check</span>
           </button>
@@ -71,7 +52,7 @@
         <!-- Title + status group — flex:1 pushes actions to the right -->
         <div class="case-chat__header-title-group">
           <agentos-case-status-glyph [status]="caseStatus()" [size]="16" />
-          <button #headerTitleButton type="button" class="case-chat__header-title" title="Edit title and cost limit" (click)="startEdit()">
+          <button type="button" class="case-chat__header-title" title="Edit title and cost limit" (click)="startEdit()">
             {{ activeCase()?.title ?? '' }}
           </button>
           <span
