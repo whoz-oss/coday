@@ -39,7 +39,7 @@ class ForgeDeliveryDraftDefinitionTest {
             .allMatch { it.responsibility.kind == ResponsibilityKind.AGENT }
         assertThat(steps.single { it.id == "packet-approval" }.responsibility.kind)
             .isEqualTo(ResponsibilityKind.HUMAN)
-        assertThat(steps.last().responsibility.name).isEqualTo("BmadBuilder")
+        assertThat(steps.last().responsibility.name).isEqualTo("ForgeBuilder")
         assertThat(steps.last().dependsOn).containsExactly("packet-approval")
         assertThat(steps).allMatch { step ->
             step.contract != null && step.contract.entry.isNotEmpty() &&

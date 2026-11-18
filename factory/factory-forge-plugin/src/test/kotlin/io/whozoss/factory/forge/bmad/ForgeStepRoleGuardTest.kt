@@ -121,9 +121,9 @@ class ForgeStepRoleGuardTest {
                 "changed_files" to listOf("ui/view.ts"), "summary" to "Implemented view"),
         )
         val report = mapOf("manifest_sha256" to manifest, "work_commit" to "a".repeat(40), "items" to items)
-        fun verdict(value: Map<String, Any?>, delta: WorkspaceDelta = WorkspaceDelta()) =
+        fun verdict(value: Map<String, Any?>, delta: WorkspaceDelta = WorkspaceDelta(), agent: String = "ForgeBuilder") =
             validator.validate(StepValidationContext(run = run, flowType = "forge.delivery",
-                stepId = "implementation-build", agentName = "BmadBuilder",
+                stepId = "implementation-build", agentName = agent,
                 report = businessReport(mapOf("build_report" to value)), workspaceDelta = delta))
 
         val accepted = verdict(report, WorkspaceDelta(changedFilesDuringTurn = mapOf("src/api.kt" to "MODIFIED")))
@@ -142,6 +142,8 @@ class ForgeStepRoleGuardTest {
         }
         assertThat((verdict(report, WorkspaceDelta(changedFilesDuringTurn = mapOf("secrets.txt" to "ADDED")))
             as StepValidationVerdict.Rejected).reasonCode).isEqualTo("BUILD_FILE_SCOPE_VIOLATION")
+        assertThat((verdict(report, agent = "BmadBuilder") as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("INVALID_BUILD_COORDINATOR")
     }
 
     @Test
