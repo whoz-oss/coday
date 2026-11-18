@@ -28,19 +28,26 @@ class ForgeDeliveryDraftDefinitionTest {
             "packet-assembly",
             "packet-approval",
             "implementation-build",
+            "implementation-verification",
+            "implementation-review",
+            "integration-observation",
         )
         assertThat(steps.first().responsibility.name).isEqualTo("ProductEngineer")
         assertThat(steps.first().dependsOn).isEmpty()
-        steps.drop(1).forEachIndexed { index, step ->
+        steps.drop(1).filter { it.id != "integration-observation" }.forEach { step ->
+            val index = steps.indexOf(step)
             assertThat(step.dependsOn).describedAs("dependencies of ${step.id}")
-                .containsExactly(steps[index].id)
+                .containsExactly(steps[index - 1].id)
         }
         assertThat(steps.filter { it.id != "packet-approval" })
             .allMatch { it.responsibility.kind == ResponsibilityKind.AGENT }
         assertThat(steps.single { it.id == "packet-approval" }.responsibility.kind)
             .isEqualTo(ResponsibilityKind.HUMAN)
-        assertThat(steps.last().responsibility.name).isEqualTo("ForgeBuilder")
-        assertThat(steps.last().dependsOn).containsExactly("packet-approval")
+        assertThat(steps.single { it.id == "implementation-build" }.responsibility.name).isEqualTo("ForgeBuilder")
+        assertThat(steps.single { it.id == "implementation-verification" }.responsibility.name).isEqualTo("ForgeVerifier")
+        assertThat(steps.single { it.id == "implementation-review" }.responsibility.name).isEqualTo("ForgeReviewer")
+        assertThat(steps.last().responsibility.name).isEqualTo("ForgeDeploymentObserver")
+        assertThat(steps.last().dependsOn).containsExactly("implementation-build")
         assertThat(steps).allMatch { step ->
             step.contract != null && step.contract.entry.isNotEmpty() &&
                 step.contract.mission.isNotBlank() && step.contract.exit.isNotEmpty()

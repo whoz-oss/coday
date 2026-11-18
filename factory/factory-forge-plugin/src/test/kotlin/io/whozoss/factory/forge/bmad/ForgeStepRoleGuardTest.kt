@@ -147,6 +147,94 @@ class ForgeStepRoleGuardTest {
     }
 
     @Test
+    fun `deployment observation persists only trusted evidence for the accepted Build commit`() {
+        val commit = "a".repeat(40)
+        val run = run.copy(runType = "forge.delivery", domainState = mapOf(
+            "build_report" to mapOf("work_commit" to commit),
+        ))
+        val evidence = mapOf<String, Any?>(
+            "workCommit" to commit, "tag" to "integration-talent-portal_rc100",
+            "receipt" to "github-actions:run/42/job/7",
+        )
+        fun verdict(observed: Map<String, Any?>) = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.delivery", stepId = "integration-observation",
+            agentName = "ForgeDeploymentObserver", externalEvidence = observed,
+        ))
+        val accepted = verdict(evidence) as StepValidationVerdict.Accepted
+        assertThat(accepted.newDomainState?.get("deployment_evidence")).isEqualTo(evidence)
+        assertThat((verdict(emptyMap()) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("DEPLOYMENT_EVIDENCE_MISSING")
+        assertThat((verdict(evidence + ("workCommit" to "b".repeat(40))) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("DEPLOYMENT_EVIDENCE_MISSING")
+    }
+
+    @Test
+    fun `independent verification covers every planned item in order without writing`() {
+        val plan = listOf(
+            mapOf("id" to "backend-1", "stack" to "backend", "verification" to "./gradlew test"),
+            mapOf("id" to "frontend-2", "stack" to "frontend", "verification" to "pnpm nx test ui"),
+        )
+        val run = run.copy(runType = "forge.delivery", domainState = mapOf(
+            "delivery_plan" to mapOf("steps" to plan),
+            "build_report" to mapOf("work_commit" to "a".repeat(40)),
+        ))
+        val items = listOf(
+            mapOf("step_id" to "backend-1", "stack" to "backend", "status" to "PASS",
+                "green" to true, "command" to "./gradlew test", "case_id" to "case-back",
+                "summary" to "Backend tests passed"),
+            mapOf("step_id" to "frontend-2", "stack" to "frontend", "status" to "PASS",
+                "green" to true, "command" to "pnpm nx test ui", "case_id" to "case-front",
+                "summary" to "Frontend tests passed"),
+        )
+        fun verdict(receipts: List<Map<String, Any?>>, delta: WorkspaceDelta = WorkspaceDelta()) =
+            validator.validate(StepValidationContext(run = run, flowType = "forge.delivery",
+                stepId = "implementation-verification", agentName = "ForgeVerifier",
+                report = businessReport(mapOf("verification_report" to mapOf(
+                    "work_commit" to "a".repeat(40), "items" to receipts))), workspaceDelta = delta))
+        val accepted = verdict(items) as StepValidationVerdict.Accepted
+        assertThat((accepted.newDomainState?.get("verification_report") as Map<*, *>) ["items"]).isEqualTo(items)
+        assertThat((verdict(items.reversed()) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("INVALID_VERIFICATION_REPORT")
+        assertThat((verdict(items.take(1)) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("INVALID_VERIFICATION_REPORT")
+        assertThat((verdict(items.take(1) + (items[1] + ("green" to false))) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("INVALID_VERIFICATION_REPORT")
+        assertThat(verdict(items, WorkspaceDelta(changedFilesDuringTurn = mapOf("ui/view.ts" to "MODIFIED"))))
+            .isInstanceOf(StepValidationVerdict.Rejected::class.java)
+    }
+
+    @Test
+    fun `review cannot pass without the matching Build head and four clean votes`() {
+        val commit = "a".repeat(40)
+        val run = run.copy(runType = "forge.delivery", domainState = mapOf(
+            "build_report" to mapOf("work_commit" to commit),
+            "verification_report" to mapOf("work_commit" to commit),
+        ))
+        val votes = mapOf("clarity_correctness" to "PASS", "scope_architecture" to "PASS",
+            "security_permissions" to "PASS", "edge_cases_resilience" to "PASS")
+        val clean = mapOf<String, Any?>("status" to "PASS", "work_commit" to commit,
+            "pr_head_commit" to commit, "pr_number" to 8488, "votes" to votes,
+            "findings" to emptyList<Any>())
+        val observed = mapOf<String, Any?>("prHeadCommit" to commit, "prNumber" to 8488,
+            "repository" to "biznet-io/whoz", "branch" to "work/talent-portal/ticket")
+        fun verdict(report: Map<String, Any?>) = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.delivery", stepId = "implementation-review",
+            agentName = "ForgeReviewer", report = businessReport(mapOf("review_report" to report)),
+            externalEvidence = observed,
+        ))
+        assertThat(((verdict(clean) as StepValidationVerdict.Accepted).newDomainState?.get("review_report") as Map<*, *>) ["observed_pr"])
+            .isEqualTo(observed)
+        for (invalid in listOf(
+            clean + ("pr_head_commit" to "b".repeat(40)),
+            clean + ("votes" to (votes + ("security_permissions" to "FAIL"))),
+            clean + ("findings" to listOf(mapOf("severity" to "major", "description" to "Contract defect"))),
+        )) {
+            assertThat((verdict(invalid) as StepValidationVerdict.Rejected).reasonCode)
+                .isEqualTo("INVALID_REVIEW_REPORT")
+        }
+    }
+
+    @Test
     fun `delivery assessment requires all four evidenced applicability decisions`() {
         val decisions: Map<String, Any?> = mapOf(
             "detailed_spec" to mapOf("applicable" to true, "reason" to "Complex product rules"),

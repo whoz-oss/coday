@@ -144,17 +144,21 @@ class WorkflowRunAsyncHttpTest : Neo4jDomainIntegrationTest() {
                 definition = valid.definition,
             ),
         )
-        val command = WorkflowStartCommand(workflowId, "wf-start-submission", "Start submission")
+        val command = WorkflowStartCommand(workflowId, "wf-start-submission", "Start submission", ticket = "WZ-36147")
+        val concurrentCommand = command.copy(workflowId = "wf-start-submission-2")
         val execution = ControllerExecutionInput("test-runtime", "agentos", "runner", namespaceId = namespace)
 
         val created = workflowService.start(scope, namespace, command, execution, repoRoot.toString())
+        val concurrent = workflowService.start(scope, namespace, concurrentCommand, execution, repoRoot.toString())
         val replay = workflowService.start(scope, namespace, command, execution, repoRoot.toString())
 
         assertThat(created.status).isEqualTo(201)
+        assertThat(concurrent.status).isEqualTo(201)
         assertThat(replay.status).isEqualTo(200)
         val submissions = outbox.findAllByOrganization("org-local-dev")
-            .filter { it.eventType == SessionRunSubmissionService.SESSION_RUN_REQUESTED && it.payload.contains(workflowId) }
-        assertThat(submissions).hasSize(1)
+            .filter { it.eventType == SessionRunSubmissionService.SESSION_RUN_REQUESTED &&
+                (it.payload.contains(workflowId) || it.payload.contains(concurrentCommand.workflowId)) }
+        assertThat(submissions).hasSize(2)
     }
 
     @Test

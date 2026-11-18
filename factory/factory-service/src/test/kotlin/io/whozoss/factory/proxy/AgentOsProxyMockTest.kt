@@ -129,6 +129,50 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `Forge deployment observation preserves the trusted Case identity and exact query`() {
+        val (client, server) = buildClient()
+        val sha = "a".repeat(40)
+        val url = "http://agentos.test/api/cases/case-1/workspace/forge-deployment" +
+            "?workCommit=$sha&integrationBranch=integration%2Ftalent-portal" +
+            "&integrationCommit=$sha&target=forge-talent-portal"
+        server.expect(requestTo(url))
+            .andExpect(header("X-External-User-Id", "user-7"))
+            .andRespond(withSuccess("""{"tag":"integration-talent-portal_rc100","deployJobId":42}""",
+                MediaType.APPLICATION_JSON))
+        assertThat(client.fetchForgeDeploymentEvidence("case-1", sha, "integration/talent-portal",
+            sha, "forge-talent-portal", "user-7")?.get("tag"))
+            .isEqualTo("integration-talent-portal_rc100")
+        server.verify()
+
+        val (waiting, waitingServer) = buildClient()
+        waitingServer.expect(requestTo(url)).andRespond(withStatus(HttpStatus.NO_CONTENT))
+        assertThat(waiting.fetchForgeDeploymentEvidence("case-1", sha, "integration/talent-portal",
+            sha, "forge-talent-portal", null)).isNull()
+        waitingServer.verify()
+
+        val (discovered, discoveredServer) = buildClient()
+        discoveredServer.expect(requestTo(
+            "http://agentos.test/api/cases/case-1/workspace/forge-deployment" +
+                "?workCommit=$sha&integrationBranch=integration%2Ftalent-portal&target=forge-talent-portal",
+        )).andRespond(withStatus(HttpStatus.NO_CONTENT))
+        assertThat(discovered.fetchForgeDeploymentEvidence("case-1", sha, "integration/talent-portal",
+            null, "forge-talent-portal", null)).isNull()
+        discoveredServer.verify()
+    }
+
+    @Test
+    fun `pinned PR read relays identity and an exact Build commit`() {
+        val (client, server) = buildClient()
+        val sha = "a".repeat(40)
+        server.expect(requestTo("http://agentos.test/api/cases/case-1/workspace/pull-request?headCommit=$sha"))
+            .andExpect(header("X-External-User-Id", "user-7"))
+            .andRespond(withSuccess("""{"repository":"biznet-io/whoz","headCommit":"$sha","number":8488}""",
+                MediaType.APPLICATION_JSON))
+        assertThat(client.fetchPinnedPullRequest("case-1", sha, "user-7")?.get("number")).isEqualTo(8488)
+        server.verify()
+    }
+
+    @Test
     fun `getRunCost parses the run-cost reply into the local dto`() {
         val (client, server) = buildClient()
         server.expect(requestTo("http://agentos.test/api/cases/case-1/run-cost"))

@@ -28,7 +28,20 @@ class GitHubApiSpec :
                         body,
                     ),
                 )
+                if (exchange.requestURI.path == "/repos/o/r/actions/jobs/42/logs") {
+                    exchange.responseHeaders.add("Location", "http://127.0.0.1:${exchange.localAddress.port}/signed-log")
+                    exchange.sendResponseHeaders(302, -1)
+                    exchange.close()
+                    return@createContext
+                }
+                if (exchange.requestURI.path == "/repos/o/r/actions/jobs/43/logs") {
+                    exchange.responseHeaders.add("Location", "http://127.0.0.2:${exchange.localAddress.port}/signed-log")
+                    exchange.sendResponseHeaders(302, -1)
+                    exchange.close()
+                    return@createContext
+                }
                 val (status, answer) = when {
+                    exchange.requestURI.path == "/signed-log" -> 200 to "RELEASE_TAG: integration-talent-portal_rc100\n"
                     exchange.requestMethod == "POST" -> 201 to """{"number":7,"html_url":"https://github.com/o/r/pull/7"}"""
                     exchange.requestURI.path == "/user" -> 200 to """{"login":"octocat","id":1}"""
                     else -> 404 to ""
@@ -75,6 +88,17 @@ class GitHubApiSpec :
 
             response.status shouldBe 404
             response.body shouldBe null
+        }
+
+        "job log redirect is bounded to its signed host and never receives the bearer token" {
+            val log = api.getJobLog("repos/o/r/actions/jobs/42/logs", "synthetic-token")
+
+            log?.decodeToString() shouldBe "RELEASE_TAG: integration-talent-portal_rc100\n"
+            received.map { it.path } shouldBe listOf("/repos/o/r/actions/jobs/42/logs", "/signed-log")
+            received[0].headers["Authorization"] shouldBe "Bearer synthetic-token"
+            received[1].headers["Authorization"] shouldBe null
+            api.getJobLog("repos/o/r/actions/jobs/43/logs", "synthetic-token") shouldBe null
+            received.size shouldBe 3
         }
 
         "an unusable token is refused before any request, without appearing in the error" {
