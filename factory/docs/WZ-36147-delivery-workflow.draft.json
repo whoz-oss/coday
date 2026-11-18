@@ -138,9 +138,25 @@
         "kind": "human",
         "name": "Authorized packet authority"
       }
+    },
+    {
+      "dependsOn": ["packet-approval"],
+      "entry": [
+        "Read the approved packet at its pinned Git commit and the ordered delivery_plan.steps. Confirm that the human packet gate covers the same manifest digest; stop on a mismatch or unavailable Git source."
+      ],
+      "exit": [
+        "Return one forge.business-outputs.v1 artifact with build_report: manifest_sha256, work_commit and one ordered item receipt for every planned step. Each receipt needs step_id, stack, PASS status, summary and changed_files within that item's scope. Do not approve the implementation or declare delivery complete."
+      ],
+      "id": "implementation-build",
+      "mission": "Coordinate Backend and Frontend specialists through the approved plan in order inside this one Build step; resume delegated work without repeating completed items and report each item truthfully.",
+      "name": "Build planned implementation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "BmadBuilder"
+      }
     }
   ],
-  "title": "Forge delivery — pre-Build design draft",
-  "version": "0.2.0",
+  "title": "Forge delivery — Build draft",
+  "version": "0.3.0",
   "workflowType": "forge.delivery"
 }

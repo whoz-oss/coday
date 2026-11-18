@@ -27,6 +27,7 @@ class ForgeDeliveryDraftDefinitionTest {
             "qa-design",
             "packet-assembly",
             "packet-approval",
+            "implementation-build",
         )
         assertThat(steps.first().responsibility.name).isEqualTo("ProductEngineer")
         assertThat(steps.first().dependsOn).isEmpty()
@@ -34,9 +35,12 @@ class ForgeDeliveryDraftDefinitionTest {
             assertThat(step.dependsOn).describedAs("dependencies of ${step.id}")
                 .containsExactly(steps[index].id)
         }
-        assertThat(steps.dropLast(1)).allMatch { it.responsibility.kind == ResponsibilityKind.AGENT }
-        assertThat(steps.last().responsibility.kind).isEqualTo(ResponsibilityKind.HUMAN)
-        assertThat(steps.last().dependsOn).containsExactly("packet-assembly")
+        assertThat(steps.filter { it.id != "packet-approval" })
+            .allMatch { it.responsibility.kind == ResponsibilityKind.AGENT }
+        assertThat(steps.single { it.id == "packet-approval" }.responsibility.kind)
+            .isEqualTo(ResponsibilityKind.HUMAN)
+        assertThat(steps.last().responsibility.name).isEqualTo("BmadBuilder")
+        assertThat(steps.last().dependsOn).containsExactly("packet-approval")
         assertThat(steps).allMatch { step ->
             step.contract != null && step.contract.entry.isNotEmpty() &&
                 step.contract.mission.isNotBlank() && step.contract.exit.isNotEmpty()
