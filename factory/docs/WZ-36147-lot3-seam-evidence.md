@@ -43,23 +43,21 @@ historical test result, not evidence for the now-required delivery launch.
 The Git packet observer can now receive the root Case worktree of a direct
 workflow when AgentOS reports it READY and the path resolves locally in
 Factory. Its observed facts are stored in the workflow's agent-result evidence.
-For a hosted setup without a shared filesystem, the AgentOS workspace API
-currently reports the worktree path, changes and working-tree file content,
-but offers no read of a blob at a specified commit. The Factory Forge plugin
-therefore cannot verify the approved historical document bytes through that
-API. A current-file read cannot substitute for the pinned Git commit after
-agents continue writing. A narrow authorized pinned-object read at the Git
-workspace owner, or another trusted Git read transport, is required for that
-deployment shape; no such transport is part of this draft.
-`CapabilityValidationFinalizationRollbackIntegrationTest.direct workflow pauses
-when AgentOS reports a worktree path Factory cannot read` confirms the direct
-Run records `WORKTREE_UNAVAILABLE` as a technical pause and writes no accepted
-agent result; the plugin observer is never invoked. This is a fail-closed
-boundary, not a remote Git-read implementation.
+For a hosted setup without a shared filesystem, AgentOS now exposes bounded,
+authorized reads of a pinned Git commit and its document bytes from the root
+Case worktree. Factory relays the authenticated actor identity and passes a
+read-only Git-object interface to the Forge packet observer. The observer
+checks the same manifest and exact bytes as the local path; Factory keeps only
+the canonical manifest and digest, never a document copy. The remote read is
+preferred when available, and an unreachable Git owner records a technical
+pause. `CapabilityValidationFinalizationRollbackIntegrationTest` covers a
+remote Case path with no Factory mount and the fail-closed unavailable route;
+`ForgeGitPacketSnapshotTest` covers remote bytes and mismatch. These are
+controlled integration fixtures, not a deployed Forge pilot.
 
 The recovery path invokes the same observation method, but its direct-workflow
-case has not yet been exercised by an integration test. This is a
-local/shared-filesystem seam, not a remote Git-object read or an approved-packet gate.
+case has not yet been exercised by an integration test. Remote Git reads do
+not yet provide an approved-packet gate.
 
 The direct-launch inspection located the precise mismatch. A regular
 `CreateWorkflowRunService.create()` stores a workflow instance and submits its
@@ -67,27 +65,28 @@ Run, but does not provision a `WorkEnvironment`. The earlier packet observer
 required an occupied `WorkEnvironment` owned by `parentRunIdOf(instance)`;
 `acquireAgentWorktree()` still returns without an occupation when that parent
 ID is absent. Direct observation now uses the workflow's persisted root Case
-ID and an AgentOS READY workspace snapshot, and refuses a missing, mismatched
-or non-local worktree. The Forge validator also returns `newDomainState` for
-applicability, plans and packet
-identity, while `CapabilityExecutionService` applies those updates only when
-a parent Run ID exists. The accepted direct step retains observer facts as
-append-only workflow evidence, but the packet identity is not yet promoted to
-the durable gate state read by later steps.
+ID and an AgentOS READY workspace snapshot, and refuses a missing or mismatched
+worktree. The Forge validator also returns `newDomainState` for applicability,
+plans and packet identity. Direct workflows now record each accepted state
+snapshot in the same append-only agent-result evidence transaction, then
+reconstruct the latest state for the next step. This preserves plan and packet
+identity across restart without creating a parent Run. A human approval is
+not yet bound to that packet, so Build remains unopened.
 AgentOS exposes the Case workspace status and path through
 `GET /api/cases/{caseId}/workspace/changes`, which Factory already reads for
-workspace deltas. That response is not a pinned Git-object read: the available
-`workspace/diff` endpoint returns changes for one file, not committed bytes at
-a named SHA. Factory's current `ForgeGitPacketSnapshot` uses local `git
-cat-file` and requires the Factory process to access the Case worktree's
-filesystem. A remote-host deployment still needs a trusted Git-object read
-near AgentOS or an explicitly provisioned Factory checkout; the direct path
-fails closed when the AgentOS path cannot be resolved locally.
-The focused direct-observation integration test passed with `BUILD SUCCESSFUL
-in 1m 25s`: it recorded observed facts in the direct workflow's agent-result
-evidence without a parent Run or `WorkEnvironment`. It uses a local test
-worktree and a stub observer, so it does not prove a remote-host read, real
-Git packet or human gate.
+workspace deltas. New `git-commit` and `git-blob` reads use the same Case access
+boundary and AgentOS hardened Git runner; they reject commits outside the
+Case's current HEAD history and unsafe paths. `workspace/diff` remains only a
+working-tree change view. Forge delivery requires the AgentOS reader even if
+a coincidental local path exists; other direct observers retain their local
+fallback. This avoids treating an unrelated checkout with the same path as
+the Run's Case workspace.
+The direct-observation integration suite now also covers a remote Case path,
+the authenticated AgentOS Git association and a second step recovering the
+validated packet identity from the first step's durable evidence. The focused
+`CapabilityValidationFinalizationRollbackIntegrationTest` run passed with
+`BUILD SUCCESSFUL in 1m 49s`. The HTTP and Git-object tests exercise the
+transport separately; none of these is a deployed Forge run or a human gate.
 The targeted HTTP test `WorkflowControllerHttpTest.delivery draft direct
 launch...` passed (`BUILD SUCCESSFUL in 2m 29s`): with the draft step graph
 registered in the isolated fixture, two idempotency keys for WZ-36147

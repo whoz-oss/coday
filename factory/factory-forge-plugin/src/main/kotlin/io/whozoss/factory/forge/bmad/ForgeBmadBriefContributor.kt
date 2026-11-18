@@ -26,7 +26,11 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
             ?: DEFAULT_GROOMING_PATH
 
         val sections = mutableListOf<String>()
-        val watched = linkedSetOf(specPath, memlogPath)
+        // Direct delivery proves its approved documents from pinned Git objects at
+        // packet assembly. AgentOS may run in a different container, so local
+        // watched-file reads cannot attest the intermediate working tree.
+        val watched = if (context.flowType == "forge.delivery") linkedSetOf<String>()
+            else linkedSetOf(specPath, memlogPath)
 
         (domainState["run_brief"] as? String)?.let { brief ->
             sections += "## Durable Forge run brief\n$brief"

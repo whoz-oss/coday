@@ -11,7 +11,6 @@ import java.nio.file.Path
 @Extension
 class ForgePacketEvidenceObserver : FactoryStepEvidenceObserver {
     private val git = ProcessGitObjects()
-    private val snapshot = ForgeGitPacketSnapshot(git)
     private val mapper = ObjectMapper()
 
     override fun supports(flowType: String, stepId: String, agentName: String): Boolean =
@@ -34,8 +33,15 @@ class ForgePacketEvidenceObserver : FactoryStepEvidenceObserver {
             return StepEvidenceObservation.Invalid("PACKET_MANIFEST_INVALID", "The packet manifest exceeds 256 KiB.")
         }
         val worktree = Path.of(context.worktreePath)
-        val repository = git.sourceRepository(worktree)
+        val remote = context.gitObjects
+        val repository = remote?.sourceRepository() ?: git.sourceRepository(worktree)
             ?: return StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Run's Git origin cannot be observed.")
+        val objects = if (remote == null) git else object : ForgeGitPacketSnapshot.GitObjects {
+            override fun commitExists(worktree: Path, commit: String): Boolean = remote.commitExists(commit)
+            override fun readBlob(worktree: Path, commit: String, path: String, maxBytes: Int): ByteArray? =
+                remote.readBlob(commit, path, maxBytes)
+        }
+        val snapshot = ForgeGitPacketSnapshot(objects)
         return when (val result = snapshot.verify(bytes, repository, worktree)) {
             is ForgeGitPacketSnapshot.Result.Valid -> StepEvidenceObservation.Observed(mapOf(
                 "repository" to result.repository,

@@ -146,6 +146,15 @@ Namespace views contain documents only, without a Git panel. The read-only endpo
 
 - `GET /api/cases/{id}/workspace/changes`
 - `GET /api/cases/{id}/workspace/diff?path=<repository-relative-file>`
+- `GET /api/cases/{id}/workspace/git-commit?commit=<full-sha>`
+- `GET /api/cases/{id}/workspace/git-blob?commit=<full-sha>&path=<repository-relative-file>`
+
+The latter two serve immutable Git objects to a trusted caller such as Factory
+when its container has no mount of the Case worktree. They require Case READ,
+use the Case's bound repository, reject commits outside that worktree's current
+HEAD ancestry, and cap one blob response at 16 MiB. A missing or unreadable
+object stops packet verification; the current-file diff cannot stand in for
+the named commit.
 
 Namespace files are ordinary shared documents. Repository configuration and preparation status are available in namespace Git settings.
 
