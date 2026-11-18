@@ -6,6 +6,13 @@ proposal. It is not permission to publish the incomplete `forge.delivery`
 definition. The Ready judgment remains the first configurable ProductEngineer
 step; Factory core does not interpret Jira status.
 
+The requester approved a narrow domain-neutral external-evidence observation
+extension on 2026-11-18. It now lets the Forge plugin read a pinned Git packet
+outside the finalization transaction and bind the checked manifest receipt to
+the parent Run. The complete human gate, Git recheck on later resume/Build and
+observed CI/deployment candidate remain pending; this approval does not
+publish the draft delivery definition.
+
 ## CE04 — concurrent deliveries are allowed
 
 Two different delivery Runs may target the same ticket, including the same

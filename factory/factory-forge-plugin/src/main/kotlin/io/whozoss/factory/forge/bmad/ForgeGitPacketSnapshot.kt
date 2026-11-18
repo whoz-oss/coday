@@ -48,9 +48,15 @@ internal class ForgeGitPacketSnapshot(
         return try {
             if (!git.commitExists(worktree, commit)) return Result.Invalid("GIT_COMMIT_UNAVAILABLE")
             val bytes = linkedMapOf<String, ByteArray>()
-            for ((path, declaredSize) in paths) {
-                bytes[path] = git.readBlob(worktree, commit, path, declaredSize + 1)
+            var actualTotal = 0L
+            for ((path, _) in paths) {
+                val remaining = (MAX_PACKET_BYTES - actualTotal).toInt()
+                if (remaining <= 0) return Result.Invalid("PACKET_TOO_LARGE")
+                val content = git.readBlob(worktree, commit, path, minOf(MAX_DOCUMENT_BYTES, remaining))
                     ?: return Result.Invalid("GIT_DOCUMENT_UNAVAILABLE")
+                actualTotal += content.size
+                if (actualTotal > MAX_PACKET_BYTES) return Result.Invalid("PACKET_TOO_LARGE")
+                bytes[path] = content
             }
             when (val checked = ForgePacketManifest.validate(rawManifest, bytes)) {
                 is ForgePacketManifest.Result.Invalid -> Result.Invalid(checked.code)
@@ -77,6 +83,12 @@ internal class ForgeGitPacketSnapshot(
 
 /** Git is invoked without a shell; failures become a technical pause at the caller boundary. */
 internal class ProcessGitObjects : ForgeGitPacketSnapshot.GitObjects {
+    fun sourceRepository(worktree: Path): String? =
+        runGit(worktree, listOf("remote", "get-url", "origin"), 1024)
+            ?.toString(Charsets.UTF_8)?.trim()
+            ?.removeSuffix(".git")?.substringAfterLast('/')?.substringAfterLast(':')
+            ?.takeIf { Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$").matches(it) }
+
     override fun commitExists(worktree: Path, commit: String): Boolean =
         runGit(worktree, listOf("cat-file", "-e", "$commit^{commit}"), 1024) != null
 

@@ -7,6 +7,9 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import io.whozoss.factory.sdk.spi.RunView
+import io.whozoss.factory.sdk.spi.StepEvidenceObservation
+import io.whozoss.factory.sdk.spi.StepEvidenceObservationContext
 
 class ForgeGitPacketSnapshotTest {
     @TempDir lateinit var repo: Path
@@ -83,6 +86,48 @@ class ForgeGitPacketSnapshotTest {
         assertThat(verifier.verify(manifest(pinned, documents), "whoz", repo.resolve("unavailable")))
             .isEqualTo(ForgeGitPacketSnapshot.Result.Invalid("GIT_COMMIT_UNAVAILABLE"))
     }
+
+    @Test
+    fun `observer reads a committed packet through the configured Git source`() {
+        initRepo()
+        git("remote", "add", "origin", "https://github.com/biznet-io/whoz.git")
+        val documents = documents()
+        writeDocuments(documents)
+        git("add", ".")
+        git("commit", "-qm", "design packet")
+        val pinned = git("rev-parse", "HEAD").trim()
+        val rawManifest = manifest(pinned, documents)
+        val context = observationContext(rawManifest)
+
+        val result = ForgePacketEvidenceObserver().observe(context)
+
+        assertThat(result).isInstanceOf(StepEvidenceObservation.Observed::class.java)
+        val facts = (result as StepEvidenceObservation.Observed).facts
+        assertThat(facts["repository"]).isEqualTo("whoz")
+        assertThat(facts["commit"]).isEqualTo(pinned)
+        assertThat(facts["manifestSha256"]).isEqualTo(sha((facts["canonicalManifest"] as String).toByteArray()))
+        assertThat(ForgePacketEvidenceObserver().observe(observationContext(manifest(pinned, documents +
+            ("specs/SPEC.md" to "# Wrong bytes".toByteArray())))))
+            .isInstanceOf(StepEvidenceObservation.Invalid::class.java)
+    }
+
+    @Test
+    fun `observer pauses when trusted Git origin cannot be read`() {
+        initRepo()
+        val documents = documents()
+        writeDocuments(documents)
+        git("add", ".")
+        git("commit", "-qm", "design packet")
+        val result = ForgePacketEvidenceObserver().observe(observationContext(manifest(git("rev-parse", "HEAD").trim(), documents)))
+        assertThat(result).isEqualTo(StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Run's Git origin cannot be observed."))
+    }
+
+    private fun observationContext(rawManifest: ByteArray) = StepEvidenceObservationContext(
+        run = RunView("run-1", "forge.delivery"), flowType = "forge.delivery", stepId = "packet-assembly",
+        agentName = "ProductEngineer", attemptId = "attempt-1", worktreePath = repo.toString(),
+        report = mapOf("artifacts" to listOf(mapOf("kind" to "packet-manifest.v1", "encoding" to "markdown",
+            "content" to rawManifest.toString(Charsets.UTF_8)))),
+    )
 
     private fun initRepo() {
         git("init", "-q")

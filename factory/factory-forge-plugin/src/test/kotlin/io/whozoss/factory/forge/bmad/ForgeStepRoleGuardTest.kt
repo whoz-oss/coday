@@ -30,6 +30,20 @@ class ForgeStepRoleGuardTest {
     private fun applicabilityReport(decisions: Map<String, Any?>) = businessReport(mapOf("applicability" to decisions))
 
     @Test
+    fun `packet assembly cannot advance without trusted Git receipt`() {
+        fun verdict(evidence: Map<String, Any?>) = validator.validate(StepValidationContext(
+            run = run.copy(runType = "forge.delivery"), flowType = "forge.delivery",
+            stepId = "packet-assembly", agentName = "ProductEngineer", externalEvidence = evidence,
+        ))
+        assertThat((verdict(emptyMap()) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("PACKET_GIT_EVIDENCE_MISSING")
+        val receipt = mapOf<String, Any?>("repository" to "whoz", "commit" to "a".repeat(40),
+            "manifestSha256" to "b".repeat(64), "canonicalManifest" to "{\"schemaVersion\":\"packet-manifest.v1\"}")
+        val accepted = verdict(receipt) as StepValidationVerdict.Accepted
+        assertThat(accepted.newDomainState?.get("approvedPacketCandidate")).isEqualTo(receipt)
+    }
+
+    @Test
     fun `delivery implementation plan rejects empty duplicate and unsafe steps`() {
         fun verdict(steps: List<Map<String, Any?>>) = validator.validate(StepValidationContext(
             run = run.copy(runType = "forge.delivery"),

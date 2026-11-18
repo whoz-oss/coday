@@ -135,6 +135,9 @@ Focused Gradle commands:
 ./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeStepRoleGuardTest' --tests 'io.whozoss.factory.forge.bmad.ForgeBmadFlowAndValidatorTest' :factory-service:test --tests 'io.whozoss.factory.workflow.domain.ForgeDeliveryDraftDefinitionTest' --no-daemon
 ./gradlew :factory-service:test --tests 'io.whozoss.factory.run.ParentRunWorkspaceProvisioningIntegrationTest' --no-daemon
 ./gradlew :factory-service:test --tests 'io.whozoss.factory.workstreamservice.WorkstreamServiceControllerHttpTest' --no-daemon
+./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeGitPacketSnapshotTest' --tests 'io.whozoss.factory.forge.bmad.ForgeStepRoleGuardTest' :factory-service:test --tests 'io.whozoss.factory.run.CapabilityValidationFinalizationRollbackIntegrationTest' --no-daemon
+./gradlew :factory-service:test --tests 'io.whozoss.factory.run.CapabilityValidationFinalizationRollbackIntegrationTest' --no-daemon
+./gradlew :factory-service:test --tests 'io.whozoss.factory.agentattempt.BridgeRecoveryWorkerTest' --tests 'io.whozoss.factory.agentattempt.BridgeRecoveryWorkerWorkspacePreflightTest' --no-daemon
 ./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeGitPacketSnapshotTest' --tests 'io.whozoss.factory.forge.bmad.ForgePacketManifestTest' --no-daemon
 ./gradlew :factory-service:test --tests 'io.whozoss.factory.workstreamservice.ParentRunStartFacadeTest' --no-daemon
 ./gradlew :factory-forge-plugin:test --tests 'io.whozoss.factory.forge.bmad.ForgeStepRoleGuardTest' --tests 'io.whozoss.factory.forge.bmad.ForgeCandidateSealTest' --no-daemon
@@ -168,6 +171,16 @@ identity checks with supplied observations, not that Factory currently has
 trusted CI or deployment receipt readers. The plan/applicability validator
 returns parent Run state updates, but no complete delivery selector consumes
 them yet.
+The new external-observation command first found a Git reader classification
+bug: a document larger than its declared size was reported as unavailable.
+After bounding reads by actual cumulative packet size, the same focused plugin
+and service command passed with `BUILD SUCCESSFUL in 3m 29s`. The revised
+integration scenario then passed with `BUILD SUCCESSFUL in 3m 52s`: a simulated
+Git outage deferred advancement and persisted a technical finding; a later
+finalization rollback preserved that pause; recovery reobserved outside the
+transaction, wrote one accepted result and resolved the finding. The bridge
+worker regression command passed with `BUILD SUCCESSFUL in 3m 53s`; it covers
+the shared recovery paths after the new nonterminal observation branch.
 AgentOS `CaseWorktreeProvisioner.worktreePath()` resolves each checkout below
 its root Case exchange directory, and `CaseWorktreeProvisionerSpec` contains a
 two-root-Case isolation scenario. Those are code and existing-test evidence;
@@ -215,13 +228,16 @@ present checkout, not an assumption about a future Lot 4 delivery.
 
 `CapabilityExecutionService.evaluateStepResultValidators()` runs plugin
 validation while finalizing the attempt in a short database transaction.
-`StepValidationContext` carries the report and workspace delta, but no trusted
-Git reader or worktree path. Running `git cat-file` inside that transaction
-would violate the service's explicit external-work/transaction split. The
+`StepValidationContext` originally carried the report and workspace delta but
+no trusted Git reader or worktree path. Running `git cat-file` inside that
+transaction would violate the service's explicit external-work/transaction split. The
 generic `code` responsibility executes commands declared by the target
 repository's `factory/verification.json`; the inspected Whoz checkout has no
-such manifest. The new `ForgeGitPacketSnapshot` proves the local Git read in
-isolation, but it cannot be wired into the gate by the existing plugin SPI.
+such manifest. `FactoryStepEvidenceObserver` now calls `ForgeGitPacketSnapshot`
+before that transaction, using the persisted work environment and the
+attempt's physical worktree identity. The packet validator fails closed when
+the observation receipt is missing, and the receipt is written into the parent
+Run with the accepted result. This is the pre-gate seam, not a live human gate.
 
 The worker result permits inline artifacts up to 256 KiB each; the packet
 manifest can be carried there as metadata while document content stays in
@@ -231,7 +247,7 @@ from the committed documents. The required trusted sequence is: commit the
 documents, observe that commit and its bytes outside a DB transaction, then
 atomically bind the verified manifest identity to the parent Run and gate.
 
-### Proposed narrow core extension — decision still required
+### Narrow core extension — approved and implemented as an unpublished seam
 
 Scenario: ProductEngineer finishes `packet-assembly` and submits a manifest.
 Before asking a human to approve it, Factory resolves the worktree already
@@ -244,16 +260,20 @@ final transaction repeats the observation on retry. Before approval, Build or
 resume, the same Git objects must be rechecked; a moved branch does not change
 the approved commit.
 
-The smallest proposed Factory change is a domain-neutral pre-finalization
-evidence observation SPI. Factory supplies the trusted Run/worktree identity
-and attempt token; the Forge plugin supplies the Git-specific check and a
-bounded immutable receipt. Factory atomically stores only the receipt and
-manifest metadata, never the document bytes. A repository-declared `code`
+The requester approved a domain-neutral pre-finalization evidence observation
+SPI on 2026-11-18. Factory supplies the trusted Run/worktree identity and
+attempt token; the Forge plugin supplies the Git-specific check and a bounded
+immutable receipt. Factory atomically stores only the receipt and manifest
+metadata, never the document bytes. The bridge recovery path now repeats this
+observation before finalizing a recovered result. A repository-declared `code`
 verification cannot currently replace this: the Whoz checkout has no
 `factory/verification.json`, and a plain command exit code would not bind a
-manifest digest to the parent Run and human decision. Architecture spine AD-7
-requires a separate decision for a new generic Factory core extension. This
-proposal is therefore intentionally unwired until that decision is made.
+manifest digest to the parent Run and human decision. A Git outage persists a
+technical-pause evidence item and Run finding and defers advancement; an
+observed retry resolves the finding. The attempt remains nonterminal, and
+recovery follows its lease rules. This does not yet prove an immediate
+operator-triggered resume or a complete gate decision, since the delivery
+workflow is still unpublished.
 
 The inspected Whoz `.github/workflows/build.yml` dispatches integration
 deployment, and `.github/workflows/deploy.yml` runs a remote deployment script

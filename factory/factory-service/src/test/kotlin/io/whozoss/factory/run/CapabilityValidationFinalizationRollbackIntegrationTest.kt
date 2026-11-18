@@ -29,6 +29,11 @@ import java.nio.file.Files
 import io.whozoss.factory.run.persistence.RunRepository
 import io.whozoss.factory.run.service.RunService
 import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
+import io.whozoss.factory.sdk.spi.FactoryStepEvidenceObserver
+import io.whozoss.factory.sdk.spi.StepEvidenceObservation
+import io.whozoss.factory.sdk.spi.StepEvidenceObservationContext
+import io.whozoss.factory.sdk.spi.FindingResolution
+import io.whozoss.factory.sdk.spi.FindingStatus
 import io.whozoss.factory.sdk.spi.StepValidationContext
 import io.whozoss.factory.sdk.spi.StepValidationVerdict
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
@@ -47,6 +52,7 @@ import org.springframework.transaction.PlatformTransactionManager
 import java.nio.file.Path
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import io.whozoss.factory.capability.CapabilityOutcome
 
 class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainIntegrationTest() {
@@ -68,7 +74,7 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
     private val step = WorkflowStepDefinition("write", "Write", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Writer"), emptyList())
 
     @Test
-    fun `public capability finalization rolls back validator run evidence and attempt then retries exactly once`() {
+    fun `Git outage defers advancement then recovery reobserves after rollback and commits once`() {
         Files.createDirectories(worktreeRoot)
         val rootCaseId = "root-finalization-rollback"
         val initialRun = runRepository.insert(scope, RunRecord(namespaceId = namespace, runId = runId, runType = "test", selectorVersion = "1", title = runId, domainState = mapOf("before" to true), domainRevision = 3, rootCaseId = rootCaseId))
@@ -120,12 +126,32 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
         )
 
         val runService = RunService(runRepository, workflowRepository, evidenceRepository, interactionRepository, sessionDefinitionCatalog, transactionManager = transactionManager)
+        val observations = AtomicInteger()
+        val unavailableOnce = AtomicBoolean(true)
+        val observer = object : FactoryStepEvidenceObserver {
+            override fun supports(flowType: String, stepId: String, agentName: String) = flowType == "test.validation"
+            override fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation {
+                assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse()
+                assertThat(context.worktreePath).isEqualTo(worktreeRoot.toString())
+                observations.incrementAndGet()
+                if (unavailableOnce.getAndSet(false)) return StepEvidenceObservation.Unavailable(
+                    "GIT_SOURCE_UNAVAILABLE", "The pinned Git source is temporarily unavailable.",
+                )
+                return StepEvidenceObservation.Observed(mapOf("verifiedCommit" to "a".repeat(40)))
+            }
+        }
         val validator = object : FactoryStepResultValidator {
             override fun supports(flowType: String, stepId: String, agentName: String) = flowType == "test.validation"
-            override fun validate(context: StepValidationContext) = StepValidationVerdict.Accepted(
-                newDomainState = mapOf("after" to true),
-                expectedDomainRevision = context.run.domainRevision,
-            )
+            override fun validate(context: StepValidationContext): StepValidationVerdict {
+                assertThat(context.externalEvidence["verifiedCommit"]).isEqualTo("a".repeat(40))
+                return StepValidationVerdict.Accepted(
+                    newDomainState = mapOf("after" to true),
+                    expectedDomainRevision = context.run.domainRevision,
+                    findingResolutions = context.run.findings
+                        .filter { it.id.startsWith("technical-pause:") && it.status == FindingStatus.OPEN }
+                        .associate { it.id to FindingResolution(FindingStatus.RESOLVED, "Git source recovered") },
+                )
+            }
         }
         val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
         every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
@@ -165,35 +191,53 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
             durableAgentAttemptService = attempts, agentOsExecutionAdapter = adapter,
             transactionManager = transactionManager, agentLeaseTtlMs = 0L, runService = runService,
             registeredStepResultValidators = listOf(validator),
+            registeredStepEvidenceObservers = listOf(observer),
             workEnvironmentRepository = workEnvironmentRepository,
             agentOsWorkspaceIdentityValidator = AgentOsWorkspaceIdentityValidator(workspaceProxy),
             worktreeExecutionOccupancyService = io.whozoss.factory.worktree.WorktreeExecutionOccupancyService(workEnvironmentRepository, occupancyRepository, transactionManager = transactionManager),
         )
         val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, step.id)
 
+        val paused = capability.resolveAndRecord(scope, namespace, workflowId, step, Path.of("."))
+        assertThat(paused.outcome).isInstanceOf(CapabilityOutcome.AgentDeferred::class.java)
+        val pausedRun = runRepository.find(scope, namespace, runId)!!
+        assertThat(pausedRun.domainState).isEqualTo(initialRun.domainState)
+        assertThat(pausedRun.findings.single().code).isEqualTo("GIT_SOURCE_UNAVAILABLE")
+        assertThat(pausedRun.findings.single().status).isEqualTo(FindingStatus.OPEN)
+        assertThat(attempts.find(scope, namespace, workflowId, step.id, attemptId)!!.status).isEqualTo(AgentAttemptStatus.RUNNING)
+        assertThat(evidenceRepository.list(scope, namespace, workflowId).single().outcome).isEqualTo("technical_pause")
+
         assertThatThrownBy { capability.resolveAndRecord(scope, namespace, workflowId, step, Path.of(".")) }
             .isInstanceOf(InjectedFinalizationFailure::class.java)
 
         val rolledBackRun = runRepository.find(scope, namespace, runId)!!
-        assertThat(rolledBackRun.revision).isEqualTo(initialRun.revision)
-        assertThat(rolledBackRun.domainRevision).isEqualTo(initialRun.domainRevision)
-        assertThat(rolledBackRun.domainState).isEqualTo(initialRun.domainState)
-        assertThat(rolledBackRun.appliedValidationUpdates).isEmpty()
-        assertThat(evidenceRepository.list(scope, namespace, workflowId)).isEmpty()
+        assertThat(rolledBackRun.revision).isEqualTo(pausedRun.revision)
+        assertThat(rolledBackRun.domainRevision).isEqualTo(pausedRun.domainRevision)
+        assertThat(rolledBackRun.domainState).isEqualTo(pausedRun.domainState)
+        assertThat(rolledBackRun.appliedValidationUpdates).isEqualTo(pausedRun.appliedValidationUpdates)
+        assertThat(evidenceRepository.list(scope, namespace, workflowId)).hasSize(1)
         val rolledBackAttempt = attempts.find(scope, namespace, workflowId, step.id, attemptId)!!
         assertThat(rolledBackAttempt.status).isEqualTo(AgentAttemptStatus.RUNNING)
         assertThat(attempts.journal(scope, namespace, workflowId, step.id, attemptId).map { it.toStatus })
             .doesNotContain(AgentAttemptStatus.SUCCEEDED)
 
-        val retried = capability.resolveAndRecord(scope, namespace, workflowId, step, Path.of("."))
-        assertThat(retried.attemptId).isEqualTo(attemptId)
-        assertThat(retried.outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
+        val recoveryOwner = "recovery-test-owner"
+        attempts.claim(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, leaseTtlMs = 0L)
+        attempts.transition(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, AgentAttemptStatus.STARTING)
+        attempts.transition(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, AgentAttemptStatus.RUNNING)
+        assertThat(capability.finalizeRecoveredAttempt(scope, rolledBackAttempt, recoveryOwner,
+            io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+                AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "ok")), runtimeProof,
+            ))).isTrue()
+        assertThat(observations.get()).isEqualTo(3)
         val committedRun = runRepository.find(scope, namespace, runId)!!
         assertThat(committedRun.domainState).containsExactlyEntriesOf(mapOf("after" to true))
         assertThat(committedRun.domainRevision).isEqualTo(initialRun.domainRevision + 1)
-        assertThat(committedRun.appliedValidationUpdates).hasSize(1)
-        val agentEvidence = evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "agent-result" }
+        assertThat(committedRun.appliedValidationUpdates).hasSize(2)
+        assertThat(committedRun.findings.single().status).isEqualTo(FindingStatus.RESOLVED)
+        val agentEvidence = evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "agent-result" && it.outcome == "pass" }
         assertThat(agentEvidence).hasSize(1)
+        assertThat(agentEvidence.single().facts["externalEvidence"]).isEqualTo(mapOf("verifiedCommit" to "a".repeat(40)))
         assertThat(agentEvidence.single().facts["runtimeCaseTerminationProof"]).isEqualTo(
             mapOf(
                 "caseId" to runtimeProof.caseId,
@@ -209,7 +253,7 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
         val afterReplay = runRepository.find(scope, namespace, runId)!!
         assertThat(afterReplay.revision).isEqualTo(committedRun.revision)
         assertThat(afterReplay.domainRevision).isEqualTo(committedRun.domainRevision)
-        assertThat(evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "agent-result" }).hasSize(1)
+        assertThat(evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "agent-result" && it.outcome == "pass" }).hasSize(1)
     }
 
     @Test

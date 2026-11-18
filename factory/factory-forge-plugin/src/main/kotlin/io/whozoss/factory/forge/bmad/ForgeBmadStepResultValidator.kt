@@ -72,6 +72,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 "design-assessment" -> validateDeliveryAssessment(context)
                 "implementation-planning" -> validateDeliveryImplementationPlan(context)
                 "qa-design" -> validateDeliveryVerificationPlan(context)
+                "packet-assembly" -> validateObservedPacket(context)
                 else -> StepValidationVerdict.Accepted()
             }
 
@@ -463,6 +464,33 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 put("verification_plan", content)
             })
         else rejectDeliveryPlan(context, "EMPTY_VERIFICATION_PLAN")
+    }
+
+    private fun validateObservedPacket(context: StepValidationContext): StepValidationVerdict {
+        val evidence = context.externalEvidence
+        val repository = evidence["repository"] as? String
+        val commit = evidence["commit"] as? String
+        val manifestSha = evidence["manifestSha256"] as? String
+        val canonicalManifest = evidence["canonicalManifest"] as? String
+        if (repository.isNullOrBlank() || commit?.matches(Regex("^[0-9a-f]{40}$")) != true ||
+            manifestSha?.matches(Regex("^[0-9a-f]{64}$")) != true || canonicalManifest.isNullOrBlank()
+        ) return StepValidationVerdict.Rejected("PACKET_GIT_EVIDENCE_MISSING", listOf(NewFinding(
+            code = "PACKET_GIT_EVIDENCE_MISSING", severity = FindingSeverity.MAJOR,
+            message = "The design packet has no trusted Git observation.", stepId = context.stepId,
+        )))
+        val packet = mapOf(
+            "repository" to repository,
+            "commit" to commit,
+            "manifestSha256" to manifestSha,
+            "canonicalManifest" to canonicalManifest,
+        )
+        val clearedTechnicalPauses = context.run.findings
+            .filter { it.id.startsWith("technical-pause:") && it.stepId == context.stepId && it.status == FindingStatus.OPEN }
+            .associate { it.id to FindingResolution(FindingStatus.RESOLVED, "Pinned Git packet observed again") }
+        return StepValidationVerdict.Accepted(
+            newDomainState = LinkedHashMap(context.run.domainState).apply { put("approvedPacketCandidate", packet) },
+            findingResolutions = clearedTechnicalPauses,
+        )
     }
 
     private fun rejectDeliveryPlan(context: StepValidationContext, code: String): StepValidationVerdict.Rejected =
