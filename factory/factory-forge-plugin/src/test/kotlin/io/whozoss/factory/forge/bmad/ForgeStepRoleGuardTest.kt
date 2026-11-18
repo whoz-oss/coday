@@ -44,7 +44,9 @@ class ForgeStepRoleGuardTest {
             "file_paths" to listOf("src/allowed.kt"),
             "verification" to "./gradlew test",
         )
-        assertThat(verdict(listOf(step))).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        val accepted = verdict(listOf(step)) as StepValidationVerdict.Accepted
+        assertThat((accepted.newDomainState?.get("delivery_plan") as Map<*, *>)["steps"])
+            .isEqualTo(listOf(step))
         assertThat((verdict(emptyList()) as StepValidationVerdict.Rejected).reasonCode)
             .isEqualTo("MISSING_DELIVERY_PLAN_STEPS")
         for (steps in listOf(
@@ -66,8 +68,9 @@ class ForgeStepRoleGuardTest {
             agentName = "QAArchitect",
             report = businessReport(mapOf("verification_plan" to value)),
         ))
-        assertThat(verdict("1. Run focused and regression tests"))
-            .isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        val accepted = verdict("1. Run focused and regression tests") as StepValidationVerdict.Accepted
+        assertThat(accepted.newDomainState?.get("verification_plan"))
+            .isEqualTo("1. Run focused and regression tests")
         for (bad in listOf(null, "", "  ")) {
             assertThat((verdict(bad) as StepValidationVerdict.Rejected).reasonCode)
                 .isEqualTo("EMPTY_VERIFICATION_PLAN")
@@ -92,8 +95,8 @@ class ForgeStepRoleGuardTest {
                 workspaceDelta = delta,
             ))
 
-        assertThat(verdict(applicabilityReport(decisions)))
-            .isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        val accepted = verdict(applicabilityReport(decisions)) as StepValidationVerdict.Accepted
+        assertThat(accepted.newDomainState?.get("applicability")).isEqualTo(decisions)
         for (bad in listOf(
             decisions - "qa_spec",
             decisions + ("ux_spec" to mapOf("applicable" to false, "reason" to "")),

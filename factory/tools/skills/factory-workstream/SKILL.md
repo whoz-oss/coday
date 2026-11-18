@@ -32,6 +32,8 @@ Report concrete blockers and pending decisions, not merely that a workflow appea
 
 Use `FACTORY_WORKSTREAM__start_workflow` only when starting a run is within the assignment. Confirm the intended workflow type and relevant request information before submitting structured tool arguments.
 
+For a published selector-owned parent Run, use `FACTORY_WORKSTREAM__start_parent_run` with its run type and a stable request key. A new key starts an independent Run even if another Run uses the same ticket; any `concurrentRuns` response is advisory. Do not invoke `forge.delivery` until its complete official definition and selector are available.
+
 Supply an `Idempotency-Key` for this logical start operation. Use a prescribed key when provided; otherwise select and retain one valid key for that operation according to the tool contract. This is not a worker attempt's submission key. Never reuse a key for a different request.
 
 Inspect the response: queued or accepted creation is not completed execution. Preserve the returned identifiers and inspect subsequent workflow state when available. Do not invent a workflow ID when the response only indicates pending submission.
