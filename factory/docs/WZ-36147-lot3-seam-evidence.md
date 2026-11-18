@@ -32,9 +32,10 @@ status or retry. The existing Backend/Frontend Factory skill accepts one
 approved work item per attempt, and the strict Forge workers each execute one
 item; none can receive the whole mixed-stack plan unchanged. AgentOS now has
 `DELEGATE__delegate` and resumable sub-cases sharing an equipped root Case
-worktree, so a narrow Build coordinator agent could dispatch those items
-sequentially inside the one Build step. That coordinator and its item-level
-receipt validation do not yet exist. The old ForgeController cannot simply
+worktree, so the dedicated ForgeBuilder can dispatch those items
+sequentially inside the one Build step. Its agent definition and item-level
+receipt validation exist on the two PR branches but lack an AgentOS pilot.
+The old ForgeController cannot simply
 fill this role: it runs its own full lifecycle and gates. The Build/verification
 correction and resume contract must still satisfy CE06/CE07 before publication.
 
@@ -70,8 +71,9 @@ worktree. The Forge validator also returns `newDomainState` for applicability,
 plans and packet identity. Direct workflows now record each accepted state
 snapshot in the same append-only agent-result evidence transaction, then
 reconstruct the latest state for the next step. This preserves plan and packet
-identity across restart without creating a parent Run. A human approval is
-not yet bound to that packet, so Build remains unopened.
+identity across restart without creating a parent Run. The opt-in checkpoint
+policy now binds the human decision to that packet; the Build observer
+rechecks committed Git bytes and the decision before accepting Build.
 AgentOS exposes the Case workspace status and path through
 `GET /api/cases/{caseId}/workspace/changes`, which Factory already reads for
 workspace deltas. New `git-commit` and `git-blob` reads use the same Case access
@@ -144,27 +146,31 @@ required Factory output.
 | Exit when not ready | Submit an evidenced non-PASS result. The selector opens a durable `retry`/`abort` wait. No design, packet, Build or integration fragment is scheduled. |
 | Retry | Re-run ProductEngineer with a fresh attempt and current evidence. The prior negative result remains in the Run trace. |
 
-The version `0.6.0` draft in `WZ-36147-delivery-workflow.draft.json` uses the
-ordinary configurable Factory workflow schema. It defines thirteen fixed steps:
+The version `0.7.0` draft in `WZ-36147-delivery-workflow.draft.json` uses the
+ordinary configurable Factory workflow schema. It defines sixteen fixed steps:
 readiness, applicability assessment, product/UX/technical design,
 implementation planning, QA and verification planning, packet assembly, then
 the human packet gate, one Build coordinator step, one independent verification
-step, one whole-PR review and one integration observation
-step. Optional design disciplines still get an explicit
+step, one whole-PR review, one integration observation, parallel technical and
+functional human validation, and one deterministic final join. Optional design
+disciplines still get an explicit
 assessment step and either a document or a reasoned not-applicable decision;
 the implementation and verification plans are required on every route. The
 implementation plan now requires a `frontend` or `backend` stack and an
 explicit dependency on an earlier item (or `null`) for each ordered item.
 This validates the proposed routing data and a structured Build receipt.
 The direct workflow now persists the plan and pinned packet candidate in its
-accepted evidence, but the human gate does not yet bind its decision to that
-identity. The user chose a dedicated `ForgeBuilder`: the existing `BmadBuilder`
+accepted evidence. An opt-in checkpoint policy now stores that packet's
+repository, commit and manifest digest with the interaction, refuses a stale
+reply, and audits the authenticated actor and server decision time. This has
+focused tests, not a full direct-workflow gate proof. The user chose a dedicated
+`ForgeBuilder`: the existing `BmadBuilder`
 owns an older BMAD lifecycle and is not the Forge delivery coordinator. The
 new agent must receive a bounded plan, delegate implementation by stack and
 submit one Factory result; its configuration is now a local change on the
 Whoz agent-fleet branch and has not been deployed. The definition is
-deliberately outside the published catalog: it has an independent code review
-step but would currently complete without the final human joint.
+deliberately outside the published catalog: the final joint is now modeled,
+but the full runtime and recovery contract is unproved.
 The current legacy selector still starts
 `forge.product-spec` and contains a trivial path to Build without the complete
 packet gate. Existing pinned legacy Runs must retain their behavior. The
@@ -217,8 +223,12 @@ the PR for the Build commit. The result guard requires four clean lens votes,
 no critical or major finding, a matching claimed PR head and no file writes.
 The Factory's trusted PR observer now reads the open PR through AgentOS and
 requires its exact head to equal the accepted Build commit. This observer has
-focused tests, not a live workflow proof. Integration observation branches from Build,
-so CI waiting need not prevent verification and review from proceeding.
+focused tests, not a live workflow proof. Integration observation begins after
+review; the external CI can run while verification and review proceed. Once
+review passes, technical validation can wait for a person while integration
+observation continues toward the separate functional validation. The generic
+sequencer was adjusted to allow an independent ready step to advance while
+another human step waits; its parallel-gate integration test passes.
 
 ## Focused Factory evidence
 
@@ -371,19 +381,20 @@ PR when the single-workflow requirement was clarified. No
 `forge.delivery` selector or complete definition is registered yet. Factory's
 `ArtifactStore` is separate from AgentOS exchanges, and its blob publication
 port is not a Forge prerequisite under the clarified Git-first packet rule.
-The manifest/decision identity and trusted Git-read boundary still need a
-concrete persistence path. The generic human reply path does not bind an
-authorized decision to that packet/candidate identity, as the Lot 4
-characterization records. The updated product rule and remaining proof are in
+The packet and work-candidate identities now have opt-in reply-binding paths
+and an audited final join, subject to the remaining runtime proof. The generic human reply path remains
+unchanged for definitions that do not opt into a plugin checkpoint policy.
+The updated product rule and remaining proof are in
 `WZ-36147-lot3-core-seams-decision.draft.md`. Preserve Factory's domain-neutral
 boundary and do not claim Lot 3 PASS until CE04–07 execute through those
 contracts with persistence, retry and restart proof.
 
 The pure `ForgePacketIdentity` now names the Git repository, pinned commit and
 canonical manifest SHA-256, matching the clarified Forge source rather than a
-Factory blob artifact ID. The authority rules are still not connected to the
-generic human reply transaction or durable workflow state. Their passing unit
-tests are not a gate authorization or restart proof.
+Factory blob artifact ID. The older pure `ForgeHumanAuthority` draft is not
+the runtime policy; the narrower opt-in checkpoint extension now performs
+packet/candidate reply binding inside the existing transaction. Its passing
+tests do not constitute a deployed gate or restart proof.
 
 ### Verified execution boundary for CE05/CE07
 
@@ -443,7 +454,8 @@ also records the release tag in deployed dynamic properties and inspects
 container image IDs when redeploying. Those are useful diagnostics. The
 clarified gate requires a successful Deploy job for a tag whose Git commit
 contains this Run's work commit; it does not attest which exact images a human
-later tested. Factory still needs a trusted reader of that Git/CI job chain.
+later tested. The reader implemented later in this note supplies that chain
+for the first hosted pilot.
 The existing Factory `DeliveryOperationService` is not that reader: its
 documented current path uses stub adapters and immediately reconciles a new
 deployment operation to `succeeded` with only adapter id/state. Its
@@ -604,11 +616,12 @@ account, and the Factory relay supplies metadata to the Forge observer. A
 missing receipt defers the integration-observation step. The tests do not yet
 prove an actual Factory workflow run, restart behavior or the human gate.
 
-The remaining implementation boundary is a durable candidate wait, including
-restart and race behavior across Build, integration and code review. The
-official workflow remains unpublished until the direct workflow packet
-binding, authorized human replies and restart/race proofs are
-in place. The earlier exact-image T19/T24 criterion must be updated rather
+The packet and candidate policies now bind the presented identities to replies;
+the final validator requires two audited positive decisions for the same work
+candidate. The remaining boundary is a live direct-workflow proof of those
+gates and their recovery/race behavior, including Git recheck before Build
+and actual agent execution. The official workflow remains unpublished until
+those proofs are in place. The earlier exact-image T19/T24 criterion must be updated rather
 than silently presented as passed by this narrower contract.
 
 Focused checks on this branch: AgentOS `:agentos-git:test` for
@@ -619,3 +632,13 @@ guard, plus `:factory-service:test` for the draft graph and AgentOS proxy,
 passed. `WorkflowRunAsyncHttpTest` passed separately for direct launch and
 replay. These checks use mocked HTTP/CI responses; they do not establish a
 deployed Forge workflow or an authorized human approval.
+
+The 2026-11-18 checkpoint follow-up passed the targeted Factory command
+`./gradlew :factory-forge-plugin:test --tests io.whozoss.factory.forge.plugin.FactoryForgePluginIntegrationTest --tests io.whozoss.factory.forge.bmad.ForgePacketHumanCheckpointPolicyTest :factory-service:test --tests io.whozoss.factory.workflow.WorkflowServiceIntegrationTest --tests io.whozoss.factory.workflow.SessionDefinitionImportIntegrationTest --tests io.whozoss.factory.workflow.domain.ForgeDeliveryDraftDefinitionTest`
+(`BUILD SUCCESSFUL in 1m 10s`). It covers plugin discovery, all three
+checkpoint bindings, the audit actor and time, stale-reply refusal, parallel
+human gates and the fixed 16-step draft. A wider service/plugin suite was
+interrupted after the service test task produced no further output for several
+minutes; its initial plugin failure was a stale test expectation for the old
+`forge-controller-v1` run type and was corrected and rechecked by the focused
+command. This remains test evidence, not a live Forge delivery run.

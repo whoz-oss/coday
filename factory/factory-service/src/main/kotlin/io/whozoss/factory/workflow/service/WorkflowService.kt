@@ -25,6 +25,10 @@ import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.proxy.AgentOsUnavailableException
 import io.whozoss.factory.proxy.UsageTrackingUnavailableException
 import io.whozoss.factory.sdk.spi.FactoryWorkflowExecutionPolicy
+import io.whozoss.factory.sdk.spi.FactoryHumanCheckpointPolicy
+import io.whozoss.factory.sdk.spi.HumanCheckpointContext
+import io.whozoss.factory.sdk.spi.HumanCheckpointVerdict
+import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.workflow.domain.LegacyStepContract
 import io.whozoss.factory.workflow.domain.AllowedActionDto
 import io.whozoss.factory.workflow.domain.CanonicalHash
@@ -154,6 +158,27 @@ class WorkflowService(
 
     /** Durable outcome of the transactional part of a human reply. */
     private data class HumanReplyOutcome(val interaction: HumanInteractionRecord, val result: WorkflowHttpResult)
+
+    private fun checkpointPolicyRequired(instance: WorkflowInstanceRecord): Boolean =
+        ((instance.instance["execution"] as? Map<*, *>)?.get("humanCheckpointPolicyRequired") == true)
+
+    /** Rebuilds the plugin's accepted direct-workflow state from durable evidence. */
+    private fun checkpointRunView(
+        scope: TenantScope,
+        namespaceId: String,
+        instance: WorkflowInstanceRecord,
+    ): RunView {
+        val accepted = evidenceRepository.list(scope, namespaceId, instance.workflowId)
+            .lastOrNull { it.kind == "agent-result" && it.outcome == "pass" && it.facts["acceptedDomainState"] is Map<*, *> }
+        val state = (accepted?.facts?.get("acceptedDomainState") as? Map<*, *>)?.entries
+            ?.associate { it.key.toString() to it.value }.orEmpty()
+        return RunView(
+            runId = instance.workflowId,
+            runType = instance.instance["workflowType"] as? String ?: "",
+            ticket = instance.instance["ticket"] as? String,
+            domainState = state,
+        )
+    }
 
     // ------------------------------------------------------------------
     // Definitions
@@ -893,6 +918,9 @@ class WorkflowService(
         idempotencyKey: String,
     ): WorkflowHttpResult {
         val instance = activeInstance(scope, namespaceId, workflowId)
+        if (checkpointPolicyRequired(instance)) {
+            throw workflowException(WorkflowErrorCodes.INVALID_INTERACTION, "This checkpoint must be opened from the workflow's pinned evidence.")
+        }
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
         val validation = WorkflowTransitionPolicy.validateRequest(
@@ -1063,6 +1091,28 @@ class WorkflowService(
         if (expectedRevision != interactionRevision) {
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
         }
+        val checkpointFacts = if (checkpointPolicyRequired(instance)) {
+            val flowType = instance.instance["workflowType"] as? String
+                ?: throw workflowException(WorkflowErrorCodes.INVALID_REPLY, "Workflow type unavailable.")
+            val presented = (interaction.payload["presented"] as? Map<*, *>)?.entries
+                ?.associate { it.key.toString() to it.value }
+                ?: throw workflowException(WorkflowErrorCodes.INVALID_REPLY, "The presented checkpoint identity is missing.")
+            val policies = pluginManager?.getExtensions(FactoryHumanCheckpointPolicy::class.java).orEmpty()
+                .filter { it.supports(flowType, interaction.stepId) }
+            if (policies.size != 1) {
+                throw workflowException(WorkflowErrorCodes.INVALID_REPLY, "The checkpoint policy is unavailable or ambiguous.")
+            }
+            val run = checkpointRunView(scope, namespaceId, instance)
+            val verdict = runCatching {
+                policies.single().decide(HumanCheckpointContext(run, flowType, interaction.stepId), presented, actionId)
+            }.getOrElse {
+                throw workflowException(WorkflowErrorCodes.INVALID_REPLY, "The checkpoint policy could not verify this decision.")
+            }
+            when (verdict) {
+                is HumanCheckpointVerdict.Allowed -> verdict.facts
+                is HumanCheckpointVerdict.Denied -> throw workflowException(WorkflowErrorCodes.INVALID_REPLY, verdict.code)
+            }
+        } else emptyMap()
         val outcome = if (actionId == "approve") "pass" else "fail"
         val evidenceItem = WorkflowEvidenceItem(
             evidenceId = UUID.randomUUID().toString(),
@@ -1075,6 +1125,8 @@ class WorkflowService(
             facts = buildMap {
                 put("interactionId", interactionId)
                 put("actionId", actionId)
+                put("decidedAt", nowIso())
+                putAll(checkpointFacts)
                 if (!text.isNullOrEmpty()) put("decisionTextHash", "sha256:${CanonicalHash.sha256Hex(text)}")
             },
             idempotencyKey = "human:$interactionId",

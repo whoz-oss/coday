@@ -45,6 +45,9 @@ import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
 import io.whozoss.factory.sdk.spi.FactoryStepEvidenceObserver
 import io.whozoss.factory.sdk.spi.StepEvidenceObservation
 import io.whozoss.factory.sdk.spi.StepEvidenceObservationContext
+import io.whozoss.factory.sdk.spi.FactoryHumanCheckpointPolicy
+import io.whozoss.factory.sdk.spi.HumanCheckpointContext
+import io.whozoss.factory.sdk.spi.HumanCheckpointVerdict
 import io.whozoss.factory.sdk.spi.TrustedGitObjectReader
 import io.whozoss.factory.sdk.spi.TrustedDeploymentEvidenceReader
 import io.whozoss.factory.sdk.spi.TrustedPullRequestReader
@@ -852,11 +855,10 @@ class CapabilityExecutionService(
     ): RunView {
         val runId = parentRunIdOf(workflowInstance)
         val runRecord = if (runId != null) runService?.getRun(scope, namespaceId, runId) else null
-        val directStateEvidence = if (runRecord == null && workflowInstance != null) {
-            evidenceRepository.list(scope, namespaceId, workflowInstance.workflowId)
-                .filter { it.kind == AGENT_RESULT_EVIDENCE_KIND && it.outcome == "pass" &&
-                    it.facts["acceptedDomainState"] is Map<*, *> }
-        } else emptyList()
+        val directEvidence = if (runRecord == null && workflowInstance != null)
+            evidenceRepository.list(scope, namespaceId, workflowInstance.workflowId) else emptyList()
+        val directStateEvidence = directEvidence.filter { it.kind == AGENT_RESULT_EVIDENCE_KIND && it.outcome == "pass" &&
+            it.facts["acceptedDomainState"] is Map<*, *> }
         val directState = directStateEvidence.lastOrNull()?.facts?.get("acceptedDomainState") as? Map<*, *>
         return runRecord?.toView() ?: RunView(
             runId = runId ?: (workflowInstance?.workflowId ?: ""),
@@ -864,6 +866,10 @@ class CapabilityExecutionService(
             ticket = (workflowInstance?.instance?.get("ticket") as? String),
             domainState = directState?.entries?.associate { it.key.toString() to it.value }.orEmpty(),
             domainRevision = directStateEvidence.size.toLong(),
+            humanDecisions = directEvidence.filter { it.kind == "human-decision" }.map { evidence ->
+                mapOf("stepId" to evidence.stepId, "outcome" to evidence.outcome,
+                    "facts" to evidence.facts, "source" to evidence.source)
+            },
         )
     }
 
@@ -1395,6 +1401,20 @@ class CapabilityExecutionService(
         step: WorkflowStepDefinition,
         outcome: CapabilityOutcome.HumanCheckpointRequired,
     ): CapabilityExecution {
+        val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
+        val execution = instance?.instance?.get("execution") as? Map<*, *>
+        val presentation = if (execution?.get("humanCheckpointPolicyRequired") == true) {
+            val flowType = instance.instance["workflowType"] as? String ?: error("Workflow type unavailable")
+            val policies = pluginManager?.getExtensions(FactoryHumanCheckpointPolicy::class.java).orEmpty()
+                .filter { it.supports(flowType, step.id) }
+            check(policies.size == 1) { "Exactly one human checkpoint policy is required for $flowType/${step.id}" }
+            when (val verdict = policies.single().present(HumanCheckpointContext(
+                resolveRunView(scope, namespaceId, instance), flowType, step.id,
+            ))) {
+                is HumanCheckpointVerdict.Allowed -> verdict
+                is HumanCheckpointVerdict.Denied -> error("Human checkpoint cannot open: ${verdict.code}")
+            }
+        } else null
         val interactionId = UUID.randomUUID().toString()
         interactionRepository.insert(
             scope,
@@ -1414,7 +1434,7 @@ class CapabilityExecutionService(
                         mapOf("id" to "approve", "label" to "Approuver"),
                         mapOf("id" to "reject", "label" to "Rejeter"),
                     ),
-                ),
+                ) + (presentation?.let { mapOf("presented" to it.facts, "prompt" to it.prompt) } ?: emptyMap()),
             ),
         )
         interactionRepository.appendEvent(

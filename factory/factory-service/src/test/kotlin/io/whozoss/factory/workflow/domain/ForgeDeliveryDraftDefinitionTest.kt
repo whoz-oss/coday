@@ -16,7 +16,9 @@ class ForgeDeliveryDraftDefinitionTest {
         }
         val validated = WorkflowDefinitionValidator.validate(raw)
         assertThat(validated).isInstanceOf(WorkflowDefinitionValidation.Valid::class.java)
-        val steps = (validated as WorkflowDefinitionValidation.Valid).steps
+        assertThat(executionPolicyOf((validated as WorkflowDefinitionValidation.Valid).definition)
+            ?.humanCheckpointPolicyRequired).isTrue()
+        val steps = validated.steps
         assertThat(steps.map { it.id }).containsExactly(
             "delivery-preflight",
             "design-assessment",
@@ -31,23 +33,30 @@ class ForgeDeliveryDraftDefinitionTest {
             "implementation-verification",
             "implementation-review",
             "integration-observation",
+            "technical-validation",
+            "functional-validation",
+            "delivery-completion",
         )
         assertThat(steps.first().responsibility.name).isEqualTo("ProductEngineer")
         assertThat(steps.first().dependsOn).isEmpty()
-        steps.drop(1).filter { it.id != "integration-observation" }.forEach { step ->
+        steps.drop(1).filter { it.id !in setOf("integration-observation", "technical-validation", "functional-validation", "delivery-completion") }.forEach { step ->
             val index = steps.indexOf(step)
             assertThat(step.dependsOn).describedAs("dependencies of ${step.id}")
                 .containsExactly(steps[index - 1].id)
         }
-        assertThat(steps.filter { it.id != "packet-approval" })
+        assertThat(steps.filter { it.id !in setOf("packet-approval", "technical-validation", "functional-validation") })
             .allMatch { it.responsibility.kind == ResponsibilityKind.AGENT }
-        assertThat(steps.single { it.id == "packet-approval" }.responsibility.kind)
-            .isEqualTo(ResponsibilityKind.HUMAN)
+        assertThat(steps.filter { it.responsibility.kind == ResponsibilityKind.HUMAN }.map { it.id })
+            .containsExactly("packet-approval", "technical-validation", "functional-validation")
         assertThat(steps.single { it.id == "implementation-build" }.responsibility.name).isEqualTo("ForgeBuilder")
         assertThat(steps.single { it.id == "implementation-verification" }.responsibility.name).isEqualTo("ForgeVerifier")
         assertThat(steps.single { it.id == "implementation-review" }.responsibility.name).isEqualTo("ForgeReviewer")
-        assertThat(steps.last().responsibility.name).isEqualTo("ForgeDeploymentObserver")
-        assertThat(steps.last().dependsOn).containsExactly("implementation-build")
+        assertThat(steps.single { it.id == "integration-observation" }.responsibility.name).isEqualTo("ForgeDeploymentObserver")
+        assertThat(steps.single { it.id == "integration-observation" }.dependsOn).containsExactly("implementation-review")
+        assertThat(steps.single { it.id == "technical-validation" }.dependsOn).containsExactly("implementation-review")
+        assertThat(steps.single { it.id == "functional-validation" }.dependsOn).containsExactly("integration-observation")
+        assertThat(steps.last().responsibility.name).isEqualTo("ForgeCloser")
+        assertThat(steps.last().dependsOn).containsExactly("technical-validation", "functional-validation")
         assertThat(steps).allMatch { step ->
             step.contract != null && step.contract.entry.isNotEmpty() &&
                 step.contract.mission.isNotBlank() && step.contract.exit.isNotEmpty()

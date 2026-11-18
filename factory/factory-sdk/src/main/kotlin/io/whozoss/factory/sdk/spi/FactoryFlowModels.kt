@@ -98,6 +98,8 @@ data class RunView(
     val findings: List<FindingView> = emptyList(),
     val fragments: List<FragmentView> = emptyList(),
     val loopCounts: Map<String, Int> = emptyMap(),
+    /** Audited Factory human decisions, for plugin-owned final joins. */
+    val humanDecisions: List<Map<String, Any?>> = emptyList(),
 )
 
 /**

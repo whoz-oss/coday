@@ -338,19 +338,19 @@ class SessionRunService(
                 }
                 reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
-                if (statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
-                    if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision())) {
-                        suspended = true
-                        return@run
-                    }
-                    continue
-                }
+                val hadWaitingHuman = statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }
+                val waitingForHuman = hadWaitingHuman &&
+                    !resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision())
+                if (hadWaitingHuman && !waitingForHuman) continue
                 val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull()
                     ?: steps.firstOrNull { step ->
                         statuses.statuses[step.id] == WorkflowStatuses.NEEDS_RESEARCH &&
                             capabilityExecutionService.hasAcceptedFinalResult(scope, namespaceId, workflowId, step.id)
                     }?.id
-                    ?: return@run
+                if (readyId == null) {
+                    if (waitingForHuman) suspended = true
+                    return@run
+                }
                 val step = steps.first { it.id == readyId }
                 if (step.responsibility.kind == ResponsibilityKind.AGENT && steps.any { it.responsibility.kind == ResponsibilityKind.CODE }) {
                     try {
