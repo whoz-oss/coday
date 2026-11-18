@@ -221,8 +221,10 @@ verification. The new coordinator may retain that bounded item discipline,
 but must not own workflow gates, whole-run review or completion.
 
 `implementation-review` follows verification and is assigned to the existing
-read-only `ForgeReviewer`, adapted locally in the Whoz fleet branch to find
-the PR for the Build commit. The result guard requires four clean lens votes,
+`Reviewer` in the Whoz fleet branch. Its conditional Factory mission reviews
+the local worktree at the accepted Build commit against the approved packet;
+its ordinary PR review and comment capability remains available outside this
+step. The result guard requires four clean lens votes,
 no critical or major finding, a matching claimed PR head and no file writes.
 The Factory's trusted PR observer now reads the open PR through AgentOS and
 requires its exact head to equal the accepted Build commit. This observer has

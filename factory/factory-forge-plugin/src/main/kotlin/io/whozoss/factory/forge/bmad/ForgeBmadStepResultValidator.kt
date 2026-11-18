@@ -601,7 +601,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
     }
 
     private fun validateDeliveryReview(context: StepValidationContext): StepValidationVerdict {
-        if (context.agentName != "ForgeReviewer") return StepValidationVerdict.Rejected("INVALID_REVIEWER")
+        if (context.agentName != "Reviewer") return StepValidationVerdict.Rejected("INVALID_REVIEWER")
         checkReadOnlyWorkspace(context)?.let { return it }
         val workCommit = (context.run.domainState["build_report"] as? Map<*, *>)?.get("work_commit") as? String
         val verification = context.run.domainState["verification_report"] as? Map<*, *>

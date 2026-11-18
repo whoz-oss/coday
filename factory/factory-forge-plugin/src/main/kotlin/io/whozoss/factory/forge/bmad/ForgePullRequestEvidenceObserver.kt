@@ -5,11 +5,11 @@ import io.whozoss.factory.sdk.spi.StepEvidenceObservation
 import io.whozoss.factory.sdk.spi.StepEvidenceObservationContext
 import org.pf4j.Extension
 
-/** Independently binds the reviewer's PR to the accepted Build head. */
+/** Independently binds the reviewed Build head to the PR needed by the later human gate. */
 @Extension
 class ForgePullRequestEvidenceObserver : FactoryStepEvidenceObserver {
     override fun supports(flowType: String, stepId: String, agentName: String): Boolean =
-        flowType == "forge.delivery" && stepId == "implementation-review" && agentName == "ForgeReviewer"
+        flowType == "forge.delivery" && stepId == "implementation-review" && agentName == "Reviewer"
 
     override fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation {
         val workCommit = (context.run.domainState["build_report"] as? Map<*, *>)?.get("work_commit") as? String

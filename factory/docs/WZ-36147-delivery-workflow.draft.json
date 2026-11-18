@@ -175,17 +175,17 @@
     {
       "dependsOn": ["implementation-verification"],
       "entry": [
-        "Review the unique open PR whose head is the accepted Build commit. Read the exact PR diff and approved packet; use only read-only Git, GitHub and file tools."
+        "Review the local worktree at the accepted Build commit against the approved packet and diff base. Bind the candidate to the unique open PR with that head; use the PR for identity, not as the source of the code review."
       ],
       "exit": [
         "Return one forge.business-outputs.v1 review_report with the matching work commit and PR head, PR number, four lens votes and classified findings. PASS requires every lens PASS and no critical or major finding. Review is evidence, not human approval."
       ],
       "id": "implementation-review",
-      "mission": "Independently review the whole implementation PR against the approved packet and verified plan without changing code or approving a gate.",
+      "mission": "Review the committed local implementation against the approved packet and verified plan without changing code or approving a gate.",
       "name": "Review implementation",
       "responsibility": {
         "kind": "agent",
-        "name": "ForgeReviewer"
+        "name": "Reviewer"
       }
     },
     {

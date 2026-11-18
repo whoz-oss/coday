@@ -20,7 +20,7 @@ class ForgePullRequestEvidenceObserverTest {
         run = RunView("run", "forge.delivery", domainState = mapOf(
             "build_report" to mapOf("work_commit" to commit),
         )),
-        flowType = "forge.delivery", stepId = "implementation-review", agentName = "ForgeReviewer",
+        flowType = "forge.delivery", stepId = "implementation-review", agentName = "Reviewer",
         attemptId = "attempt", worktreePath = "/unused", report = emptyMap(), gitObjects = git,
         pullRequests = object : TrustedPullRequestReader {
             override fun exactHead(commit: String): Map<String, Any?>? = receipt
