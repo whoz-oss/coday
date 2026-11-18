@@ -487,6 +487,14 @@ reported target `forge-talent-portal`, release tag
 `2026-11-18 18:44:23 UTC`. This is a concrete, machine-addressable CI chain
 that can establish *historical deployment success* for the integration commit.
 
+The GitHub workflow-run API returns `inputs: null` for this run and its artifact
+list is empty; its successful job status alone does not expose the release tag.
+The successful deploy job's log does expose `RELEASE_TAG` and
+`TARGET_ENVIRONMENT`. A bounded parser now extracts those two fields and
+rejects missing or contradictory values. It must only receive the log of an
+authenticated, successful `deploy to workstream` job; no transport from
+GitHub Actions to the Forge observer is wired yet.
+
 Build #11054 skipped `backend-build` and `docker-build-and-push` while
 `promote-tags` succeeded. The inspected promotion executor explicitly falls
 back to `currentVersion` artifacts for unaffected services. Therefore the
