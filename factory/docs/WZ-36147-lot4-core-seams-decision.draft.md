@@ -57,14 +57,16 @@ for a workflow that declares the policy. An always-allow implementation may
 exercise the wiring in an isolated test but cannot govern an active Forge
 gate: it would accept the unauthorized and stale replies CE08 must reject.
 
-Forge policy would bind the opened interaction to CE05's stored manifest
-artifact ID and SHA-256 of its stored bytes, or CE07's sealed candidate ID,
-generation, packet digest and observed deployment receipt. It would resolve
+Forge policy would bind the opened interaction to CE05's pinned Git repository,
+commit and canonical manifest SHA-256, or CE07's candidate ID, generation,
+presented deployed tag and successful Deploy-run receipt. It would resolve
 authorization from a trusted server source per gate, reject stale/late actors,
-cancel outstanding attempts when an identity changes, and require both
-independent positive decisions on the current candidate. The final joint
-must re-read observed deployment and blocking findings in the same guarded
-operation. `ForgeHumanAuthority` is the pure rule draft; it is not currently
+cancel outstanding attempts when this Run's packet or work head changes, and
+require both independent positive decisions on the presented candidate. A
+later unrelated integration deployment does not invalidate those decisions;
+the gate does not prove which exact version a human tested. The final joint
+must check blocking findings in the same guarded operation.
+`ForgeHumanAuthority` is the pure rule draft; it is not currently
 connected to this extension or persistence.
 
 **Alternative considered:** a Forge-only approval endpoint. The existing

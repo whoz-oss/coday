@@ -188,9 +188,15 @@ Run is executable.
 | --- | --- | --- |
 | Tenant artifact bytes (CE05, T08/T09) | `Neo4jArtifactStoreIntegrationTest` passes put/open/hash, tenant metadata, retention and legal-hold cases. `ArtifactStore` is Factory-owned; Neo4j holds metadata and object storage holds bytes. Default retention is 90 days and the default blob backend is in-memory. | These tests do not require or prove a Factory blob copy for Forge. Pin the Whoz Git commit and manifest identity, bind the gate to them, and verify source Git availability/content on resume. |
 | Official catalog (CE04/09, T22/T23) | `WorkflowDefinitionSeeder.seed()` skips an existing type/version; the authoring controller accepts user registration/upload. | Protect an official Forge type/version against tenant shadowing and pin its package provenance. |
-| Two human branches (CE07/08, T14/T20/T21) | `WorkflowRoutingTest` passes generic AND-join readiness and shows human waiting is not success. | Bind both authorized replies to one current packet/candidate generation, re-read observed deployment, invalidate both on change, and prove restart/races through the API. |
-| Candidate facts (CE07, T19) | `ForgeCandidateSealTest` checks a deterministic candidate identity for one Run/generation and refuses dirty or colliding code, absent review/verification, CI commit mismatch and observed deployment commit/build mismatch. | Obtain these observations from trusted Git, CI and deployment sources; persist a generation, re-read deployment on human decisions/joint, and join both decisions on it. The Whoz build workflow dispatches deployment and the deploy workflow reports command success, but the inspected Factory, AgentOS, app and integration code has no reader that binds an observed target to the exact commit and built artifact. |
+| Two human branches (CE07/08, T14/T20/T21) | `WorkflowRoutingTest` passes generic AND-join readiness and shows human waiting is not success. | Bind both authorized replies to the candidate presented for this Run and prove authorization, persistence, restart and races through the API. A later unrelated integration tag does not invalidate a human decision. |
+| Candidate facts (CE07, T19) | `ForgeCandidateSealTest` checks a deterministic reference for one Run/generation and refuses unsafe or unverified code, absent work-commit ancestry, CI/tag mismatch and unsuccessful or different-tag deployment. | Read the Git ancestry, successful Build/tag and successful Deploy job from trusted sources; persist the tag and deployment run shown to the human. This is historical deployment evidence, not proof of the version the human actually tested. The exact-runtime artifact guarantee in the earlier T19/T24 draft needs alignment with the clarified product rule. |
 | Delivery launch (CE04, T11/T12/T17) | The earlier `RunService.startRun()` characterization passed with two active parent Runs for one ticket, but that is **historical evidence for a superseded path**. The cockpit Run button already uses `POST /api/factory/workflows` to launch one selected definition. `start_parent_run` was removed from this PR. | Prove two independent `forge.delivery` workflow instances on the direct launch path, separate Case/worktree identities, exact-request replay, negative preflight retry/recovery, and API restart behavior. An optional overlap warning must respect access boundaries. |
+
+After the 2026-11-18 product clarification, the focused
+`ForgeCandidateSealTest` and `ForgeHumanAuthorityTest` command passed with
+`BUILD SUCCESSFUL in 45s`. These pure rules now identify a successful
+integration tag containing this Run's work commit, and a Git-pinned packet;
+they do not read GitHub, execute deployment or enforce a persisted human gate.
 
 Focused Gradle commands:
 
@@ -284,12 +290,11 @@ characterization records. The updated product rule and remaining proof are in
 boundary and do not claim Lot 3 PASS until CE04–07 execute through those
 contracts with persistence, retry and restart proof.
 
-The current Lot 4 `ForgePacketIdentity` names an `artifactId` and SHA-256.
-The clarified Forge source is instead a Git repository, pinned commit and
-canonical manifest SHA-256. The pure authority rules can still govern stale
-decisions, but their packet identity must be aligned with that Git source
-before the human gate is wired. This is a verified contract mismatch in the
-present checkout, not an assumption about a future Lot 4 delivery.
+The pure `ForgePacketIdentity` now names the Git repository, pinned commit and
+canonical manifest SHA-256, matching the clarified Forge source rather than a
+Factory blob artifact ID. The authority rules are still not connected to the
+generic human reply transaction or durable workflow state. Their passing unit
+tests are not a gate authorization or restart proof.
 
 ### Verified execution boundary for CE05/CE07
 
@@ -346,19 +351,19 @@ The inspected Whoz `.github/workflows/build.yml` dispatches integration
 deployment, and `.github/workflows/deploy.yml` runs a remote deployment script
 before writing a success summary. The remote `infra/compose/whoz/scripts/deploy.sh`
 also records the release tag in deployed dynamic properties and inspects
-container image IDs when redeploying. These are useful observation sources,
-but the dispatch, successful command and tag alone do not supply Factory with
-a receipt binding the observed target to the exact code commit and built image
-digests. No reader for that receipt was found in the inspected Coday modules,
-so the CE07 pure seal cannot yet attest a live candidate.
+container image IDs when redeploying. Those are useful diagnostics. The
+clarified gate requires a successful Deploy job for a tag whose Git commit
+contains this Run's work commit; it does not attest which exact images a human
+later tested. Factory still needs a trusted reader of that Git/CI job chain.
 The existing Factory `DeliveryOperationService` is not that reader: its
 documented current path uses stub adapters and immediately reconciles a new
 deployment operation to `succeeded` with only adapter id/state. Its
 `sourceCommit` and `artifactDigest` fields validate request consistency, but
 the service does not inspect the running integration target or a built image.
 Using its success flag as a Forge deployment receipt would therefore be a
-false positive. The Whoz test design requires CI provenance and an observed
-deployment receipt for the exact integrated SHA and build digest (T19/T24).
+false positive. The earlier Whoz test design asks for exact integrated SHA
+and build-digest provenance (T19/T24); that stronger assertion must be revised
+in its owning source to reflect the clarified historical-deployment gate.
 
 ### Integration observation from the Talent Portal example (2026-11-18)
 
@@ -398,10 +403,11 @@ creates the RC Git tag at `github.sha`, so the tag resolves to the built
 integration commit. `Deploy` serializes runs per target and invokes the
 workstream deployment script with that tag; the script writes the tag into
 runtime dynamic properties. A successful dispatch only proves that deployment
-was requested; a successful job alone does not prove the target still runs
-that release when a human later validates it. The current dynamic properties
-expose the tag, but no observed image-digest manifest or Factory reader was
-found. This is the concrete missing receipt for T19/T24.
+was requested. A successful `deploy to workstream` job is the first-version
+proof that the named tag was deployed. It does not prove the target still runs
+that release or that a human later tested precisely those bytes; the requester
+explicitly accepts those limits. Factory still lacks a trusted reader of the
+GitHub job and tag facts.
 
 #### Observed #8488 chain after conflict resolution (2026-11-18)
 
@@ -430,21 +436,21 @@ Build #11054 skipped `backend-build` and `docker-build-and-push` while
 `promote-tags` succeeded. The inspected promotion executor explicitly falls
 back to `currentVersion` artifacts for unaffected services. Therefore the
 integration Git SHA and RC tag do **not** by themselves identify the image
-bytes that were deployed. A candidate receipt needs the per-service promoted
-artifact digests (or a digest of an immutable manifest containing them), plus
-a post-deploy target readback. The GitHub success summary does not prove that
-the target still runs rc100 at a later human decision. The Factory has no
-reader for that live version or image identity in this checkout.
+bytes that were deployed. The tag and successful Deploy run are kept as a
+validation reference, with this limitation visible to the human. No
+per-service artifact digest or current-target readback is required to open
+this first-version human gate.
 
 The first automatic gate check can follow this chain: current work SHA is
 contained in the integration commit; the successful Build run is for that
 exact commit; its RC tag resolves to that commit; a successful **Deploy** run
-names that tag and the authorized target. It must then compare a fresh target
-readback with the tag and built/promoted artifact manifest before opening the
-functional human request, and recheck before accepting the decision. A newer
-deployment or changed work head starts a new candidate generation. The #8488
-example proves the CI correlation path exists; it does not satisfy the missing
-live readback or candidate seal.
+names that tag and the authorized target. The human request then displays the
+deployed tag and waits for an authorized decision. A later integration tag
+produced for other work does not revoke the request or an accepted decision.
+A changed work head for this Run, or a replacement packet, does require fresh
+assessment; a failed integration or Deploy job never opens the request. The
+#8488 example proves the correlation is available in Git and CI, but the
+Factory reader and durable wait remain to be implemented.
 
 #### First-version environment-independent contract
 
@@ -457,8 +463,8 @@ uses an environment profile selected from trusted Run configuration:
 
 | Profile | Evidence needed to open validation |
 | --- | --- |
-| Hosted Forge | Confirm the work commit is an ancestor of the integration commit; resolve the build's RC tag to that exact integration commit; obtain the built artifact digest/manifest; observe the workstream target running that tag and matching built digests. Pin all of these to one candidate generation. |
-| Local | Pin the worktree/repository commit and the locally built version; record an explicit developer attestation that the services were started and checked at a named local target. Label this as *manual local evidence*, never as a CI deployment receipt. A changed commit or rerun starts a new candidate generation. |
+| Hosted Forge | Confirm the work commit is an ancestor of the integration commit; resolve the successful Build run's RC tag to that commit; confirm a successful Deploy job for that tag and target. Show the tag and deployment run to the human. |
+| Local | Pin the worktree/repository commit and record an explicit developer attestation that the services were started and checked at a named local target. Label this as *manual local evidence*, never as a CI deployment receipt. A changed work commit or rerun starts a new candidate generation. |
 
 The observer can poll on step entry and explicit retry/resume in version one;
 CI webhooks are an optimization, not a prerequisite. Missing CI, pending
@@ -480,16 +486,17 @@ The PR's agent review and technical preparation can proceed while integration
 is blocked. The technical **human** request opens only once that review
 applies to the pinned head and a candidate has been sealed; the current
 `ForgeHumanAuthority` requires both human decisions to reference that same
-candidate generation. A later integration deployment or PR head change
-invalidates affected decisions. Hosted Forge must re-observe the live target
-before each human decision and the final join; local mode rechecks the pinned
-worktree/version and explicit manual evidence. This preserves the same
-workflow shape without making Factory understand Whoz CI job names.
+candidate generation presented for this Run. A later unrelated integration
+deployment does not invalidate them. A changed work head or packet for this
+Run does; local mode likewise rechecks the pinned worktree and manual evidence.
+The human's approval is recorded as a decision on the presented work, without
+claiming certainty about the exact version they tested. This preserves the
+same workflow shape without making Factory understand Whoz CI job names.
 
-The first implementation boundary is therefore a Forge evidence reader plus
-a durable candidate wait. The Whoz CI/deploy chain must emit or expose a
-machine-readable build manifest and a post-deploy readback that binds target,
-RC tag, integration commit and built digests. Until that exists, hosted
-candidate sealing cannot truthfully pass T19/T24 and the official workflow
-must remain unpublished. Treating dispatch or elapsed time as deployment
-would open functional validation against potentially older code.
+The first implementation boundary is therefore a Forge Git/CI evidence reader
+plus a durable candidate wait. It must distinguish a dispatched Deploy run
+from the completed `deploy to workstream` job, and verify tag/commit ancestry.
+The official workflow remains unpublished until that reader, the direct
+workflow packet binding, authorized human replies and restart/race proofs are
+in place. The earlier exact-image T19/T24 criterion must be updated rather
+than silently presented as passed by this narrower contract.

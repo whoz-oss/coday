@@ -5,15 +5,15 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 class ForgeHumanAuthorityTest {
-    private val packet = ForgePacketIdentity("artifact-1", "a".repeat(64))
-    private val nextPacket = ForgePacketIdentity("artifact-2", "b".repeat(64))
+    private val packet = ForgePacketIdentity("whoz", "a".repeat(40), "a".repeat(64))
+    private val nextPacket = ForgePacketIdentity("whoz", "b".repeat(40), "b".repeat(64))
     private val packetReviewer = ForgeAuthorizedHuman("designer", "design-reviewer", setOf(ForgeHumanGate.PACKET))
     private val technicalReviewer = ForgeAuthorizedHuman("tech", "technical-reviewer", setOf(ForgeHumanGate.TECHNICAL))
     private val functionalReviewer = ForgeAuthorizedHuman("product", "product-owner", setOf(ForgeHumanGate.FUNCTIONAL))
 
     private fun candidate(generation: Long = 1, packet: ForgePacketIdentity = this.packet) = ForgeCandidateIdentity(
         "candidate-$generation", generation, packet, "whoz", "workstream/forge/master",
-        "commit-$generation", "build-$generation", "integration", "deploy-$generation",
+        "$generation".repeat(40), "integration-rc$generation", "integration", "deploy-$generation",
     )
 
     private fun approvedPacket() = ForgeHumanAuthority(packet).decide(
@@ -88,7 +88,7 @@ class ForgeHumanAuthorityTest {
     fun `a candidate cannot inherit approval from another packet`() {
         assertThatThrownBy { approvedPacket().sealCandidate(candidate(packet = nextPacket)) }
             .isInstanceOf(IllegalArgumentException::class.java)
-        assertThatThrownBy { ForgePacketIdentity("artifact-3", "not-a-digest") }
+        assertThatThrownBy { ForgePacketIdentity("whoz", "c".repeat(40), "not-a-digest") }
             .isInstanceOf(IllegalArgumentException::class.java)
     }
 }

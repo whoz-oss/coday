@@ -25,9 +25,9 @@ trusted, immutable identities. Its focused test proves unauthorized, duplicate,
 rejected and stale decisions are refused; replacement clears decisions; Build
 requires the current packet approval; completion requires both independent
 positive decisions on one current candidate. It deliberately does not claim a
-live server fence. CE05 must produce the persisted canonical `packet-manifest.v1`
-artifact ID and SHA-256; CE07 must seal the integrated candidate tuple and
-generation with deployment observation. Their APIs must supply these identities
+live server fence. CE05 must produce the persisted Git repository, commit and
+canonical `packet-manifest.v1` SHA-256; CE07 must bind the integrated work
+commit, successfully deployed tag and candidate generation. Their APIs must supply these identities
 from storage, never from agent prose or a client-declared `result.outputs`.
 
 **Current gap:** the service-level characterization test opens a human
@@ -43,9 +43,10 @@ execution plugin, called inside the same reply CAS transaction before evidence
 append and transition. The policy would read the
 current persisted packet/candidate generation and trusted actor entitlements,
 bind them to interaction/evidence, and refuse stale, late or unauthorized
-responses. Candidate replacement must atomically cancel both open final
-interactions and invalidate their decisions. The joint must re-read the
-deployment receipt and reject blocking findings. Do not place Forge gate names,
+responses. A replacement caused by this Run's changed work head or packet must
+atomically cancel both open final interactions and invalidate their decisions;
+an unrelated later integration tag does not. The joint must reject blocking
+findings, without asserting which exact version a human tested. Do not place Forge gate names,
 Jira status or domain authorization rules in generic endpoints. The policy's
 persisted state and transaction ownership need an explicit design review before
 wiring the pure rules. These pure rules alone cannot enforce the Forge Build or
@@ -99,9 +100,9 @@ agent/skill package pins; missing packages stop resume.
 
 | TD case | Required live proof |
 | --- | --- |
-| T08/T09 | API decision and Build entry reference stored canonical manifest bytes, ID and hash; reject/change creates a new generation and leaves no old approval on Build/review/candidate. |
+| T08/T09 | API decision and Build entry reference the pinned Git repository, commit and canonical manifest SHA-256; reject/change creates a new generation and leaves no old approval on Build/review/candidate. |
 | T14 | API denies unauthorized, chat-derived, stale and late replies; audit records trusted actor, gate, outcome and exact identity across restart. |
-| T20/T21 | Parallel technical/functional replies on one sealed candidate; one alone cannot complete; changed commit/build/deployment/packet invalidates both; race and observed-deployment reread are exercised. |
+| T20/T21 | Parallel technical/functional replies on the presented deployed-tag reference; one alone cannot complete. A changed work head or packet for this Run invalidates both, while an unrelated later integration tag does not. Authorization, stale replies and races are exercised without claiming exact tested-version proof. |
 | T22 | API/UI deny edit/delete and same-key shadow, including identical bytes; catalog shows repository release provenance and digest. |
 | T23 | Old/new Runs retain their exact definition, selector and agent/skill package locators and digests; missing package blocks restart. |
 

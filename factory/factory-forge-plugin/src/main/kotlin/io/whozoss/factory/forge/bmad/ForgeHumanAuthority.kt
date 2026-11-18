@@ -1,9 +1,9 @@
 package io.whozoss.factory.forge.bmad
 
-/** Immutable identities supplied by the persisted Factory artifact/candidate contracts. */
-data class ForgePacketIdentity(val artifactId: String, val sha256: String) {
+/** The approved packet is pinned to committed Git bytes, without a Factory blob copy. */
+data class ForgePacketIdentity(val repository: String, val commit: String, val manifestSha256: String) {
     init {
-        require(artifactId.isNotBlank() && SHA256.matches(sha256))
+        require(repository.isNotBlank() && COMMIT_SHA.matches(commit) && SHA256.matches(manifestSha256))
     }
 }
 
@@ -14,18 +14,20 @@ data class ForgeCandidateIdentity(
     val repository: String,
     val integrationBranch: String,
     val integrationCommit: String,
-    val buildDigest: String,
+    /** Successful integration deployment offered for validation, not tested-version proof. */
+    val deployedTag: String,
     val integrationTarget: String,
     val deploymentReceipt: String,
 ) {
     init {
         require(candidateId.isNotBlank() && generation > 0 && repository.isNotBlank() && integrationBranch.isNotBlank())
-        require(integrationCommit.isNotBlank() && buildDigest.isNotBlank())
+        require(COMMIT_SHA.matches(integrationCommit) && deployedTag.isNotBlank())
         require(integrationTarget.isNotBlank() && deploymentReceipt.isNotBlank())
     }
 }
 
 private val SHA256 = Regex("^[a-f0-9]{64}$")
+private val COMMIT_SHA = Regex("^[a-f0-9]{40}$")
 
 enum class ForgeHumanGate { PACKET, TECHNICAL, FUNCTIONAL }
 enum class ForgeHumanOutcome { APPROVE, REJECT }
@@ -48,7 +50,8 @@ data class ForgeHumanDecision(
 /**
  * Pure Forge decision rules for a future transactional Factory human-reply hook.
  * The host must persist this state with the interaction and transition in one CAS
- * transaction and re-read observed deployment before a final reply or joint.
+ * transaction. A later unrelated integration deployment does not invalidate
+ * the presented candidate or imply which version the human actually tested.
  */
 data class ForgeHumanAuthority(
     val packet: ForgePacketIdentity,
