@@ -186,9 +186,9 @@ class GradleDependencyInsightToolUnitSpec :
             result shouldContain "dependency"
         }
 
-        "dependencyInsight rejects a timeoutSeconds outside 1..300" {
+        "dependencyInsight rejects a timeoutSeconds outside 1..240" {
             val tool = GradleDependencyInsightTool(GradleRunner(File("/fake")))
-            listOf(0, -5, 301).forEach {
+            listOf(0, -5, 241).forEach {
                 val result = tool.dependencyInsight("x", null, null, it).errorText()
 
                 result shouldContain "timeoutSeconds"
