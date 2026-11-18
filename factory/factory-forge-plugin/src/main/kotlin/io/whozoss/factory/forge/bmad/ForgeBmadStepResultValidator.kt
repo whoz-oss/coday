@@ -73,6 +73,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 "implementation-planning" -> validateDeliveryImplementationPlan(context)
                 "qa-design" -> validateDeliveryVerificationPlan(context)
                 "packet-assembly" -> validateObservedPacket(context)
+                "implementation-build" -> validateDeliveryBuild(context)
                 else -> StepValidationVerdict.Accepted()
             }
 
@@ -497,6 +498,44 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
             newDomainState = LinkedHashMap(context.run.domainState).apply { put("approvedPacketCandidate", packet) },
             findingResolutions = clearedTechnicalPauses,
         )
+    }
+
+    private fun validateDeliveryBuild(context: StepValidationContext): StepValidationVerdict {
+        val plan = context.run.domainState["delivery_plan"] as? Map<*, *>
+        val planned = plan?.get("steps") as? List<*>
+        val packet = context.run.domainState["approvedPacketCandidate"] as? Map<*, *>
+        val manifestSha = packet?.get("manifestSha256") as? String
+        if (planned.isNullOrEmpty() || manifestSha.isNullOrBlank()) {
+            return StepValidationVerdict.Rejected("BUILD_INPUT_UNAVAILABLE")
+        }
+        val report = extractOutputs(context.report)["build_report"] as? Map<*, *>
+            ?: return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
+        val items = report["items"] as? List<*>
+        val workCommit = report["work_commit"] as? String
+        if (report["manifest_sha256"] != manifestSha ||
+            workCommit?.matches(Regex("^[0-9a-f]{40}$")) != true ||
+            items?.size != planned.size
+        ) return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
+        val allowed = mutableSetOf<String>()
+        for (index in planned.indices) {
+            val step = planned[index] as? Map<*, *> ?: return StepValidationVerdict.Rejected("INVALID_BUILD_PLAN")
+            val receipt = items[index] as? Map<*, *> ?: return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
+            val scope = (step["file_paths"] as? List<*>)?.filterIsInstance<String>()?.toSet()
+                ?: return StepValidationVerdict.Rejected("INVALID_BUILD_PLAN")
+            val changed = receipt["changed_files"] as? List<*>
+            if (receipt["step_id"] != step["id"] || receipt["stack"] != step["stack"] ||
+                receipt["status"] != "PASS" || (receipt["summary"] as? String).isNullOrBlank() ||
+                changed.isNullOrEmpty() || changed.any { it !is String || !safeRelativePath(it) || it !in scope } ||
+                changed.size != changed.distinct().size
+            ) return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
+            allowed.addAll(scope)
+        }
+        if (context.workspaceDelta.changedFilesDuringTurn.keys.any { it !in allowed }) {
+            return StepValidationVerdict.Rejected("BUILD_FILE_SCOPE_VIOLATION")
+        }
+        return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+            put("build_report", report)
+        })
     }
 
     private fun rejectDeliveryPlan(context: StepValidationContext, code: String): StepValidationVerdict.Rejected =

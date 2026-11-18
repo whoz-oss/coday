@@ -1,6 +1,6 @@
 # WZ-36147 Lot 3 — delivery entry and Factory seam evidence
 
-Status: **CE04 pre-Build draft prepared; CE04–07 are not execution ready**. This is a
+Status: **CE04–06 draft through Build prepared; CE04–07 are not execution ready**. This is a
 review artifact, not a Factory Run or a Jira decision. The Coday branch was
 merged with the refreshed `origin/workstream/forge/master` before inspection.
 
@@ -144,20 +144,24 @@ required Factory output.
 | Exit when not ready | Submit an evidenced non-PASS result. The selector opens a durable `retry`/`abort` wait. No design, packet, Build or integration fragment is scheduled. |
 | Retry | Re-run ProductEngineer with a fresh attempt and current evidence. The prior negative result remains in the Run trace. |
 
-The version `0.2.0` draft in `WZ-36147-delivery-workflow.draft.json` uses the
-ordinary configurable Factory workflow schema. It defines nine ordered steps:
+The version `0.3.0` draft in `WZ-36147-delivery-workflow.draft.json` uses the
+ordinary configurable Factory workflow schema. It defines ten ordered steps:
 readiness, applicability assessment, product/UX/technical design,
 implementation planning, QA and verification planning, packet assembly, then
-the human packet gate. Optional design disciplines still get an explicit
+the human packet gate and one Build coordinator step. Optional design disciplines still get an explicit
 assessment step and either a document or a reasoned not-applicable decision;
 the implementation and verification plans are required on every route. The
 implementation plan now requires a `frontend` or `backend` stack and an
 explicit dependency on an earlier item (or `null`) for each ordered item.
-This validates the proposed routing data; it does not assign an agent or
-persist an approved plan into direct workflow gate state. The definition is
-deliberately outside the published catalog: it would complete
-after packet approval and has no safe Build or final joint. Packet assembly
-also lacks the Run-bound Git identity needed by the human gate. The current legacy selector still starts
+This validates the proposed routing data and a structured Build receipt.
+The direct workflow now persists the plan and pinned packet candidate in its
+accepted evidence, but the human gate does not yet bind its decision to that
+identity. `BmadBuilder` already delegates Backend and Frontend work, but its
+current Whoz configuration has no Factory worker tool or Forge-specific bounded
+plan contract; the draft role is not deployable unchanged. The definition is
+deliberately outside the published catalog: it would complete after Build and
+still lacks verification, integration observation and the final human joint.
+The current legacy selector still starts
 `forge.product-spec` and contains a trivial path to Build without the complete
 packet gate. Existing pinned legacy Runs must retain their behavior. The
 draft's graph test is not a launch, packet approval or retry integration proof.
@@ -166,19 +170,30 @@ The plugin now rejects repository writes during `delivery-preflight` and
 `design-assessment`. The latter step must submit one `forge.business-outputs.v1`
 artifact with an `applicability` decision for detailed, UX, technical and QA
 specifications; each decision has a Boolean `applicable` and a nonempty reason.
-Missing or malformed decisions fail the step; accepted decisions enter the
-parent Run domain state through the validator's existing transactional update.
+Missing or malformed decisions fail the step; accepted direct-workflow state
+is preserved with the agent-result evidence, while legacy parent Runs retain
+their existing transactional update.
 These checks validate the agent's result shape and observed workspace delta;
 they do not verify Jira readiness or publish the design documents.
 
 The `implementation-planning` step now rejects an empty or malformed
 `delivery_plan.steps[]`, including duplicate IDs, unsafe/empty file scopes and
 missing verification commands. The `qa-design` step requires nonempty
-`verification_plan` Markdown. Accepted plans enter the parent Run domain state.
+`verification_plan` Markdown. Accepted plans enter the direct workflow's
+durable evidence state (and the parent Run domain state on legacy flows).
 Both use the existing Forge business-output artifact. These are result guards for every route, including trivial work;
 they do not prove that the corresponding plan files were committed or copied
 into a Git commit. The manifest's byte check remains required before the
 human gate.
+
+The draft's single `implementation-build` step assigns `BmadBuilder` as the
+full-stack coordinator. Its validator checks one ordered PASS receipt per
+approved plan item, matching stack and manifest digest, a well-formed claimed
+work commit, and each reported/observed changed file against the plan's file
+scope. It rejects missing, reordered or extra receipts and out-of-scope
+changes. The claimed work commit is not yet independently verified against
+Git, and the current Whoz `BmadBuilder` has no Factory worker integration or
+bounded Forge mode. This is a validated result shape, not a runnable Build.
 
 ## Focused Factory evidence
 

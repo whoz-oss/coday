@@ -106,6 +106,45 @@ class ForgeStepRoleGuardTest {
     }
 
     @Test
+    fun `one Build step accounts for every planned backend and frontend item`() {
+        val manifest = "b".repeat(64)
+        val backend = mapOf("id" to "back-1", "stack" to "backend", "file_paths" to listOf("src/api.kt"))
+        val frontend = mapOf("id" to "front-2", "stack" to "frontend", "file_paths" to listOf("ui/view.ts"))
+        val run = run.copy(runType = "forge.delivery", domainState = mapOf(
+            "delivery_plan" to mapOf("steps" to listOf(backend, frontend)),
+            "approvedPacketCandidate" to mapOf("manifestSha256" to manifest),
+        ))
+        val items = listOf(
+            mapOf("step_id" to "back-1", "stack" to "backend", "status" to "PASS",
+                "changed_files" to listOf("src/api.kt"), "summary" to "Implemented API"),
+            mapOf("step_id" to "front-2", "stack" to "frontend", "status" to "PASS",
+                "changed_files" to listOf("ui/view.ts"), "summary" to "Implemented view"),
+        )
+        val report = mapOf("manifest_sha256" to manifest, "work_commit" to "a".repeat(40), "items" to items)
+        fun verdict(value: Map<String, Any?>, delta: WorkspaceDelta = WorkspaceDelta()) =
+            validator.validate(StepValidationContext(run = run, flowType = "forge.delivery",
+                stepId = "implementation-build", agentName = "BmadBuilder",
+                report = businessReport(mapOf("build_report" to value)), workspaceDelta = delta))
+
+        val accepted = verdict(report, WorkspaceDelta(changedFilesDuringTurn = mapOf("src/api.kt" to "MODIFIED")))
+            as StepValidationVerdict.Accepted
+        assertThat((accepted.newDomainState?.get("build_report") as Map<*, *>) ["items"]).isEqualTo(items)
+        for (invalid in listOf(
+            report + ("items" to items.take(1)),
+            report + ("items" to items.reversed()),
+            report + ("items" to (items.take(1) + (items[1] + ("changed_files" to emptyList<String>())))),
+            report + ("items" to (items.take(1) + (items[1] + ("changed_files" to listOf("src/api.kt"))))),
+            report + ("manifest_sha256" to "c".repeat(64)),
+            report + ("work_commit" to "uncommitted"),
+        )) {
+            assertThat((verdict(invalid) as StepValidationVerdict.Rejected).reasonCode)
+                .isEqualTo("INVALID_BUILD_REPORT")
+        }
+        assertThat((verdict(report, WorkspaceDelta(changedFilesDuringTurn = mapOf("secrets.txt" to "ADDED")))
+            as StepValidationVerdict.Rejected).reasonCode).isEqualTo("BUILD_FILE_SCOPE_VIOLATION")
+    }
+
+    @Test
     fun `delivery assessment requires all four evidenced applicability decisions`() {
         val decisions: Map<String, Any?> = mapOf(
             "detailed_spec" to mapOf("applicable" to true, "reason" to "Complex product rules"),
