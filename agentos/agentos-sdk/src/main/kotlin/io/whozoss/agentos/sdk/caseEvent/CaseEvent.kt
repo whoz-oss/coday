@@ -233,6 +233,15 @@ data class MessageEvent(
      * null, the level was not applied: the provider takes no effort (Anthropic, Gemini).
      */
     val requestedReasoningEffort: ReasoningEffort? = null,
+    /**
+     * Id of the user [MessageEvent] this message re-runs, null for a regular message.
+     *
+     * The history of a case is an append-only log: nothing is ever removed or edited. A USER message
+     * with `rerunOf = X` says that the conversation restarts from just before X and that this message
+     * takes its place: X and everything recorded after it, up to this message, is no longer part of the
+     * effective conversation (see `effectiveConversation` in the service). The full log stays readable.
+     */
+    val rerunOf: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.MESSAGE
 }
