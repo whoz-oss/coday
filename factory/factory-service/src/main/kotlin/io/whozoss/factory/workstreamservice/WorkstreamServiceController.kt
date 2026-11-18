@@ -7,9 +7,6 @@ import io.whozoss.factory.agentattempt.domain.toDto
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.config.SessionProperties
 import io.whozoss.factory.persistence.TenantScope
-import io.whozoss.factory.run.service.RunService
-import io.whozoss.factory.run.service.RunStartCommand
-import io.whozoss.factory.run.domain.RunStatuses
 import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.FactoryCaller
 import io.whozoss.factory.workflow.web.requireNamespaceId
@@ -37,16 +34,13 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.util.concurrent.ConcurrentHashMap
-import java.nio.charset.StandardCharsets
-import java.util.UUID
 
 /**
  * Dedicated facade of the conversational `FACTORY_WORKSTREAM` HTTP_API integration.
  *
- * The operations replace the former bridge tools: `list_workflows`,
+ * Eight operations replace the former bridge tools: `list_workflows`,
  * `get_workflow`, `get_step_attempts`, `get_blockers`, `get_required_human_actions`,
- * `get_workstream` (read), `start_workflow`, `start_parent_run` and
- * `request_agent_retry` (write).
+ * `get_workstream` (read), `start_workflow` and `request_agent_retry` (write).
  *
  * It is an ordinary authenticated API: the caller is whoever the
  * `AuthenticationFilter` admitted (the OS user in local mode, or the user a Factory JWT / proxy header identifies in auth mode), and
@@ -67,7 +61,6 @@ class WorkstreamServiceController(
     private val projectionService: WorkstreamProjectionService,
     private val workstreamService: WorkstreamService,
     private val createWorkflowRunService: CreateWorkflowRunService,
-    private val runService: RunService,
     private val sessionProperties: SessionProperties,
 ) {
 
@@ -241,58 +234,6 @@ class WorkstreamServiceController(
     }
 
     // ----- writes --------------------------------------------------------
-
-    /** Parent Runs own an AgentOS root Case and worktree; a ticket is never a uniqueness key. */
-    @PostMapping("/parent-runs", produces = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(operationId = "start_parent_run", summary = "Start a parent Run with an isolated root Case and worktree.")
-    fun startParentRun(
-        @RequestParam(name = "namespaceId") namespaceId: String,
-        @RequestBody(required = false) body: Map<String, Any?>?,
-        @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
-        @Parameter(hidden = true) user: AuthenticatedUser,
-    ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
-        val caller = resolveCaller(user, namespaceId)
-        val request = body ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
-        if (request.keys.any { it !in PARENT_START_FIELDS }) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
-        val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
-        val runType = (request["runType"] as? String)?.trim()
-            ?.takeIf { ID_PATTERN.matches(it) }
-            ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "runType is invalid.")
-        val title = (request["title"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
-            ?.also { if (it.length > MAX_TITLE) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "title is too long.") }
-        val ticket = (request["ticket"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
-        if (ticket != null && !TICKET_PATTERN.matches(ticket)) {
-            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "ticket is invalid.")
-        }
-        val key = idempotencyKey?.trim()?.takeIf { KEY_PATTERN.matches(it) }
-            ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "A valid Idempotency-Key is required.")
-        assertWorkflowTypeAllowed(caller.scope, runType)
-        val runId = UUID.nameUUIDFromBytes(
-            "start-parent-run|${caller.scope.organizationId}|${caller.scope.workstreamId}|$namespace|${caller.userId}|$key"
-                .toByteArray(StandardCharsets.UTF_8),
-        ).toString()
-        val run = runService.startRun(
-            scope = caller.scope,
-            namespaceId = namespace,
-            command = RunStartCommand(runId = runId, runType = runType, title = title ?: "$runType ($runId)", ticket = ticket),
-            repoRoot = sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() },
-            actorId = caller.userId,
-        )
-        val overlaps = if (ticket == null) emptyList() else runCatching {
-            runService.listRuns(caller.scope, namespace)
-                .filter { it.runId != run.runId && it.ticket == ticket && !RunStatuses.isTerminal(it.status) }
-                .map { mapOf("runId" to it.runId, "runType" to it.runType, "status" to it.status) }
-        }.getOrDefault(emptyList())
-        return ResponseEntity.status(201).body(WorkflowDataEnvelope(mapOf(
-            "runId" to run.runId,
-            "namespaceId" to namespace,
-            "runType" to run.runType,
-            "ticket" to run.ticket,
-            "status" to run.status,
-            "rootCaseId" to run.rootCaseId,
-            "concurrentRuns" to overlaps,
-        )))
-    }
 
     @PostMapping("/workflows", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(operationId = "start_workflow", summary = "Create a workflow run. Factory owns its identity and execution.")
@@ -479,7 +420,6 @@ class WorkstreamServiceController(
         val DEFINITION_HASH_PATTERN = Regex("^[0-9a-f]{64}$")
         val REASON_PATTERN = Regex("^[A-Za-z0-9._-]{1,64}$")
         val START_FIELDS = setOf("workflowType", "title", "ticket", "definitionVersion", "definitionHash")
-        val PARENT_START_FIELDS = setOf("runType", "title", "ticket")
         val RETRY_FIELDS = setOf("stepId", "expectedRevision", "reasonCode")
     }
 }

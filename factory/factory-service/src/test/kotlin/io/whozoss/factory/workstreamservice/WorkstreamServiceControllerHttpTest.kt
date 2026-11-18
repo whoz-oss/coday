@@ -155,18 +155,6 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     // ----- reads: tenant fencing ------------------------------------------
 
     @Test
-    fun `parent run route rejects the unpublished delivery type without starting a workflow`() {
-        val response = post(
-            "$base/parent-runs",
-            mapOf("runType" to "forge.delivery", "ticket" to "WZ-36147"),
-            "delivery-attempt-1",
-        )
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(errorCode(response.body)).isEqualTo("WORKFLOW_EXECUTION_PLUGIN_NOT_FOUND")
-    }
-
-    @Test
     fun `list returns only workflows of the configured namespace and hides other namespaces and tenants`() {
         publish("wf-svc-a", namespace)
         publish("wf-svc-b", secondNamespace)

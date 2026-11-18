@@ -6,10 +6,19 @@ proposal. It is not permission to publish the incomplete `forge.delivery`
 definition. The Ready judgment remains the first configurable ProductEngineer
 step; Factory core does not interpret Jira status.
 
+**Later correction, 2026-11-18:** delivery must be one `forge.delivery`
+workflow execution launched from the cockpit's Run button. The parent-Run
+entry and fragment chain discussed below are superseded for this delivery;
+they remain descriptions of pre-existing Factory capability and historical
+tests. `start_parent_run` has been removed from this PR. CE04 concurrency,
+CE05 Git packet identity and the human gate requirements remain in force,
+but must be proved through the direct `start_workflow` path.
+
 The requester approved a narrow domain-neutral external-evidence observation
-extension on 2026-11-18. It now lets the Forge plugin read a pinned Git packet
-outside the finalization transaction and bind the checked manifest receipt to
-the parent Run. The complete human gate, Git recheck on later resume/Build and
+extension on 2026-11-18. It lets the Forge plugin read a pinned Git packet
+outside the finalization transaction. Its current worktree lookup and receipt
+binding still depend on a parent Run and must be adapted to the direct workflow
+instance. The complete human gate, Git recheck on later resume/Build and
 observed CI/deployment candidate remain pending; this approval does not
 publish the draft delivery definition.
 
@@ -25,12 +34,12 @@ the user may deliberately compare approaches or retry after an unproductive
 Case. No Jira status transition starts a delivery Run automatically.
 
 The existing integration characterization with two active parent Runs on one
-ticket is therefore an allowed scenario, not a missing uniqueness fence.
-Still unproved: the official entry creates a parent Run rather than a direct
-workflow, AgentOS provisions distinct worktrees for concurrent Runs, and a
-warning can be computed without leaking inaccessible workstream details.
-The first ProductEngineer step rechecks Ready and source sufficiency for each
-Run independently. Internal fragments are not manually launched.
+ticket is a historical test of a different launch path. It does not prove CE04
+for the required direct workflow path. Still unproved: two independent
+`forge.delivery` workflow instances can start for the same ticket, each gains
+its own AgentOS Case and worktree, and an optional warning respects the
+caller's access. The first ProductEngineer step rechecks Ready and source
+sufficiency for each instance independently.
 
 ## CE05 — pin the Git packet; do not require a blob copy for Forge
 

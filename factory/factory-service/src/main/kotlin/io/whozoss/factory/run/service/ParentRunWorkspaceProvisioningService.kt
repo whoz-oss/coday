@@ -10,8 +10,6 @@ import io.whozoss.factory.environment.domain.WorkEnvironment
 import io.whozoss.factory.environment.domain.WorkEnvironmentState
 import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
 import io.whozoss.factory.persistence.TenantScope
-import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
-import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.run.domain.RunRecord
 import io.whozoss.factory.run.persistence.RunRepository
@@ -68,9 +66,7 @@ class ParentRunWorkspaceProvisioningService(
         val run = transaction.execute {
             val intent = intents.findById(key).orElse(null)
             if (intent != null) {
-                if (intent.actorId != actorId || intent.commandHash != hash || intent.rootCaseId != root) {
-                    throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "Run launch identity differs from persisted intent")
-                }
+                check(intent.actorId == actorId && intent.commandHash == hash && intent.rootCaseId == root) { "Run launch identity differs from persisted intent" }
             } else {
                 // Legacy Runs require an explicit migration, never silently invented attribution.
                 check(runs.find(scope, proposed.namespaceId, proposed.runId) == null) { "Existing Run has no authenticated provisioning intent; explicit migration required" }

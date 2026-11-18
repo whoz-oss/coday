@@ -100,49 +100,6 @@ paths:
         '403': { description: 'The workstream namespace mapping is invalid or the workflow type is not allowed.' }
         '404': { description: 'Registered definition not found; initialization may have created a mapping, but no run.' }
         '409': { description: 'Idempotency, identity or definition conflict, including ambiguous definition selection. Definition failures may leave an initialized mapping but no run.' }
-  /api/factory/workstream-service/parent-runs:
-    parameters:
-      - $ref: '#/components/parameters/NamespaceId'
-    post:
-      operationId: start_parent_run
-      summary: Start a parent Run with its own AgentOS root Case and worktree.
-      description: >-
-        Use for workflows driven by a parent-Run selector. Repeating the same Idempotency-Key as
-        the same caller replays that Run; another key creates another Run even for the same ticket
-        and run type. The response may list other active Runs for the ticket within the caller's
-        workstream. That list is an advisory warning and never prevents launch. Human gates are
-        still answered in Factory.
-      parameters:
-        - name: Idempotency-Key
-          in: header
-          required: true
-          description: Stable key for this launch request, distinct for independent runs.
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 128
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [runType]
-              properties:
-                runType:
-                  type: string
-                  maxLength: 128
-                title:
-                  type: string
-                  maxLength: 200
-                ticket:
-                  type: string
-                  maxLength: 64
-      responses:
-        '201': { description: Parent Run created or replayed, with optional nonblocking concurrentRuns list. }
-        '403': { description: Workstream boundary violation. }
-        '409': { description: Request identity conflict. }
   /api/factory/workstream-service/workflows/{workflowId}:
     parameters:
       - $ref: '#/components/parameters/NamespaceId'
