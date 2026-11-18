@@ -4,6 +4,44 @@ Status: **CE04 pre-Build draft prepared; CE04–07 are not execution ready**. Th
 review artifact, not a Factory Run or a Jira decision. The Coday branch was
 merged with the refreshed `origin/workstream/forge/master` before inspection.
 
+## Single-workflow correction (2026-11-18)
+
+The requester requires one published `forge.delivery` definition and one
+workflow execution visible in the Factory cockpit from the Run button through
+final validation. The cockpit already launches a selected definition through
+`POST /api/factory/workflows`; its resulting `workflowId` must own all delivery
+steps. No `FactoryFlowSelector` parent Run or chain of `forge.*` fragment
+workflows is part of this delivery design. The experimental
+`FACTORY_WORKSTREAM.start_parent_run` endpoint, its OpenAPI/tool documentation
+and its endpoint tests have been removed from this PR. The pre-existing
+`forge-bmad` parent-Run machinery remains available for other uses.
+
+The existing `forge.delivery` JSON is already one workflow, but stops at the
+packet gate and must remain unpublished. The single-workflow engine supports
+ordered and parallel steps, one bounded conditional split/join, durable human
+waits and step retry. It does not currently express an arbitrary number of
+planned implementation steps or a cyclic correction path as distinct dynamic
+nodes in the same definition. Those capabilities must be added to the
+single-workflow execution model, or represented as bounded work within a
+fixed step while keeping each substep's evidence in the same workflow. The
+choice must be verified against CE06/CE07 and their required proofs before
+publication; it is not a reason to silently switch back to parent fragments.
+
+Some prior evidence below characterizes the parent-Run route and remains a
+historical test result, not evidence for the now-required delivery launch.
+In particular, the Git packet observer currently requires a parent Run's
+persisted work environment and cannot yet observe a direct workflow Run.
+Its Git manifest validation is reusable, but the trusted worktree binding,
+evidence persistence and technical-pause recovery must be adapted to the
+single `workflowId` before the packet gate is wired.
+
+Correction verification: `./gradlew :factory-service:test --tests
+'io.whozoss.factory.workstreamservice.WorkstreamServiceControllerHttpTest'
+--tests 'io.whozoss.factory.workflow.domain.ForgeDeliveryDraftDefinitionTest'
+--no-daemon` passed with `BUILD SUCCESSFUL in 1m 45s` (17 controller tests and
+one draft-definition test, zero failures). This verifies the removed endpoint
+does not break those paths; it is not an end-to-end delivery run.
+
 ## Delivery entry decision (2026-11-17)
 
 The requester confirmed the configurable first-step approach and the
@@ -123,7 +161,7 @@ Run is executable.
 | Official catalog (CE04/09, T22/T23) | `WorkflowDefinitionSeeder.seed()` skips an existing type/version; the authoring controller accepts user registration/upload. | Protect an official Forge type/version against tenant shadowing and pin its package provenance. |
 | Two human branches (CE07/08, T14/T20/T21) | `WorkflowRoutingTest` passes generic AND-join readiness and shows human waiting is not success. | Bind both authorized replies to one current packet/candidate generation, re-read observed deployment, invalidate both on change, and prove restart/races through the API. |
 | Candidate facts (CE07, T19) | `ForgeCandidateSealTest` checks a deterministic candidate identity for one Run/generation and refuses dirty or colliding code, absent review/verification, CI commit mismatch and observed deployment commit/build mismatch. | Obtain these observations from trusted Git, CI and deployment sources; persist a generation, re-read deployment on human decisions/joint, and join both decisions on it. The Whoz build workflow dispatches deployment and the deploy workflow reports command success, but the inspected Factory, AgentOS, app and integration code has no reader that binds an observed target to the exact commit and built artifact. |
-| Parent launch (CE04, T11/T12/T17) | `RunService.startRun()` pins a selector, persists one parent `RunRecord`, uses a deterministic root Case ID and replays an identical `runId` with a persisted provisioning intent. The integration characterization passes with **two** active parent Runs, distinct Case IDs and fragments for the same ticket. `FACTORY_WORKSTREAM.start_parent_run` now resolves a request key to a parent Run ID and calls `RunService`; a second key is allowed and visible same-workstream runs are reported only as an advisory warning. `start_workflow` remains the separate direct-workflow path. | Prove the official `forge.delivery` selector/definition path, real AgentOS worktree isolation, negative preflight retry/recovery, permission-filtered cross-workstream warning if later required, and API restart behavior. |
+| Delivery launch (CE04, T11/T12/T17) | The earlier `RunService.startRun()` characterization passed with two active parent Runs for one ticket, but that is **historical evidence for a superseded path**. The cockpit Run button already uses `POST /api/factory/workflows` to launch one selected definition. `start_parent_run` was removed from this PR. | Prove two independent `forge.delivery` workflow instances on the direct launch path, separate Case/worktree identities, exact-request replay, negative preflight retry/recovery, and API restart behavior. An optional overlap warning must respect access boundaries. |
 
 Focused Gradle commands:
 
