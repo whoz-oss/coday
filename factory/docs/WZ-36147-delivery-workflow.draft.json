@@ -81,7 +81,7 @@
       "dependsOn": ["technical-design"],
       "entry": ["Read every applicable design, its pinned revision and all not-applicable decisions."],
       "exit": [
-        "Return the nonempty plan path, locator, revision, content digest and code-step scopes; an empty plan is a failure."
+        "Return a forge.business-outputs.v1 artifact with nonempty delivery_plan.steps. Every step needs a distinct id, title, safe relative file_paths and verification command, including for a trivial change. Also return the plan document path, locator, revision and content digest."
       ],
       "id": "implementation-planning",
       "mission": "Produce a nonempty implementation plan with ordered, bounded code steps and file scopes, including for a trivial change.",
@@ -97,7 +97,7 @@
         "Read the pinned source, applicable specifications, implementation plan and QA applicability decision."
       ],
       "exit": [
-        "Return the QA specification path, locator, revision and digest when applicable, or its not-applicable reason. Always return a nonempty verification plan with path, locator, revision and digest."
+        "Return the QA specification path, locator, revision and digest when applicable, or its not-applicable reason. Always return a forge.business-outputs.v1 artifact with nonempty verification_plan Markdown and the plan document path, locator, revision and digest."
       ],
       "id": "qa-design",
       "mission": "Produce the QA specification when applicable and a nonempty verification plan on every route.",

@@ -19,13 +19,60 @@ class ForgeStepRoleGuardTest {
         "SPEC.md" to WatchedFileSnapshot("SPEC.md", true, "before", true, "before"),
     )
 
-    private fun applicabilityReport(decisions: Map<String, Any?>): Map<String, Any?> = mapOf(
+    private fun businessReport(values: Map<String, Any?>): Map<String, Any?> = mapOf(
         "artifacts" to listOf(mapOf(
             "kind" to ForgeBusinessOutputArtifact.KIND,
             "encoding" to "markdown",
-            "content" to mapper.writeValueAsString(mapOf("applicability" to decisions)),
+            "content" to mapper.writeValueAsString(values),
         )),
     )
+
+    private fun applicabilityReport(decisions: Map<String, Any?>) = businessReport(mapOf("applicability" to decisions))
+
+    @Test
+    fun `delivery implementation plan rejects empty duplicate and unsafe steps`() {
+        fun verdict(steps: List<Map<String, Any?>>) = validator.validate(StepValidationContext(
+            run = run.copy(runType = "forge.delivery"),
+            flowType = "forge.delivery",
+            stepId = "implementation-planning",
+            agentName = "Architect",
+            report = businessReport(mapOf("delivery_plan" to mapOf("steps" to steps))),
+        ))
+        val step = mapOf<String, Any?>(
+            "id" to "implement-1",
+            "title" to "Implement scoped change",
+            "file_paths" to listOf("src/allowed.kt"),
+            "verification" to "./gradlew test",
+        )
+        assertThat(verdict(listOf(step))).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        assertThat((verdict(emptyList()) as StepValidationVerdict.Rejected).reasonCode)
+            .isEqualTo("MISSING_DELIVERY_PLAN_STEPS")
+        for (steps in listOf(
+            listOf(step, step),
+            listOf(step + ("file_paths" to listOf("src/../outside.kt"))),
+            listOf(step + ("verification" to "")),
+        )) {
+            assertThat((verdict(steps) as StepValidationVerdict.Rejected).reasonCode)
+                .isEqualTo("INVALID_DELIVERY_PLAN_STEP")
+        }
+    }
+
+    @Test
+    fun `delivery QA requires a nonempty verification plan on every route`() {
+        fun verdict(value: Any?) = validator.validate(StepValidationContext(
+            run = run.copy(runType = "forge.delivery"),
+            flowType = "forge.delivery",
+            stepId = "qa-design",
+            agentName = "QAArchitect",
+            report = businessReport(mapOf("verification_plan" to value)),
+        ))
+        assertThat(verdict("1. Run focused and regression tests"))
+            .isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        for (bad in listOf(null, "", "  ")) {
+            assertThat((verdict(bad) as StepValidationVerdict.Rejected).reasonCode)
+                .isEqualTo("EMPTY_VERIFICATION_PLAN")
+        }
+    }
 
     @Test
     fun `delivery assessment requires all four evidenced applicability decisions`() {

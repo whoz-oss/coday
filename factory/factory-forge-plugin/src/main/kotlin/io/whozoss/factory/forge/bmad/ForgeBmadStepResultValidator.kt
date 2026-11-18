@@ -70,6 +70,8 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
             "forge.delivery" -> when (context.stepId) {
                 "delivery-preflight" -> checkReadOnlyWorkspace(context) ?: StepValidationVerdict.Accepted()
                 "design-assessment" -> validateDeliveryAssessment(context)
+                "implementation-planning" -> validateDeliveryImplementationPlan(context)
+                "qa-design" -> validateDeliveryVerificationPlan(context)
                 else -> StepValidationVerdict.Accepted()
             }
 
@@ -429,6 +431,43 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         }
         return StepValidationVerdict.Accepted()
     }
+
+    private fun validateDeliveryImplementationPlan(context: StepValidationContext): StepValidationVerdict {
+        val plan = extractOutputs(context.report)["delivery_plan"] as? Map<*, *>
+        val steps = plan?.get("steps") as? List<*>
+        if (steps.isNullOrEmpty()) return rejectDeliveryPlan(context, "MISSING_DELIVERY_PLAN_STEPS")
+        val ids = mutableSetOf<String>()
+        val valid = steps.all { raw ->
+            val step = raw as? Map<*, *> ?: return@all false
+            val id = step["id"] as? String
+            val paths = step["file_paths"] as? List<*>
+            val validId = !id.isNullOrBlank() && ids.add(id)
+            validId &&
+                !(step["title"] as? String).isNullOrBlank() &&
+                !(step["verification"] as? String).isNullOrBlank() &&
+                !paths.isNullOrEmpty() && paths.all { it is String && safeRelativePath(it) } &&
+                paths.size == paths.distinct().size
+        }
+        return if (valid) StepValidationVerdict.Accepted()
+        else rejectDeliveryPlan(context, "INVALID_DELIVERY_PLAN_STEP")
+    }
+
+    private fun validateDeliveryVerificationPlan(context: StepValidationContext): StepValidationVerdict {
+        val content = extractOutputs(context.report)["verification_plan"] as? String
+        return if (content != null && content.isNotBlank() && content.length <= 32_000) StepValidationVerdict.Accepted()
+        else rejectDeliveryPlan(context, "EMPTY_VERIFICATION_PLAN")
+    }
+
+    private fun rejectDeliveryPlan(context: StepValidationContext, code: String): StepValidationVerdict.Rejected =
+        StepValidationVerdict.Rejected(
+            reasonCode = code,
+            findings = listOf(NewFinding(
+                code = code,
+                severity = FindingSeverity.CRITICAL,
+                message = "Delivery step '${context.stepId}' requires a nonempty, valid plan in forge.business-outputs.v1.",
+                stepId = context.stepId,
+            )),
+        )
 
     private fun safeRelativePath(path: String): Boolean = path.isNotBlank() && path == path.trim() &&
         !path.startsWith('/') && !path.contains('\\') && !path.contains('\u0000') &&
