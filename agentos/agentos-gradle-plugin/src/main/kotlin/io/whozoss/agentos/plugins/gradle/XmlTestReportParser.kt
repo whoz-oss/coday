@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.gradle
 import mu.KLogging
 import org.w3c.dom.Element
 import java.io.File
+import javax.xml.XMLConstants
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.math.max
 
@@ -13,59 +14,35 @@ import kotlin.math.max
  */
 internal class XmlTestReportParser {
     /**
-     * Finds the `TEST-*.xml` reports of run [runId], under any `build/agentos-test-results/<runId>` of [root]
-     * (the dir [TestReportsInitScript] points Gradle to: the project own `build/test-results` is ignored).
+     * Finds the `TEST-*.xml` reports under [reportsDir], the directory [TestReportsInitScript] points Gradle to
+     * (the project own `build/test-results` is ignored).
      */
-    fun collect(
-        root: File,
-        runId: String,
-    ): List<File> =
-        runDirs(root, runId).flatMap { dir ->
-            dir.walkTopDown().filter { it.isFile && it.name.startsWith("TEST-") && it.extension == "xml" }.toList()
-        }
+    fun collect(reportsDir: File): List<File> =
+        reportsDir.walkTopDown().filter { it.isFile && it.name.startsWith("TEST-") && it.extension == "xml" }.toList()
 
-    /** Deletes the report dirs of run [runId] only: other runs may still be writing theirs. */
-    fun delete(
-        root: File,
-        runId: String,
-    ) = runDirs(root, runId).forEach { it.deleteRecursively() }
+    /** Deletes [reportsDir], which belongs to one call only: other calls have their own. */
+    fun delete(reportsDir: File) {
+        reportsDir.deleteRecursively()
+    }
 
     /**
-     * The walk is pruned: hidden directories (`.git`, `.gradle`, `.idea`…) are skipped, and inside a `build`
-     * directory only the tool reports dir is entered, so compiled classes and other build output are never listed.
+     * Summarises [reports]. When the build failed ([exitCode] not 0) and the reports do not explain it (no failed
+     * test, or a report that could not be read), the Gradle [rawOutput] is appended: with several modules, one may
+     * have failed to compile or matched no test while the others left reports.
      */
-    private fun runDirs(
-        root: File,
-        runId: String,
-    ): List<File> =
-        root
-            .walkTopDown()
-            .onEnter { dir -> dir == root || isWorthWalking(dir, runId) }
-            .filter { it.isDirectory && it.name == runId && it.parentFile?.name == TestReportsInitScript.REPORTS_DIR }
-            .toList()
-
-    private fun isWorthWalking(
-        dir: File,
-        runId: String,
-    ): Boolean =
-        !dir.name.startsWith(".") &&
-            when (dir.parentFile?.name) {
-                "build" -> dir.name == TestReportsInitScript.REPORTS_DIR
-                TestReportsInitScript.REPORTS_DIR -> dir.name == runId
-                else -> true
-            }
-
     fun buildSummary(
         exitCode: Int,
         reports: List<File>,
+        rawOutput: String = "",
     ): String {
         var totalTests = 0
         var totalSkipped = 0
         var totalFailures = 0
         var totalErrors = 0
+        var unreadable = 0
         val failures = mutableListOf<FailureDetail>()
 
-        val dbf = DocumentBuilderFactory.newInstance()
+        val dbf = secureDocumentBuilderFactory()
         for (report in reports) {
             try {
                 val doc = dbf.newDocumentBuilder().parse(report)
@@ -92,6 +69,7 @@ internal class XmlTestReportParser {
                         )
                 }
             } catch (e: Exception) {
+                unreadable++
                 logger.warn { "Could not parse report ${report.name}: ${e.message}" }
             }
         }
@@ -102,6 +80,7 @@ internal class XmlTestReportParser {
         return buildString {
             appendLine("$status (exit $exitCode)")
             appendLine("Tests: $totalTests  Passed: $passed  Skipped: $totalSkipped  Failed: ${totalFailures + totalErrors}")
+            if (unreadable > 0) appendLine("$unreadable report(s) could not be read")
             if (failures.isNotEmpty()) {
                 appendLine()
                 appendLine("── Failures ──────────────────────────────────────────")
@@ -117,6 +96,11 @@ internal class XmlTestReportParser {
                     if (f.message.isNotBlank()) appendLine("   message : ${f.message.capped(messageCap).indented()}")
                     if (f.stack.isNotEmpty()) appendLine("   stack   : ${f.stack.joinToString("\n").indented()}")
                 }
+            }
+            if (exitCode != 0 && (failures.isEmpty() || unreadable > 0) && rawOutput.isNotBlank()) {
+                appendLine()
+                appendLine("── Raw output ────────────────────────────────────────")
+                appendLine(rawOutput)
             }
         }.trimEnd()
     }
@@ -147,6 +131,18 @@ internal class XmlTestReportParser {
     private fun List<String>.signal(max: Int): List<String> = filterNot { it.isNoise() }.take(max).ifEmpty { take(1) }
 
     private fun String.isNoise(): Boolean = NOISE_PREFIXES.any { removePrefix("at ").startsWith(it) }
+
+    /**
+     * A JUnit XML report has no DOCTYPE: refusing it removes the external entities and DTDs, so a report (written by
+     * test code, which runs freely) cannot make the parser read a file or call a URL. Such a report counts as unreadable.
+     */
+    private fun secureDocumentBuilderFactory(): DocumentBuilderFactory =
+        DocumentBuilderFactory.newInstance().apply {
+            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            isXIncludeAware = false
+            isExpandEntityReferences = false
+        }
 
     internal data class FailureDetail(
         val className: String,

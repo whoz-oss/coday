@@ -104,13 +104,8 @@ private fun summaryOf(vararg cases: FailingCase): String {
     }
 }
 
-private const val RUN_ID = "run-1"
-
-/** Tool-owned report location (see [TestReportsInitScript]): `<module>/build/agentos-test-results/<runId>/test`. */
-private fun File.testResultsDir(
-    module: String = ".",
-    runId: String = RUN_ID,
-): File = resolve("$module/build/agentos-test-results/$runId/test").also { it.mkdirs() }
+/** Tool-owned report location (see [TestReportsInitScript]): `<reportsDir>/<project>-<hash>/test`. */
+private fun File.testResultsDir(project: String = "root-1a2b"): File = resolve("$project/test").also { it.mkdirs() }
 
 // ── spec ──────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -122,7 +117,7 @@ class XmlTestReportParserUnitSpec :
         "collect returns empty list when no XML files exist" {
             val dir = tmpDir()
             try {
-                XmlTestReportParser().collect(dir, RUN_ID) shouldBe emptyList()
+                XmlTestReportParser().collect(dir) shouldBe emptyList()
             } finally {
                 dir.deleteRecursively()
             }
@@ -136,7 +131,7 @@ class XmlTestReportParserUnitSpec :
                 results.writeXml("IGNORED-com.example.MyTest.xml", allPassXml())
                 results.writeXml("TEST-other.txt", "irrelevant")
 
-                val result = XmlTestReportParser().collect(dir, RUN_ID)
+                val result = XmlTestReportParser().collect(dir)
 
                 result.map { it.name } shouldBe listOf("TEST-com.example.MyTest.xml")
             } finally {
@@ -149,7 +144,7 @@ class XmlTestReportParserUnitSpec :
             try {
                 dir.testResultsDir().writeXml("TEST-com.example.MyTest.xml", allPassXml())
 
-                val result = XmlTestReportParser().collect(dir, RUN_ID)
+                val result = XmlTestReportParser().collect(dir)
 
                 result.size shouldBe 1
             } finally {
@@ -157,78 +152,29 @@ class XmlTestReportParserUnitSpec :
             }
         }
 
-        "collect finds the reports of every module" {
+        "collect finds the reports of every project, included builds too" {
             val dir = tmpDir()
             try {
-                dir.testResultsDir("engine").writeXml("TEST-A.xml", allPassXml())
-                dir.testResultsDir("integration/integration-gradle").writeXml("TEST-B.xml", allPassXml())
+                dir.testResultsDir("engine-1111").writeXml("TEST-A.xml", allPassXml())
+                dir.testResultsDir("lib-2222").writeXml("TEST-B.xml", allPassXml())
 
-                XmlTestReportParser().collect(dir, RUN_ID).map { it.name }.sorted() shouldBe listOf("TEST-A.xml", "TEST-B.xml")
+                XmlTestReportParser().collect(dir).map { it.name }.sorted() shouldBe listOf("TEST-A.xml", "TEST-B.xml")
             } finally {
                 dir.deleteRecursively()
             }
         }
 
-        "collect ignores the project own reports in build/test-results" {
+        // ── delete ───────────────────────────────────────────────────────────────────────────────────────────
+
+        "delete removes the whole reports dir" {
             val dir = tmpDir()
             try {
-                dir.resolve("build/test-results/test").also { it.mkdirs() }.writeXml("TEST-Project.xml", allPassXml())
+                dir.testResultsDir("engine-1111").writeXml("TEST-A.xml", allPassXml())
+                dir.testResultsDir("cli-2222").writeXml("TEST-B.xml", allPassXml())
 
-                XmlTestReportParser().collect(dir, RUN_ID) shouldBe emptyList()
-            } finally {
-                dir.deleteRecursively()
-            }
-        }
+                XmlTestReportParser().delete(dir)
 
-        "collect ignores TEST-*.xml outside build/agentos-test-results" {
-            val dir = tmpDir()
-            try {
-                dir.writeXml("TEST-Root.xml", allPassXml())
-                dir.resolve("src").also { it.mkdirs() }.writeXml("TEST-Src.xml", allPassXml())
-                dir.resolve("build/classes").also { it.mkdirs() }.writeXml("TEST-Classes.xml", allPassXml())
-
-                XmlTestReportParser().collect(dir, RUN_ID) shouldBe emptyList()
-            } finally {
-                dir.deleteRecursively()
-            }
-        }
-
-        "collect does not descend into hidden directories" {
-            val dir = tmpDir()
-            try {
-                dir.testResultsDir(".git").writeXml("TEST-Hidden.xml", allPassXml())
-
-                XmlTestReportParser().collect(dir, RUN_ID) shouldBe emptyList()
-            } finally {
-                dir.deleteRecursively()
-            }
-        }
-
-        "collect ignores the reports of another run" {
-            val dir = tmpDir()
-            try {
-                dir.testResultsDir(runId = "other-run").writeXml("TEST-Other.xml", allPassXml())
-                dir.testResultsDir().writeXml("TEST-Mine.xml", allPassXml())
-
-                XmlTestReportParser().collect(dir, RUN_ID).map { it.name } shouldBe listOf("TEST-Mine.xml")
-            } finally {
-                dir.deleteRecursively()
-            }
-        }
-
-        // ── delete ─────────────────────────────────────────────────────────────────────────────
-
-        "delete removes the run dir of every module and leaves other runs alone" {
-            val dir = tmpDir()
-            try {
-                dir.testResultsDir("engine").writeXml("TEST-A.xml", allPassXml())
-                dir.testResultsDir("cli").writeXml("TEST-B.xml", allPassXml())
-                dir.testResultsDir("cli", runId = "other-run").writeXml("TEST-Other.xml", allPassXml())
-
-                XmlTestReportParser().delete(dir, RUN_ID)
-
-                XmlTestReportParser().collect(dir, RUN_ID) shouldBe emptyList()
-                XmlTestReportParser().collect(dir, "other-run").size shouldBe 1
+                dir.exists() shouldBe false
             } finally {
                 dir.deleteRecursively()
             }
@@ -531,6 +477,102 @@ class XmlTestReportParserUnitSpec :
 
                 // valid report still counted
                 summary shouldContain "Tests: 3"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
+        "buildSummary says how many reports could not be read" {
+            val dir = tmpDir()
+            try {
+                val bad = dir.writeXml("TEST-Bad.xml", malformedXml())
+                val good = dir.writeXml("TEST-Good.xml", allPassXml())
+
+                XmlTestReportParser().buildSummary(0, listOf(bad, good)) shouldContain "1 report(s) could not be read"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
+        "buildSummary refuses a report with a DOCTYPE and never reads the file its external entity points to" {
+            val dir = tmpDir()
+            try {
+                val secret = dir.writeXml("secret.txt", "TOP-SECRET-CONTENT")
+                val evil =
+                    dir.writeXml(
+                        "TEST-Evil.xml",
+                        """
+                        <?xml version="1.0"?>
+                        <!DOCTYPE testsuite [<!ENTITY xxe SYSTEM "${secret.toURI()}">]>
+                        <testsuite name="&xxe;" tests="1" skipped="0" failures="1" errors="0">
+                          <testcase classname="c" name="t"><failure message="&xxe;" type="X">&xxe;</failure></testcase>
+                        </testsuite>
+                        """.trimIndent(),
+                    )
+
+                val summary = XmlTestReportParser().buildSummary(1, listOf(evil))
+
+                summary shouldContain "1 report(s) could not be read"
+                summary shouldNotContain "TOP-SECRET-CONTENT"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
+        // ── buildSummary — raw gradle output when the reports do not explain a failed build ────────────────────
+
+        "buildSummary appends the raw output when the build failed and no test failed" {
+            val dir = tmpDir()
+            try {
+                val report = dir.writeXml("TEST-A.xml", allPassXml())
+
+                val summary = XmlTestReportParser().buildSummary(1, listOf(report), rawOutput = "No tests found for given includes")
+
+                summary shouldContain "FAILURE (exit 1)"
+                summary shouldContain "Tests: 3"
+                summary shouldContain "Raw output"
+                summary shouldContain "No tests found for given includes"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
+        "buildSummary appends the raw output when the build failed and a report could not be read" {
+            val dir = tmpDir()
+            try {
+                val bad = dir.writeXml("TEST-Bad.xml", malformedXml())
+                val failing = dir.writeXml("TEST-Fail.xml", oneFailureXml())
+
+                val summary = XmlTestReportParser().buildSummary(1, listOf(bad, failing), rawOutput = "gradle said this")
+
+                summary shouldContain "shouldFail"
+                summary shouldContain "gradle said this"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
+        "buildSummary does not append the raw output when a failed test explains the failure" {
+            val dir = tmpDir()
+            try {
+                val report = dir.writeXml("TEST-Fail.xml", oneFailureXml())
+
+                val summary = XmlTestReportParser().buildSummary(1, listOf(report), rawOutput = "gradle noise")
+
+                summary shouldContain "shouldFail"
+                summary shouldNotContain "gradle noise"
+                summary shouldNotContain "Raw output"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
+        "buildSummary does not append the raw output when the build succeeded" {
+            val dir = tmpDir()
+            try {
+                val report = dir.writeXml("TEST-A.xml", allPassXml())
+
+                XmlTestReportParser().buildSummary(0, listOf(report), rawOutput = "gradle noise") shouldNotContain "gradle noise"
             } finally {
                 dir.deleteRecursively()
             }

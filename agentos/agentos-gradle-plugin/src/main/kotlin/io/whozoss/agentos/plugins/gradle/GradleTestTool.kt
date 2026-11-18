@@ -5,7 +5,6 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
 import java.io.File
-import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -21,15 +20,10 @@ import kotlin.time.Duration.Companion.seconds
  */
 class GradleTestTool(
     private val runner: GradleRunner,
-    private val newRunId: () -> String = { UUID.randomUUID().toString() },
+    private val newReportsDir: () -> File = TestReportsInitScript::newReportsDir,
     configName: String? = null,
 ) : StandardTool<GradleTestTool.Input> {
     private val parser = XmlTestReportParser()
-
-    /**
-     * Secondary constructor kept for backward compatibility with tests that pass a [File] directly.
-     */
-    constructor(projectDir: File) : this(GradleRunner(projectDir))
 
     /** Input of the tool, as sent by the LLM. Nullable fields with defaults so partial JSON deserializes. */
     data class Input(
@@ -165,8 +159,8 @@ To check again, re-run this tool."""
                 return "ERROR: ${e.message}"
             }
         val testBalloonFilters = testBalloonFiltersOf(tasks)
-        val runId = newRunId()
-        val initScript = TestReportsInitScript.create(runId)
+        val reportsDir = newReportsDir()
+        val initScript = TestReportsInitScript.create(reportsDir)
         val command = buildCommand(gradlew, initScript.absolutePath, tasks, testBalloonActive = testBalloonFilters.isNotEmpty())
         val includePatterns = buildIncludePatterns(testBalloonFilters)
         logger.info {
@@ -199,7 +193,7 @@ To check again, re-run this tool."""
                     "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}"
             }
 
-            val xmlReports = parser.collect(runner.gradleDir, runId)
+            val xmlReports = parser.collect(reportsDir)
             logger.info { "[GradleTestTool] xml reports found: ${xmlReports.size}" }
 
             if (xmlReports.isEmpty()) {
@@ -213,7 +207,9 @@ To check again, re-run this tool."""
                 }
             }
 
-            parser.buildSummary(result.exitCode, xmlReports)
+            val summary = parser.buildSummary(result.exitCode, xmlReports, result.rawOutput)
+            val hint = runner.compositeBuildHint(result.exitCode, tasks.any { it.subproject != null }, gradlew)
+            if (hint == null) summary else "$summary\n\n$hint"
         } catch (e: InterruptedException) {
             // GradleRunner already killed the process tree and re-set the interrupt flag
             logger.warn { "[GradleTestTool] interrupted" }
@@ -223,7 +219,7 @@ To check again, re-run this tool."""
             "ERROR: ${e.message}"
         } finally {
             initScript.delete()
-            parser.delete(runner.gradleDir, runId)
+            parser.delete(reportsDir)
         }
     }
 
@@ -250,7 +246,8 @@ To check again, re-run this tool."""
     }
 
     /**
-     * All tasks go in one Gradle call, so global options come first and each `--tests` follows its own task.
+     * All tasks go in one Gradle call, so global options come first and each `--tests=<filter>` follows its own task.
+     * The glued `--option=value` form keeps a filter starting with `-` from being read as an option.
      * [initScript] redirects the JUnit XML reports to the tool-owned dir (see [TestReportsInitScript]).
      */
     internal fun buildCommand(
@@ -265,7 +262,7 @@ To check again, re-run this tool."""
         }
         tasks.forEach { task ->
             command += task.subproject?.let { ":${it.trimStart(':')}:test" } ?: "test"
-            task.filters.filterNot(::isTestBalloonFilter).forEach { command += listOf("--tests", it) }
+            task.filters.filterNot(::isTestBalloonFilter).forEach { command += "--tests=$it" }
         }
         return command
     }
