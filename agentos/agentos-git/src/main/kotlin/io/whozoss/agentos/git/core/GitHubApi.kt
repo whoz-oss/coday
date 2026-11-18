@@ -6,6 +6,7 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.net.http.HttpResponse.BodyHandlers
 import java.time.Duration
 
 /**
@@ -26,6 +27,31 @@ class GitHubApi(
     )
 
     fun get(path: String, token: String): Response = send(request(path, token).GET())
+
+    /**
+     * GitHub's job-log endpoint returns a short-lived signed redirect. The
+     * bearer credential is sent only to the GitHub API; never to the log host.
+     * Missing, unsafe or oversized logs are unavailable evidence.
+     */
+    fun getJobLog(path: String, token: String): ByteArray? {
+        val redirect = client.send(request(path, token).GET().build(), BodyHandlers.discarding())
+        if (redirect.statusCode() == 404) return null
+        check(redirect.statusCode() == 302) { "GitHub job log unavailable (HTTP ${redirect.statusCode()})" }
+        val location = redirect.headers().firstValue("Location").orElse(null) ?: return null
+        val signed = runCatching { URI.create(location) }.getOrNull() ?: return null
+        if (!safeLogRedirect(signed)) return null
+        return runCatching {
+            val unsignedRequest = HttpRequest.newBuilder(signed).timeout(REQUEST_TIMEOUT).GET().build()
+            val response = client.send(unsignedRequest, BodyHandlers.ofInputStream())
+            if (response.statusCode() != 200) {
+                response.body().close()
+                return null
+            }
+            response.body().use { stream ->
+                stream.readNBytes(MAX_JOB_LOG_BYTES + 1).takeIf { it.size <= MAX_JOB_LOG_BYTES }
+            }
+        }.getOrNull()
+    }
 
     fun post(path: String, token: String, payload: Map<String, Any?>): Response =
         send(
@@ -53,11 +79,20 @@ class GitHubApi(
         return Response(response.statusCode(), body)
     }
 
+    private fun safeLogRedirect(uri: URI): Boolean {
+        if (uri.rawUserInfo != null || uri.fragment != null) return false
+        val host = uri.host?.lowercase() ?: return false
+        if (apiRoot.host == "127.0.0.1") return uri.scheme == "http" && host == "127.0.0.1"
+        return uri.scheme == "https" && (uri.port == -1 || uri.port == 443) &&
+            (host.endsWith(".blob.core.windows.net") || host.endsWith(".actions.githubusercontent.com"))
+    }
+
     companion object {
         private val GITHUB_API = URI("https://api.github.com/")
         private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(15)
         private val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(20)
         private const val MEDIA_TYPE = "application/vnd.github+json"
+        private const val MAX_JOB_LOG_BYTES = 8 * 1024 * 1024
 
         /** The REST API version every call asks for, so a GitHub change of default never alters an answer. */
         private const val API_VERSION = "2022-11-28"

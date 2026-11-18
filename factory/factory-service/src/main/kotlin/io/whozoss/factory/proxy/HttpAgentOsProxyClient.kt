@@ -178,6 +178,44 @@ class HttpAgentOsProxyClient(
             throw AgentOsUnavailableException(error.message ?: error.toString(), error)
         }
 
+    override fun fetchForgeDeploymentEvidence(
+        caseId: String,
+        workCommit: String,
+        integrationBranch: String,
+        integrationCommit: String?,
+        target: String,
+        externalUserId: String?,
+    ): Map<String, Any?>? = try {
+        fun encoded(value: String) = java.net.URLEncoder.encode(value, Charsets.UTF_8)
+        val uri = java.net.URI.create(
+            "${baseUrl.trimEnd('/')}/api/cases/$caseId/workspace/forge-deployment" +
+                "?workCommit=${encoded(workCommit)}&integrationBranch=${encoded(integrationBranch)}" +
+                (integrationCommit?.let { "&integrationCommit=${encoded(it)}" } ?: "") +
+                "&target=${encoded(target)}",
+        )
+        val spec = client.get().uri(uri)
+        if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+        spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
+    } catch (_: AgentOsNotFound) {
+        null
+    } catch (error: RestClientResponseException) {
+        if (error.statusCode == HttpStatusCode.valueOf(404)) null
+        else throw AgentOsUnavailableException("AgentOS ${error.statusCode.value()}", error)
+    } catch (error: Exception) {
+        throw AgentOsUnavailableException(error.message ?: error.toString(), error)
+    }
+
+    override fun fetchPinnedPullRequest(caseId: String, headCommit: String, externalUserId: String?): Map<String, Any?>? =
+        try {
+            relay(
+                "/api/cases/$caseId/workspace/pull-request?headCommit=$headCommit",
+                externalUserId,
+                object : ParameterizedTypeReference<Map<String, Any?>>() {},
+            )
+        } catch (_: AgentOsNotFound) {
+            null
+        }
+
     /**
      * Run-cost read (W-metrics). Unlike the other relays this NEVER throws: an
      * unknown case (404), an unreachable AgentOS or any error degrades to null

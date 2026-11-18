@@ -1,6 +1,6 @@
 # WZ-36147 Lot 3 — delivery entry and Factory seam evidence
 
-Status: **CE04–06 draft through Build prepared; CE04–07 are not execution ready**. This is a
+Status: **CE04–07 draft through hosted integration observation prepared; the complete workflow is not execution ready**. This is a
 review artifact, not a Factory Run or a Jira decision. The Coday branch was
 merged with the refreshed `origin/workstream/forge/master` before inspection.
 
@@ -144,11 +144,13 @@ required Factory output.
 | Exit when not ready | Submit an evidenced non-PASS result. The selector opens a durable `retry`/`abort` wait. No design, packet, Build or integration fragment is scheduled. |
 | Retry | Re-run ProductEngineer with a fresh attempt and current evidence. The prior negative result remains in the Run trace. |
 
-The version `0.3.0` draft in `WZ-36147-delivery-workflow.draft.json` uses the
-ordinary configurable Factory workflow schema. It defines ten ordered steps:
+The version `0.6.0` draft in `WZ-36147-delivery-workflow.draft.json` uses the
+ordinary configurable Factory workflow schema. It defines thirteen fixed steps:
 readiness, applicability assessment, product/UX/technical design,
 implementation planning, QA and verification planning, packet assembly, then
-the human packet gate and one Build coordinator step. Optional design disciplines still get an explicit
+the human packet gate, one Build coordinator step, one independent verification
+step, one whole-PR review and one integration observation
+step. Optional design disciplines still get an explicit
 assessment step and either a document or a reasoned not-applicable decision;
 the implementation and verification plans are required on every route. The
 implementation plan now requires a `frontend` or `backend` stack and an
@@ -159,9 +161,10 @@ accepted evidence, but the human gate does not yet bind its decision to that
 identity. The user chose a dedicated `ForgeBuilder`: the existing `BmadBuilder`
 owns an older BMAD lifecycle and is not the Forge delivery coordinator. The
 new agent must receive a bounded plan, delegate implementation by stack and
-submit one Factory result; its configuration is not yet installed. The definition is
-deliberately outside the published catalog: it would complete after Build and
-still lacks verification, integration observation and the final human joint.
+submit one Factory result; its configuration is now a local change on the
+Whoz agent-fleet branch and has not been deployed. The definition is
+deliberately outside the published catalog: it has an independent code review
+step but would currently complete without the final human joint.
 The current legacy selector still starts
 `forge.product-spec` and contains a trivial path to Build without the complete
 packet gate. Existing pinned legacy Runs must retain their behavior. The
@@ -192,14 +195,30 @@ full-stack coordinator. Its validator checks one ordered PASS receipt per
 approved plan item, matching stack and manifest digest, a well-formed claimed
 work commit, and each reported/observed changed file against the plan's file
 scope. It rejects missing, reordered or extra receipts and out-of-scope
-changes. The claimed work commit is not yet independently verified against
-Git, and `ForgeBuilder` has not yet been configured in the Whoz agent fleet.
-This is a validated result shape, not a runnable Build. The existing
+changes. The claimed work commit is not independently verified at Build
+finalization; the later hosted observation checks its GitHub ancestry before
+allowing integration evidence. The ForgeBuilder configuration has only static
+YAML and scope checks, not an AgentOS runtime proof.
+The separate `implementation-verification` step assigns `ForgeVerifier`, which
+delegates the plan's commands in order to the existing Backend and Frontend
+verifiers. Its result validator requires one matching green receipt and child
+Case reference per item, with no repository writes. Those receipts are still
+agent claims until the child Case commands are independently observed; neither
+coordinator has an AgentOS pilot proof yet. The existing
 ForgeController source confirms the delegation rule: it persists the ordered
 plan and active item, sends `frontend` items to `ForgeFrontendWorker` and
 `backend` items to `ForgeBackendWorker`, then advances only after item
 verification. The new coordinator may retain that bounded item discipline,
 but must not own workflow gates, whole-run review or completion.
+
+`implementation-review` follows verification and is assigned to the existing
+read-only `ForgeReviewer`, adapted locally in the Whoz fleet branch to find
+the PR for the Build commit. The result guard requires four clean lens votes,
+no critical or major finding, a matching claimed PR head and no file writes.
+The Factory's trusted PR observer now reads the open PR through AgentOS and
+requires its exact head to equal the accepted Build commit. This observer has
+focused tests, not a live workflow proof. Integration observation branches from Build,
+so CI waiting need not prevent verification and review from proceeding.
 
 ## Focused Factory evidence
 
@@ -324,6 +343,14 @@ parallel Runs and allows only a nonblocking overlap warning.
 The earlier Kotlin preflight suite was removed with its implementation; the
 draft is not a registered or executable delivery workflow.
 
+On the direct workflow start path, `WorkflowRunAsyncHttpTest` now creates two
+distinct workflow instances with the same ticket and definition, then replays
+the first start request. Both new instances return 201 and create separate
+durable submissions; the exact replay returns 200 and creates no third
+submission. This proves there is no ticket-level uniqueness fence at launch.
+The test uses a small registered human-step fixture, not the unpublished
+Forge delivery definition, so it does not prove separate live AgentOS worktrees.
+
 These results do **not** satisfy T08/T09/T14/T19–T23. They need persisted API,
 race, restart, and integration-receipt proofs on the actual versioned delivery
 workflow. ProductEngineer and ForgeSupervisor definitions with Factory tools
@@ -337,9 +364,10 @@ checks did not run a pilot, create a Jira subtask, merge or deploy anything.
 
 No pre-provisioning Jira-specific core hook or active-ticket uniqueness fence
 is needed. Existing `runId` replay covers repeated requests with the same
-identity; different requests for one ticket are allowed. The new generic
-`FACTORY_WORKSTREAM.start_parent_run` path calls the existing parent-Run
-service, while `start_workflow` remains a direct-workflow operation. No
+identity; different requests for one ticket are allowed. The cockpit's
+existing `start_workflow` route is the required launch path for one complete
+Forge workflow. The explored `start_parent_run` route was removed from this
+PR when the single-workflow requirement was clarified. No
 `forge.delivery` selector or complete definition is registered yet. Factory's
 `ArtifactStore` is separate from AgentOS exchanges, and its blob publication
 port is not a Forge prerequisite under the clarified Git-first packet rule.
@@ -498,8 +526,10 @@ list is empty; its successful job status alone does not expose the release tag.
 The successful deploy job's log does expose `RELEASE_TAG` and
 `TARGET_ENVIRONMENT`. A bounded parser now extracts those two fields and
 rejects missing or contradictory values. It must only receive the log of an
-authenticated, successful `deploy to workstream` job; no transport from
-GitHub Actions to the Forge observer is wired yet.
+authenticated, successful `deploy to workstream` job. AgentOS now has a bounded
+reader using the Case's namespace Git service account, and Factory has an HTTP
+relay and plugin observer. This path has isolated and HTTP contract tests;
+an actual Factory workflow pilot has not yet run.
 
 Build #11054 skipped `backend-build` and `docker-build-and-push` while
 `promote-tags` succeeded. The inspected promotion executor explicitly falls
@@ -519,7 +549,8 @@ produced for other work does not revoke the request or an accepted decision.
 A changed work head for this Run, or a replacement packet, does require fresh
 assessment; a failed integration or Deploy job never opens the request. The
 #8488 example proves the correlation is available in Git and CI, but the
-Factory reader and durable wait remain to be implemented.
+The reader and observer are now implemented in the unpublished draft. Their
+restart and race behavior, along with the later human-gate path, remain unproved.
 
 #### First-version environment-independent contract
 
@@ -562,10 +593,29 @@ The human's approval is recorded as a decision on the presented work, without
 claiming certainty about the exact version they tested. This preserves the
 same workflow shape without making Factory understand Whoz CI job names.
 
-The first implementation boundary is therefore a Forge Git/CI evidence reader
-plus a durable candidate wait. It must distinguish a dispatched Deploy run
-from the completed `deploy to workstream` job, and verify tag/commit ancestry.
-The official workflow remains unpublished until that reader, the direct
-workflow packet binding, authorized human replies and restart/race proofs are
+`GitHubForgeDeploymentReader` now rejects a Build whose tag points
+elsewhere, a Deploy run or job that did not succeed, a different commit or
+target, and missing or contradictory log fields. It accepts a later successful
+exact deployment after an earlier failure. It uses GitHub's compare API,
+successful Build and Deploy runs, the successful Deploy
+job's bounded log, and the RC Git ref. It can discover recent Deploy runs by
+integration branch; the AgentOS Case endpoint protects its namespace service
+account, and the Factory relay supplies metadata to the Forge observer. A
+missing receipt defers the integration-observation step. The tests do not yet
+prove an actual Factory workflow run, restart behavior or the human gate.
+
+The remaining implementation boundary is a durable candidate wait, including
+restart and race behavior across Build, integration and code review. The
+official workflow remains unpublished until the direct workflow packet
+binding, authorized human replies and restart/race proofs are
 in place. The earlier exact-image T19/T24 criterion must be updated rather
 than silently presented as passed by this narrower contract.
+
+Focused checks on this branch: AgentOS `:agentos-git:test` for
+`GitHubForgeDeploymentReaderSpec` and `GitHubApiSpec` plus
+`:agentos-service:test` for `WorkspaceControllersMvcSpec` passed. Factory
+`:factory-forge-plugin:test` for the deployment and PR observers and role
+guard, plus `:factory-service:test` for the draft graph and AgentOS proxy,
+passed. `WorkflowRunAsyncHttpTest` passed separately for direct launch and
+replay. These checks use mocked HTTP/CI responses; they do not establish a
+deployed Forge workflow or an authorized human approval.

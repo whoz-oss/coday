@@ -45,6 +45,8 @@ import io.whozoss.factory.sdk.spi.FactoryStepEvidenceObserver
 import io.whozoss.factory.sdk.spi.StepEvidenceObservation
 import io.whozoss.factory.sdk.spi.StepEvidenceObservationContext
 import io.whozoss.factory.sdk.spi.TrustedGitObjectReader
+import io.whozoss.factory.sdk.spi.TrustedDeploymentEvidenceReader
+import io.whozoss.factory.sdk.spi.TrustedPullRequestReader
 import io.whozoss.factory.sdk.spi.RunUpdate
 import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.sdk.spi.StepValidationContext
@@ -715,6 +717,8 @@ class CapabilityExecutionService(
         )
         val parentRunId = parentRunIdOf(workflowInstance)
         var remoteGitObjects: TrustedGitObjectReader? = null
+        var remoteDeploymentEvidence: TrustedDeploymentEvidenceReader? = null
+        var remotePullRequests: TrustedPullRequestReader? = null
         val worktree = if (parentRunId != null) {
             val environmentId = reservation.occupancy?.environmentId
                 ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "No Run-bound worktree occupation exists.")
@@ -746,6 +750,18 @@ class CapabilityExecutionService(
             val path = runCatching { Path.of(snapshot.worktreePath) }.getOrNull()
                 ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The root Case worktree path is invalid.")
             remoteGitObjects = remoteGitObjectReader(namespaceId, caseId, scope, workflowInstance)
+            if (remoteGitObjects != null) {
+                val userId = resolveExternalUserId(scope, workflowInstance)?.takeIf { it.isNotBlank() }
+                val proxy = agentOsProxyClient
+                if (userId != null && proxy != null) remoteDeploymentEvidence = object : TrustedDeploymentEvidenceReader {
+                    override fun find(workCommit: String, integrationBranch: String, target: String): Map<String, Any?>? =
+                        proxy.fetchForgeDeploymentEvidence(caseId, workCommit, integrationBranch, null, target, userId)
+                }
+                if (userId != null && proxy != null) remotePullRequests = object : TrustedPullRequestReader {
+                    override fun exactHead(commit: String): Map<String, Any?>? =
+                        proxy.fetchPinnedPullRequest(caseId, commit, userId)
+                }
+            }
             if (remoteGitObjects == null &&
                 (flowType == "forge.delivery" ||
                     runCatching { LocalWorktreeResourceIdentityResolver().resolve(path) }.getOrNull() == null)
@@ -765,6 +781,9 @@ class CapabilityExecutionService(
             worktreePath = worktree.toString(),
             report = report,
             gitObjects = remoteGitObjects,
+            workstreamId = scope.workstreamId,
+            deploymentEvidence = remoteDeploymentEvidence,
+            pullRequests = remotePullRequests,
         )
         return try {
             when (val observed = matching.single().observe(context)) {

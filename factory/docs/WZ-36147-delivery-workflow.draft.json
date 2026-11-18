@@ -154,9 +154,57 @@
         "kind": "agent",
         "name": "ForgeBuilder"
       }
+    },
+    {
+      "dependsOn": ["implementation-build"],
+      "entry": [
+        "Read the approved packet, accepted Build report and ordered delivery plan at the pinned work commit. Use only the verifier tools granted for each item's stack."
+      ],
+      "exit": [
+        "Return one forge.business-outputs.v1 verification_report with the accepted work commit and one ordered PASS receipt for every planned item, including green: true, its exact verification command, child Case reference and observed result. A failed or unavailable check keeps this step non-PASS."
+      ],
+      "id": "implementation-verification",
+      "mission": "Independently run the plan's verification commands through the backend and frontend verifier specialists; do not edit or approve code.",
+      "name": "Verify implementation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeVerifier"
+      }
+    },
+    {
+      "dependsOn": ["implementation-verification"],
+      "entry": [
+        "Review the unique open PR whose head is the accepted Build commit. Read the exact PR diff and approved packet; use only read-only Git, GitHub and file tools."
+      ],
+      "exit": [
+        "Return one forge.business-outputs.v1 review_report with the matching work commit and PR head, PR number, four lens votes and classified findings. PASS requires every lens PASS and no critical or major finding. Review is evidence, not human approval."
+      ],
+      "id": "implementation-review",
+      "mission": "Independently review the whole implementation PR against the approved packet and verified plan without changing code or approving a gate.",
+      "name": "Review implementation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeReviewer"
+      }
+    },
+    {
+      "dependsOn": ["implementation-build"],
+      "entry": [
+        "Use the accepted Build commit and this Run's workstream. Factory checks the corresponding integration branch and GitHub CI through AgentOS; a pending or conflicting deployment keeps this step waiting."
+      ],
+      "exit": [
+        "Advance only with Factory-observed work-commit ancestry, a successful Build, a successful Deploy job, a matching RC tag and the workstream target. Record the integration commit, tag and deployment job shown to the human."
+      ],
+      "id": "integration-observation",
+      "mission": "Wait for a historical successful deployment of a tag that includes this Run's work commit; do not claim which runtime version a human will later test.",
+      "name": "Observe workstream deployment",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeDeploymentObserver"
+      }
     }
   ],
-  "title": "Forge delivery — Build draft",
-  "version": "0.3.0",
+  "title": "Forge delivery — review and integration draft",
+  "version": "0.6.0",
   "workflowType": "forge.delivery"
 }
