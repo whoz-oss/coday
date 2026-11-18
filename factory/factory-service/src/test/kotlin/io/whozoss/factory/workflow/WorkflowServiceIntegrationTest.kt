@@ -188,6 +188,39 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Test
     @Suppress("UNCHECKED_CAST")
+    fun `generic human reply has no Forge gate role authorization`() {
+        registerDefinition(workflowType = "forge.delivery")
+        startWorkflow("wf-forge-role-gap", workflowType = "forge.delivery")
+        val opened = service.openInteraction(
+            organizationScope,
+            namespace,
+            "wf-forge-role-gap",
+            "gate",
+            1,
+            "Approve the packet?",
+            listOf(
+                mapOf("id" to "approve", "label" to "Approve"),
+                mapOf("id" to "reject", "label" to "Reject"),
+            ),
+            "open-role-gap",
+        )
+        val interactionId = (data(opened)["interaction"] as Map<String, Any?>)["interactionId"] as String
+
+        // The service receives an actor ID but no trusted role/entitlements.
+        // This succeeds today and demonstrates the missing policy hook.
+        val replied = service.replyInteraction(
+            organizationScope, namespace, "wf-forge-role-gap", interactionId, 2,
+            "approve", null, "unassigned-member",
+        )
+        assertThat(data(replied)["evidenceId"]).isNotNull
+        val evidence = evidenceRepository.list(organizationScope, namespace, "wf-forge-role-gap").single()
+        assertThat(evidence.source?.get("actorId")).isEqualTo("unassigned-member")
+        assertThat(evidence.facts).doesNotContainKey("packetArtifactId")
+        assertThat(evidence.facts).doesNotContainKey("candidateGeneration")
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
     fun `replying to a human interaction atomically records evidence and transitions`() {
         registerDefinition()
         startWorkflow("wf-atomic")
