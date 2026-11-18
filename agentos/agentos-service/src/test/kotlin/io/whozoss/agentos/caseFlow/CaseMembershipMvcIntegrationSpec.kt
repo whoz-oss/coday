@@ -2,6 +2,9 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -30,7 +33,7 @@ import java.util.UUID
  *
  * Focuses on:
  * - GET /api/cases/{id}/members returns 200 with JSON array
- * - PATCH /api/cases/{id}/members with valid body returns 200
+ * - PATCH /api/cases/{id}/members with valid body (invitee already in the namespace) returns 200
  * - PATCH with invalid body (duplicate userId) returns 400
  * - 404 when case does not exist
  */
@@ -43,6 +46,7 @@ class CaseMembershipMvcIntegrationSpec : SuperAdminCallerSpec() {
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
     @Autowired lateinit var userService: UserService
+    @Autowired lateinit var permissionService: PermissionService
 
     init {
 
@@ -77,6 +81,12 @@ class CaseMembershipMvcIntegrationSpec : SuperAdminCallerSpec() {
             )
             val caseId = createCaseViaHttp(ns.id.toString())
             val target = userService.resolveOrCreateByExternalId("patch-target-${UUID.randomUUID()}@example.com")
+            // Invitees must already belong to the case's namespace, otherwise the controller answers 422.
+            permissionService.applyShareBatch(
+                EntityType.NAMESPACE,
+                ns.id.toString(),
+                listOf(target.id.toString() to PermissionRelation.MEMBER),
+            )
 
             mockMvc.perform(
                 patch("/api/cases/$caseId/members")
