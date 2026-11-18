@@ -126,6 +126,41 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  it('only Wizzes an enabled, live-evidenced response and cancels it on a transport error', () => {
+    jest.useFakeTimers()
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn(), onerror: null as ((event: Event) => void) | null })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, caseId: 'c-1', namespaceId: 'ns-1', ...fields }) }))
+      emit('ThinkingEvent', 'thinking')
+      emit('MessageEvent', 'answer', {
+        actor: { id: 'agent-1', role: 'AGENT' },
+        content: [{ type: 'Text', content: 'Done' }],
+      })
+      emit('AgentFinishedEvent', 'finished', { agentId: 'agent-1' })
+      expect(ref.instance['wizzEffect']()).toBe(0)
+
+      ref.instance['toggleWizz']()
+      emit('ThinkingEvent', 'thinking-2')
+      emit('MessageEvent', 'answer-2', {
+        actor: { id: 'agent-1', role: 'AGENT' },
+        content: [{ type: 'Text', content: 'Done again' }],
+      })
+      emit('AgentFinishedEvent', 'finished-2', { agentId: 'agent-1' })
+      expect(ref.instance['wizzEffect']()).toBe(1)
+      source.onerror!(new Event('error'))
+      expect(ref.instance['wizzEffect']()).toBe(0)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      jest.useRealTimers()
+    }
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })
