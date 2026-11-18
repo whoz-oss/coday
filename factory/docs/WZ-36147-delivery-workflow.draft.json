@@ -7,22 +7,140 @@
     {
       "dependsOn": [],
       "entry": [
-        "Read the supplied Jira ticket and reachable source specification in the assigned workstream. Obtain current evidence; do not trust a launch-time status claim or chat text."
+        "Read the supplied Jira ticket and reachable source specification in the assigned workstream; obtain current evidence rather than trusting chat text or a launch-time status claim."
       ],
       "exit": [
-        "Submit one Factory result: status PASS only if the ticket is Ready and its source is sufficient; claims.modifiedFiles must be empty. In the summary and evidence artifacts, include the observed ticket key and status, source locator and revision, evidence references, and reasoning.",
-        "If the ticket is not Ready or evidence is insufficient, submit an evidenced non-PASS result explaining what must change. A later retry must inspect fresh evidence."
+        "Submit PASS only if the ticket is Ready and the source is sufficient, with claims.modifiedFiles empty, observed ticket status, source locator and revision, and evidence references.",
+        "Otherwise submit an evidenced non-PASS result; a retry must inspect fresh evidence."
       ],
       "id": "delivery-preflight",
-      "mission": "Decide whether the ticket is sufficiently specified and currently Ready for delivery. Do not groom, edit Jira, approve the design packet or modify repository files.",
+      "mission": "Decide whether the ticket is sufficiently specified and currently Ready for delivery. Do not groom, edit Jira, approve the packet or modify repository files.",
       "name": "Check delivery readiness",
       "responsibility": {
         "kind": "agent",
         "name": "ProductEngineer"
       }
+    },
+    {
+      "dependsOn": ["delivery-preflight"],
+      "entry": ["Read the Ready ticket, pinned source specification and preflight evidence."],
+      "exit": [
+        "Return one forge.business-outputs.v1 artifact with applicability.detailed_spec, applicability.ux_spec, applicability.technical_spec and applicability.qa_spec. Each decision has applicable (Boolean) and a nonempty reason. Include evidence references; do not silently drop a discipline or start Build."
+      ],
+      "id": "design-assessment",
+      "mission": "Decide whether detailed product, UX, technical and QA specifications are applicable, with reasons for every decision.",
+      "name": "Assess design applicability",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    },
+    {
+      "dependsOn": ["design-assessment"],
+      "entry": ["Read the pinned source and detailed-product applicability decision."],
+      "exit": [
+        "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
+      ],
+      "id": "product-design",
+      "mission": "Produce the detailed product specification when applicable; otherwise preserve the evidenced not-applicable decision.",
+      "name": "Prepare detailed product design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    },
+    {
+      "dependsOn": ["product-design"],
+      "entry": ["Read the pinned source, product design evidence and UX applicability decision."],
+      "exit": [
+        "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
+      ],
+      "id": "ux-design",
+      "mission": "Produce the UX specification when applicable; otherwise confirm the evidenced not-applicable decision without changing the source.",
+      "name": "Prepare UX design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Designer"
+      }
+    },
+    {
+      "dependsOn": ["ux-design"],
+      "entry": ["Read the pinned source, design evidence and technical applicability decision."],
+      "exit": [
+        "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
+      ],
+      "id": "technical-design",
+      "mission": "Produce the technical specification when applicable; otherwise confirm the evidenced not-applicable decision.",
+      "name": "Prepare technical design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Architect"
+      }
+    },
+    {
+      "dependsOn": ["technical-design"],
+      "entry": ["Read every applicable design, its pinned revision and all not-applicable decisions."],
+      "exit": [
+        "Return the nonempty plan path, locator, revision, content digest and code-step scopes; an empty plan is a failure."
+      ],
+      "id": "implementation-planning",
+      "mission": "Produce a nonempty implementation plan with ordered, bounded code steps and file scopes, including for a trivial change.",
+      "name": "Prepare implementation plan",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Architect"
+      }
+    },
+    {
+      "dependsOn": ["implementation-planning"],
+      "entry": [
+        "Read the pinned source, applicable specifications, implementation plan and QA applicability decision."
+      ],
+      "exit": [
+        "Return the QA specification path, locator, revision and digest when applicable, or its not-applicable reason. Always return a nonempty verification plan with path, locator, revision and digest."
+      ],
+      "id": "qa-design",
+      "mission": "Produce the QA specification when applicable and a nonempty verification plan on every route.",
+      "name": "Prepare QA design and verification plan",
+      "responsibility": {
+        "kind": "agent",
+        "name": "QAArchitect"
+      }
+    },
+    {
+      "dependsOn": ["qa-design"],
+      "entry": [
+        "Read the pinned source specification, every produced design and plan, and all applicability decisions."
+      ],
+      "exit": [
+        "Return canonical manifest bytes, their SHA-256 and the exact stored Factory artifact ID after publication; stop on unavailable or mismatched evidence."
+      ],
+      "id": "packet-assembly",
+      "mission": "Assemble one packet-manifest.v1 with every applicable document and produced plan. Validate paths, revisions, hashes and applicability against actual document bytes.",
+      "name": "Assemble complete design packet",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    },
+    {
+      "dependsOn": ["packet-assembly"],
+      "entry": [
+        "Present the complete canonical packet from its stored Factory artifact ID and SHA-256, including every applicability decision."
+      ],
+      "exit": [
+        "Record the authenticated human decision against the same stored artifact ID and SHA-256; a changed packet requires a new decision."
+      ],
+      "id": "packet-approval",
+      "mission": "Approve or reject this exact packet revision before any Build step.",
+      "name": "Approve complete design packet",
+      "responsibility": {
+        "kind": "human",
+        "name": "Authorized packet authority"
+      }
     }
   ],
-  "title": "Forge delivery — draft preflight step",
-  "version": "0.1.0",
+  "title": "Forge delivery — pre-Build design draft",
+  "version": "0.2.0",
   "workflowType": "forge.delivery"
 }
