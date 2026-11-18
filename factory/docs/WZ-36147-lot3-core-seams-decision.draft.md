@@ -34,8 +34,9 @@ SHA-256 digests. Factory persists the manifest identity and the human decision
 against that exact Git revision. Before Build, review and any resume, the
 trusted runtime must re-read the pinned Git objects and verify the expected
 content and provenance. A moved branch is irrelevant; an unavailable or
-mismatched commit is a technical stop with a visible reason and an operational
-recovery path. A stored blob must not let a Forge Run continue while its
+mismatched commit puts the Forge Run in a nonterminal technical pause with a
+visible reason; operations can resume it after Git recovers and the evidence
+is reverified. A stored blob must not let a Forge Run continue while its
 required source Git repository is unavailable.
 
 The current Factory `ArtifactStore` is a Factory-owned abstraction, separate
@@ -63,7 +64,7 @@ trusted Git-read boundary still require a concrete design and tests.
   a human retry starts a fresh preflight attempt.
 - **CE05:** manifest bytes/hash, repository, pinned commit and document digests
   agree before the gate and on resume. Approval binds that identity. Missing
-  Git access or changed/missing objects stops the Run as a technical error.
+  Git access or changed/missing objects pauses the Run as a technical error.
   Rejection or a new packet generation invalidates the earlier approval.
 - **CE06:** standard workers receive bounded Build scopes; approved packet
   identity and current Git availability guard Build. Independent verification
