@@ -38,6 +38,48 @@ class ParentRunWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTest
     @TempDir lateinit var root: Path
 
     @Test
+    fun `different run ids can create two active delivery parents for one ticket`() {
+        val proxy = mockk<AgentOsProxyClient>()
+        every { proxy.ensureRunRootCase(any(), any(), any(), any()) } returns Unit
+        every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf(
+            "equipped" to true, "status" to "READY", "path" to root.toString(),
+        )
+        val flowType = "test.delivery-preflight"
+        workflows.saveDefinition(scope, io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord(
+            flowType, "1.0.0", "preflight-hash", mapOf("steps" to listOf(mapOf(
+                "id" to "delivery-preflight", "name" to "Preflight",
+                "responsibility" to mapOf("kind" to "agent", "name" to "ProductEngineer"),
+                "dependsOn" to emptyList<String>(),
+            ))),
+        ))
+        val selector = object : io.whozoss.factory.sdk.spi.FactoryFlowSelector {
+            override fun runTypes() = setOf("forge.delivery")
+            override fun selectorVersion() = "1.0.0"
+            override fun start(run: io.whozoss.factory.sdk.spi.RunView) =
+                io.whozoss.factory.sdk.spi.RunUpdate() to io.whozoss.factory.sdk.spi.FlowDecision.Apply(
+                    flowType = flowType, reason = "Readiness first",
+                )
+            override fun next(run: io.whozoss.factory.sdk.spi.RunView) =
+                io.whozoss.factory.sdk.spi.FlowDecision.Complete("Fixture end")
+        }
+        val provisioning = ParentRunWorkspaceProvisioningService(runs, environments, intents, proxy, mapper, transactions)
+        val service = io.whozoss.factory.run.service.RunService(
+            runs, workflows, evidence, interactions,
+            io.whozoss.factory.workflow.service.SessionDefinitionCatalog(mapper, mockk<org.pf4j.PluginManager>(relaxed = true)),
+            registeredSelectors = listOf(selector), transactionManager = transactions,
+            workspaceProvisioning = provisioning,
+        )
+        val first = service.startRun(scope, "ns", RunStartCommand("delivery-a", "forge.delivery", "First", ticket = "WZ-36147"), root.toString(), "alice")
+        val second = service.startRun(scope, "ns", RunStartCommand("delivery-b", "forge.delivery", "Second", ticket = "WZ-36147"), root.toString(), "alice")
+
+        assertThat(first.runId).isNotEqualTo(second.runId)
+        assertThat(first.rootCaseId).isNotEqualTo(second.rootCaseId)
+        assertThat(first.fragments).hasSize(1)
+        assertThat(second.fragments).hasSize(1)
+        assertThat(workflows.listInstances(scope, "ns")).hasSize(2)
+    }
+
+    @Test
     fun `startRun resumes failed provisioning before single decision fragment and durable outbox`() {
         val proxy = mockk<AgentOsProxyClient>()
         val command = RunStartCommand("vertical-provision", "test", "Vertical")
