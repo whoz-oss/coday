@@ -10,6 +10,11 @@ import { EntityListItem } from '@whoz-oss/design-system'
 export interface CaseListItem extends EntityListItem {
   /** Per-user favorite flag — drives the Favorites grouping and the star menu action. */
   favorite: boolean
+  /**
+   * Whether the caller may star this case. Starring needs a direct relation on the case (the server answers 409
+   * otherwise), i.e. a `role`. Cases listed through a namespace admin's "All cases" view may have none.
+   */
+  canStar: boolean
   /** Whether the caller may delete this case (direct ADMIN relation). Gates the delete button. */
   canDelete: boolean
   /** Whether the caller may rename this case. Gates the rename menu action. */
@@ -39,6 +44,7 @@ export class CaseItemComponent {
       name: c.title ?? c.id ?? '—',
       description: undefined,
       favorite: c.favorite,
+      canStar: c.role != null,
       // Only a direct ADMIN can delete; MEMBER (or no direct relation) cannot.
       canDelete: c.role === CaseRoleEnum.ADMIN,
       // Renaming goes through PUT /api/cases/{id}, gated server-side on Case:WRITE. That is a
