@@ -42,6 +42,36 @@ class BridgeRecoveryWorkerWorkspacePreflightTest : Neo4jDomainIntegrationTest() 
         verify(exactly=0) { adapter.startTurn(any<TrustedCaseBinding>(),any(),any()) }
     }
 
+    @Test fun `legacy parent without authenticated actor is refused before claim and stays pending on repeated recovery`() {
+        val original = parent("no-actor", authenticated = false)
+        val adapter = adapter()
+        val proxy = readyProxy(root)
+        repeat(2) {
+            assertThat(worker(adapter, proxy).recover().skipped).isEqualTo(1)
+            assertThat(attempts.find(scope, namespace, original.workflowId, original.stepId, original.attemptId)).isEqualTo(original)
+        }
+        verify(exactly = 0) { proxy.fetchWorkspaceChanges(any(), any()) }
+        verify(exactly = 0) { adapter.createOrRecoverExecution(any<TrustedCaseBinding>(), any(), any()) }
+        verify(exactly = 0) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+    }
+
+    @Test fun `forged run relation cannot dispatch agent into foreign root environment`() {
+        val original = parent("forged-relation")
+        val instance = workflows.findInstance(scope, namespace, original.workflowId)!!
+        check(workflows.updateInstance(scope, namespace, original.workflowId, instance.revision,
+            instance.copy(revision = instance.revision + 1, rootCaseId = null,
+                instance = mapOf("relations" to mapOf("runId" to "run-forged-relation"),
+                    "controllerRequest" to mapOf("actorId" to "alice")))))
+        val before = environments.findByEnvironmentId(scope, original.environmentRef!!)!!
+        val adapter = adapter()
+        val proxy = readyProxy(root)
+        assertThat(worker(adapter, proxy).recover().skipped).isEqualTo(1)
+        assertThat(environments.findByEnvironmentId(scope, original.environmentRef)).isEqualTo(before)
+        verify(exactly = 0) { proxy.fetchWorkspaceChanges(any(), any()) }
+        verify(exactly = 0) { adapter.createOrRecoverExecution(any<TrustedCaseBinding>(), any(), any()) }
+        verify(exactly = 0) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+    }
+
     @Test fun `parent divergent workspace starts no turn`() {
         val fixture=parent("divergent")
         val other=Files.createDirectory(root.resolve("other"))
@@ -78,6 +108,7 @@ class BridgeRecoveryWorkerWorkspacePreflightTest : Neo4jDomainIntegrationTest() 
         every { adapter.createOrRecoverExecution(any<TrustedCaseBinding>(), any(), any()) } answers {
             calls.add("create")
             val binding = firstArg<TrustedCaseBinding>()
+            assertThat(binding.externalUserId).isEqualTo("test")
             CaseHandle(binding.caseId, binding.namespaceId, false)
         }
         every { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) } answers {
@@ -96,12 +127,13 @@ class BridgeRecoveryWorkerWorkspacePreflightTest : Neo4jDomainIntegrationTest() 
         verify(exactly = 0) { otherAdapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
     }
 
-    private fun parent(id:String):DurableAgentAttempt {
+    private fun parent(id:String, authenticated: Boolean = true):DurableAgentAttempt {
         Files.createDirectories(root)
         val workflow="wf-$id"; val run="run-$id"; val rootCase=UUID.randomUUID().toString(); val environment="env-$id"
-        workflows.insertInstance(scope,WorkflowInstanceRecord(namespace,workflow,1,"active","hash-$id",mapOf("runId" to run),emptyMap(),rootCaseId=rootCase))
+        workflows.insertInstance(scope,WorkflowInstanceRecord(namespace,workflow,1,"active","hash-$id",(mapOf<String, Any?>("runId" to run, "controllerExecution" to mapOf("actorId" to "spoofed")) +
+            if (authenticated) mapOf("controllerRequest" to mapOf("actorId" to "test")) else emptyMap()),emptyMap(),rootCaseId=rootCase))
         environments.insert(scope,WorkEnvironment(scope.organizationId,scope.workstreamId,environment,"wu-$id",run,namespace,rootCase,root.toString(),"main","branch",root.toString(),lifecycleState=WorkEnvironmentState.READY,createdBy="test"))
-        return attempt(id,environment,rootCase).also { attempts.register(scope,it) }
+        return attempts.register(scope, attempt(id,environment,rootCase))
     }
 
     private fun attempt(id:String,environment:String?,rootCase:String?)=DurableAgentAttempt(

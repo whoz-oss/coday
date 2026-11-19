@@ -95,6 +95,9 @@ class ParentRunWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTest
         assertThat(started.rootCaseId).isEqualTo(intent.rootCaseId)
         assertThat(started.decisions).hasSize(1)
         assertThat(started.fragments).hasSize(1)
+        val fragment = workflows.findInstance(scope, "ns", started.fragments.single().fragmentId)!!
+        assertThat((fragment.instance["controllerRequest"] as Map<*, *>)["actorId"]).isEqualTo("alice")
+        assertThat(fragment.rootCaseId).isEqualTo(started.rootCaseId)
         assertThat(outbox.count()).isEqualTo(1L)
         val ready = environments.findLatestByWorkflowId(scope, command.runId)!!
         assertThat(ready.environmentId).isEqualTo(environment.environmentId)
