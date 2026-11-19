@@ -6,7 +6,8 @@ info:
     Conversational Factory facade for agents of the FACTORY_WORKSTREAM integration. The bearer is a
     Factory-issued JWT (optional when Factory runs in local security mode, FACTORY_SECURITY_MODE=local). Factory resolves the single AgentOS
     workstream from the explicit namespaceId within the authenticated organization. Every operation requires
-    the namespaceId from the assignment; reads never initialize a missing mapping. Other identifiers are
+    the namespaceId from the assignment. Only start_workflow initializes a missing mapping; reads and
+    request_agent_retry are lookup-only and return WORKFLOW_NOT_FOUND when unmapped. Other identifiers are
     references resolved inside that boundary. Human validations are answered in Factory only.
 servers:
   - url: https://factory.example.invalid
@@ -44,9 +45,15 @@ paths:
       operationId: start_workflow
       summary: Create a workflow run. Factory owns its identity and execution context.
       description: >-
-        Starts a new Factory run in the namespace registered for the caller's workstream. The run is not
-        attributed to an AgentOS case. Reuse the same Idempotency-Key to retry safely; the same key with a
-        different payload is refused.
+        Resolves or initializes the namespace's workstream within the authenticated organization, then
+        creates a Factory run. First launch needs no manually provisioned mapping; concurrent initializers
+        converge on one active workstream. Existing identity, metadata, allowed workflow types and status
+        are preserved; paused or archived mappings are refused. Request shape, field types, pin pairing/format
+        and Idempotency-Key are validated before initialization. Definition selection and pin matching remain
+        enforced when creating the run. Initialization and run creation are not atomic: an unknown
+        registered workflow type or stale canonical hash can leave an active mapping but no run.
+        The run is not attributed to an AgentOS case. Reuse the same
+        Idempotency-Key and payload to retry safely; the same key with a different payload is refused.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -56,6 +63,7 @@ paths:
             type: string
             minLength: 1
             maxLength: 128
+            pattern: '^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$'
       requestBody:
         required: true
         content:
@@ -70,7 +78,8 @@ paths:
                   maxLength: 128
                 definitionVersion:
                   type: string
-                  description: Immutable registered version. Supply together with definitionHash; never silently select latest.
+                  description: Immutable registered numeric x.y.z version with no leading zeroes except 0. Supply together with definitionHash; never silently select latest.
+                  maxLength: 128
                   pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
                 definitionHash:
                   type: string
@@ -84,9 +93,11 @@ paths:
                   maxLength: 64
       responses:
         '200': { description: Identical start replayed. }
-        '201': { description: Run created. }
+        '201': { description: Run created, initializing an active namespace workstream if missing. }
+        '400': { description: 'Invalid request or execution configuration. Controller-level namespace, field, pin-shape and key validation precedes initialization; later execution validation may leave an initialized mapping.' }
         '403': { description: 'The workstream namespace mapping is invalid or the workflow type is not allowed.' }
-        '409': { description: Idempotency or identity conflict. }
+        '404': { description: 'Registered definition not found; initialization may have created a mapping, but no run.' }
+        '409': { description: 'Idempotency, identity or definition conflict, including ambiguous definition selection. Definition failures may leave an initialized mapping but no run.' }
   /api/factory/workstream-service/workflows/{workflowId}:
     parameters:
       - $ref: '#/components/parameters/NamespaceId'
@@ -152,7 +163,8 @@ paths:
       summary: Request a governed retry of a blocked step.
       description: >-
         Only opens a retry request that a human approves in Factory. A repeated call for the same step
-        returns the existing open request instead of opening another.
+        returns the existing open request instead of opening another. Requires an existing namespace
+        mapping; never initializes a missing workstream (WORKFLOW_NOT_FOUND).
       parameters:
         - name: workflowId
           in: path
@@ -199,7 +211,7 @@ components:
       name: namespaceId
       in: query
       required: true
-      description: AgentOS namespace UUID from the assignment, mapped to an existing Factory workstream in the authenticated organization.
+      description: AgentOS namespace UUID from the assignment. Resolved inside the authenticated organization; only start_workflow initializes a missing mapping. Reads and retry require an existing mapping.
       schema:
         type: string
         format: uuid
