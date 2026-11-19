@@ -3,7 +3,6 @@ package io.whozoss.agentos.plugins.gradle
 import java.io.File
 import java.io.IOException
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 
 /**
  * Shared Gradle process launcher used by all Gradle tools.
@@ -145,15 +144,16 @@ class GradleRunner(
      * then [extraEnv] on top.
      *
      * Timeout, kill and interruption behave as in [ProcessLauncher.run]. The output is bounded to
-     * [MAX_OUTPUT_CHARS]: a note at its end tells when it was cut.
+     * [MAX_OUTPUT_CHARS]: its beginning and its end are kept, a marker tells how many chars were omitted between.
      *
+     * @param timeout no default: every caller states how long the build may run.
      * @throws InterruptedException when the calling thread is interrupted while waiting.
      * @return [RunResult] — raw stdout+stderr text, exit code, whether process finished before timeout.
      */
     fun run(
         command: List<String>,
+        timeout: Duration,
         extraEnv: Map<String, String> = emptyMap(),
-        timeout: Duration = DEFAULT_TIMEOUT_MINUTES.minutes,
         workDir: File = gradleDir,
     ): RunResult {
         val env: Map<String, String> =
@@ -174,9 +174,8 @@ class GradleRunner(
                     label = "gradle",
                 ),
             )
-        val output = result.output.filterJvmNoise()
         return RunResult(
-            rawOutput = if (result.truncated) output + TRUNCATION_NOTE else output,
+            rawOutput = result.output.filterJvmNoise(),
             exitCode = result.exitCode,
             timedOut = result.timedOut,
         )
@@ -190,16 +189,11 @@ class GradleRunner(
     )
 
     companion object {
-        /** Fallback of [run] for internal callers. The Gradle tools never use it: their agent must pass a timeout. */
-        const val DEFAULT_TIMEOUT_MINUTES = 10L
-
         /**
-         * Max chars of Gradle output kept: roomy for a compile failure or a test log, and far below the agent context.
-         * The test results themselves come from the XML reports, not from this output.
+         * Max chars of Gradle output kept (beginning and end): roomy for a compile failure or a test log, and far
+         * below the agent context. The test results themselves come from the XML reports, not from this output.
          */
         const val MAX_OUTPUT_CHARS = 200_000
-
-        private const val TRUNCATION_NOTE = "\n[Gradle output truncated at $MAX_OUTPUT_CHARS chars]"
 
         private const val GRADLEW = "gradlew"
 
