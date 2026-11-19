@@ -162,6 +162,41 @@ export function canViewFile(file: { filename?: string; name?: string; size?: num
   return file.size !== undefined && (isImageFile(leaf) || isFormatViewable(leaf)) && isViewable(file.size)
 }
 
+/**
+ * Sandbox of every iframe that renders a user/agent-authored HTML file.
+ *
+ * Scripts and popups are allowed so a report works; `allow-same-origin` and `allow-top-navigation` are NEVER
+ * granted: the file runs in an opaque origin, with no access to the app's cookies, storage or DOM. Agents write
+ * these files, so granting same-origin would turn any of them into an XSS running with the user's session.
+ */
+export const HTML_PREVIEW_SANDBOX = 'allow-scripts allow-popups allow-popups-to-escape-sandbox'
+
+/** Escapes a string for use in HTML text and in a quoted attribute value. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+/**
+ * A standalone document that shows `content` in a sandboxed iframe, to open in a browser tab.
+ *
+ * The raw file must never be opened directly from a blob/data URL: a blob URL inherits the origin of the app and
+ * its scripts would run with the user's session. This wrapper has no script of its own and delegates the rendering
+ * to an iframe with the same sandbox as the in-app preview (`HTML_PREVIEW_SANDBOX`, no `allow-same-origin`).
+ */
+export function buildSandboxedHtmlDocument(content: string, title: string): string {
+  return (
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    `<title>${escapeHtml(title)}</title>` +
+    '<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%;display:block}</style>' +
+    `</head><body><iframe sandbox="${HTML_PREVIEW_SANDBOX}" srcdoc="${escapeHtml(content)}"></iframe></body></html>`
+  )
+}
+
 /** Pretty-print JSON content with 2-space indentation; returns the input unchanged on parse error. */
 export function reindentJson(content: string): string {
   try {

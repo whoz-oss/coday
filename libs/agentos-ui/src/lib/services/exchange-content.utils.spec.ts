@@ -1,4 +1,5 @@
 import {
+  buildSandboxedHtmlDocument,
   canViewFile,
   detectFormat,
   ensureImageBlob,
@@ -79,6 +80,40 @@ describe('exchange-content.utils', () => {
       expect(canViewFile({ filename: 'a.pdf', size: 100 })).toBe(false)
       expect(canViewFile({ filename: 'a.zip', size: 100 })).toBe(false)
       expect(canViewFile({ filename: 'a.md', size: MAX_VIEWABLE_SIZE + 1 })).toBe(false)
+    })
+  })
+
+  describe('buildSandboxedHtmlDocument', () => {
+    const iframeOf = (html: string) => new DOMParser().parseFromString(html, 'text/html').querySelector('iframe')!
+
+    it('wraps the content in a sandboxed iframe that can run scripts but never shares the origin', () => {
+      const html = buildSandboxedHtmlDocument('<p>hi</p>', 'report.html')
+      const sandbox = iframeOf(html).getAttribute('sandbox')!
+      expect(sandbox).toContain('allow-scripts')
+      expect(sandbox).not.toContain('allow-same-origin')
+      expect(sandbox).not.toContain('allow-top-navigation')
+      expect(html.startsWith('<!doctype html>')).toBe(true)
+    })
+
+    it('escapes the content for the srcdoc attribute, and gives it back intact once parsed', () => {
+      const content = `<a href="x" title='y'>T&C</a><script>if (a < b && c > d) alert("x")</script>`
+      const html = buildSandboxedHtmlDocument(content, 'a.html')
+      // Nothing of the content can end the attribute or open a tag in the wrapper.
+      expect(html).toContain('srcdoc="&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;T&amp;C&lt;/a&gt;')
+      expect(html.match(/<script/g)).toBeNull()
+      expect(iframeOf(html).getAttribute('srcdoc')).toBe(content)
+    })
+
+    it('escapes the title', () => {
+      const html = buildSandboxedHtmlDocument('x', '"><script>alert(1)</script>&.html')
+      const doc = new DOMParser().parseFromString(html, 'text/html')
+      expect(doc.title).toBe('"><script>alert(1)</script>&.html')
+      expect(doc.querySelector('script')).toBeNull()
+      expect(html).toContain('<title>&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;.html</title>')
+    })
+
+    it('has no script of its own', () => {
+      expect(buildSandboxedHtmlDocument('', 't')).not.toContain('<script')
     })
   })
 

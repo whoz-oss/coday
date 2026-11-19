@@ -9,18 +9,29 @@ import {
   output,
   signal,
   viewChild,
+  inject,
 } from '@angular/core'
+import { MatDialog } from '@angular/material/dialog'
+import { DomSanitizer } from '@angular/platform-browser'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { MarkdownPipe } from '../../pipes/markdown.pipe'
 import { detectFormat, reindentJson } from '../../services/exchange-content.utils'
 import { injectCopyFeedback } from '../../services/clipboard.utils'
+import { ExchangeHtmlPreviewService } from '../../services/exchange-html-preview.service'
+import { trustSandboxedSrcdoc } from '../../services/exchange-html-srcdoc'
 import { ExchangeFileRef } from '../../services/exchange-state.service'
+import {
+  EXCHANGE_HTML_FULL_VIEW_DOWNLOAD,
+  ExchangeHtmlFullViewComponent,
+  ExchangeHtmlFullViewData,
+} from '../exchange-html-full-view/exchange-html-full-view.component'
 
 /**
  * ExchangeContentViewerComponent — presentational preview pane for a single file.
  *
  * Renders markdown via the `agentosMarkdown` pipe, JSON re-indented, YAML/text in a <pre>,
- * and HTML in a sandboxed <iframe> (with a title — fixing the legacy a11y gap). Non-viewable
+ * and HTML in a sandboxed <iframe> (with a title — fixing the legacy a11y gap) that runs the file's scripts in
+ * an opaque origin (see `trustSandboxedSrcdoc`), with a full-viewport view and an "open in new tab" action. Non-viewable
  * files (binary or > 20 MB) and load errors show a "Download instead" CTA. Images are shown from an
  * object URL prepared by the parent (`imageUrl`), scaled to fit the pane; if the browser cannot decode
  * one, the same "Preview not available" state is shown rather than a broken-image icon.
@@ -87,8 +98,52 @@ export class ExchangeContentViewerComponent {
     return this.format() === 'json' ? reindentJson(raw) : raw
   })
 
+  private readonly sanitizer = inject(DomSanitizer)
+  private readonly dialog = inject(MatDialog)
+  private readonly htmlPreview = inject(ExchangeHtmlPreviewService)
+
+  /**
+   * The HTML file as the `srcdoc` of the sandboxed iframe. Trusting it is safe ONLY because that iframe is
+   * sandboxed without `allow-same-origin` (static attribute in the template): see `trustSandboxedSrcdoc`.
+   */
+  protected readonly htmlSrcdoc = computed(() => trustSandboxedSrcdoc(this.sanitizer, this.displayContent()))
+
+  /** The HTML actions (full view, new tab) need the content to be there and previewable. */
+  protected readonly canOpenHtml = computed(
+    () => this.format() === 'html' && this.status() === 'ready' && this.canView() && this.content() != null
+  )
+
   protected onClose(): void {
     this.closeRequested.emit()
+  }
+
+  /**
+   * Opens the file in a full-viewport dialog. A dialog is an overlay attached to the body: a `position: fixed`
+   * element inside the drawer would be broken by the transforms of mat-sidenav.
+   * The app sets a smaller default size for dialogs, hence the explicit overrides.
+   */
+  protected onOpenFullView(): void {
+    const data: ExchangeHtmlFullViewData = { content: this.displayContent(), filename: this.filename() }
+    this.dialog
+      .open<ExchangeHtmlFullViewComponent, ExchangeHtmlFullViewData, string>(ExchangeHtmlFullViewComponent, {
+        data,
+        width: '100vw',
+        height: '100vh',
+        maxWidth: '100vw',
+        maxHeight: '100vh',
+        panelClass: 'exchange-html-full-view-panel',
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+      })
+      .afterClosed()
+      .subscribe((result) => {
+        if (result === EXCHANGE_HTML_FULL_VIEW_DOWNLOAD) this.onDownload()
+      })
+  }
+
+  /** Synchronous in the click handler, so that popup blockers let the tab open. */
+  protected onOpenInNewTab(): void {
+    this.htmlPreview.openInNewTab(this.displayContent(), this.filename())
   }
 
   protected onDownload(): void {
