@@ -17,6 +17,14 @@ Jira are outside this version. The draft remains unpublished until its direct
 workflow and recovery behavior are proven. The CI and PR observation design
 and test results below are historical, superseded by this decision.
 
+The packet observer checks committed Git objects at assembly and when the
+Build result is accepted. The human reply path currently reads the saved
+candidate but does not recheck Git availability. A Git outage between packet
+approval and a later human reply can therefore still let that reply pass.
+This must be closed before publication to meet the agreed fail-closed Git
+rule. The direct AgentOS/Factory run, delegated Build and restart behavior
+also remain unproved.
+
 ## Single-workflow correction (2026-11-18)
 
 The requester requires one published `forge.delivery` definition and one
