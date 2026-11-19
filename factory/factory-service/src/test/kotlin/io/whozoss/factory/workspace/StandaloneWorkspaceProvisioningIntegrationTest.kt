@@ -96,7 +96,7 @@ class StandaloneWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTes
             override fun withZone(zone: java.time.ZoneId): java.time.Clock = this
             override fun instant() = now
         }
-        val runDrain = {
+        val runDrain: () -> Unit = {
             // Reconstruct all in-memory orchestrators each pass: only database intent survives.
             val provisioning = StandaloneWorkspaceProvisioningService(environments, proxy, transactions, timing, WorkspaceProperties(), singleProbe = false)
             every { capabilities.prepareAgentWorkspace(any(), any(), any(), any()) } answers {
