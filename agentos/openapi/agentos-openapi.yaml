@@ -4007,6 +4007,32 @@ paths:
           description: OK
       tags:
       - user-group-controller
+  /api/user-groups/{userGroupId}/members/list:
+    post:
+      operationId: listMembersUserGroup
+      parameters:
+      - in: path
+        name: userGroupId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserGroupMembersListRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserGroupMembersListResponse"
+          description: OK
+      summary: "List the members of a group, one cursor-paged page at a time"
+      tags:
+      - user-group-controller
   /api/users:
     get:
       operationId: listAllUser
@@ -4122,6 +4148,25 @@ paths:
                   items:
                     $ref: "#/components/schemas/UserGroupSummary"
           description: OK
+      tags:
+      - user-controller
+  /api/users/list:
+    post:
+      operationId: listUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UsersListRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsersListResponse"
+          description: OK
+      summary: "List users, one cursor-paged page at a time, optionally filtered"
       tags:
       - user-controller
   /api/users/me:
@@ -5870,6 +5915,19 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    ListMetadata:
+      type: object
+      properties:
+        next:
+          type: string
+          description: Cursor of the next page; null on the last page
+        totalCount:
+          type: integer
+          format: int64
+          description: "Number of items matching the request, counted when its first\
+            \ page was read and carried by the cursor"
+      required:
+      - totalCount
     LlmUsage:
       type: object
       properties:
@@ -7336,6 +7394,31 @@ components:
       - externalId
       - role
       - userId
+    UserGroupMembersListRequest:
+      type: object
+      properties:
+        limit:
+          type: integer
+          format: int32
+          description: "Page size, 100 when omitted"
+          maximum: 500
+          minimum: 1
+        next:
+          type: string
+          description: "Opaque cursor: the `metadata.next` of the previous response;\
+            \ omit for the first page"
+    UserGroupMembersListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserGroupMember"
+        metadata:
+          $ref: "#/components/schemas/ListMetadata"
+      required:
+      - data
+      - metadata
     UserGroupSearchResult:
       type: object
       properties:
@@ -7383,7 +7466,30 @@ components:
           description: "Complete desired set of member external IDs holding the ADMIN\
             \ role (replace semantics): members not listed are demoted to MEMBER,\
             \ and an omitted or empty set demotes every current admin. Every listed\
-            \ id must be a member after the update."
+            \ id must be a member after the update. Must stay empty when a delta field\
+            \ (adminExternalIdsToAdd / adminExternalIdsToRemove) is sent."
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        adminExternalIdsToAdd:
+          type: array
+          description: "Delta mode: member external IDs to promote to ADMIN. Null\
+            \ (not sent) differs from empty: sending either delta field, even empty,\
+            \ selects delta mode. Must not be combined with a non-empty adminExternalIds,\
+            \ and every listed id must be a member after the update."
+          items:
+            type: string
+          maxItems: 200
+          minItems: 0
+          uniqueItems: true
+        adminExternalIdsToRemove:
+          type: array
+          description: "Delta mode: member external IDs to demote to MEMBER; a non-admin\
+            \ is left unchanged. Null (not sent) differs from empty: sending either\
+            \ delta field, even empty, selects delta mode. Must not be combined with\
+            \ a non-empty adminExternalIds, nor list an id also in adminExternalIdsToAdd."
           items:
             type: string
           maxItems: 200
@@ -7438,6 +7544,46 @@ components:
           description: Internal user id.
       required:
       - userId
+    UsersListFilters:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+          format: uuid
+          description: Only users with a direct ADMIN or MEMBER relation on this (non-removed)
+            namespace
+        query:
+          type: string
+          description: "Case-insensitive 'contains' on email, externalId, firstname,\
+            \ lastname and the full name ('firstname lastname' or 'lastname firstname'),\
+            \ matched literally; blank means no filter"
+    UsersListRequest:
+      type: object
+      properties:
+        filters:
+          $ref: "#/components/schemas/UsersListFilters"
+        limit:
+          type: integer
+          format: int32
+          description: "Page size, 100 when omitted"
+          maximum: 500
+          minimum: 1
+        next:
+          type: string
+          description: "Opaque cursor: the `metadata.next` of the previous response;\
+            \ omit for the first page"
+    UsersListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        metadata:
+          $ref: "#/components/schemas/ListMetadata"
+      required:
+      - data
+      - metadata
     VoiceMessageCapabilityResponse:
       type: object
       properties:

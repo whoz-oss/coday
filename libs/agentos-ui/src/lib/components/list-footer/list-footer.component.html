@@ -1,0 +1,20 @@
+<p #status class="settings-table__status" role="status" tabindex="-1">
+  @if (error()) {
+    <span class="settings-table__error">Loading failed.</span>
+  } @else if (loading() && loaded() > 0) {
+    Loading…
+  } @else if (total() > 0) {
+    Showing {{ loaded() }} of {{ total() }}
+  }
+</p>
+@if (showButton()) {
+  <button
+    #button
+    dsButton
+    type="button"
+    [attr.aria-disabled]="loading()"
+    (click)="loading() || loadMoreRequested.emit()"
+  >
+    {{ loading() ? 'Loading…' : error() ? 'Retry' : 'Load more' }}
+  </button>
+}

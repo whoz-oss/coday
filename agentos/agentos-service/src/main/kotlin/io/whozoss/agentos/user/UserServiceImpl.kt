@@ -1,5 +1,8 @@
 package io.whozoss.agentos.user
 
+import io.whozoss.agentos.pagination.KeysetPage
+import io.whozoss.agentos.pagination.KeysetPaging
+import io.whozoss.agentos.sdk.api.user.UsersListFilters
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.SecurityService
 import mu.KLogging
@@ -49,6 +52,20 @@ class UserServiceImpl(
     override fun findByExternalId(externalId: String): User? = userRepository.findByExternalId(externalId)
 
     override fun findByExternalIds(externalIds: Set<String>): List<User> = userRepository.findByExternalIds(externalIds)
+
+    @Transactional(readOnly = true)
+    override fun findPage(
+        filters: UsersListFilters,
+        limit: Int?,
+        next: String?,
+    ): KeysetPage<User> =
+        KeysetPaging.read(
+            limit = limit,
+            next = next,
+            externalIdOf = User::externalId,
+            totalCount = { userRepository.countMatching(filters) },
+            fetch = { afterExternalId, size -> userRepository.findPage(filters, afterExternalId, size) },
+        )
 
     override fun resolveOrCreateByExternalId(externalId: String): User =
         findByExternalId(externalId) ?: bootstrapLock.withLock {

@@ -7,6 +7,16 @@ interface UserGroupRepository : EntityRepository<UserGroup, UUID> {
     fun findByNamespaceId(namespaceId: UUID): List<UserGroupSearchResult>
     fun findByIdWithDetails(id: UUID): UserGroupSearchResult?
     fun findMembers(userGroupId: UUID): List<UserGroupMember>
+
+    /**
+     * Keyset page of the non-removed members of [userGroupId], sorted by external id ascending:
+     * at most [limit] members whose external id is strictly greater than [afterExternalId]
+     * (from the start when null).
+     */
+    fun findMembersPage(userGroupId: UUID, afterExternalId: String?, limit: Int): List<UserGroupMember>
+
+    /** Number of non-removed members of [userGroupId]. */
+    fun countMembers(userGroupId: UUID): Long
     fun addAgents(userGroupId: UUID, agentConfigIds: Collection<UUID>)
     fun removeAllAgents(userGroupId: UUID)
     fun addUsers(userGroupId: UUID, userExternalIds: Collection<String>)

@@ -7,6 +7,8 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
+import io.whozoss.agentos.pagination.KeysetPage
+import io.whozoss.agentos.pagination.KeysetPaging
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupCreateRequest
 import io.whozoss.agentos.user.User
@@ -61,6 +63,20 @@ class UserGroupServiceImpl(
     override fun getMembers(userGroupId: UUID): List<UserGroupMember> = userGroupRepository.findMembers(userGroupId)
 
     @Transactional(readOnly = true)
+    override fun getMembersPage(
+        userGroupId: UUID,
+        limit: Int?,
+        next: String?,
+    ): KeysetPage<UserGroupMember> =
+        KeysetPaging.read(
+            limit = limit,
+            next = next,
+            externalIdOf = UserGroupMember::externalId,
+            totalCount = { userGroupRepository.countMembers(userGroupId) },
+            fetch = { afterExternalId, size -> userGroupRepository.findMembersPage(userGroupId, afterExternalId, size) },
+        )
+
+    @Transactional(readOnly = true)
     override fun getUsersByAgent(agentConfigId: UUID, namespaceId: UUID): List<UserGroupMember> =
         userGroupRepository.findUsersByAgentId(agentConfigId, namespaceId)
 
@@ -97,7 +113,7 @@ class UserGroupServiceImpl(
                 userGroupId = group.id,
                 currentMembers = emptyList(),
                 addedUsers = existingUsers + createdUsers,
-                adminExternalIds = request.adminExternalIds,
+                adminRoles = AdminRoles.Replace(request.adminExternalIds),
                 removedExternalIds = emptySet(),
             )
         }
@@ -125,6 +141,8 @@ class UserGroupServiceImpl(
             )
         }
 
+        val adminRoles = resolveAdminRoles(request)
+
         val existing = getById(userGroupId)
 
         validateAgentsInNamespace(request.agentIds, existing.namespaceId)
@@ -134,7 +152,7 @@ class UserGroupServiceImpl(
         val resultingMembers =
             (currentMembers.map { it.externalId }.toSet() - request.userExternalIdsToRemove) +
                 request.userExternalIdsToAdd
-        validateAdminsBelongToGroup(request.adminExternalIds, resultingMembers)
+        validateAdminsBelongToGroup(adminRoles.promoted, resultingMembers)
 
         update(existing.copy(name = request.name))
 
@@ -170,7 +188,7 @@ class UserGroupServiceImpl(
             userGroupId = userGroupId,
             currentMembers = currentMembers,
             addedUsers = addedUsers,
-            adminExternalIds = request.adminExternalIds,
+            adminRoles = adminRoles,
             removedExternalIds = request.userExternalIdsToRemove,
         )
 
@@ -208,19 +226,83 @@ class UserGroupServiceImpl(
     }
 
     /**
-     * Reconciles member roles as a delta batch through the permission layer: promotes target
-     * admins that are not already ADMIN, demotes current ADMINs that left [adminExternalIds]
-     * (unless they leave the group via [removedExternalIds]). Members whose role does not
-     * change are not sent, so the batch only pays for actual role transitions.
+     * How a request changes member roles: [Replace] states the complete admin set (everyone else
+     * is demoted), [Delta] names only the members to promote and to demote.
+     */
+    private sealed interface AdminRoles {
+        /** External ids that must hold ADMIN after the update. */
+        val promoted: Set<String>
+
+        /** Whether a current admin loses ADMIN. */
+        fun demotes(externalId: String): Boolean
+
+        data class Replace(
+            val adminExternalIds: Set<String>,
+        ) : AdminRoles {
+            override val promoted get() = adminExternalIds
+
+            override fun demotes(externalId: String) = externalId !in adminExternalIds
+        }
+
+        data class Delta(
+            val toAdd: Set<String>,
+            val toRemove: Set<String>,
+        ) : AdminRoles {
+            override val promoted get() = toAdd
+
+            override fun demotes(externalId: String) = externalId in toRemove
+        }
+    }
+
+    /**
+     * Picks the role mode of an update. Delta mode applies as soon as either delta field is sent
+     * (null means "not sent", empty means "sent"); [UserGroupUpdateRequest.adminExternalIds] cannot
+     * tell those apart, so a non-empty one is what counts as "sent together" with a delta field.
+     * Without a delta field the update keeps the replace semantics, an empty set demoting every admin.
+     */
+    private fun resolveAdminRoles(request: UserGroupUpdateRequest): AdminRoles {
+        val toAdd = request.adminExternalIdsToAdd
+        val toRemove = request.adminExternalIdsToRemove
+        return when {
+            toAdd == null && toRemove == null -> AdminRoles.Replace(request.adminExternalIds)
+            request.adminExternalIds.isNotEmpty() ->
+                throw UnprocessableEntityException(
+                    "adminExternalIds cannot be combined with adminExternalIdsToAdd or adminExternalIdsToRemove",
+                )
+            else -> {
+                val promoted = toAdd.orEmpty()
+                val demoted = toRemove.orEmpty()
+                val inBothAdminSets = promoted intersect demoted
+                val promotedAndRemoved = promoted intersect request.userExternalIdsToRemove
+                when {
+                    inBothAdminSets.isNotEmpty() ->
+                        throw UnprocessableEntityException(
+                            "User external IDs cannot appear in both adminExternalIdsToAdd and adminExternalIdsToRemove: $inBothAdminSets",
+                        )
+                    promotedAndRemoved.isNotEmpty() ->
+                        throw UnprocessableEntityException(
+                            "User external IDs cannot appear in both adminExternalIdsToAdd and userExternalIdsToRemove: $promotedAndRemoved",
+                        )
+                    else -> AdminRoles.Delta(toAdd = promoted, toRemove = demoted)
+                }
+            }
+        }
+    }
+
+    /**
+     * Reconciles member roles as a delta batch through the permission layer: promotes the
+     * [AdminRoles.promoted] members that are not already ADMIN, demotes current ADMINs that
+     * [AdminRoles.demotes] (unless they leave the group via [removedExternalIds]). Members whose role
+     * does not change are not sent, so the batch only pays for actual role transitions.
      *
      * [currentMembers] is the membership BEFORE the update (with roles and internal user ids);
-     * [addedUsers] maps the external ids added by this request to their internal user ids.
+     * [addedUsers] holds the users added by this request, with their internal user ids.
      */
     private fun reconcileRoles(
         userGroupId: UUID,
         currentMembers: List<UserGroupMember>,
         addedUsers: List<User>,
-        adminExternalIds: Set<String>,
+        adminRoles: AdminRoles,
         removedExternalIds: Set<String>,
     ) {
         val roleByExternalId = currentMembers.associateBy({ it.externalId }, { it.role })
@@ -228,7 +310,7 @@ class UserGroupServiceImpl(
             currentMembers.associateBy({ it.externalId }, { it.userId.toString() }) +
                 addedUsers.associateBy({ it.externalId }, { it.id.toString() })
         val promotions =
-            adminExternalIds
+            adminRoles.promoted
                 .filter { roleByExternalId[it] != PermissionRelation.ADMIN.name }
                 .mapNotNull { userIdByExternalId[it] }
                 .map { it to PermissionRelation.ADMIN }
@@ -236,7 +318,7 @@ class UserGroupServiceImpl(
             currentMembers
                 .filter {
                     it.role == PermissionRelation.ADMIN.name &&
-                        it.externalId !in adminExternalIds &&
+                        adminRoles.demotes(it.externalId) &&
                         it.externalId !in removedExternalIds
                 }.map { it.userId.toString() to PermissionRelation.MEMBER }
         val entries: List<Pair<String, PermissionRelation?>> = promotions + demotions

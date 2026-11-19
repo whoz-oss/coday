@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
+import { User } from '@whoz-oss/agentos-api-client'
 import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
 import { UserStateService } from '../../services/user-state.service'
@@ -36,6 +37,8 @@ export class UserFormComponent implements OnInit {
   private readonly userId = this.route.snapshot.params['userId'] as string | undefined
 
   protected readonly isEditMode = !!this.userId
+  /** The user as loaded: the update replaces the whole record, so unedited fields (email…) are present. */
+  private loadedUser?: User
   protected readonly isSaving = signal(false)
   protected readonly isLoading = signal(false)
 
@@ -74,26 +77,15 @@ export class UserFormComponent implements OnInit {
         })
     }
 
-    // Try to resolve from already-loaded state first (avoids extra HTTP call).
-    const existing = this.userAdminState.users().find((u) => u.id === this.userId)
-    if (existing) {
-      this.syncForm(existing)
-      this.form.controls.email.disable()
-      return
-    }
-
-    // State not loaded yet — load all and then sync.
     this.isLoading.set(true)
     this.userAdminState
-      .loadAll()
+      .getUser(this.userId!)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: () => {
-          const user = this.userAdminState.users().find((u) => u.id === this.userId)
-          if (user) {
-            this.syncForm(user)
-            this.form.controls.email.disable()
-          }
+        next: (user) => {
+          this.loadedUser = user
+          this.syncForm(user)
+          this.form.controls.email.disable()
           this.isLoading.set(false)
         },
         error: () => this.isLoading.set(false),
@@ -105,13 +97,14 @@ export class UserFormComponent implements OnInit {
   }
 
   protected save(): void {
-    if (this.form.invalid || this.isSaving()) return
+    if (this.form.invalid || this.isSaving() || (this.isEditMode && !this.loadedUser)) return
     this.isSaving.set(true)
 
     const { email, externalId, firstname, lastname, bio, isAdmin } = this.form.getRawValue()
 
     const action$ = this.isEditMode
       ? this.userAdminState.updateUser(this.userId!, {
+          ...this.loadedUser,
           externalId: externalId || undefined,
           firstname: firstname || undefined,
           lastname: lastname || undefined,
