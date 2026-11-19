@@ -3104,7 +3104,10 @@ paths:
         \ description is optional: missing ones (loop agent, target agent, prompt,\
         \ recurrence, planning, search tool) are decided by an LLM. The proposed scheduledPrompt\
         \ is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed.\
-        \ Requires WRITE on the namespace."
+        \ When no baseFlowConfiguration is given, flowConfigurationPresets (named\
+        \ base flow configurations) can be provided: the LLM chooses one from the\
+        \ description, which is then used as the base, and its name is returned as\
+        \ chosenPreset. Requires WRITE on the namespace."
       operationId: generateScheduledPrompt
       requestBody:
         content:
@@ -4969,6 +4972,21 @@ components:
       required:
       - caseEventId
       - positive
+    FlowConfigurationPreset:
+      type: object
+      properties:
+        baseFlowConfiguration:
+          $ref: "#/components/schemas/JsonNode"
+          description: "Flow configuration to start from, `{ search: { tool, params\
+            \ }, act: { agentName, prompt } }`, every part optional, with the same\
+            \ meaning as the request's `baseFlowConfiguration`."
+        name:
+          type: string
+          maxLength: 200
+          minLength: 0
+      required:
+      - baseFlowConfiguration
+      - name
     GeneratedFieldDecision:
       type: object
       properties:
@@ -4982,6 +5000,7 @@ components:
           - RECURRENCE
           - PLANNING
           - SEARCH
+          - PRESET
         rationale:
           type:
           - string
@@ -6127,6 +6146,19 @@ components:
           type: string
           maxLength: 2000
           minLength: 1
+        flowConfigurationPresets:
+          type:
+          - array
+          - "null"
+          description: "Named base flow configurations, used only when `baseFlowConfiguration`\
+            \ is absent. The LLM chooses one from the description (a single preset\
+            \ is chosen as is), and its `baseFlowConfiguration` then acts exactly\
+            \ like the request's `baseFlowConfiguration`: an explicit request field\
+            \ still wins over it. The chosen name is returned as `chosenPreset`."
+          items:
+            $ref: "#/components/schemas/FlowConfigurationPreset"
+          maxItems: 20
+          minItems: 0
         loopAgentName:
           type:
           - string
@@ -6173,6 +6205,14 @@ components:
     ScheduledPromptGenerationResult:
       type: object
       properties:
+        chosenPreset:
+          type:
+          - string
+          - "null"
+          description: "Name of the flow configuration preset the generation started\
+            \ from. Null when `baseFlowConfiguration` was given, no presets were given,\
+            \ or no preset could be chosen (see `warnings`). Returned whether or not\
+            \ there is a proposal."
         decisions:
           type: array
           items:

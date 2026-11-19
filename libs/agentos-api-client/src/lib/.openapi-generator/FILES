@@ -77,6 +77,7 @@ model/exchange-git-changes.ts
 model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
+model/flow-configuration-preset.ts
 model/generated-field-decision.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts

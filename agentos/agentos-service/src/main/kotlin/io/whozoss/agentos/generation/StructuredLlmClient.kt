@@ -30,6 +30,15 @@ data class StructuredLlmResult(
 ) {
     /** True when the LLM answered with no content at all. */
     val returnedNothing: Boolean get() = rawText == null
+
+    /** What a caller reports about this answer: no content, no JSON object, or JSON only found in a code fence. */
+    val warnings: List<String>
+        get() =
+            listOfNotNull(
+                "The LLM returned no content.".takeIf { returnedNothing },
+                "The LLM response could not be parsed as a JSON object.".takeIf { json == null && !returnedNothing },
+                "JSON was extracted from a markdown code fence in the LLM response.".takeIf { usedCodeFence },
+            )
 }
 
 /**

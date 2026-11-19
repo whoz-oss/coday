@@ -22,6 +22,7 @@ export enum GeneratedFieldDecisionFieldEnum {
   RECURRENCE = 'RECURRENCE',
   PLANNING = 'PLANNING',
   SEARCH = 'SEARCH',
+  PRESET = 'PRESET',
 }
 export enum GeneratedFieldDecisionSourceEnum {
   PROVIDED = 'PROVIDED',

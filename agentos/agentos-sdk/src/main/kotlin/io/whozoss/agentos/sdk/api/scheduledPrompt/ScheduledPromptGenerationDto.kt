@@ -28,6 +28,13 @@ import java.util.UUID
  * @param prompt The opening message of each started case: the scheduled prompt's `promptContent`, which the scheduler
  *   sets as `act.prompt` at run time.
  * @param searchToolName The search tool of the loop agent to use. When absent, the LLM picks one among its tools.
+ * @param baseFlowConfiguration A flow configuration to start from, `{ search: { tool, params }, act: { agentName,
+ *   prompt } }`, every part optional. The generation only enriches it; an explicit request field wins over its
+ *   counterpart.
+ * @param flowConfigurationPresets Named base flow configurations to choose from, used only when
+ *   [baseFlowConfiguration] is absent: the LLM chooses one from [description] (a single preset is chosen as is), and
+ *   its configuration then acts exactly like [baseFlowConfiguration]. The chosen name is reported as
+ *   [ScheduledPromptGenerationResult.chosenPreset].
  * @param recurrence How often and at what time the scheduled prompt fires.
  * @param planning When the schedule starts and ends.
  */
@@ -75,6 +82,17 @@ data class ScheduledPromptGenerationRequest(
     )
     val baseFlowConfiguration: JsonNode? = null,
     @field:Valid
+    @field:Size(max = MAX_PRESETS, message = "flowConfigurationPresets must hold at most $MAX_PRESETS presets")
+    @field:Schema(
+        types = ["array", "null"],
+        description =
+            "Named base flow configurations, used only when `baseFlowConfiguration` is absent. The LLM chooses one " +
+                "from the description (a single preset is chosen as is), and its `baseFlowConfiguration` then acts " +
+                "exactly like the request's `baseFlowConfiguration`: an explicit request field still wins over it. " +
+                "The chosen name is returned as `chosenPreset`.",
+    )
+    val flowConfigurationPresets: List<FlowConfigurationPreset>? = null,
+    @field:Valid
     val recurrence: RecurrenceDto? = null,
     @field:Valid
     val planning: PlanningDto? = null,
@@ -95,16 +113,75 @@ data class ScheduledPromptGenerationRequest(
                 baseFlowConfiguration.isNull ||
                 (baseFlowConfiguration.isObject && baseFlowConfiguration.toString().length <= MAX_BASE_FLOW_CONFIGURATION_LENGTH)
 
+    /**
+     * No null element, preset names unique as the selector matches them (`equals(ignoreCase = true)`, not a
+     * locale-sensitive `lowercase()`), and the presets bounded as a whole: they are injected into an LLM prompt.
+     *
+     * Bean Validation runs this getter even when an element is itself invalid, so it must not assume more than Jackson
+     * guarantees: the Kotlin module rejects a missing `name`, and a JSON null `baseFlowConfiguration` is a `NullNode`,
+     * but a null **element** of the list goes through.
+     */
+    @get:AssertTrue(
+        message =
+            "flowConfigurationPresets must hold no null element, have unique names (case-insensitive) and weigh at " +
+                "most $MAX_PRESETS_TOTAL_LENGTH characters in total",
+    )
+    @get:JsonIgnore
+    val isFlowConfigurationPresetsValid: Boolean
+        get() {
+            val all = flowConfigurationPresets.orEmpty()
+            val presets = all.filterNotNull()
+            val names = presets.map { it.name }
+            val unique = names.indices.none { i -> (i + 1 until names.size).any { j -> names[i].equals(names[j], ignoreCase = true) } }
+            val weight = presets.sumOf { it.name.length + it.baseFlowConfiguration.toString().length }
+            return presets.size == all.size && unique && weight <= MAX_PRESETS_TOTAL_LENGTH
+        }
+
     companion object {
         const val MAX_BASE_FLOW_CONFIGURATION_LENGTH = 10_000
         const val MAX_DESCRIPTION_LENGTH = 2000
         const val MAX_PROMPT_LENGTH = 4000
         const val MAX_NAME_LENGTH = 200
+        const val MAX_PRESETS = 20
+        const val MAX_PRESETS_TOTAL_LENGTH = 30_000
     }
 }
 
+/**
+ * A named base flow configuration the generation can start from, see
+ * [ScheduledPromptGenerationRequest.flowConfigurationPresets].
+ *
+ * @param name Identifies the preset, and is what the LLM answers with. Unique within a request, case-insensitively.
+ * @param baseFlowConfiguration Same shape and rules as [ScheduledPromptGenerationRequest.baseFlowConfiguration].
+ */
+@Schema(name = "FlowConfigurationPreset")
+data class FlowConfigurationPreset(
+    @field:NotBlank(message = "name must not be blank")
+    @field:Size(max = ScheduledPromptGenerationRequest.MAX_NAME_LENGTH, message = "name must be at most ${ScheduledPromptGenerationRequest.MAX_NAME_LENGTH} characters")
+    val name: String,
+    @field:Schema(
+        ref = "#/components/schemas/JsonNode",
+        description =
+            "Flow configuration to start from, `{ search: { tool, params }, act: { agentName, prompt } }`, every part " +
+                "optional, with the same meaning as the request's `baseFlowConfiguration`.",
+    )
+    val baseFlowConfiguration: JsonNode,
+) {
+    /** A JSON object, bounded like the request's `baseFlowConfiguration`: it is injected into an LLM prompt. */
+    @get:AssertTrue(
+        message =
+            "baseFlowConfiguration must be a JSON object of at most " +
+                "${ScheduledPromptGenerationRequest.MAX_BASE_FLOW_CONFIGURATION_LENGTH} characters",
+    )
+    @get:JsonIgnore
+    val isBaseFlowConfigurationValid: Boolean
+        get() =
+            baseFlowConfiguration.isObject &&
+                baseFlowConfiguration.toString().length <= ScheduledPromptGenerationRequest.MAX_BASE_FLOW_CONFIGURATION_LENGTH
+}
+
 /** A field of a generated scheduled prompt, as reported in [GeneratedFieldDecision]. */
-enum class GeneratedField { LOOP_AGENT, TARGET_AGENT, PROMPT, NAME, RECURRENCE, PLANNING, SEARCH }
+enum class GeneratedField { LOOP_AGENT, TARGET_AGENT, PROMPT, NAME, RECURRENCE, PLANNING, SEARCH, PRESET }
 
 /** Whether a field of a generated scheduled prompt came from the request or was decided by the generation. */
 enum class GeneratedFieldSource { PROVIDED, INFERRED }
@@ -143,6 +220,9 @@ data class GeneratedFieldDecision(
  * there is no proposal or when it could not be written (a warning then says so). [decisions] is its technical
  * counterpart.
  *
+ * [chosenPreset] is the name of the flow configuration preset the generation started from, see
+ * [ScheduledPromptGenerationRequest.flowConfigurationPresets]; it is returned whether or not there is a proposal.
+ *
  * [rawResponse] carries the raw LLM text, only when an LLM answer could not be used.
  */
 @Schema(name = "ScheduledPromptGenerationResult")
@@ -160,6 +240,14 @@ data class ScheduledPromptGenerationResult(
     val summary: String? = null,
     val decisions: List<GeneratedFieldDecision> = emptyList(),
     val warnings: List<String> = emptyList(),
+    @field:Schema(
+        types = ["string", "null"],
+        description =
+            "Name of the flow configuration preset the generation started from. Null when `baseFlowConfiguration` " +
+                "was given, no presets were given, or no preset could be chosen (see `warnings`). Returned whether or " +
+                "not there is a proposal.",
+    )
+    val chosenPreset: String? = null,
     @field:Schema(types = ["string", "null"])
     val rawResponse: String? = null,
 )

@@ -331,7 +331,7 @@ export class ScheduledPromptControllerService extends BaseService {
 
   /**
    * Propose a scheduled prompt driving a LOOP agent from a natural-language description
-   * Returns a proposal, nothing is persisted. Every field but the description is optional: missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. The proposed scheduledPrompt is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed. Requires WRITE on the namespace.
+   * Returns a proposal, nothing is persisted. Every field but the description is optional: missing ones (loop agent, target agent, prompt, recurrence, planning, search tool) are decided by an LLM. The proposed scheduledPrompt is disabled and can be POSTed as is to /api/scheduled-prompts once reviewed. When no baseFlowConfiguration is given, flowConfigurationPresets (named base flow configurations) can be provided: the LLM chooses one from the description, which is then used as the base, and its name is returned as chosenPreset. Requires WRITE on the namespace.
    * @param scheduledPromptGenerationRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
