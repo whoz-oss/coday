@@ -168,7 +168,8 @@ class WorkflowService(
         namespaceId: String,
         instance: WorkflowInstanceRecord,
     ): RunView {
-        val accepted = evidenceRepository.list(scope, namespaceId, instance.workflowId)
+        val evidence = evidenceRepository.list(scope, namespaceId, instance.workflowId)
+        val accepted = evidence
             .lastOrNull { it.kind == "agent-result" && it.outcome == "pass" && it.facts["acceptedDomainState"] is Map<*, *> }
         val state = (accepted?.facts?.get("acceptedDomainState") as? Map<*, *>)?.entries
             ?.associate { it.key.toString() to it.value }.orEmpty()
@@ -177,6 +178,10 @@ class WorkflowService(
             runType = instance.instance["workflowType"] as? String ?: "",
             ticket = instance.instance["ticket"] as? String,
             domainState = state,
+            humanDecisions = evidence.filter { it.kind == "human-decision" }.map { decision ->
+                mapOf("stepId" to decision.stepId, "outcome" to decision.outcome,
+                    "facts" to decision.facts, "source" to decision.source)
+            },
         )
     }
 

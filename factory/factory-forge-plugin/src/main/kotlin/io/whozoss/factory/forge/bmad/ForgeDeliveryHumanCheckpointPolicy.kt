@@ -37,7 +37,26 @@ class ForgeDeliveryHumanCheckpointPolicy : FactoryHumanCheckpointPolicy {
         val current = present(context)
         if (current !is HumanCheckpointVerdict.Allowed) return current
         if (current.facts != presented) return HumanCheckpointVerdict.Denied("FORGE_DECISION_STALE")
-        return HumanCheckpointVerdict.Allowed(current.facts + ("gate" to context.stepId))
+        val otherStep = when (context.stepId) {
+            "technical-validation" -> "functional-validation"
+            "functional-validation" -> "technical-validation"
+            else -> null
+        }
+        val other = otherStep?.let { step -> context.run.humanDecisions.lastOrNull { it["stepId"] == step } }
+        if (other != null) {
+            val pairedStep = otherStep ?: return HumanCheckpointVerdict.Denied("FORGE_DECISION_STALE")
+            val currentOther = present(context.copy(stepId = pairedStep)) as? HumanCheckpointVerdict.Allowed
+                ?: return HumanCheckpointVerdict.Denied("FORGE_DECISION_STALE")
+            val facts = other["facts"] as? Map<*, *> ?: return HumanCheckpointVerdict.Denied("FORGE_DECISION_STALE")
+            val source = other["source"] as? Map<*, *> ?: return HumanCheckpointVerdict.Denied("FORGE_DECISION_STALE")
+            if (other["outcome"] != "pass" || facts["gate"] != pairedStep ||
+                (facts["decidedAt"] as? String).isNullOrBlank() || source["kind"] != "factory-human" ||
+                (source["actorId"] as? String).isNullOrBlank() ||
+                currentOther.facts.any { (key, value) -> facts[key] != value }
+            ) return HumanCheckpointVerdict.Denied("FORGE_DECISION_STALE")
+        }
+        return HumanCheckpointVerdict.Allowed(current.facts + ("gate" to context.stepId) +
+            (if (other != null) mapOf("deliveryOutcome" to "READY_TO_MERGE") else emptyMap()))
     }
 
     private fun packet(context: HumanCheckpointContext): Map<String, Any?>? {

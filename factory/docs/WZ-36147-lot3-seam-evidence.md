@@ -11,7 +11,8 @@ checked against committed Git objects in the Case. After local code review,
 technical and functional human decisions may open independently. The
 functional decision asks the person to confirm what they tested; Factory
 does not assert that a particular tag was deployed. Two approvals on the same
-work candidate end the run at **ready to merge**. Merging the PR and changing
+work candidate end the run at **ready to merge**. The ordinary dependency rule
+provides the join without a closing agent. Merging the PR and changing
 Jira are outside this version. The draft remains unpublished until its direct
 workflow and recovery behavior are proven. The CI and PR observation design
 and test results below are historical, superseded by this decision.
