@@ -97,13 +97,44 @@ class FlowConfigurationPresetSelectorUnitSpec :
             coVerify(exactly = 1) { structuredLlmClient.call(any(), any(), any(), any()) }
         }
 
+        "the agent's system prompt, when given, comes before the selection instructions" {
+            val system = slot<String>()
+            coEvery {
+                structuredLlmClient.call(
+                    model = any(),
+                    provider = any(),
+                    systemPrompt = capture(system),
+                    userMessage = any(),
+                )
+            } returns
+                answer("""{"presetName": "Bench"}""")
+
+            selector.choose(namespaceId, userId, description, presets, "Lexicon: a bench talent is unassigned.")
+
+            system.captured shouldBe
+                "Lexicon: a bench talent is unassigned.\n\n${FlowConfigurationPresetSelector.SYSTEM_PROMPT}"
+
+            // blank: the selection instructions alone
+            selector.choose(
+                namespaceId = namespaceId,
+                userId = userId,
+                description = description,
+                presets = presets,
+                agentSystemPrompt = "  ",
+            )
+            system.captured shouldBe FlowConfigurationPresetSelector.SYSTEM_PROMPT
+        }
+
         "a choice without rationale is still a choice" {
             llmReturns(answer("""{"presetName": "Stories"}"""))
 
             val outcome = selector.choose(namespaceId, userId, description, presets)
 
             outcome.preset shouldBe stories
-            outcome.decision.shouldNotBeNull().rationale.shouldBeNull()
+            outcome.decision
+                .shouldNotBeNull()
+                .rationale
+                .shouldBeNull()
         }
 
         "an answer in a code fence is used, with a warning" {

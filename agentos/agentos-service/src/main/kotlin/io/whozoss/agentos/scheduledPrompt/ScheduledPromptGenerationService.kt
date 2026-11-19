@@ -12,8 +12,8 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.generation.StructuredLlmClient
 import io.whozoss.agentos.generation.StructuredLlmResult
 import io.whozoss.agentos.scheduledPrompt.FlowConfigurationPresetSelector.PresetOutcome
-import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationPreset
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
+import io.whozoss.agentos.sdk.api.scheduledPrompt.FlowConfigurationPreset
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedField
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedFieldDecision
 import io.whozoss.agentos.sdk.api.scheduledPrompt.GeneratedFieldSource
@@ -55,7 +55,8 @@ import java.util.UUID
  *    agent, several LOOP agents, or no target agent is a 422.
  * 2. [preset], only when the request has presets and no base flow configuration: [FlowConfigurationPresetSelector]
  *    chooses one preset from the description (no LLM call when there is a single one), whose flow configuration is
- *    then the base flow configuration of the following steps. No usable choice is a warning, and the generation goes
+ *    then the base flow configuration of the following steps. The LLM is given the loop agent's system prompt, for
+ *    its lexical definitions of the description's domain terms. No usable choice is a warning, and the generation goes
  *    on without a base. Then [candidates] completes the agents with the target agent of the inputs.
  * 3. [plan]: with the namespace default model ([ModelResolver]), the LLM proposes what is missing among the loop
  *    agent, the target agent, the prompt, the name, the recurrence and the planning. Skipped when nothing is missing
@@ -201,10 +202,55 @@ class ScheduledPromptGenerationService(
             parsed.forEach { (preset, base) -> base.agentName?.let { checkPresetTarget(preset, it, agents.targets) } }
         }
         return when {
-            used -> presetSelector.choose(namespaceId, userId, request.description, presets)
-            else -> PresetOutcome()
+            used -> {
+                presetSelector.choose(
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    description = request.description,
+                    presets = presets,
+                    agentSystemPrompt =
+                        loopSystemPrompt(
+                            namespaceId = namespaceId,
+                            userId = userId,
+                            agents = agents,
+                            presets = presets,
+                        ),
+                )
+            }
+
+            else -> {
+                PresetOutcome()
+            }
         }
     }
+
+    /**
+     * The loop agent's system prompt (namespace context, lexical definitions included), for the preset choice to
+     * understand the description as the loop agent does. Resolved only when the LLM is asked, i.e. several presets.
+     */
+    private suspend fun loopSystemPrompt(
+        namespaceId: UUID,
+        userId: UUID,
+        agents: Agents,
+        presets: List<FlowConfigurationPreset>,
+    ): String? =
+        when {
+            presets.size < 2 -> {
+                null
+            }
+
+            else -> {
+                agentService
+                    .resolveDefinition(
+                        agentConfigId =
+                            agents.loops
+                                .single()
+                                .metadata.id,
+                        namespaceId = namespaceId,
+                        userId = userId,
+                    ).systemPrompt
+            }
+        }
 
     private fun presetLabel(preset: FlowConfigurationPreset) = "flowConfigurationPresets['${preset.name}'].baseFlowConfiguration"
 
@@ -337,9 +383,11 @@ class ScheduledPromptGenerationService(
             withShadowing(namespaceAgents + platformAgents).filter { it.resolvedExecutionMode != ExecutionMode.LOOP }
         when {
             loops.isEmpty() -> throw UnprocessableEntityException("No LOOP agent in this namespace: a scheduled loop needs one.")
+
             loops.size > 1 -> throw UnprocessableEntityException(
                 "This namespace has ${loops.size} LOOP agents ${loops.map { it.name }}: a scheduled loop needs exactly one.",
             )
+
             targets.isEmpty() -> throw UnprocessableEntityException("No agent in this namespace to start for each search result.")
         }
         // Checked here, before any LLM call; resolved again by candidates(), which also sees the base's target.

@@ -15,7 +15,10 @@ import java.util.UUID
  *
  * A single preset is chosen without asking the LLM. Otherwise one [StructuredLlmClient] call, with the namespace
  * default model ([ModelResolver]), is given the presets and the description, and answers with the exact name of one
- * preset, matched case-insensitively.
+ * preset, matched case-insensitively. The loop agent's system prompt, when given, comes first in the system prompt:
+ * it holds the namespace context, lexical definitions included, without which the description's domain terms (a
+ * "talent request", a "deal"...) cannot be mapped to the right preset. Same layout as the search tool auto-selection
+ * of `LoopConfigGenerationService`.
  *
  * A preset is an optional enrichment of the generation, not a requirement: an answer that cannot be used (nothing, not
  * JSON, no name, a name that is not a preset) yields no preset and warnings, and the generation goes on without a base
@@ -46,17 +49,35 @@ class FlowConfigurationPresetSelector(
     /**
      * No preset yields an empty outcome, a single one is chosen without an LLM call. Throws
      * [UnprocessableEntityException] (422) when the LLM is needed and the namespace has no model.
+     *
+     * @param agentSystemPrompt The loop agent's system prompt (namespace context, lexical definitions), prepended to
+     *   the selection instructions; null or blank for none.
      */
     suspend fun choose(
         namespaceId: UUID,
         userId: UUID,
         description: String,
         presets: List<FlowConfigurationPreset>,
+        agentSystemPrompt: String? = null,
     ): PresetOutcome =
         when (presets.size) {
-            0 -> PresetOutcome()
-            1 -> PresetOutcome(preset = presets.single(), decision = decision(presets.single(), ONLY_PRESET_RATIONALE))
-            else -> askLlm(namespaceId, userId, description, presets)
+            0 -> {
+                PresetOutcome()
+            }
+
+            1 -> {
+                PresetOutcome(preset = presets.single(), decision = decision(presets.single(), ONLY_PRESET_RATIONALE))
+            }
+
+            else -> {
+                askLlm(
+                    namespaceId = namespaceId,
+                    userId = userId,
+                    description = description,
+                    presets = presets,
+                    agentSystemPrompt = agentSystemPrompt,
+                )
+            }
         }
 
     private suspend fun askLlm(
@@ -64,11 +85,18 @@ class FlowConfigurationPresetSelector(
         userId: UUID,
         description: String,
         presets: List<FlowConfigurationPreset>,
+        agentSystemPrompt: String?,
     ): PresetOutcome {
         val (model, provider) =
             modelResolver.resolve(namespaceId, userId)
                 ?: throw UnprocessableEntityException("No AI model is configured for namespace $namespaceId.")
-        val llm = structuredLlmClient.call(model, provider, SYSTEM_PROMPT, message(description, presets))
+        val llm =
+            structuredLlmClient.call(
+                model = model,
+                provider = provider,
+                systemPrompt = systemPrompt(agentSystemPrompt),
+                userMessage = message(description, presets),
+            )
         val answer =
             llm.json
                 ?.get("presetName")
@@ -99,7 +127,13 @@ class FlowConfigurationPresetSelector(
                         llm.warnings +
                             listOfNotNull(
                                 "The LLM did not choose a preset.".takeIf { llm.json != null && answer == null },
-                                answer?.let { "The LLM chose preset '$it', which is not among the presets ${presets.map { p -> p.name }}." },
+                                answer?.let {
+                                    "The LLM chose preset '$it', which is not among the presets ${
+                                        presets.map { p ->
+                                            p.name
+                                        }
+                                    }."
+                                },
                                 NO_PRESET_WARNING,
                             ),
                     unusableRawText = llm.rawText,
@@ -107,6 +141,10 @@ class FlowConfigurationPresetSelector(
             }
         }
     }
+
+    /** The agent's context first, then the selection instructions. */
+    private fun systemPrompt(agentSystemPrompt: String?): String =
+        listOfNotNull(agentSystemPrompt?.takeIf { it.isNotBlank() }, SYSTEM_PROMPT).joinToString("\n\n")
 
     /** The presets and the description, each in its own delimited block: the description cannot pose as a preset. */
     private fun message(
