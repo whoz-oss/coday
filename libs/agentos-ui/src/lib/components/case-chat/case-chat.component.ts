@@ -93,6 +93,7 @@ import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.comp
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
 import { findLegitimateAnswer, runningAfter, senderLabel } from './case-chat.utils'
+import { WizzResponseTracker } from './wizz-response-tracker'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -177,6 +178,9 @@ const TERMINAL_CLOSE_DEBOUNCE_MS = 300
  * transport hiccup a dead stream.
  */
 const EVENT_SOURCE_CLOSED = 2
+
+/** Keeps the effect bounded even if a browser never delivers animationend. */
+const WIZZ_EFFECT_DURATION_MS = 400
 
 /** True when the user has an active text selection (e.g. preparing to copy). */
 function hasActiveSelection(): boolean {
@@ -324,6 +328,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
+
+  /** Decorative, per-chat opt-in. It deliberately never leaves this component. */
+  protected readonly wizzEnabled = signal(false)
+  protected readonly wizzActive = signal(false)
+  private readonly wizzTracker = new WizzResponseTracker()
+  private wizzCleanupTimer: ReturnType<typeof setTimeout> | null = null
+  private wizzTriggerSequence = 0
 
   /**
    * Pre-computed markdown HTML per event id.
@@ -978,6 +989,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.resetWizz()
     if (this.terminalCloseTimer !== null) {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
@@ -1068,9 +1080,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private connectSse(): void {
-    const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
-
-    this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
+    this.resetWizz()
+    const caseIdAtConnection = this.caseId
+    const url = `${this.config.basePath}/api/cases/${caseIdAtConnection}/events`
+    const source = this.zone.runOutsideAngular(() => new EventSource(url))
+    this.eventSource = source
 
     // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
     // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
@@ -1080,6 +1094,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
       try {
         const event = JSON.parse(raw) as CaseEvent
+        // An old EventSource may still dispatch after a Retry or case switch.
+        if (
+          this.eventSource !== source ||
+          this.caseId !== caseIdAtConnection ||
+          (event.caseId !== undefined && event.caseId !== caseIdAtConnection)
+        )
+          return
         this.zone.run(() => {
           // Reconnection replays persisted history. The last event that tells whether the case runs
           // restores the running indicator after a transport error; older ones must not undo it.
@@ -1108,6 +1129,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
+
+          const completedMessageId = this.wizzTracker.observe(event)
+          if (completedMessageId && this.wizzEnabled()) this.triggerWizz()
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1165,6 +1189,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
                 this.terminalCloseTimer = null
                 // Re-read derived state: if a later IDLE frame arrived, isTerminal is false.
                 if (this.isTerminal()) {
+                  this.resetWizz()
                   this.isRunning.set(false)
                   this.eventSource?.close()
                   this.eventSource = null
@@ -1259,13 +1284,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     // handle the different event names we see in the SSE stream
     for (const name of eventNames) {
-      this.eventSource.addEventListener(name, handler)
+      source.addEventListener(name, handler)
     }
 
-    this.eventSource.onerror = () => {
-      const closed = this.eventSource?.readyState === EVENT_SOURCE_CLOSED
+    source.onerror = () => {
+      if (this.eventSource !== source || this.caseId !== caseIdAtConnection) return
+      const closed = source.readyState === EVENT_SOURCE_CLOSED
       if (closed) console.warn('[AgentOS SSE] stream closed for case', this.caseId)
       this.zone.run(() => {
+        this.resetWizz()
         this.isRunning.set(false)
         // Do not mark terminal on transport error: EventSource may reconnect.
         // CLOSED is the exception — the browser will not retry, so say the stream is gone
@@ -1280,6 +1307,40 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
   private anyToolResponseThisTurn = false
+
+  protected toggleWizz(): void {
+    const enabled = !this.wizzEnabled()
+    this.wizzEnabled.set(enabled)
+    if (!enabled) this.resetWizz()
+  }
+
+  protected onWizzAnimationEnd(event: AnimationEvent): void {
+    if (event.target === event.currentTarget) this.cancelWizzPresentation()
+  }
+
+  private triggerWizz(): void {
+    this.cancelWizzPresentation()
+    const sequence = ++this.wizzTriggerSequence
+    queueMicrotask(() => {
+      if (!this.wizzEnabled() || sequence !== this.wizzTriggerSequence) return
+      this.wizzActive.set(true)
+      this.wizzCleanupTimer = setTimeout(() => this.cancelWizzPresentation(), WIZZ_EFFECT_DURATION_MS)
+    })
+  }
+
+  private resetWizz(): void {
+    this.wizzTracker.reset()
+    this.cancelWizzPresentation()
+  }
+
+  private cancelWizzPresentation(): void {
+    this.wizzTriggerSequence++
+    if (this.wizzCleanupTimer !== null) {
+      clearTimeout(this.wizzCleanupTimer)
+      this.wizzCleanupTimer = null
+    }
+    this.wizzActive.set(false)
+  }
 
   protected onInput(event: Event): void {
     const input = event.target as HTMLTextAreaElement
@@ -1399,6 +1460,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.eventSource = null
+    this.wizzEnabled.set(false)
+    this.resetWizz()
     this.dropCaseProbe()
     this.streamUnavailable.set(false)
     this.caseGone.set(false)

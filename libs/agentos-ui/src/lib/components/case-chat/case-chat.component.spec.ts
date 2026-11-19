@@ -126,6 +126,48 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  it('keeps Wizz off by default and triggers it only for a matching observed live completion', async () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(
+          new MessageEvent(type, {
+            data: JSON.stringify({ type, id, caseId: 'c-1', namespaceId: 'ns-1', timestamp: '', metadata: {}, ...fields }),
+          })
+        )
+
+      emit('ThinkingEvent', 'thinking-1')
+      emit('MessageEvent', 'message-1', {
+        actor: { id: 'agent-1', role: ActorRoleEnum.AGENT },
+        content: [{ type: 'Text', content: 'Done' }],
+      })
+      emit('AgentFinishedEvent', 'finish-1', { agentId: 'agent-1' })
+      expect(ref.instance['wizzActive']()).toBe(false)
+
+      ref.instance['toggleWizz']()
+      expect(ref.instance['wizzEnabled']()).toBe(true)
+      emit('TextChunkEvent', 'chunk-2', { chunk: 'live' })
+      emit('MessageEvent', 'message-2', {
+        actor: { id: 'agent-1', role: ActorRoleEnum.AGENT },
+        content: [{ type: 'Text', content: 'Done again' }],
+      })
+      emit('AgentFinishedEvent', 'finish-2', { agentId: 'agent-1' })
+      await Promise.resolve()
+      expect(ref.instance['wizzActive']()).toBe(true)
+
+      ref.instance['toggleWizz']()
+      expect(ref.instance['wizzEnabled']()).toBe(false)
+      expect(ref.instance['wizzActive']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })

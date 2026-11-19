@@ -158,7 +158,11 @@
         </div>
       }
 
-      <div class="case-chat__messages-region">
+      <div
+        class="case-chat__messages-region"
+        [class.case-chat__messages-region--wizzing]="wizzActive()"
+        (animationend)="onWizzAnimationEnd($event)"
+      >
         <div #messagesContainer class="case-chat__messages">
           @if (timeline().length === 0) {
             <div class="case-chat__empty">
@@ -583,6 +587,17 @@
           (keyPressed)="onRecordingKeydown($event)"
         />
         <div class="case-chat__actions">
+          <button
+            type="button"
+            class="case-chat__wizz-button"
+            [class.case-chat__wizz-button--active]="wizzEnabled()"
+            [attr.aria-pressed]="wizzEnabled()"
+            aria-label="Wizz mode"
+            title="Wizz mode: shake the conversation after a live agent response"
+            (click)="toggleWizz()"
+          >
+            Wizz
+          </button>
           @if (canAttach()) {
             <ds-icon-button
               icon="attach_file"
