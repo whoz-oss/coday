@@ -25,6 +25,10 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * HTTP integration tests of the `FACTORY_WORKSTREAM` facade.
@@ -255,7 +259,206 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(data(response.body)["items"] as List<*>).isEmpty()
     }
 
+    @Test
+    fun `all reads and retry leave an unmapped namespace uninitialized`() {
+        val paths = listOf(
+            "$base/workflows",
+            "$base/workflows/wf-missing",
+            "$base/workflows/wf-missing/attempts",
+            "$base/workflows/wf-missing/blockers",
+            "$base/workflows/wf-missing/human-actions",
+            "$base/workstreams/namespace-$secondNamespace",
+        )
+        paths.forEach { path ->
+            val response = get("$path?namespaceId=$secondNamespace")
+            assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+            assertThat(errorCode(response.body)).isEqualTo("WORKFLOW_NOT_FOUND")
+            assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace)).isEmpty()
+        }
+        val retry = post(
+            "$base/workflows/wf-missing/retries?namespaceId=$secondNamespace",
+            mapOf("stepId" to "gate", "expectedRevision" to 1, "reasonCode" to "manual"),
+        )
+        assertThat(retry.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(errorCode(retry.body)).isEqualTo("WORKFLOW_NOT_FOUND")
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace)).isEmpty()
+    }
+
     // ----- writes: scope, idempotence -------------------------------------
+
+    @Test
+    fun `first launch initializes one active mapping in caller organization and replays without divergence`() {
+        registerDefinition()
+        val foreignScope = TenantScope("org-other", "ws-foreign")
+        val foreign = workstreamRepository.create(
+            foreignScope,
+            Workstream(
+                organizationId = foreignScope.organizationId,
+                workstreamId = foreignScope.workstreamId,
+                namespaceId = secondNamespace,
+                name = "Foreign mapping",
+                status = WorkstreamStatus.PAUSED,
+            ),
+        )
+        val path = "$base/workflows?namespaceId=${secondNamespace.uppercase()}"
+        val definition = workflowService.getDefinition(scope, "wf-svc", "1.0.0")!!
+        val body = mapOf(
+            "workflowType" to "wf-svc", "title" to "First launch",
+            "definitionVersion" to "1.0.0", "definitionHash" to definition["definitionHash"],
+        )
+
+        val first = post(path, body, "first-launch")
+        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(data(first.body)["namespaceId"]).isEqualTo(secondNamespace)
+        assertThat(data(first.body)["created"]).isEqualTo(true)
+        val mapping = workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace).single()
+        assertThat(mapping.workstreamId).isEqualTo("namespace-$secondNamespace")
+        assertThat(mapping.status).isEqualTo(WorkstreamStatus.ACTIVE)
+        val workflowId = data(first.body)["workflowId"] as String
+        val runScope = TenantScope(scope.organizationId, mapping.workstreamId)
+        assertThat(workflowRepository.findInstance(runScope, secondNamespace, workflowId)).isNotNull()
+        assertThat(workflowRepository.findInstance(foreignScope, secondNamespace, workflowId)).isNull()
+
+        val replay = post(path, body, "first-launch")
+        assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(data(replay.body)["idempotent"]).isEqualTo(true)
+        assertThat(data(replay.body)["workflowId"]).isEqualTo(workflowId)
+        val divergent = post(path, body + ("title" to "Changed"), "first-launch")
+        assertThat(divergent.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(errorCode(divergent.body)).isEqualTo("WORKFLOW_IDENTITY_CONFLICT")
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace)).containsExactly(mapping)
+        assertThat(workstreamRepository.findDomain(foreignScope, foreignScope.workstreamId)).isEqualTo(foreign)
+    }
+
+    @Test
+    fun `semantic definition failures can initialize a mapping but never create a run`() {
+        registerDefinition()
+        val cases = listOf(
+            Triple(
+                mapOf("workflowType" to "wf-svc", "definitionVersion" to "1.0.0", "definitionHash" to "0".repeat(64)),
+                HttpStatus.CONFLICT, "WORKFLOW_DEFINITION_MISMATCH",
+            ),
+            Triple(mapOf("workflowType" to "wf-unregistered"), HttpStatus.NOT_FOUND, "WORKFLOW_DEFINITION_NOT_FOUND"),
+        )
+        cases.forEachIndexed { index, (body, status, code) ->
+            val requestedNamespace = UUID.randomUUID().toString()
+            assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, requestedNamespace)).isEmpty()
+
+            val response = post("$base/workflows?namespaceId=$requestedNamespace", body, "semantic-failure-$index")
+
+            assertThat(response.statusCode).isEqualTo(status)
+            assertThat(errorCode(response.body)).isEqualTo(code)
+            val mapping = workstreamRepository.findDomainsByNamespace(scope.organizationId, requestedNamespace).single()
+            assertThat(mapping.status).isEqualTo(WorkstreamStatus.ACTIVE)
+            val runScope = TenantScope(scope.organizationId, mapping.workstreamId)
+            assertThat(workflowRepository.listInstances(runScope, requestedNamespace)).isEmpty()
+            assertThat(workflowRepository.listProjections(runScope, requestedNamespace, "active")).isEmpty()
+        }
+    }
+
+    @Test
+    fun `concurrent HTTP first launches with separate keys share one active mapping`() {
+        registerDefinition()
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val futures = (1..2).map { index ->
+                executor.submit<ResponseEntity<Map<String, Any?>>> {
+                    ready.countDown()
+                    check(start.await(10, TimeUnit.SECONDS))
+                    post(
+                        "$base/workflows?namespaceId=$secondNamespace",
+                        mapOf("workflowType" to "wf-svc"), "concurrent-launch-$index",
+                    )
+                }
+            }
+            assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue()
+            start.countDown()
+            val responses = futures.map { it.get(60, TimeUnit.SECONDS) }
+            responses.forEach { assertThat(it.statusCode).isEqualTo(HttpStatus.CREATED) }
+            val workflowIds = responses.map { data(it.body)["workflowId"] as String }
+            assertThat(workflowIds.toSet()).hasSize(2)
+            val mapping = workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace).single()
+            assertThat(mapping.status).isEqualTo(WorkstreamStatus.ACTIVE)
+            val runScope = TenantScope(scope.organizationId, mapping.workstreamId)
+            assertThat(workflowRepository.listInstances(runScope, secondNamespace).map { it.workflowId })
+                .containsExactlyInAnyOrderElementsOf(workflowIds)
+        } finally {
+            start.countDown()
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `launch preserves existing mapping metadata and allowed workflow types`() {
+        registerDefinition()
+        val configured = workstreamRepository.save(
+            scope,
+            workstreamRepository.findDomain(scope, scope.workstreamId)!!.copy(
+                name = "Governed", controllerAgentRef = "agent://controller",
+                governancePolicyRef = "policy://governed", allowedWorkflowTypes = listOf("wf-svc"),
+            ),
+        )
+        val started = post("$base/workflows", mapOf("workflowType" to "wf-svc"), "existing-mapping")
+        assertThat(started.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(workflowRepository.findInstance(scope, namespace, data(started.body)["workflowId"] as String)).isNotNull()
+        val denied = post("$base/workflows", mapOf("workflowType" to "wf-other"), "denied-type")
+        assertThat(denied.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
+        assertThat(errorCode(denied.body)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, namespace)).containsExactly(configured)
+    }
+
+    @Test
+    fun `launch never reactivates paused or archived mappings`() {
+        registerDefinition()
+        listOf(WorkstreamStatus.PAUSED, WorkstreamStatus.ARCHIVED).forEach { status ->
+            val inactive = workstreamRepository.save(
+                scope, workstreamRepository.findDomain(scope, scope.workstreamId)!!.copy(status = status),
+            )
+            val response = post("$base/workflows", mapOf("workflowType" to "wf-svc"), "inactive-$status")
+            assertThat(response.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
+            assertThat(errorCode(response.body)).isEqualTo("WORKSTREAM_NAMESPACE_MAPPING_INVALID")
+            assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, namespace)).containsExactly(inactive)
+        }
+    }
+
+    @Test
+    fun `malformed launch bodies fields pins and keys never initialize a mapping`() {
+        val valid = mapOf<String, Any?>("workflowType" to "wf-svc")
+        val invalidBodies = listOf(
+            null, emptyMap<String, Any?>(),
+            valid + ("unknown" to true), valid + ("namespaceId" to secondNamespace),
+            valid + ("workflowType" to 1), valid + ("workflowType" to null), valid + ("workflowType" to "bad/type"),
+            valid + ("title" to 1), valid + ("title" to null), valid + ("title" to "x".repeat(201)),
+            valid + ("ticket" to false), valid + ("ticket" to null), valid + ("ticket" to "invalid ticket"),
+            valid + ("definitionVersion" to "1.0.0"), valid + ("definitionHash" to "a".repeat(64)),
+            valid + mapOf("definitionVersion" to 1, "definitionHash" to "a".repeat(64)),
+            valid + mapOf("definitionVersion" to " ", "definitionHash" to "a".repeat(64)),
+            valid + mapOf("definitionVersion" to "x".repeat(129), "definitionHash" to "a".repeat(64)),
+            valid + mapOf("definitionVersion" to "1.0.0", "definitionHash" to "invalid"),
+            valid + mapOf("definitionVersion" to "1.0.0", "definitionHash" to "A".repeat(64)),
+            valid + mapOf("definitionVersion" to "1.0.0", "definitionHash" to null),
+        )
+        val malformedVersions = listOf(
+            "1", "1.0", "1.0.0.0", "v1.0.0", "1.0.0-beta", "1.0.0+build",
+            "01.0.0", "1.01.0", "1.0.01", "-1.0.0", " 1.0.0", "1.0.0 ", "a.b.c",
+        ).map { version -> valid + mapOf("definitionVersion" to version, "definitionHash" to "a".repeat(64)) }
+        (invalidBodies + malformedVersions).forEach { body ->
+            val response = post("$base/workflows?namespaceId=$secondNamespace", body, "invalid-body")
+            assertThat(response.statusCode).describedAs("body: $body").isEqualTo(HttpStatus.BAD_REQUEST)
+            assertThat(errorCode(response.body)).isEqualTo("INVALID_START_REQUEST")
+            assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace)).isEmpty()
+        }
+        listOf(null, "", "bad/key", ".invalid-leading-character", "x".repeat(129)).forEach { key ->
+            val response = post("$base/workflows?namespaceId=$secondNamespace", valid, key)
+            assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+            assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace)).isEmpty()
+        }
+        val malformedNamespace = post("$base/workflows?namespaceId=not-a-uuid", valid, "valid-key")
+        assertThat(malformedNamespace.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(malformedNamespace.body)).isEqualTo("INVALID_NAMESPACE_ID")
+    }
 
     @Test
     fun `start creates a run without any runtime case attribution and is idempotent`() {
@@ -284,9 +487,11 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(post("$base/workflows", pinned, "pinned-start").statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(post("$base/workflows", pinned, "pinned-start").statusCode).isEqualTo(HttpStatus.OK)
         val stale = post("$base/workflows", pinned + ("definitionHash" to "0".repeat(64)), "stale-start")
-        assertThat(stale.statusCode.is4xxClientError).isTrue()
+        assertThat(stale.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(errorCode(stale.body)).isEqualTo("WORKFLOW_DEFINITION_MISMATCH")
         val partial = post("$base/workflows", pinned - "definitionHash", "partial-start")
-        assertThat(partial.statusCode.is4xxClientError).isTrue()
+        assertThat(partial.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(partial.body)).isEqualTo("INVALID_START_REQUEST")
         val wrongType = post("$base/workflows", pinned + ("definitionVersion" to 1), "invalid-pin")
         assertThat(wrongType.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }
