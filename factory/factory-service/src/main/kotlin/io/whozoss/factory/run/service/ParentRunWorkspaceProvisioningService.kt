@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.transaction.TransactionDefinition
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 import io.whozoss.factory.environment.domain.WorkEnvironment
 import io.whozoss.factory.environment.domain.WorkEnvironmentState
 import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
@@ -14,15 +13,12 @@ import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.run.domain.RunRecord
 import io.whozoss.factory.run.persistence.RunRepository
-import io.whozoss.factory.worktree.LocalWorktreeResourceIdentityResolver
 import io.whozoss.factory.run.persistence.RunProvisioningIntent
 import io.whozoss.factory.run.persistence.RunProvisioningIntentRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.transaction.support.TransactionSynchronizationManager
-import java.nio.file.Path
-import java.time.Instant
 
 @Component
 open class RunProvisioningTiming(
@@ -45,6 +41,7 @@ class ParentRunWorkspaceProvisioningService(
     transactionManager: PlatformTransactionManager,
     private val timing: RunProvisioningTiming = RunProvisioningTiming(),
 ) {
+    private val adoption = io.whozoss.factory.workspace.RootCaseWorkspaceAdoption(environments, proxy, transactionManager, timing)
     private val transaction = TransactionTemplate(transactionManager).apply {
         propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
     }
@@ -90,44 +87,7 @@ class ParentRunWorkspaceProvisioningService(
             saved
         }!!
         proxy.ensureRunRootCase(root, run.namespaceId, run.title, actorId)
-        val started = timing.nanoTime()
-        while (true) {
-            if (Thread.currentThread().isInterrupted) throw InterruptedException("Run provisioning interrupted; intent retained")
-            val raw = proxy.fetchWorkspaceChanges(root, actorId) ?: error("Root workspace is unavailable")
-            check(raw["equipped"] == true) { "Root case is not equipped with a workspace" }
-            when (raw["status"]) {
-                "READY" -> {
-                    check(raw["error"] == null) { "READY workspace Git inspection failed" }
-                    val path = (raw["path"] as? String)?.takeIf { it.isNotBlank() } ?: error("READY workspace has no path")
-                    val identity = LocalWorktreeResourceIdentityResolver().resolve(Path.of(path))
-                    transaction.execute {
-                        val current = environments.findByEnvironmentId(scope, environmentId) ?: error("Provisioning intent disappeared")
-                        check(current.lifecycleState != WorkEnvironmentState.DECOMMISSIONED) { "Run environment was decommissioned" }
-                        if (current.lifecycleState == WorkEnvironmentState.READY) {
-                            check(LocalWorktreeResourceIdentityResolver().resolve(Path.of(current.worktreePath)) == identity) { "Root workspace changed physical identity" }
-                        } else {
-                            check(current.lifecycleState == WorkEnvironmentState.PROVISIONING)
-                            environments.updateState(scope, current.copy(
-                                worktreePath = path, repoRoot = path,
-                                branch = (raw["branch"] as? String)?.takeIf { it.isNotBlank() },
-                                baseCommit = ((raw["changes"] as? Map<*, *>)?.get("base") as? String)
-                                    ?.takeIf { Regex("^[0-9a-fA-F]{40}$").matches(it) },
-                                lifecycleState = WorkEnvironmentState.READY,
-                            ), current.revision, Instant.now())
-                        }
-                    }
-                    return run
-                }
-                "REQUESTED", "PREPARING" -> Unit
-                else -> error("Root workspace preparation failed or has unknown status: ${raw["status"]}")
-            }
-            check(timing.nanoTime() - started < TimeUnit.MILLISECONDS.toNanos(timing.timeoutMs)) { "Root workspace provisioning timed out; intent retained" }
-            try {
-                timing.pause(timing.pollIntervalMs)
-            } catch (interrupted: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw interrupted
-            }
-        }
+        adoption.awaitReady(scope, environments.findByEnvironmentId(scope, environmentId)!!, actorId)
+        return run
     }
 }

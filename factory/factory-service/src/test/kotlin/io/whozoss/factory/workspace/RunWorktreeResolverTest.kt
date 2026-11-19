@@ -1,76 +1,116 @@
 package io.whozoss.factory.workspace
 
+import io.whozoss.factory.environment.port.GitCommandResult
+import io.whozoss.factory.environment.port.GitCommandRunner
 import io.whozoss.factory.persistence.TenantScope
+import java.nio.file.Files
 import java.nio.file.Path
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 
-/**
- * Unit tests of the explicit run-worktree binding (Lot F).
- *
- * They prove that `code` verifications are rooted on the run's worktree (not the
- * namespace repo root) whenever a workspace exists, and that a non-usable
- * workspace fails instead of silently reusing another directory.
- */
 class RunWorktreeResolverTest {
-
+    @TempDir lateinit var temp: Path
     private val scope = TenantScope("org", "ws")
-    private val workflowId = "wf-1"
-    private val fallback = Path.of("/repo/namespace-root")
-    private val worktree = Path.of("/worktrees/wf-1")
-
-    private class ScriptedStatePort(private val snapshots: List<WorkspaceSnapshot?>) : WorkspaceStatePort {
-        private var index = 0
-        override fun latestForWorkflow(scope: TenantScope, workflowId: String): WorkspaceSnapshot? {
-            val snapshot = snapshots[minOf(index, snapshots.lastIndex)]
-            index++
-            return snapshot
+    private val head = "a".repeat(40)
+    private fun resolver(
+        snapshot: WorkspaceSnapshot?, branch: String = "factory/ticket", enabled: Boolean = true,
+        ancestor: Boolean = true,
+    ): RunWorktreeResolver {
+        val properties = WorkspaceProperties(enabled = enabled)
+        val port = object : WorkspaceStatePort {
+            override fun latestForWorkflow(scope: TenantScope, workflowId: String) = snapshot
+        }
+        val git = GitCommandRunner { root, args ->
+            GitCommandResult(when {
+                args.first() == "merge-base" && !ancestor -> 1
+                args.first() == "symbolic-ref" && branch.isEmpty() -> 1
+                else -> 0
+            }, when (args.first()) {
+                "symbolic-ref" -> branch
+                "merge-base" -> ""
+                else -> if ("--show-toplevel" in args) root.toString() else head
+            }, "")
+        }
+        return RunWorktreeResolver(WorkspaceStateWaiter(port, properties), git, properties)
+    }
+    private fun ready(): WorkspaceSnapshot {
+        val root = Files.createDirectories(temp.resolve("worktrees/run"))
+        Files.createFile(root.resolve(".git")) // linked-worktree marker; Git inspection is stubbed
+        return WorkspaceSnapshot(WorkspaceStatus.READY, root.toString(), environmentId = "env", namespaceId = "ns", caseId = "case")
+    }
+    @Test fun `persisted worktree wins over namespace parent and submission checkout`() {
+        val snapshot = ready()
+        val binding = resolver(snapshot).resolveBinding(scope, "run", temp.resolve("namespace"), "ns", expectedCaseId = "case")
+        assertThat(binding.root).isEqualTo(Path.of(snapshot.worktreePath!!).toRealPath())
+        assertThat(binding.provenance).isEqualTo("run-environment")
+        assertThat(binding.head).isEqualTo(head)
+    }
+    @Test fun `parent run and standalone ticket delivery without environment cannot use submission root`() {
+        for (owner in listOf("run", "standalone-ticket-delivery")) {
+            assertThatThrownBy { resolver(null).resolveBinding(scope, owner, temp) }
+                .hasMessageContaining("CODE_WORKSPACE_REQUIRED")
         }
     }
-
-    private fun resolver(snapshots: List<WorkspaceSnapshot?>): RunWorktreeResolver =
-        RunWorktreeResolver(
-            WorkspaceStateWaiter(
-                ScriptedStatePort(snapshots),
-                WorkspaceProperties(enabled = true, readyTimeoutMs = 1_000, readyPollIntervalMs = 1),
-            ),
-        )
-
-    @Test
-    fun `a READY workspace roots code steps on the run worktree`() {
-        val resolved = resolver(listOf(WorkspaceSnapshot(WorkspaceStatus.READY, worktreePath = worktree.toString())))
-            .resolve(scope, workflowId, fallback)
-
-        assertThat(resolved).isEqualTo(worktree)
+    @Test fun `disabled workspace is the only explicit fallback`() {
+        val binding = resolver(null, enabled = false).resolveBinding(scope, "wf", temp)
+        assertThat(binding.provenance).isEqualTo("workspace-disabled")
+        assertThat(binding.facts()["workspaceChecksEnabled"]).isEqualTo(false)
     }
-
-    @Test
-    fun `a workspace that becomes READY is waited for, then bound`() {
-        val resolved = resolver(
-            listOf(
-                WorkspaceSnapshot(WorkspaceStatus.PREPARING),
-                WorkspaceSnapshot(WorkspaceStatus.READY, worktreePath = worktree.toString()),
-            ),
-        ).resolve(scope, workflowId, fallback)
-
-        assertThat(resolved).isEqualTo(worktree)
+    @Test fun `provisioned detached worktree may attach later without a stale branch expectation`() {
+        val snapshot = ready().copy(baseCommit = head)
+        assertThat(resolver(snapshot, "").resolveBinding(scope, "wf", temp, requireBranch = false).branch).isNull()
+        val attached = resolver(snapshot, "work/forge/ticket").resolveBinding(scope, "wf", temp)
+        assertThat(attached.branch).isEqualTo("work/forge/ticket")
+        assertThat(attached.facts()["branchExpectationSource"]).isEqualTo("unavailable-attached-only")
+        assertThatThrownBy { resolver(snapshot, "").resolveBinding(scope, "wf", temp) }
+            .hasMessageContaining("CODE_WORKSPACE_BRANCH_MISMATCH")
     }
-
-    @Test
-    fun `with no requested workspace the explicit fallback root is kept`() {
-        val resolved = resolver(listOf(null)).resolve(scope, workflowId, fallback)
-
-        assertThat(resolved).isEqualTo(fallback)
+    @Test fun `reliable control plane expectation is checked instead of provisioning observation`() {
+        val snapshot = ready()
+        val expected: (String?) -> String? = { environment ->
+            assertThat(environment).isEqualTo("env")
+            "factory/ticket"
+        }
+        assertThat(resolver(snapshot).resolveBinding(scope, "wf", temp, branchExpectation = expected).expectedBranch)
+            .isEqualTo("factory/ticket")
+        assertThatThrownBy { resolver(snapshot, "other").resolveBinding(scope, "wf", temp, branchExpectation = expected) }
+            .hasMessageContaining("CODE_WORKSPACE_BRANCH_MISMATCH")
     }
-
-    @Test
-    fun `a FAILED workspace fails instead of silently reusing another directory`() {
+    @Test fun `namespace and case mismatches fail`() {
+        val snapshot = ready()
+        assertThatThrownBy { resolver(snapshot).resolveBinding(scope, "run", temp, "other") }
+            .hasMessageContaining("namespace mismatch")
+        assertThatThrownBy { resolver(snapshot).resolveBinding(scope, "run", temp, expectedCaseId = "other") }
+            .hasMessageContaining("root case mismatch")
+    }
+    @Test fun `standalone environment without root ownership is refused after root case reservation`() {
+        val snapshot = ready().copy(caseId = null)
         assertThatThrownBy {
-            resolver(listOf(WorkspaceSnapshot(WorkspaceStatus.FAILED, failureReason = "clone failed")))
-                .resolve(scope, workflowId, fallback)
+            resolver(snapshot).resolveBinding(scope, "standalone", temp, "ns", expectedCaseId = "reserved-root")
+        }.hasMessageContaining("root case mismatch")
+    }
+    @Test fun `divergent HEAD and missing worktree fail without fallback`() {
+        val snapshot = ready().copy(baseCommit = "b".repeat(40))
+        assertThatThrownBy { resolver(snapshot, ancestor = false).resolve(scope, "run", temp) }
+            .hasMessageContaining("CODE_WORKSPACE_HEAD_MISMATCH")
+        assertThatThrownBy { resolver(snapshot.copy(worktreePath = temp.resolve("missing").toString())).resolve(scope, "run", temp) }
+            .hasMessageContaining("CODE_WORKSPACE_INVALID")
+    }
+    @Test fun `workspace preparation is waited for before binding`() {
+        val snapshot = ready()
+        var polls = 0
+        val port = object : WorkspaceStatePort {
+            override fun latestForWorkflow(scope: TenantScope, workflowId: String): WorkspaceSnapshot =
+                if (polls++ == 0) WorkspaceSnapshot(WorkspaceStatus.PREPARING) else snapshot
         }
+        val waiter = WorkspaceStateWaiter(port, WorkspaceProperties(readyPollIntervalMs = 1))
+        assertThat(waiter.awaitWorkspaceReady(scope, "run")?.worktreePath).isEqualTo(snapshot.worktreePath)
+        assertThat(polls).isEqualTo(2)
+    }
+    @Test fun `failed workspace never falls back`() {
+        assertThatThrownBy { resolver(WorkspaceSnapshot(WorkspaceStatus.FAILED)).resolve(scope, "run", temp) }
             .isInstanceOf(WorkspaceProvisioningException::class.java)
-            .hasFieldOrPropertyWithValue("errorCode", WorkspaceProvisioningCodes.WORKSPACE_PROVISIONING_FAILED)
     }
 }

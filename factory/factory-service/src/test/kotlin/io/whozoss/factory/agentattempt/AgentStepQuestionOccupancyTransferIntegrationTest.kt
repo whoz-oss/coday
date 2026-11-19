@@ -242,6 +242,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
         val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
         every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
             val binding = firstArg<TrustedCaseBinding>()
+            assertThat(binding.externalUserId).isEqualTo("alice")
             CaseHandle(binding.caseId, binding.namespaceId, false)
         }
         every { adapter.observeTurnResult(any(), any(), any(), any()) } returns AgentOsObservationResult(
@@ -256,7 +257,7 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
             findings = emptyList(), submittedAt = "2026-01-01T00:00:00Z", resultHash = "successor-pass-hash",
         )
         val proxy = mockk<AgentOsProxyClient>()
-        every { proxy.fetchWorkspaceChanges(any(), any()) } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
+        every { proxy.fetchWorkspaceChanges(any(), "alice") } returns mapOf("equipped" to true, "status" to "READY", "path" to root.toString())
         val capability = CapabilityExecutionService(
             resolver = CapabilityResolver(), workflowRepository = workflows,
             evidenceRepository = evidence, interactionRepository = interactions, attemptRepository = stepAttempts,
@@ -287,7 +288,8 @@ class AgentStepQuestionOccupancyTransferIntegrationTest : Neo4jDomainIntegration
             ))
             workflows.insertInstance(scope, WorkflowInstanceRecord(
                 namespaceId = namespace, workflowId = workflow, revision = 1, status = "active", creationCommandHash = "answer-transfer",
-                instance = mapOf("runId" to "parent-run"), projection = emptyMap(), rootCaseId = "root-answer-transfer",
+                instance = mapOf("runId" to "parent-run", "controllerRequest" to mapOf("actorId" to "alice"),
+                    "controllerExecution" to mapOf("actorId" to "spoofed")), projection = emptyMap(), rootCaseId = "root-answer-transfer",
             ))
         }
         var attempt = attempts.register(

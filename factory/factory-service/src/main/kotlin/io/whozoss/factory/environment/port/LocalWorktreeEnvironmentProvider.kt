@@ -51,7 +51,10 @@ class LocalWorktreeEnvironmentProvider(
     private val runner: GitCommandRunner = BoundedGitCommandRunner(),
 ) : EnvironmentGitProvider {
     override val providerId: String = "local-worktree"
-    override fun supports(environment: WorkEnvironment): Boolean = environment.envType == WorkEnvironment.DEFAULT_ENV_TYPE
+    override fun supports(environment: WorkEnvironment): Boolean = environment.envType in setOf(
+        WorkEnvironment.DEFAULT_ENV_TYPE,
+        io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService.ENV_TYPE,
+    )
 
     override fun inspect(environment: WorkEnvironment, expectedEnvironmentRevision: Int): EnvironmentGitInspectionResult {
         val lock = locks.computeIfAbsent(environment.environmentId) { ReentrantLock() }

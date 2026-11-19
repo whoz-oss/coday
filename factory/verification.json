@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1",
+  "verifications": {
+    "build": {
+      "command": "node scripts/factory-build.mjs",
+      "timeoutMs": 1800000
+    }
+  }
+}

@@ -2696,6 +2696,8 @@ components:
           format: int32
         envType:
           type: string
+        provisioningFailure:
+          type: string
       required:
       - createdAt
       - createdBy

@@ -307,7 +307,7 @@ class WorkflowController(
             title = workflow["title"] as String,
             relations = relations,
             ticket = ticket,
-            controllerRequest = requestText?.let {
+            controllerRequest = (requestText ?: "").let {
                 ControllerRequestInput(
                     text = it,
                     namespaceId = caller.namespaceId,
@@ -319,7 +319,7 @@ class WorkflowController(
         )
         val repoRoot = resolveRepoRoot(caller.namespaceId, user.userId)
             ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
-        return respond(service.start(caller.scope, caller.namespaceId, command, execution, repoRoot))
+        return respond(service.start(caller.scope, caller.namespaceId, command, execution.copy(actorId = caller.actorId), repoRoot))
     }
 
     // ----- transitions ---------------------------------------------------
@@ -1090,7 +1090,7 @@ class WorkflowController(
         }
         val kind = evidence["kind"] as? String
         if (kind.isNullOrBlank()) throw workflowException(WorkflowErrorCodes.INVALID_EVIDENCE)
-        if (kind in setOf("oracle-result", "human-decision")) {
+        if (kind in setOf("oracle-result", "human-decision", "branch-preparation")) {
             throw workflowException(
                 WorkflowErrorCodes.FACTORY_ONLY_EVIDENCE,
                 "$kind evidence is produced only by a trusted Factory control-plane route.",
