@@ -1,3 +1,22 @@
+## 3.49.0 (2026-11-19)
+
+### 🚀 Features
+
+- wz-35375 - introduce configuration presets ([d129452ed](https://github.com/whoz-oss/coday/commit/d129452ed))
+- wz-35375 - regenerate clients and open api ([70a9bc7f0](https://github.com/whoz-oss/coday/commit/70a9bc7f0))
+- wz-35375 - add missing frontend file ([98fa41d8f](https://github.com/whoz-oss/coday/commit/98fa41d8f))
+- wz-35375 - introduce flow configuration presets in scheduled prompt generation ([#1681](https://github.com/whoz-oss/coday/pull/1681))
+
+### 🩹 Fixes
+
+- wz-35375 - address review of configuration presets ([2aeba37cf](https://github.com/whoz-oss/coday/commit/2aeba37cf))
+- wz-35375 - give the loop agent's system prompt to the preset choice ([b76899956](https://github.com/whoz-oss/coday/commit/b76899956))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.48.1 (2026-11-18)
 
 ### 🩹 Fixes
