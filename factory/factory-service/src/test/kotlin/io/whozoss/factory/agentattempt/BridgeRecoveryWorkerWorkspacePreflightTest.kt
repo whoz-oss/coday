@@ -59,9 +59,13 @@ class BridgeRecoveryWorkerWorkspacePreflightTest : Neo4jDomainIntegrationTest() 
         val original = parent("forged-relation")
         val instance = workflows.findInstance(scope, namespace, original.workflowId)!!
         check(workflows.updateInstance(scope, namespace, original.workflowId, instance.revision,
-            instance.copy(revision = instance.revision + 1, rootCaseId = null,
-                instance = mapOf("relations" to mapOf("runId" to "run-forged-relation"),
+            // updateInstance preserves the reserved root case; forge a different Run owner instead.
+            instance.copy(revision = instance.revision + 1,
+                instance = mapOf("relations" to mapOf("runId" to "foreign-run"),
                     "controllerRequest" to mapOf("actorId" to "alice")))))
+        val forged = workflows.findInstance(scope, namespace, original.workflowId)!!
+        assertThat(forged.rootCaseId).isEqualTo(original.rootCaseId)
+        assertThat(forged.instance["relations"]).isEqualTo(mapOf("runId" to "foreign-run"))
         val before = environments.findByEnvironmentId(scope, original.environmentRef!!)!!
         val adapter = adapter()
         val proxy = readyProxy(root)
