@@ -22,10 +22,7 @@ class ForgePacketHumanCheckpointPolicyTest {
         "approvedPacketCandidate" to packet,
         "build_report" to mapOf("manifest_sha256" to packet["manifestSha256"], "work_commit" to "c".repeat(40)),
         "verification_report" to mapOf("work_commit" to "c".repeat(40)),
-        "review_report" to mapOf("work_commit" to "c".repeat(40), "pr_head_commit" to "c".repeat(40),
-            "pr_number" to 8488, "observed_pr" to mapOf("prHeadCommit" to "c".repeat(40), "prNumber" to 8488)),
-        "deployment_evidence" to mapOf("workCommit" to "c".repeat(40), "tag" to "integration-talent-portal_rc100",
-            "target" to "forge-talent-portal", "receipt" to "github-actions:run/1/job/2"),
+        "review_report" to mapOf("work_commit" to "c".repeat(40), "status" to "PASS"),
     )
 
     @Test
@@ -59,19 +56,18 @@ class ForgePacketHumanCheckpointPolicyTest {
     }
 
     @Test
-    fun `technical review can precede deployment while both decisions share one work candidate`() {
-        val withoutDeployment = candidateState - "deployment_evidence"
-        val technical = policy.present(context(withoutDeployment, "technical-validation")) as HumanCheckpointVerdict.Allowed
-        assertThat(technical.facts).containsEntry("prNumber", 8488).doesNotContainKey("deployedTag")
+    fun `technical and functional decisions share one work candidate without automatic deployment proof`() {
+        val technical = policy.present(context(candidateState, "technical-validation")) as HumanCheckpointVerdict.Allowed
+        assertThat(technical.facts).containsEntry("workCommit", "c".repeat(40))
         val functional = policy.present(context(candidateState, "functional-validation")) as HumanCheckpointVerdict.Allowed
-        assertThat(functional.facts).containsEntry("deployedTag", "integration-talent-portal_rc100")
+        assertThat(functional.facts).containsEntry("workCommit", "c".repeat(40))
+        assertThat(functional.prompt).contains("Factory ne vérifie pas le déploiement automatiquement")
         assertThat(technical.facts["candidateId"]).isEqualTo(functional.facts["candidateId"])
         assertThat(policy.decide(context(candidateState, "functional-validation"), functional.facts, "approve"))
             .isInstanceOf(HumanCheckpointVerdict.Allowed::class.java)
-        val changedTag = candidateState + ("deployment_evidence" to mapOf("workCommit" to "c".repeat(40),
-            "tag" to "integration-talent-portal_rc101", "target" to "forge-talent-portal",
-            "receipt" to "github-actions:run/3/job/4"))
-        assertThat(policy.decide(context(changedTag, "functional-validation"), functional.facts, "approve"))
-            .isEqualTo(HumanCheckpointVerdict.Denied("FORGE_DECISION_STALE"))
+        val changedWork = candidateState + ("build_report" to mapOf(
+            "manifest_sha256" to packet["manifestSha256"], "work_commit" to "d".repeat(40)))
+        assertThat(policy.decide(context(changedWork, "functional-validation"), functional.facts, "approve"))
+            .isEqualTo(HumanCheckpointVerdict.Denied("FUNCTIONAL_CANDIDATE_MISSING"))
     }
 }

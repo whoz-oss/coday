@@ -1,8 +1,20 @@
 # WZ-36147 Lot 3 — delivery entry and Factory seam evidence
 
-Status: **CE04–07 draft through hosted integration observation prepared; the complete workflow is not execution ready**. This is a
+Status: **CE04–07 draft; the complete workflow is not execution ready**. This is a
 review artifact, not a Factory Run or a Jira decision. The Coday branch was
 merged with the refreshed `origin/workstream/forge/master` before inspection.
+
+## Scope correction (2026-11-19)
+
+The first version does not read GitHub PR or Deploy evidence. The packet is
+checked against committed Git objects in the Case. After local code review,
+technical and functional human decisions may open independently. The
+functional decision asks the person to confirm what they tested; Factory
+does not assert that a particular tag was deployed. Two approvals on the same
+work candidate end the run at **ready to merge**. Merging the PR and changing
+Jira are outside this version. The draft remains unpublished until its direct
+workflow and recovery behavior are proven. The CI and PR observation design
+and test results below are historical, superseded by this decision.
 
 ## Single-workflow correction (2026-11-18)
 
@@ -565,9 +577,9 @@ deployed tag and waits for an authorized decision. A later integration tag
 produced for other work does not revoke the request or an accepted decision.
 A changed work head for this Run, or a replacement packet, does require fresh
 assessment; a failed integration or Deploy job never opens the request. The
-#8488 example proves the correlation is available in Git and CI, but the
-The reader and observer are now implemented in the unpublished draft. Their
-restart and race behavior, along with the later human-gate path, remain unproved.
+#8488 example showed that correlation could be extracted from Git and CI.
+That reader and observer were removed from the current draft. Their earlier
+isolated tests did not prove the human-gate path or restart behavior.
 
 #### First-version environment-independent contract
 

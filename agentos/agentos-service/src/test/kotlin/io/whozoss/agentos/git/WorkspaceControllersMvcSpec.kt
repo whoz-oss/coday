@@ -66,8 +66,6 @@ class WorkspaceControllersMvcSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var lifecycle: GitWorkspaceLifecycleService
     @MockkBean(relaxed = true) lateinit var diffs: ExchangeGitDiff
     @MockkBean(relaxed = true) lateinit var pinnedObjects: GitPinnedObjectService
-    @MockkBean(relaxed = true) lateinit var forgeDeployments: GitHubForgeDeploymentService
-    @MockkBean(relaxed = true) lateinit var pinnedPullRequests: GitHubPinnedPullRequestService
     @MockkBean(relaxed = true) lateinit var associations: GitRepositoryAssociationService
     @MockkBean(relaxed = true) lateinit var integrationConfigs: IntegrationConfigService
     @MockkBean(relaxed = true) lateinit var checkoutProvisioner: RepositoryCheckoutProvisioner
@@ -146,8 +144,6 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 "workspace/diff?path=secret.txt",
                 "workspace/git-commit?commit=${"a".repeat(40)}",
                 "workspace/git-blob?commit=${"a".repeat(40)}&path=secret.txt",
-                "workspace/forge-deployment?workCommit=${"a".repeat(40)}&integrationBranch=integration%2Ftalent-portal&integrationCommit=${"b".repeat(40)}&target=forge-talent-portal",
-                "workspace/pull-request?headCommit=${"a".repeat(40)}",
             ).forEach { suffix ->
                 mockMvc.perform(get("/api/cases/$caseId/$suffix"))
                     .andExpect(status().isForbidden)
@@ -174,42 +170,6 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_OCTET_STREAM))
                 .andReturn().response
             response.contentAsByteArray.contentEquals(bytes) shouldBe true
-        }
-
-        "an authorized Case reader can poll deployment evidence without declaring success while absent" {
-            val case = Case(namespaceId = UUID.randomUUID())
-            val binding = CaseResourceBinding(rootCaseId = case.id, namespaceId = case.namespaceId,
-                integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY)
-            stubCase(case, binding)
-            allow(EntityType.CASE, case.id, Action.READ)
-            every { forgeDeployments.read(any(), any(), any(), any(), any()) } returns null
-            mockMvc.perform(get("/api/cases/${case.id}/workspace/forge-deployment")
-                .param("workCommit", "a".repeat(40))
-                .param("integrationBranch", "integration/talent-portal")
-                .param("integrationCommit", "b".repeat(40))
-                .param("target", "forge-talent-portal"))
-                .andExpect(status().isNoContent)
-            verify(exactly = 1) { forgeDeployments.read(any(), "a".repeat(40),
-                "integration/talent-portal", "b".repeat(40), "forge-talent-portal") }
-            mockMvc.perform(get("/api/cases/${case.id}/workspace/forge-deployment")
-                .param("workCommit", "a".repeat(40))
-                .param("integrationBranch", "integration/talent-portal")
-                .param("target", "forge-talent-portal"))
-                .andExpect(status().isNoContent)
-            verify(exactly = 1) { forgeDeployments.read(any(), "a".repeat(40),
-                "integration/talent-portal", null, "forge-talent-portal") }
-        }
-
-        "an authorized Case reader sees no PR proof while the exact head is absent" {
-            val case = Case(namespaceId = UUID.randomUUID())
-            val binding = CaseResourceBinding(rootCaseId = case.id, namespaceId = case.namespaceId,
-                integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY)
-            stubCase(case, binding)
-            allow(EntityType.CASE, case.id, Action.READ)
-            every { pinnedPullRequests.read(any(), any()) } returns null
-            mockMvc.perform(get("/api/cases/${case.id}/workspace/pull-request")
-                .param("headCommit", "a".repeat(40)))
-                .andExpect(status().isNoContent)
         }
 
         "a caller without namespace READ cannot inspect Git settings or workspace inventory" {
@@ -320,8 +280,6 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 "workspace/diff?path=private.txt",
                 "workspace/git-commit?commit=${"a".repeat(40)}",
                 "workspace/git-blob?commit=${"a".repeat(40)}&path=private.txt",
-                "workspace/forge-deployment?workCommit=${"a".repeat(40)}&integrationBranch=integration%2Ftalent-portal&integrationCommit=${"b".repeat(40)}&target=forge-talent-portal",
-                "workspace/pull-request?headCommit=${"a".repeat(40)}",
             ).forEach { suffix ->
                 mockMvc.perform(get("/api/cases/${child.id}/$suffix")).andExpect(status().isForbidden)
             }

@@ -6,6 +6,12 @@ proposal. It is not permission to publish the incomplete `forge.delivery`
 definition. The Ready judgment remains the first configurable ProductEngineer
 step; Factory core does not interpret Jira status.
 
+**Scope update, 2026-11-19:** automatic GitHub PR and Deploy proof is deferred.
+The first version reads the Case's committed Git packet, asks a person to
+confirm functional testing, and ends at ready to merge after both human
+approvals of the same candidate. The older CI and PR design below is
+historical, not the current delivery contract.
+
 **Later correction, 2026-11-18:** delivery must be one `forge.delivery`
 workflow execution launched from the cockpit's Run button. The parent-Run
 entry and fragment chain discussed below are superseded for this delivery;
@@ -112,12 +118,12 @@ trusted Git-read boundary still require a concrete design and tests.
   follows as another fixed phase. The coordinator definitions and receipt
   validators exist in the draft; delegated execution, retry and correction
   still need runtime proof.
-- **CE07:** trusted Git and CI observations establish that a successful
-  integration deployment tag contains this Run's work commit. The human sees
-  that tag as a reference, and both authorized decisions bind to the presented
-  Run generation. A later tag for unrelated work does not revoke the gate or
-  claim that the human tested an exact image. A changed work head or packet for
-  this Run requires a new assessment; stale replies cannot complete.
+- **CE07:** after local code review, the technical and functional human
+  validations can open independently. The functional request asks the person
+  to confirm that they tested the presented work candidate; Factory has no
+  automatic deployment proof in this version. Both decisions bind to the same
+  packet and work commit. A changed candidate needs fresh decisions; the
+  final outcome is ready to merge, without a merge or Jira transition.
 
 The opt-in human-reply policy is now implemented for the draft delivery
 workflow. It binds each answer to the packet or work candidate presented,

@@ -39,10 +39,7 @@ class ForgeStepRoleGuardTest {
             "approvedPacketCandidate" to packet,
             "build_report" to mapOf("manifest_sha256" to packet["manifestSha256"], "work_commit" to workCommit),
             "verification_report" to mapOf("work_commit" to workCommit),
-            "review_report" to mapOf("work_commit" to workCommit, "pr_head_commit" to workCommit,
-                "pr_number" to 8488, "observed_pr" to mapOf("prHeadCommit" to workCommit, "prNumber" to 8488)),
-            "deployment_evidence" to mapOf("workCommit" to workCommit, "tag" to "integration-talent-portal_rc100",
-                "target" to "forge-talent-portal", "receipt" to "github-actions:run/1/job/2"),
+            "review_report" to mapOf("work_commit" to workCommit, "status" to "PASS"),
         )
         val policy = ForgeDeliveryHumanCheckpointPolicy()
         val base = run.copy(runType = "forge.delivery", domainState = state)
@@ -63,7 +60,8 @@ class ForgeStepRoleGuardTest {
             .isEqualTo("HUMAN_APPROVAL_MISSING")
         assertThat((verdict(listOf(technical, functional + ("facts" to mapOf("gate" to "functional-validation"))))
             as StepValidationVerdict.Rejected).reasonCode).isEqualTo("HUMAN_APPROVAL_STALE")
-        assertThat(verdict(listOf(technical, functional))).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        val accepted = verdict(listOf(technical, functional)) as StepValidationVerdict.Accepted
+        assertThat(accepted.newDomainState?.get("deliveryOutcome")).isEqualTo("READY_TO_MERGE")
     }
 
     @Test
@@ -193,28 +191,6 @@ class ForgeStepRoleGuardTest {
     }
 
     @Test
-    fun `deployment observation persists only trusted evidence for the accepted Build commit`() {
-        val commit = "a".repeat(40)
-        val run = run.copy(runType = "forge.delivery", domainState = mapOf(
-            "build_report" to mapOf("work_commit" to commit),
-        ))
-        val evidence = mapOf<String, Any?>(
-            "workCommit" to commit, "tag" to "integration-talent-portal_rc100",
-            "receipt" to "github-actions:run/42/job/7",
-        )
-        fun verdict(observed: Map<String, Any?>) = validator.validate(StepValidationContext(
-            run = run, flowType = "forge.delivery", stepId = "integration-observation",
-            agentName = "ForgeDeploymentObserver", externalEvidence = observed,
-        ))
-        val accepted = verdict(evidence) as StepValidationVerdict.Accepted
-        assertThat(accepted.newDomainState?.get("deployment_evidence")).isEqualTo(evidence)
-        assertThat((verdict(emptyMap()) as StepValidationVerdict.Rejected).reasonCode)
-            .isEqualTo("DEPLOYMENT_EVIDENCE_MISSING")
-        assertThat((verdict(evidence + ("workCommit" to "b".repeat(40))) as StepValidationVerdict.Rejected).reasonCode)
-            .isEqualTo("DEPLOYMENT_EVIDENCE_MISSING")
-    }
-
-    @Test
     fun `independent verification covers every planned item in order without writing`() {
         val plan = listOf(
             mapOf("id" to "backend-1", "stack" to "backend", "verification" to "./gradlew test"),
@@ -250,7 +226,7 @@ class ForgeStepRoleGuardTest {
     }
 
     @Test
-    fun `review cannot pass without the matching Build head and four clean votes`() {
+    fun `review cannot pass without the matching Build commit and four clean votes`() {
         val commit = "a".repeat(40)
         val run = run.copy(runType = "forge.delivery", domainState = mapOf(
             "build_report" to mapOf("work_commit" to commit),
@@ -258,25 +234,20 @@ class ForgeStepRoleGuardTest {
         ))
         val votes = mapOf("clarity_correctness" to "PASS", "scope_architecture" to "PASS",
             "security_permissions" to "PASS", "edge_cases_resilience" to "PASS")
-        val clean = mapOf<String, Any?>("status" to "PASS", "work_commit" to commit,
-            "pr_head_commit" to commit, "pr_number" to 8488, "votes" to votes,
+        val clean = mapOf<String, Any?>("status" to "PASS", "work_commit" to commit, "votes" to votes,
             "findings" to emptyList<Any>())
-        val observed = mapOf<String, Any?>("prHeadCommit" to commit, "prNumber" to 8488,
-            "repository" to "biznet-io/whoz", "branch" to "work/talent-portal/ticket")
         fun verdict(report: Map<String, Any?>) = validator.validate(StepValidationContext(
             run = run, flowType = "forge.delivery", stepId = "implementation-review",
             agentName = "Reviewer", report = businessReport(mapOf("review_report" to report)),
-            externalEvidence = observed,
         ))
-        assertThat(((verdict(clean) as StepValidationVerdict.Accepted).newDomainState?.get("review_report") as Map<*, *>) ["observed_pr"])
-            .isEqualTo(observed)
+        assertThat((verdict(clean) as StepValidationVerdict.Accepted).newDomainState?.get("review_report"))
+            .isEqualTo(clean)
         assertThat((validator.validate(StepValidationContext(
             run = run, flowType = "forge.delivery", stepId = "implementation-review",
             agentName = "ForgeReviewer", report = businessReport(mapOf("review_report" to clean)),
-            externalEvidence = observed,
         )) as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_REVIEWER")
         for (invalid in listOf(
-            clean + ("pr_head_commit" to "b".repeat(40)),
+            clean + ("work_commit" to "b".repeat(40)),
             clean + ("votes" to (votes + ("security_permissions" to "FAIL"))),
             clean + ("findings" to listOf(mapOf("severity" to "major", "description" to "Contract defect"))),
         )) {

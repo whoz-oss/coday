@@ -98,6 +98,7 @@ val pluginJar = tasks.named<Jar>("jar")
 val pluginJarPath: String = pluginJar.get().archiveFile.get().asFile.absolutePath
 tasks.withType<Test> {
     useJUnitPlatform()
+    inputs.file(layout.projectDirectory.file("../docs/WZ-36147-delivery-workflow.draft.json"))
     dependsOn(pluginJar)
     jvmArgs("-Xshare:off")
     systemProperty("factory.forge.plugin.jar", pluginJarPath)

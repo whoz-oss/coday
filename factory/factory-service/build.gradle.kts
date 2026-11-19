@@ -157,9 +157,6 @@ configurations.all {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    // The delivery definition contract test reads this repository draft outside
-    // the module source tree; include it in Gradle's test inputs for fresh proof.
-    inputs.file(layout.projectDirectory.file("../docs/WZ-36147-delivery-workflow.draft.json"))
     // Neo4j embedded/harness + cached Spring contexts need more than Gradle's
     // default heap.
     maxHeapSize = "2g"

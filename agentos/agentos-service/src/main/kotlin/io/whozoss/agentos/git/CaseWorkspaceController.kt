@@ -3,14 +3,12 @@ package io.whozoss.agentos.git
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
-import io.whozoss.agentos.git.core.GitHubForgeDeploymentReader
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.MediaType
-import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
@@ -24,8 +22,6 @@ class CaseWorkspaceController(
     private val lifecycle: GitWorkspaceLifecycleService,
     private val workspaceChanges: GitWorkspaceChangesService,
     private val pinnedObjects: GitPinnedObjectService,
-    private val forgeDeployments: GitHubForgeDeploymentService,
-    private val pinnedPullRequests: GitHubPinnedPullRequestService,
     private val bindings: CaseResourceBindingService,
     private val users: UserService,
     private val permissions: PermissionService,
@@ -61,30 +57,6 @@ class CaseWorkspaceController(
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     fun pinnedBlob(@PathVariable caseId: UUID, @RequestParam commit: String, @RequestParam path: String): ByteArray =
         pinnedObjects.readBlob(authorizedRoot(caseId, Action.READ), commit, path)
-
-    /** Historical CI observation only; absence means validation must keep waiting. */
-    @GetMapping("/api/cases/{caseId}/workspace/forge-deployment")
-    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
-    fun forgeDeployment(
-        @PathVariable caseId: UUID,
-        @RequestParam workCommit: String,
-        @RequestParam integrationBranch: String,
-        @RequestParam(required = false) integrationCommit: String?,
-        @RequestParam target: String,
-    ): ResponseEntity<GitHubForgeDeploymentReader.Evidence> =
-        forgeDeployments.read(authorizedRoot(caseId, Action.READ), workCommit,
-            integrationBranch, integrationCommit, target)
-            ?.let { ResponseEntity.ok(it) } ?: ResponseEntity.noContent().build<GitHubForgeDeploymentReader.Evidence>()
-
-    @GetMapping("/api/cases/{caseId}/workspace/pull-request")
-    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
-    fun pinnedPullRequest(
-        @PathVariable caseId: UUID,
-        @RequestParam headCommit: String,
-    ): ResponseEntity<GitHubPinnedPullRequestService.Evidence> =
-        pinnedPullRequests.read(authorizedRoot(caseId, Action.READ), headCommit)
-            ?.let { ResponseEntity.ok(it) }
-            ?: ResponseEntity.noContent().build<GitHubPinnedPullRequestService.Evidence>()
 
     @PostMapping("/api/cases/{caseId}/workspace/refresh")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
