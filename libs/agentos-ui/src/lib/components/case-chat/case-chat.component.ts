@@ -51,6 +51,7 @@ import { AgentConfig, Case, Prompt } from '@whoz-oss/agentos-api-client'
 import {
   BlueprintDirective,
   ConfirmDialogComponent,
+  CopyButtonComponent,
   DrawerComponent,
   IconButtonComponent,
   KebabMenuComponent,
@@ -262,6 +263,7 @@ function hasActiveSelection(): boolean {
     VoiceRecorderComponent,
     CostPipe,
     TokenCountPipe,
+    CopyButtonComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService, SideQuestionStateService],
   templateUrl: './case-chat.component.html',
