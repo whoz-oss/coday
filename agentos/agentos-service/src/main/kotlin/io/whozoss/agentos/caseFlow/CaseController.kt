@@ -364,6 +364,7 @@ class CaseController(
             content = listOf(MessageContent.Text(request.content)),
             answerToEventId = request.answerToEventId,
             sessionContext = request.sessionContext,
+            rerunOf = request.rerunOf,
         )
         logger.info { "Message added to case: $caseId" }
     }

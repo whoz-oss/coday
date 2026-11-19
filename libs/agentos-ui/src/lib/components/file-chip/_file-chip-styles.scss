@@ -1,0 +1,39 @@
+// The look of a file chip, shared by <agentos-file-chip> and by the chips of the composer that are not (yet) one:
+// the staged uploads, which carry a state (spinner, thumbnail, error) the read-only and reference chips never have.
+// One place for the box, the icon, the name, the kind and the badge, so that both kinds of chips cannot drift apart.
+
+@mixin chip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.375rem 0.375rem 0.375rem 0.625rem;
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--radius-md, 12px);
+  background: var(--color-surface-secondary, rgba(0, 0, 0, 0.04));
+  font-size: 0.8125rem;
+}
+
+@mixin icon {
+  font-size: 1.25rem;
+  color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
+}
+
+@mixin name {
+  font-weight: 500;
+}
+
+@mixin kind {
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary, rgba(0, 0, 0, 0.6));
+}
+
+@mixin badge {
+  padding: 0.0625rem 0.375rem;
+  border-radius: 999px;
+  background: var(--color-primary, #0071e3);
+  color: var(--color-text-inverse, #fff);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}

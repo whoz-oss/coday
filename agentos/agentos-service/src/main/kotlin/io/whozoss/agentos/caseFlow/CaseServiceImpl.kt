@@ -7,6 +7,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.caseEvent.effectiveConversation
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.chat.UsageAccumulator
@@ -486,9 +487,27 @@ class CaseServiceImpl(
         content: List<MessageContent>,
         answerToEventId: UUID?,
         sessionContext: Map<String, Any?>?,
+        rerunOf: UUID?,
     ) {
+        if (rerunOf != null && answerToEventId != null) {
+            throw BadRequestException("A message cannot both answer a question and re-run a message")
+        }
         caseLaunchGate?.requireAccepting(caseId)
         val runtime = getCaseRuntime(caseId)
+        val postedContent =
+            if (rerunOf != null) contentForRerun(runtime, caseId, actor, content, rerunOf) else content
+        postMessage(runtime, caseId, actor, postedContent, answerToEventId, sessionContext, rerunOf)
+    }
+
+    private fun postMessage(
+        runtime: CaseRuntime,
+        caseId: UUID,
+        actor: Actor,
+        content: List<MessageContent>,
+        answerToEventId: UUID?,
+        sessionContext: Map<String, Any?>?,
+        rerunOf: UUID?,
+    ) {
         val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
         // Resolve prompt commands — a single user input may expand to multiple sequential
@@ -510,7 +529,7 @@ class CaseServiceImpl(
                     }
                 } catch (e: PromptResolutionException) {
                     logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
-                    runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                    runtime.addUserMessage(actor, content, answerToEventId, sessionContext, rerunOf)
                     runtime.emitEvent(
                         storeEvent(
                             WarnEvent(
@@ -552,7 +571,7 @@ class CaseServiceImpl(
 
         when {
             resolvedCommands.isNullOrEmpty() -> {
-                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                runtime.addUserMessage(actor, content, answerToEventId, sessionContext, rerunOf)
             }
 
             else -> {
@@ -564,6 +583,7 @@ class CaseServiceImpl(
                     listOf(MessageContent.Text(resolvedText(resolvedCommands.first()))) + nonTextContent,
                     answerToEventId,
                     sessionContext,
+                    rerunOf,
                 )
                 resolvedCommands.drop(1).forEach { cmd ->
                     runtime.enqueueCommand(listOf(MessageContent.Text(resolvedText(cmd))))
@@ -576,7 +596,56 @@ class CaseServiceImpl(
         // Trigger post-processing after each user message (e.g. automatic title generation).
         // Events are fetched fresh from the service so the newly stored MessageEvent is included.
         val case = findById(caseId) ?: return
-        triggerNamingIfNeeded(case, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
+        triggerNamingIfNeeded(case, caseEventService.findByParent(caseId).effectiveConversation()) { event -> runtime.emitEvent(event) }
+    }
+
+    /**
+     * Validates a re-run of the user message [rerunOf] and returns the content of the new message: the text
+     * [submitted] by the user in place of the text of the replaced message, whose other parts (audio, images)
+     * are kept where they were.
+     *
+     * An answer to a question is an [io.whozoss.agentos.sdk.caseEvent.AnswerEvent], not a message, so it
+     * is refused by the same rule as any event that is not a user message.
+     */
+    private fun contentForRerun(
+        runtime: CaseRuntime,
+        caseId: UUID,
+        actor: Actor,
+        submitted: List<MessageContent>,
+        rerunOf: UUID,
+    ): List<MessageContent> {
+        val target =
+            caseEventService.findById(rerunOf)?.takeIf { it.caseId == caseId } as? MessageEvent
+        if (target == null || target.actor.role != ActorRole.USER) {
+            throw BadRequestException("Message $rerunOf is not a user message of this case")
+        }
+        val newText = submitted.filterIsInstance<MessageContent.Text>()
+        if (newText.all { it.content.isBlank() }) {
+            throw BadRequestException("The text of a re-run message cannot be empty")
+        }
+        // Same author only: the identity of the actor is the user id, for the message as well as for its re-run.
+        if (target.actor.id != actor.id) {
+            throw AccessDeniedException("Only the author of a message can re-run it")
+        }
+        if (hasRunningExecutions(listOf(caseId))) {
+            throw ConflictException("A run is in progress in this case, wait for it to end before re-running a message")
+        }
+        if (runtime.conversationSnapshot().none { it.id == rerunOf }) {
+            throw ConflictException("Message $rerunOf is no longer part of the conversation")
+        }
+        var textPlaced = false
+        val merged =
+            target.content.flatMap { part ->
+                when {
+                    part !is MessageContent.Text -> listOf(part)
+                    textPlaced -> emptyList()
+                    else -> {
+                        textPlaced = true
+                        newText
+                    }
+                }
+            }
+        return if (textPlaced) merged else newText + merged
     }
 
     // ======================================================
@@ -1001,7 +1070,7 @@ class CaseServiceImpl(
         if (newStatus == CaseStatus.IDLE && postProcess) {
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
-                val events = caseEventService.findByParent(caseId)
+                val events = caseEventService.findByParent(caseId).effectiveConversation()
                 triggerNamingIfNeeded(
                     case = updated,
                     events = events,

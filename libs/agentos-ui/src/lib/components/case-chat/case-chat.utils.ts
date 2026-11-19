@@ -4,8 +4,96 @@ import {
   AnswerEvent,
   CaseEvent,
   CaseStatusEventStatusEnum,
+  MessageEvent as CaseMessageEvent,
+  MessageEventAllOfContent,
   QuestionEvent,
 } from '@whoz-oss/agentos-api-client'
+
+/**
+ * Id of the message a user message re-runs, or null when the event is not a re-run.
+ *
+ * Only a USER message can re-run another one, like on the server: an agent message carrying a `rerunOf`
+ * is not a re-run and cuts nothing.
+ */
+export function rerunTargetOf(event: CaseEvent): string | null {
+  return event.type === 'MessageEvent' && event.actor.role === ActorRoleEnum.USER ? (event.rerunOf ?? null) : null
+}
+
+/**
+ * The conversation as it effectively stands, computed from the ordered event log of a case. Mirror of the
+ * server's `effectiveConversation` (agentos-service, `EffectiveConversation.kt`): both must keep the same rule.
+ *
+ * The log is append-only: a user who re-runs a message deletes nothing, the new message carries `rerunOf = X`.
+ * Walking the log in order, such a message removes from the result built so far X and everything that follows
+ * it (the answers, the tool calls, the questions, the sub-cases, the orchestration events...), then takes its
+ * place. It works for chained re-runs, since each step only looks at the result built so far.
+ *
+ * When X is not in the result built so far (unknown id, or already cut by an earlier re-run), nothing is
+ * removed and the message is simply added.
+ *
+ * Returns the argument itself when no message re-runs another one (the common case, no copy), and never
+ * modifies it: the SSE stream and the REST listing always return the whole log.
+ */
+export function effectiveConversation(events: CaseEvent[]): CaseEvent[] {
+  if (!events.some((event) => rerunTargetOf(event) !== null)) return events
+  const conversation: CaseEvent[] = []
+  for (const event of events) {
+    const target = rerunTargetOf(event)
+    if (target !== null) {
+      const index = conversation.findLastIndex((candidate) => candidate.id === target)
+      if (index >= 0) conversation.length = index
+    }
+    conversation.push(event)
+  }
+  return conversation
+}
+
+/**
+ * The text of a message, as the server sees it when the message is re-run: its Text parts only, in order.
+ * The other parts (audio, images) are not text and are kept as they are by a re-run.
+ */
+export function textOfMessage(event: CaseMessageEvent): string {
+  return (event.content ?? [])
+    .filter((part) => (part as { type?: string }).type === 'Text')
+    .map((part) => (part as { content?: string }).content ?? '')
+    .join('')
+}
+
+/**
+ * The message with [text] as its text, the way the server builds the re-run of a message: the text replaces
+ * the first text part of the original, the other text parts are dropped, and the parts that are not text
+ * (audio, images) stay where they were. A message without any text part gets it first.
+ *
+ * Used to show the new text of a message while its re-run is on its way; the event itself is not modified.
+ */
+export function withText(event: CaseMessageEvent, text: string): CaseMessageEvent {
+  const content: MessageEventAllOfContent[] = []
+  let placed = false
+  for (const part of event.content ?? []) {
+    if ((part as { type?: string }).type !== 'Text') {
+      content.push(part)
+    } else if (!placed) {
+      placed = true
+      content.push({ type: 'Text', content: text })
+    }
+  }
+  if (!placed) content.unshift({ type: 'Text', content: text })
+  return { ...event, content }
+}
+
+/** What the user is told when the server refuses a re-run, by the HTTP status it answered. */
+export function rerunErrorMessage(status: number | undefined): string {
+  switch (status) {
+    case 400:
+      return 'This message cannot be re-run.'
+    case 403:
+      return 'Only the author of a message can re-run it.'
+    case 409:
+      return 'A run is in progress, or this message is no longer part of the conversation. Try again once the case is idle.'
+    default:
+      return 'The message could not be sent. Try again.'
+  }
+}
 
 /**
  * Label above a turn of the conversation, for messages and question answers alike.
@@ -21,6 +109,15 @@ export function senderLabel(actor: Actor, currentUserId: string | null | undefin
   if (actor.role !== ActorRoleEnum.USER) return actor.displayName || 'Agent'
   if (currentUserId && actor.id?.toLowerCase() === currentUserId.toLowerCase()) return 'You'
   return actor.displayName || 'You'
+}
+
+/**
+ * Whether [actor] is the human [currentUserId]: a user turn whose id is the current user's, regardless of the
+ * UUID letter case. The server holds the same rule for a re-run (only the author of a message can re-run it);
+ * this one only decides whether the button is offered. False while the current user is not loaded yet.
+ */
+export function isAuthorOf(actor: Actor, currentUserId: string | null | undefined): boolean {
+  return actor.role === ActorRoleEnum.USER && !!currentUserId && actor.id?.toLowerCase() === currentUserId.toLowerCase()
 }
 
 /**

@@ -241,15 +241,15 @@ describe('CaseHomeComponent — first message with attachments', () => {
       ref.changeDetectorRef.detectChanges()
       const host = ref.location.nativeElement as HTMLElement
 
-      const chips = host.querySelectorAll('.composer-attachments__chip')
+      const chips = host.querySelectorAll('.file-chip')
       expect(chips).toHaveLength(1)
       expect(chips[0]!.textContent).toContain('readme.md')
       expect(chips[0]!.textContent).toContain('namespace')
       expect((host.querySelector('textarea') as HTMLTextAreaElement).value).toBe('')
 
-      host.querySelector<HTMLButtonElement>('.composer-attachments__chip button')!.click()
+      host.querySelector<HTMLButtonElement>('.file-chip button')!.click()
       ref.changeDetectorRef.detectChanges()
-      expect(host.querySelectorAll('.composer-attachments__chip')).toHaveLength(0)
+      expect(host.querySelectorAll('.file-chip')).toHaveLength(0)
       ref.destroy()
     })
 
@@ -380,14 +380,10 @@ describe('CaseHomeComponent — first message with attachments', () => {
       drawer.referenceToggled.emit({ ref: ns('docs/readme.md'), referenced: true })
       ref.changeDetectorRef.detectChanges()
       expect(drawer.referenced()).toEqual([ns('docs/readme.md')])
-      expect((ref.location.nativeElement as HTMLElement).querySelectorAll('.composer-attachments__chip')).toHaveLength(
-        1
-      )
+      expect((ref.location.nativeElement as HTMLElement).querySelectorAll('.file-chip')).toHaveLength(1)
 
       // Removing the chip unchecks the file in the drawer: the same list feeds both.
-      ;(ref.location.nativeElement as HTMLElement)
-        .querySelector<HTMLButtonElement>('.composer-attachments__chip button')!
-        .click()
+      ;(ref.location.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.file-chip button')!.click()
       ref.changeDetectorRef.detectChanges()
       expect(drawer.referenced()).toEqual([])
 
