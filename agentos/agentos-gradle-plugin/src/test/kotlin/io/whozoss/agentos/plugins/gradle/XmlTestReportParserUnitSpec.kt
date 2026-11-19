@@ -519,7 +519,87 @@ class XmlTestReportParserUnitSpec :
             }
         }
 
+        // ── buildSummary — streamed reading ────────────────────────────────────────────────────────────────────
+
+        "buildSummary reads a report whose captured output is very large" {
+            val dir = tmpDir()
+            try {
+                val report = dir.resolve("TEST-Huge.xml")
+                report.bufferedWriter().use { out ->
+                    out.write("""<testsuite name="c" tests="2" skipped="0" failures="1" errors="0">""")
+                    out.write("""<testcase classname="c.C" name="ok"/>""")
+                    out.write("""<testcase classname="c.C" name="ko"><failure message="boom" type="X">at c.C.ko(C.kt:1)</failure></testcase>""")
+                    out.write("<system-out><![CDATA[")
+                    // 100 MB of captured output: reading it must not depend on holding it in memory
+                    val line = "x".repeat(1_000) + "\n"
+                    repeat(100_000) { out.write(line) }
+                    out.write("]]></system-out></testsuite>")
+                }
+
+                val summary = XmlTestReportParser().buildSummary(1, listOf(report))
+
+                summary shouldContain "Tests: 2  Passed: 1  Skipped: 0  Failed: 1"
+                summary shouldContain "C › ko"
+                summary shouldContain "boom"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
+        "buildSummary does not mistake the captured output of a test case for its failure" {
+            val dir = tmpDir()
+            try {
+                val report =
+                    dir.writeXml(
+                        "TEST-Out.xml",
+                        """
+                        <testsuite name="c" tests="1" skipped="0" failures="1" errors="0">
+                          <testcase classname="c.C" name="ko">
+                            <failure message="boom" type="X">at c.C.ko(C.kt:1)</failure>
+                            <system-out>at com.printed.ByTheTest(Printed.kt:99)</system-out>
+                          </testcase>
+                        </testsuite>
+                        """.trimIndent(),
+                    )
+
+                val summary = XmlTestReportParser().buildSummary(1, listOf(report))
+
+                summary shouldContain "C.kt:1"
+                summary shouldNotContain "Printed.kt"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
+        "buildSummary counts a report with no root element as unreadable" {
+            val dir = tmpDir()
+            try {
+                val empty = dir.writeXml("TEST-Empty.xml", "")
+
+                XmlTestReportParser().buildSummary(0, listOf(empty)) shouldContain "1 report(s) could not be read"
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
+
         // ── buildSummary — raw gradle output when the reports do not explain a failed build ────────────────────
+
+        "buildSummary bounds the raw output and keeps its end" {
+            val dir = tmpDir()
+            try {
+                val report = dir.writeXml("TEST-A.xml", allPassXml())
+                val raw = "BEGINNING-OF-THE-LOG" + "> Task :a:test\n".repeat(5_000) + "What went wrong: THE-VERDICT"
+
+                val summary = XmlTestReportParser().buildSummary(1, listOf(report), rawOutput = raw)
+
+                summary shouldContain "THE-VERDICT"
+                summary shouldContain "earlier chars omitted"
+                summary shouldNotContain "BEGINNING-OF-THE-LOG"
+                (summary.length < MAX_RAW_OUTPUT_CHARS + 500) shouldBe true
+            } finally {
+                dir.deleteRecursively()
+            }
+        }
 
         "buildSummary appends the raw output when the build failed and no test failed" {
             val dir = tmpDir()

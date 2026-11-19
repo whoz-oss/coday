@@ -149,6 +149,86 @@ class GradleCompileToolUnitSpec :
             }
         }
 
+        "detectModule gives the same module through a link to the build, a path with .. and a real path" {
+            val base = Files.createTempDirectory("agentos-compile-canonical").toFile()
+            try {
+                val real = base.resolve("real").also { it.mkdirs() }
+                real.resolve("settings.gradle.kts").createNewFile()
+                val cliDir = real.resolve("cli").also { it.mkdirs() }
+                cliDir.resolve("build.gradle.kts").createNewFile()
+                val srcFile =
+                    cliDir.resolve("src/Foo.kt").also {
+                        it.parentFile.mkdirs()
+                        it.createNewFile()
+                    }
+                val link = base.resolve("link")
+                Files.createSymbolicLink(link.toPath(), real.toPath())
+                val cli = GradleCompileTool.OwningModule.Module("cli")
+
+                // build configured through the link, file given by its real path (copied from a compiler message)
+                GradleCompileTool(GradleRunner(link)).detectModule(srcFile) shouldBe cli
+                // build and file both through the link
+                GradleCompileTool(GradleRunner(link)).detectModule(link.resolve("cli/src/Foo.kt")) shouldBe cli
+                // build by its real path, file through the link
+                GradleCompileTool(GradleRunner(real)).detectModule(link.resolve("cli/src/Foo.kt")) shouldBe cli
+                // .. in the build directory and in the file path
+                GradleCompileTool(GradleRunner(real.resolve("cli/..")))
+                    .detectModule(real.resolve("cli/src/../src/Foo.kt")) shouldBe cli
+            } finally {
+                base.deleteRecursively()
+            }
+        }
+
+        "detectModule gives the root build for the root file of a build reached through a link" {
+            val base = Files.createTempDirectory("agentos-compile-canonical-root").toFile()
+            try {
+                val real = base.resolve("real").also { it.mkdirs() }
+                real.resolve("settings.gradle.kts").createNewFile()
+                real.resolve("build.gradle.kts").createNewFile()
+                val srcFile = real.resolve("Root.kt").also { it.createNewFile() }
+                val link = base.resolve("link")
+                Files.createSymbolicLink(link.toPath(), real.toPath())
+
+                GradleCompileTool(GradleRunner(link)).detectModule(srcFile) shouldBe GradleCompileTool.OwningModule.Root
+            } finally {
+                base.deleteRecursively()
+            }
+        }
+
+        "detectModule never looks above the build for a build script" {
+            val parent = Files.createTempDirectory("agentos-compile-above").toFile()
+            try {
+                // the script of the parent must not make a module out of a file of the build below it
+                parent.resolve("build.gradle.kts").createNewFile()
+                val backend = parent.resolve("backend").also { it.mkdirs() }
+                backend.resolve("settings.gradle.kts").createNewFile()
+                val orphan = backend.resolve("src/Foo.kt").also { it.parentFile.mkdirs() }.also { it.createNewFile() }
+
+                GradleCompileTool(GradleRunner(parent, gradlewDirectory = backend)).detectModule(orphan) shouldBe null
+            } finally {
+                parent.deleteRecursively()
+            }
+        }
+
+        "detectModule refuses a file outside the build, even when a link or .. leads to it" {
+            val base = Files.createTempDirectory("agentos-compile-outside").toFile()
+            try {
+                val build = base.resolve("build").also { it.mkdirs() }
+                build.resolve("settings.gradle.kts").createNewFile()
+                val other = base.resolve("other").also { it.mkdirs() }
+                other.resolve("build.gradle.kts").createNewFile()
+                val outside = other.resolve("Foo.kt").also { it.createNewFile() }
+                Files.createSymbolicLink(build.resolve("escape").toPath(), other.toPath())
+                val tool = GradleCompileTool(GradleRunner(build))
+
+                tool.detectModule(outside) shouldBe null
+                tool.detectModule(build.resolve("escape/Foo.kt")) shouldBe null
+                tool.detectModule(build.resolve("../other/Foo.kt")) shouldBe null
+            } finally {
+                base.deleteRecursively()
+            }
+        }
+
         // ── resolveProjectRoot ───────────────────────────────────────────────────────────────
 
         "resolveProjectRoot finds root containing settings.gradle.kts" {
@@ -342,6 +422,33 @@ class GradleCompileToolUnitSpec :
 
                 result shouldContain "timed out after 1 seconds"
                 result shouldContain "partial output"
+            } finally {
+                root.deleteRecursively()
+            }
+        }
+
+        "compile still reports an error printed after more warnings than the output bound holds" {
+            val root = Files.createTempDirectory("agentos-compile-long-log").toFile()
+            try {
+                // ~500k chars of warnings (the bound is 200k), then the one error and the verdict of Gradle
+                root.resolve("gradlew").apply {
+                    writeText(
+                        """
+                        #!/bin/sh
+                        seq 1 8000 | sed 's|.*|w: file:///p/src/A.kt:&:1 unused variable, padding padding padding padding|'
+                        echo 'e: file:///p/src/Broken.kt:3:7 Unresolved reference: boom'
+                        echo 'FAILURE: Build failed with an exception.'
+                        echo '* What went wrong: Execution failed for task :compileKotlin'
+                        exit 1
+                        """.trimIndent() + "\n",
+                    )
+                    setExecutable(true)
+                }
+
+                val summary = GradleCompileTool(GradleRunner(root)).compile(subproject = null, file = null, timeoutSeconds = 60).failureText()
+
+                summary shouldContain "Errors: 1"
+                summary shouldContain "[ERROR] /p/src/Broken.kt:3:7 — Unresolved reference: boom"
             } finally {
                 root.deleteRecursively()
             }

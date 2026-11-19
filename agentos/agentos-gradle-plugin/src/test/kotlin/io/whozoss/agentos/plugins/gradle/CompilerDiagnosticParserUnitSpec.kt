@@ -147,6 +147,31 @@ class CompilerDiagnosticParserUnitSpec :
             summary shouldContain "Some weird compiler crash"
         }
 
+        "buildSummary FAILURE with no parseable diagnostics bounds the raw output and keeps its end" {
+            val raw = "BEGINNING-OF-THE-LOG" + "> Task :a:compileKotlin\n".repeat(5_000) + "What went wrong: THE-VERDICT"
+
+            val summary = parser.buildSummary(exitCode = 1, diagnostics = emptyList(), rawOutput = raw)
+
+            summary shouldContain "THE-VERDICT"
+            summary shouldContain "earlier chars omitted"
+            summary shouldNotContain "BEGINNING-OF-THE-LOG"
+            (summary.length < MAX_RAW_OUTPUT_CHARS + 500) shouldBe true
+        }
+
+        "buildSummary lists the errors before the warnings so that a long list of warnings never hides them" {
+            val warnings =
+                (1..300).map {
+                    CompilerDiagnosticParser.Diagnostic(Severity.WARNING, "/p/A.kt", it, 1, "warning $it")
+                }
+            val error = CompilerDiagnosticParser.Diagnostic(Severity.ERROR, "/p/Broken.kt", 3, 7, "Unresolved reference: boom")
+
+            val summary = parser.buildSummary(exitCode = 1, diagnostics = warnings + error, rawOutput = "")
+
+            summary shouldContain "[ERROR] /p/Broken.kt:3:7 — Unresolved reference: boom"
+            summary.indexOf("[ERROR]") shouldBeLessThan summary.indexOf("[WARN]")
+            summary shouldContain "more diagnostic(s) not shown"
+        }
+
         "buildSummary lists diagnostics without filter" {
             val diagnostics =
                 listOf(

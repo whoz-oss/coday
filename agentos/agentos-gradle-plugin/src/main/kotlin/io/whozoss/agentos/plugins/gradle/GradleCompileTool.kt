@@ -134,7 +134,7 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
             if (result.timedOut) {
                 return GradleToolResult.Error(
                     "Compilation timed out after $timeoutSeconds seconds. " +
-                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}",
+                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput.keepEnd()}",
                 )
             }
             val diagnostics = diagnosticParser.parse(result.rawOutput)
@@ -200,13 +200,18 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
      * root.
      *
      * The build root is the directory of the integration that contains `gradlew` and `settings.gradle(.kts)`
-     * ([resolveProjectRoot]). A [file] outside it, symbolic links resolved, is refused: the walk never leaves the build.
+     * ([resolveProjectRoot]). Both the root and the [file] are made canonical once (symbolic links resolved, `..`
+     * removed), and the whole walk runs on those canonical paths: a build reached through a link, a path with `..` or
+     * a real path copied from a compiler message all give the same module. A [file] outside the build is refused and
+     * the walk never leaves it.
      */
     internal fun detectModule(file: File): OwningModule? {
-        val projectRoot = resolveProjectRoot() ?: return null
-        if (!isInsideBuild(file)) return null
-        var dir: File? = if (file.isDirectory) file else file.parentFile
-        while (dir != null && dir != projectRoot.parentFile) {
+        val projectRoot = (resolveProjectRoot() ?: return null).canonicalOrNull() ?: return null
+        val target = file.canonicalOrNull() ?: return null
+        val rootPath = projectRoot.toPath()
+        if (!target.toPath().startsWith(rootPath)) return null
+        var dir: File? = if (target.isDirectory) target else target.parentFile
+        while (dir != null && dir.toPath().startsWith(rootPath)) {
             val hasBuild =
                 dir.resolve("build.gradle.kts").isFile ||
                     dir.resolve("build.gradle").isFile
@@ -227,12 +232,11 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
     internal fun resolveProjectRoot(): File? =
         runner.gradleDir.takeIf { it.resolve("settings.gradle.kts").isFile || it.resolve("settings.gradle").isFile }
 
-    /** True when [file], once symbolic links are resolved, is the build directory or lies under it. */
-    private fun isInsideBuild(file: File): Boolean =
+    private fun File.canonicalOrNull(): File? =
         try {
-            file.canonicalFile.toPath().startsWith(runner.gradleDir.canonicalFile.toPath())
+            canonicalFile
         } catch (e: IOException) {
-            false
+            null
         }
 
     internal fun buildCommand(

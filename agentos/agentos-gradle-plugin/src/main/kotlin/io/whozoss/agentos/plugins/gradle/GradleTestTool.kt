@@ -163,7 +163,7 @@ To check again, re-run this tool."""
             if (result.timedOut) {
                 return GradleToolResult.Error(
                     "Test execution timed out after $timeoutSeconds seconds. " +
-                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput}",
+                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or a narrower scope.\n\n${result.rawOutput.keepEnd()}",
                 )
             }
 
@@ -175,7 +175,7 @@ To check again, re-run this tool."""
                 if (xmlReports.isEmpty()) {
                     logger.warn { "[GradleTestTool] no xml reports generated — exit=${result.exitCode}" }
                     val status = if (result.exitCode == 0) "SUCCESS" else "FAILURE"
-                    "$status (exit ${result.exitCode}) — no test reports found\n\n${result.rawOutput}"
+                    "$status (exit ${result.exitCode}) — no test reports found\n\n${result.rawOutput.keepEnd()}"
                 } else {
                     parser.buildSummary(result.exitCode, xmlReports, result.rawOutput)
                 }

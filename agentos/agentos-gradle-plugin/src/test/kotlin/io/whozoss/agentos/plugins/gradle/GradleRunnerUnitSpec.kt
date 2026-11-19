@@ -39,6 +39,9 @@ private fun awaitCondition(
 /** Variables a shell adds by itself to the environment it runs in. */
 private val SHELL_OWN_VARIABLES = setOf("PWD", "OLDPWD", "SHLVL", "_")
 
+/** The timeout is mandatory: far above what these commands need, it is only there to never hang a test. */
+private val TEST_TIMEOUT = 30.seconds
+
 class GradleRunnerUnitSpec :
     StringSpec({
 
@@ -86,7 +89,7 @@ class GradleRunnerUnitSpec :
                     Thread.ofPlatform().start {
                         try {
                             // background child of the shell: only a tree kill reaches it
-                            runner.run(listOf("sh", "-c", "sleep 60 & echo \$! > \"\$1\"; wait", "sh", childPidFile.absolutePath))
+                            runner.run(listOf("sh", "-c", "sleep 60 & echo \$! > \"\$1\"; wait", "sh", childPidFile.absolutePath), timeout = TEST_TIMEOUT)
                         } catch (e: InterruptedException) {
                             failure = e
                         }
@@ -119,7 +122,7 @@ class GradleRunnerUnitSpec :
             val elapsed =
                 measureTimeMillis {
                     // the shell exits at once, the background sleep still holds stdout open
-                    val result = impatient.run(listOf("sh", "-c", "echo done; sleep 3 &"))
+                    val result = impatient.run(listOf("sh", "-c", "echo done; sleep 3 &"), timeout = TEST_TIMEOUT)
                     result.timedOut shouldBe false
                     result.exitCode shouldBe 0
                     result.rawOutput shouldContain "done"
@@ -131,7 +134,7 @@ class GradleRunnerUnitSpec :
 
         "run captures output and exit code on normal exit" {
             val command = listOf("sh", "-c", "echo hello; exit 0")
-            val result = runner.run(command)
+            val result = runner.run(command, timeout = TEST_TIMEOUT)
             result.timedOut shouldBe false
             result.exitCode shouldBe 0
             result.rawOutput shouldContain "hello"
@@ -139,7 +142,7 @@ class GradleRunnerUnitSpec :
 
         "run reports non-zero exit code without marking as timedOut" {
             val command = listOf("sh", "-c", "exit 42")
-            val result = runner.run(command)
+            val result = runner.run(command, timeout = TEST_TIMEOUT)
             result.timedOut shouldBe false
             result.exitCode shouldBe 42
         }
@@ -156,7 +159,7 @@ class GradleRunnerUnitSpec :
                     val futures =
                         (1..2).map {
                             Thread.ofVirtual().start {
-                                runner.run(command)
+                                runner.run(command, timeout = TEST_TIMEOUT)
                             }
                         }
                     futures.forEach { it.join() }
@@ -169,19 +172,19 @@ class GradleRunnerUnitSpec :
         // ── environment and output bound ──────────────────────────────────────────────────────────
 
         "run sets JAVA_HOME to the configured javaHome" {
-            val result = GradleRunner(tmpDir, javaHome = "/configured/jdk").run(listOf("sh", "-c", "echo \$JAVA_HOME"))
+            val result = GradleRunner(tmpDir, javaHome = "/configured/jdk").run(listOf("sh", "-c", "echo \$JAVA_HOME"), timeout = TEST_TIMEOUT)
 
             result.rawOutput.trim() shouldBe "/configured/jdk"
         }
 
         "run leaves the JAVA_HOME of the environment alone without a javaHome" {
-            val result = runner.run(listOf("sh", "-c", "echo \$JAVA_HOME"))
+            val result = runner.run(listOf("sh", "-c", "echo \$JAVA_HOME"), timeout = TEST_TIMEOUT)
 
             result.rawOutput.trim() shouldBe (System.getenv("JAVA_HOME") ?: "")
         }
 
         "run lets extraEnv override JAVA_HOME" {
-            val result = runner.run(listOf("sh", "-c", "echo \$JAVA_HOME"), extraEnv = mapOf("JAVA_HOME" to "/custom/jdk"))
+            val result = runner.run(listOf("sh", "-c", "echo \$JAVA_HOME"), timeout = TEST_TIMEOUT, extraEnv = mapOf("JAVA_HOME" to "/custom/jdk"))
 
             result.rawOutput.trim() shouldBe "/custom/jdk"
         }
@@ -189,7 +192,7 @@ class GradleRunnerUnitSpec :
         "run only passes the allowed variables of the service environment" {
             val names =
                 runner
-                    .run(listOf("env"))
+                    .run(listOf("env"), timeout = TEST_TIMEOUT)
                     .rawOutput
                     .lines()
                     .filter { it.contains('=') }
@@ -200,7 +203,7 @@ class GradleRunnerUnitSpec :
         }
 
         "run lets extraEnv add a variable the default set does not carry" {
-            val result = runner.run(listOf("sh", "-c", "echo \$AGENTOS_GRADLE_PROBE"), extraEnv = mapOf("AGENTOS_GRADLE_PROBE" to "yes"))
+            val result = runner.run(listOf("sh", "-c", "echo \$AGENTOS_GRADLE_PROBE"), timeout = TEST_TIMEOUT, extraEnv = mapOf("AGENTOS_GRADLE_PROBE" to "yes"))
 
             result.rawOutput.trim() shouldBe "yes"
         }
@@ -209,8 +212,9 @@ class GradleRunnerUnitSpec :
             // any variable of the test process that the default set leaves out, if there is one
             val secret = System.getenv().keys.firstOrNull { !GradleRunner.isInheritedVariable(it) }
             if (secret != null) {
-                val hidden = GradleRunner(tmpDir).run(listOf("printenv", secret))
-                val listed = GradleRunner(tmpDir, inheritedEnvironment = setOf(secret)).run(listOf("printenv", secret))
+                val hidden = GradleRunner(tmpDir).run(listOf("printenv", secret), timeout = TEST_TIMEOUT)
+                val listed =
+                    GradleRunner(tmpDir, inheritedEnvironment = setOf(secret)).run(listOf("printenv", secret), timeout = TEST_TIMEOUT)
 
                 hidden.exitCode shouldBe 1
                 listed.exitCode shouldBe 0
@@ -231,12 +235,32 @@ class GradleRunnerUnitSpec :
             GradleRunner.isInheritedVariable("ORG_GRADLE_PROJECT_token", setOf("ORG_GRADLE_PROJECT_token")) shouldBe true
         }
 
-        "run bounds the output and says so at its end" {
-            val result = runner.run(listOf("sh", "-c", "head -c 300000 /dev/zero | tr '\\0' 'x'"))
+        "run bounds the output, keeps its beginning and its end and says what was omitted between" {
+            val result =
+                runner.run(
+                    listOf("sh", "-c", "echo FIRST-LINE; head -c 300000 /dev/zero | tr '\\0' 'x'; echo; echo LAST-LINE"),
+                    timeout = TEST_TIMEOUT,
+                )
 
             result.exitCode shouldBe 0
-            result.rawOutput shouldContain "[Gradle output truncated at ${GradleRunner.MAX_OUTPUT_CHARS} chars]"
+            result.rawOutput shouldContain "FIRST-LINE"
+            result.rawOutput shouldContain "LAST-LINE"
+            result.rawOutput shouldContain "chars omitted"
             (result.rawOutput.length < GradleRunner.MAX_OUTPUT_CHARS + 100) shouldBe true
+        }
+
+        "run keeps the verdict printed after a log longer than the bound" {
+            // what a failed Gradle build does: a long log of tasks and warnings, then the reason at the very end
+            val result =
+                runner.run(
+                    listOf("sh", "-c", "i=0; while [ \$i -lt 30000 ]; do echo \"> Task :module\$i:compileKotlin\"; i=\$((i+1)); done; echo 'What went wrong: boom'; exit 1"),
+                    timeout = TEST_TIMEOUT,
+                )
+
+            result.exitCode shouldBe 1
+            result.rawOutput shouldContain "What went wrong: boom"
+            result.rawOutput shouldContain "> Task :module0:compileKotlin"
+            result.rawOutput shouldContain "chars omitted"
         }
 
         // ── resolveGradlew ──────────────────────────────────────────────────────────
@@ -410,7 +434,7 @@ class GradleRunnerUnitSpec :
             withTempDir("agentos-run-default-dir") { root ->
                 val backend = root.resolve("backend").also { it.mkdirs() }
 
-                val result = GradleRunner(root, gradlewDirectory = backend).run(listOf("pwd"))
+                val result = GradleRunner(root, gradlewDirectory = backend).run(listOf("pwd"), timeout = TEST_TIMEOUT)
 
                 result.rawOutput shouldContain "backend"
             }
@@ -534,7 +558,7 @@ class GradleRunnerUnitSpec :
             withTempDir("agentos-run-workdir") { root ->
                 val backend = root.resolve("backend").also { it.mkdirs() }
 
-                val result = GradleRunner(root).run(listOf("pwd"), workDir = backend)
+                val result = GradleRunner(root).run(listOf("pwd"), timeout = TEST_TIMEOUT, workDir = backend)
 
                 result.exitCode shouldBe 0
                 result.rawOutput shouldContain "backend"
