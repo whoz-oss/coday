@@ -25,6 +25,7 @@ class StandaloneWorkspaceProvisioningService(
     transactionManager: PlatformTransactionManager,
     timing: RunProvisioningTiming,
     private val properties: WorkspaceProperties,
+    private val singleProbe: Boolean = true,
 ) {
     private val transaction = TransactionTemplate(transactionManager).apply {
         propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
@@ -61,25 +62,44 @@ class StandaloneWorkspaceProvisioningService(
             }!!
             try {
                 proxy.ensureRunRootCase(rootCaseId, namespaceId, title, actorId)
-                adoption.awaitReady(scope, reserved, actorId, inspectGit = true)
-            } catch (interrupted: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw interrupted
-            } catch (error: TerminalWorkspaceAdoptionException) {
-                // Explicit terminal status or a proven identity/Git invariant failure.
-                // Unavailable HTTP, readiness timeouts and READY inspection errors retain intent.
-                transaction.execute {
-                    val current = environments.findByEnvironmentId(scope, id) ?: error("Workspace intent disappeared")
-                    if (current.lifecycleState == WorkEnvironmentState.PROVISIONING && current.provisioningFailure == null &&
-                        current.workflowId == reserved.workflowId && current.namespaceId == reserved.namespaceId &&
-                        current.parentCaseId == reserved.parentCaseId && current.createdBy == reserved.createdBy &&
-                        current.envType == reserved.envType) {
-                        environments.updateState(scope, current.copy(provisioningFailure = "ROOT_WORKSPACE_ADOPTION_FAILED"), current.revision, Instant.now())
-                    }
-                }
-                throw error
+                adoption.awaitReady(scope, reserved, actorId, inspectGit = true, singleProbe = singleProbe)
             } catch (error: Exception) {
-                throw TransientWorkspaceAdoptionException(error)
+                // HTTP clients may wrap InterruptedException. Never turn shutdown into a retry/failure.
+                val interrupted = generateSequence<Throwable>(error) { it.cause }
+                    .filterIsInstance<InterruptedException>().firstOrNull()
+                if (Thread.currentThread().isInterrupted || interrupted != null) {
+                    Thread.currentThread().interrupt()
+                    throw interrupted ?: InterruptedException("Workspace adoption interrupted").also { it.initCause(error) }
+                }
+                val causes = generateSequence<Throwable>(error) { it.cause }.toList()
+                val response = causes.filterIsInstance<org.springframework.web.client.RestClientResponseException>().firstOrNull()
+                val terminal = when {
+                    error is TerminalWorkspaceAdoptionException -> error
+                    response != null && response.statusCode.is4xxClientError && response.statusCode.value() !in setOf(408, 429) ->
+                        TerminalWorkspaceAdoptionException("AgentOS refused workspace adoption: HTTP ${response.statusCode.value()}")
+                    else -> null
+                }
+                if (terminal != null) {
+                    persistTerminalFailure(scope, reserved)
+                    throw terminal
+                }
+                if (error is WorkspaceAdoptionUnavailableException || isTemporaryWorkspaceTransportFailure(error)) {
+                    throw TransientWorkspaceAdoptionException(error)
+                }
+                throw error // Programming/configuration errors are not a retry policy.
+            }
+        }
+    }
+
+    /** Both explicit terminal invariants and classified HTTP refusals take this same path. */
+    private fun persistTerminalFailure(scope: TenantScope, reserved: WorkEnvironment) {
+        transaction.execute {
+            val current = environments.findByEnvironmentId(scope, reserved.environmentId) ?: error("Workspace intent disappeared")
+            if (current.lifecycleState == WorkEnvironmentState.PROVISIONING && current.provisioningFailure == null &&
+                current.workflowId == reserved.workflowId && current.namespaceId == reserved.namespaceId &&
+                current.parentCaseId == reserved.parentCaseId && current.createdBy == reserved.createdBy &&
+                current.envType == reserved.envType) {
+                environments.updateState(scope, current.copy(provisioningFailure = "ROOT_WORKSPACE_ADOPTION_FAILED"), current.revision, Instant.now())
             }
         }
     }

@@ -587,7 +587,7 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
                     "preparing" -> mapOf("equipped" to true, "status" to "PREPARING")
                     "ready-error" -> mapOf("equipped" to true, "status" to "READY", "error" to "Retry shortly")
                     "interrupt" -> throw InterruptedException("interrupted HTTP")
-                    else -> throw io.whozoss.factory.proxy.AgentOsUnavailableException("network")
+                    else -> throw io.whozoss.factory.proxy.AgentOsUnavailableException("network", java.io.IOException("connection reset"))
                 }
             }
             val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
