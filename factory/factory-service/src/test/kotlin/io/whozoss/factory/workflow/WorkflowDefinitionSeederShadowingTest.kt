@@ -22,7 +22,7 @@ class WorkflowDefinitionSeederShadowingTest {
     private fun definition(title: String): WorkflowDefinitionRecord {
         val body = mapOf<String, Any?>(
             "schemaVersion" to "1",
-            "workflowType" to "forge.delivery",
+            "workflowType" to "sample.plugin-flow",
             "version" to "1.0.0",
             "title" to title,
             "steps" to listOf(mapOf(
@@ -32,7 +32,7 @@ class WorkflowDefinitionSeederShadowingTest {
                 "dependsOn" to emptyList<String>(),
             )),
         )
-        return WorkflowDefinitionRecord("forge.delivery", "1.0.0", hashWorkflowDefinition(body), body)
+        return WorkflowDefinitionRecord("sample.plugin-flow", "1.0.0", hashWorkflowDefinition(body), body)
     }
 
     @Test

@@ -9,15 +9,6 @@ interface TrustedGitObjectReader {
     fun readBlob(commit: String, path: String, maxBytes: Int): ByteArray?
 }
 
-/** Trusted host-side observation; a plugin receives metadata, never CI credentials. */
-interface TrustedDeploymentEvidenceReader {
-    fun find(workCommit: String, integrationBranch: String, target: String): Map<String, Any?>?
-}
-
-interface TrustedPullRequestReader {
-    fun exactHead(commit: String): Map<String, Any?>?
-}
-
 /**
  * External observation of an agent result. Factory calls this outside its
  * finalization transaction, with a Case worktree resolved from persisted workflow
@@ -34,8 +25,6 @@ data class StepEvidenceObservationContext(
     val report: Map<String, Any?>,
     val gitObjects: TrustedGitObjectReader? = null,
     val workstreamId: String = "",
-    val deploymentEvidence: TrustedDeploymentEvidenceReader? = null,
-    val pullRequests: TrustedPullRequestReader? = null,
 )
 
 sealed interface StepEvidenceObservation {

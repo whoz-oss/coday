@@ -18,14 +18,13 @@ class ForgeDeliveryHumanCheckpointPolicy : FactoryHumanCheckpointPolicy {
             "packet-approval" -> packet(context)?.let { HumanCheckpointVerdict.Allowed(it, packetPrompt(context, it)) }
                 ?: HumanCheckpointVerdict.Denied("PACKET_IDENTITY_MISSING")
             "technical-validation" -> technical(context)?.let { HumanCheckpointVerdict.Allowed(it,
-                "Valider techniquement la PR #${it["prNumber"]} au commit ${it["workCommit"]}. " +
+                "Valider techniquement le travail au commit ${it["workCommit"]}. " +
                     "Consulter la revue et le paquet approuvé avant de répondre.") }
                 ?: HumanCheckpointVerdict.Denied("TECHNICAL_CANDIDATE_MISSING")
             "functional-validation" -> functional(context)?.let { HumanCheckpointVerdict.Allowed(it,
-                "Valider fonctionnellement le travail ${it["workCommit"]} déployé sur ${it["target"]} " +
-                    "avec le tag ${it["deployedTag"]}. Ce tag est une référence de déploiement, " +
-                    "pas une garantie de la version exacte testée.") }
-                ?: HumanCheckpointVerdict.Denied("DEPLOYED_CANDIDATE_MISSING")
+                "Avez-vous testé le travail du commit ${it["workCommit"]} dans l'environnement voulu " +
+                    "et confirmez-vous sa conformité fonctionnelle ? La Factory ne vérifie pas le déploiement automatiquement.") }
+                ?: HumanCheckpointVerdict.Denied("FUNCTIONAL_CANDIDATE_MISSING")
             else -> HumanCheckpointVerdict.Denied("INVALID_FORGE_GATE")
         }
 
@@ -65,7 +64,7 @@ class ForgeDeliveryHumanCheckpointPolicy : FactoryHumanCheckpointPolicy {
             "Consulter ces documents avant de répondre."
     }
 
-    /** Same key before and after integration, so technical review may proceed while CI waits. */
+    /** Both human decisions refer to the same approved packet and Build commit. */
     private fun candidate(context: HumanCheckpointContext): Map<String, Any?>? {
         val packet = packet(context) ?: return null
         val build = context.run.domainState["build_report"] as? Map<*, *> ?: return null
@@ -82,22 +81,18 @@ class ForgeDeliveryHumanCheckpointPolicy : FactoryHumanCheckpointPolicy {
         val workCommit = candidate["workCommit"]
         val review = context.run.domainState["review_report"] as? Map<*, *> ?: return null
         val verification = context.run.domainState["verification_report"] as? Map<*, *> ?: return null
-        val observed = review["observed_pr"] as? Map<*, *> ?: return null
-        val prNumber = (observed["prNumber"] as? Number)?.toInt() ?: return null
         if (verification["work_commit"] != workCommit || review["work_commit"] != workCommit ||
-            observed["prHeadCommit"] != workCommit || review["pr_head_commit"] != workCommit ||
-            (review["pr_number"] as? Number)?.toInt() != prNumber || prNumber <= 0) return null
-        return candidate + mapOf("prNumber" to prNumber, "prHeadCommit" to workCommit)
+            review["status"] != "PASS") return null
+        return candidate
     }
 
     private fun functional(context: HumanCheckpointContext): Map<String, Any?>? {
         val candidate = candidate(context) ?: return null
-        val deployment = context.run.domainState["deployment_evidence"] as? Map<*, *> ?: return null
-        val tag = deployment["tag"] as? String ?: return null
-        val target = deployment["target"] as? String ?: return null
-        val receipt = deployment["receipt"] as? String ?: return null
-        if (deployment["workCommit"] != candidate["workCommit"] || tag.isBlank() || target.isBlank() || receipt.isBlank()) return null
-        return candidate + mapOf("deployedTag" to tag, "target" to target, "deploymentReceipt" to receipt)
+        val review = context.run.domainState["review_report"] as? Map<*, *> ?: return null
+        val verification = context.run.domainState["verification_report"] as? Map<*, *> ?: return null
+        if (verification["work_commit"] != candidate["workCommit"] ||
+            review["work_commit"] != candidate["workCommit"] || review["status"] != "PASS") return null
+        return candidate
     }
 
     private companion object {

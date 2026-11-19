@@ -76,7 +76,6 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 "implementation-build" -> validateDeliveryBuild(context)
                 "implementation-verification" -> validateDeliveryVerification(context)
                 "implementation-review" -> validateDeliveryReview(context)
-                "integration-observation" -> validateDeliveryDeployment(context)
                 "delivery-completion" -> validateDeliveryCompletion(context)
                 else -> StepValidationVerdict.Accepted()
             }
@@ -558,22 +557,6 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         })
     }
 
-    private fun validateDeliveryDeployment(context: StepValidationContext): StepValidationVerdict {
-        if (context.agentName != "ForgeDeploymentObserver") {
-            return StepValidationVerdict.Rejected("INVALID_DEPLOYMENT_OBSERVER")
-        }
-        checkReadOnlyWorkspace(context)?.let { return it }
-        val workCommit = (context.run.domainState["build_report"] as? Map<*, *>)?.get("work_commit")
-        val evidence = context.externalEvidence
-        if (workCommit == null || evidence["workCommit"] != workCommit ||
-            (evidence["receipt"] as? String).isNullOrBlank() ||
-            (evidence["tag"] as? String).isNullOrBlank()
-        ) return StepValidationVerdict.Rejected("DEPLOYMENT_EVIDENCE_MISSING")
-        return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
-            put("deployment_evidence", evidence)
-        })
-    }
-
     private fun validateDeliveryVerification(context: StepValidationContext): StepValidationVerdict {
         if (context.agentName != "ForgeVerifier") return StepValidationVerdict.Rejected("INVALID_VERIFICATION_COORDINATOR")
         checkReadOnlyWorkspace(context)?.let { return it }
@@ -610,20 +593,17 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         }
         val report = extractOutputs(context.report)["review_report"] as? Map<*, *>
             ?: return StepValidationVerdict.Rejected("INVALID_REVIEW_REPORT")
-        val observed = context.externalEvidence
         val votes = report["votes"] as? Map<*, *>
         val findings = report["findings"] as? List<*>
         val lenses = listOf("clarity_correctness", "scope_architecture", "security_permissions", "edge_cases_resilience")
         if (report["status"] != "PASS" || report["work_commit"] != workCommit ||
-            report["pr_head_commit"] != workCommit || (report["pr_number"] as? Number)?.toLong()?.let { it > 0 } != true ||
-            observed["prHeadCommit"] != workCommit || observed["prNumber"] != report["pr_number"] ||
             votes?.keys?.toSet() != lenses.toSet() || lenses.any { votes[it] != "PASS" } ||
             findings == null || findings.any { it !is Map<*, *> ||
                 (it["severity"] as? String)?.lowercase() !in setOf("minor", "info") ||
                 (it["description"] as? String).isNullOrBlank() }
         ) return StepValidationVerdict.Rejected("INVALID_REVIEW_REPORT")
         return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
-            put("review_report", LinkedHashMap(report).apply { put("observed_pr", observed) })
+            put("review_report", report)
         })
     }
 
@@ -652,7 +632,9 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 presented.any { (key, value) -> facts[key] != value }
             ) return StepValidationVerdict.Rejected("HUMAN_APPROVAL_STALE")
         }
-        return StepValidationVerdict.Accepted()
+        return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+            put("deliveryOutcome", "READY_TO_MERGE")
+        })
     }
 
     private fun rejectDeliveryPlan(context: StepValidationContext, code: String): StepValidationVerdict.Rejected =

@@ -174,11 +174,9 @@
     },
     {
       "dependsOn": ["implementation-verification"],
-      "entry": [
-        "Review the local worktree at the accepted Build commit against the approved packet and diff base. Bind the candidate to the unique open PR with that head; use the PR for identity, not as the source of the code review."
-      ],
+      "entry": ["Review the local worktree at the accepted Build commit against the approved packet and diff base."],
       "exit": [
-        "Return one forge.business-outputs.v1 review_report with the matching work commit and PR head, PR number, four lens votes and classified findings. PASS requires every lens PASS and no critical or major finding. Review is evidence, not human approval."
+        "Return one forge.business-outputs.v1 review_report with the matching work commit, four lens votes and classified findings. PASS requires every lens PASS and no critical or major finding. Review is evidence, not human approval."
       ],
       "id": "implementation-review",
       "mission": "Review the committed local implementation against the approved packet and verified plan without changing code or approving a gate.",
@@ -190,27 +188,9 @@
     },
     {
       "dependsOn": ["implementation-review"],
-      "entry": [
-        "Use the accepted Build commit and this Run's workstream. Factory checks the corresponding integration branch and GitHub CI through AgentOS; a pending or conflicting deployment keeps this step waiting."
-      ],
+      "entry": ["Present the approved packet, accepted work commit and review to an authenticated Factory user."],
       "exit": [
-        "Advance only with Factory-observed work-commit ancestry, a successful Build, a successful Deploy job, a matching RC tag and the workstream target. Record the integration commit, tag and deployment job shown to the human."
-      ],
-      "id": "integration-observation",
-      "mission": "Wait for a historical successful deployment of a tag that includes this Run's work commit; do not claim which runtime version a human will later test.",
-      "name": "Observe workstream deployment",
-      "responsibility": {
-        "kind": "agent",
-        "name": "ForgeDeploymentObserver"
-      }
-    },
-    {
-      "dependsOn": ["implementation-review"],
-      "entry": [
-        "Present the approved packet, accepted work commit and exact reviewed PR to an authenticated Factory user."
-      ],
-      "exit": [
-        "Record that user's decision, identity and server time against the presented candidate and PR; a changed packet, work commit or review requires a new decision."
+        "Record that user's decision, identity and server time against the presented candidate; a changed packet or work commit requires a new decision."
       ],
       "id": "technical-validation",
       "mission": "Ask a human whether this reviewed implementation is technically acceptable.",
@@ -221,15 +201,13 @@
       }
     },
     {
-      "dependsOn": ["integration-observation"],
+      "dependsOn": ["implementation-review"],
       "entry": [
-        "Present the same work candidate, the successful deployment receipt, its tag and target to an authenticated Factory user."
+        "Present the same reviewed work candidate to an authenticated Factory user. Ask them to confirm they tested it in their chosen environment. Factory does not verify deployment automatically."
       ],
-      "exit": [
-        "Record that user's decision, identity and server time against the presented candidate and deployment. A later unrelated tag does not change this decision."
-      ],
+      "exit": ["Record that user's decision, identity and server time against the presented work candidate."],
       "id": "functional-validation",
-      "mission": "Ask a human whether the deployed work meets the functional intent.",
+      "mission": "Ask a human to confirm the reviewed work candidate was tested and meets the functional intent.",
       "name": "Validate functionality",
       "responsibility": {
         "kind": "human",
@@ -239,21 +217,21 @@
     {
       "dependsOn": ["technical-validation", "functional-validation"],
       "entry": [
-        "Factory checks both authenticated decisions against the current packet, work commit, PR and deployment receipt."
+        "Factory checks both authenticated decisions against the same approved packet and reviewed work commit."
       ],
       "exit": [
-        "Complete only if both audited decisions approve the same current work candidate, whose verification and review were accepted; otherwise keep the Run incomplete."
+        "Mark the run ready to merge only if both audited decisions approve the same current work candidate, whose verification and review were accepted; otherwise keep the Run incomplete. Do not merge or mark the Jira ticket Done."
       ],
       "id": "delivery-completion",
-      "mission": "Request Factory's deterministic final join after both human validations; do not claim authority from agent prose.",
-      "name": "Complete validated delivery",
+      "mission": "Request Factory's deterministic join after both human validations. The outcome is ready to merge, not merged.",
+      "name": "Mark delivery ready to merge",
       "responsibility": {
         "kind": "agent",
         "name": "ForgeCloser"
       }
     }
   ],
-  "title": "Forge delivery — complete gate draft",
+  "title": "Forge delivery — ready to merge draft",
   "version": "0.7.0",
   "workflowType": "forge.delivery"
 }

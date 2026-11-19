@@ -144,7 +144,7 @@ class WorkflowRunAsyncHttpTest : Neo4jDomainIntegrationTest() {
                 definition = valid.definition,
             ),
         )
-        val command = WorkflowStartCommand(workflowId, "wf-start-submission", "Start submission", ticket = "WZ-36147")
+        val command = WorkflowStartCommand(workflowId, "wf-start-submission", "Start submission", ticket = "ABC-123")
         val concurrentCommand = command.copy(workflowId = "wf-start-submission-2")
         val execution = ControllerExecutionInput("test-runtime", "agentos", "runner", namespaceId = namespace)
 

@@ -56,19 +56,6 @@ interface AgentOsProxyClient {
     /** Missing or inaccessible objects return null; transport failures may throw. */
     fun readPinnedGitBlob(caseId: String, commit: String, path: String, externalUserId: String?): ByteArray? = null
 
-    /** GitHub-verified historical Forge deployment for this Case, or null while evidence is absent. */
-    fun fetchForgeDeploymentEvidence(
-        caseId: String,
-        workCommit: String,
-        integrationBranch: String,
-        integrationCommit: String?,
-        target: String,
-        externalUserId: String?,
-    ): Map<String, Any?>? = null
-
-    /** Exact open PR head observed with the Case's repository service account. */
-    fun fetchPinnedPullRequest(caseId: String, headCommit: String, externalUserId: String?): Map<String, Any?>? = null
-
     /**
      * Read the aggregated run cost of a case tree
      * (`GET /api/cases/{caseId}/run-cost`). AgentOS already aggregates the

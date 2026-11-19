@@ -192,6 +192,29 @@ class ForgeGitPacketSnapshotTest {
             .isInstanceOf(StepEvidenceObservation.Unavailable::class.java)
     }
 
+    @Test
+    fun `Build rechecks the approved packet in a locally mounted Case repository`() {
+        initRepo()
+        git("remote", "add", "origin", "https://github.com/biznet-io/whoz.git")
+        val documents = documents()
+        writeDocuments(documents)
+        git("add", ".")
+        git("commit", "-qm", "approved packet")
+        val pinned = git("rev-parse", "HEAD").trim()
+        val verified = verifier.verify(manifest(pinned, documents), "whoz", repo)
+            as ForgeGitPacketSnapshot.Result.Valid
+        val packet = mapOf("repository" to "whoz", "commit" to pinned,
+            "manifestSha256" to verified.sha256,
+            "canonicalManifest" to verified.canonicalManifest.toString(Charsets.UTF_8))
+        val context = observationContext(manifest(pinned, documents)).copy(
+            run = RunView("run-1", "forge.delivery", domainState = mapOf("approvedPacketCandidate" to packet)),
+            stepId = "implementation-build", agentName = "ForgeDeveloper", gitObjects = null,
+        )
+
+        assertThat(ForgeBuildPacketEvidenceObserver().observe(context))
+            .isEqualTo(StepEvidenceObservation.Observed(packet.filterKeys { it != "canonicalManifest" }))
+    }
+
     private fun observationContext(rawManifest: ByteArray) = StepEvidenceObservationContext(
         run = RunView("run-1", "forge.delivery"), flowType = "forge.delivery", stepId = "packet-assembly",
         agentName = "ProductEngineer", attemptId = "attempt-1", worktreePath = repo.toString(),

@@ -23,17 +23,18 @@ class ForgeBuildPacketEvidenceObserver : FactoryStepEvidenceObserver {
             return StepEvidenceObservation.Invalid("PACKET_IDENTITY_MISSING", "The approved packet identity is incomplete.")
         }
         val reader = context.gitObjects
-            ?: return StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Run's Git objects cannot be read.")
-        val source = reader.sourceRepository()
+        val worktree = Path.of(context.worktreePath)
+        val local = ProcessGitObjects()
+        val source = reader?.sourceRepository() ?: local.sourceRepository(worktree)
             ?: return StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Run's Git source cannot be read.")
         if (source != repository) return StepEvidenceObservation.Invalid("PACKET_REPOSITORY_MISMATCH", "The source repository changed.")
-        val objects = object : ForgeGitPacketSnapshot.GitObjects {
+        val objects = if (reader == null) local else object : ForgeGitPacketSnapshot.GitObjects {
             override fun commitExists(worktree: Path, commit: String) = reader.commitExists(commit)
             override fun readBlob(worktree: Path, commit: String, path: String, maxBytes: Int) =
                 reader.readBlob(commit, path, maxBytes)
         }
         return when (val verified = ForgeGitPacketSnapshot(objects).verify(
-            canonical.toByteArray(Charsets.UTF_8), repository, Path.of(context.worktreePath),
+            canonical.toByteArray(Charsets.UTF_8), repository, worktree,
         )) {
             is ForgeGitPacketSnapshot.Result.Valid ->
                 if (verified.commit == commit && verified.sha256 == digest)
