@@ -26,8 +26,9 @@ class ForgeDeliveryDraftDefinitionTest {
             .containsExactly("implementation-review")
         assertThat(step("functional-validation")["dependsOn"] as List<*>)
             .containsExactly("implementation-review")
-        assertThat(step("delivery-completion")["dependsOn"] as List<*>)
+        assertThat(steps.takeLast(2).map { it["id"] })
             .containsExactly("technical-validation", "functional-validation")
+        assertThat(steps.none { it["id"] == "delivery-completion" }).isTrue()
         assertThat(steps.none { it.containsKey("join") }).isTrue()
         assertThat(steps.none { it["id"] == "integration-observation" }).isTrue()
     }

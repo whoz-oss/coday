@@ -14,8 +14,9 @@ class ForgePacketHumanCheckpointPolicyTest {
         "manifestSha256" to "b".repeat(64),
     )
 
-    private fun context(state: Map<String, Any?> = mapOf("approvedPacketCandidate" to packet), step: String = "packet-approval") =
-        HumanCheckpointContext(RunView("run-1", "forge.delivery", domainState = state),
+    private fun context(state: Map<String, Any?> = mapOf("approvedPacketCandidate" to packet),
+                        step: String = "packet-approval", decisions: List<Map<String, Any?>> = emptyList()) =
+        HumanCheckpointContext(RunView("run-1", "forge.delivery", domainState = state, humanDecisions = decisions),
             "forge.delivery", step)
 
     private val candidateState: Map<String, Any?> get() = mapOf(
@@ -69,5 +70,25 @@ class ForgePacketHumanCheckpointPolicyTest {
             "manifest_sha256" to packet["manifestSha256"], "work_commit" to "d".repeat(40)))
         assertThat(policy.decide(context(changedWork, "functional-validation"), functional.facts, "approve"))
             .isEqualTo(HumanCheckpointVerdict.Denied("FUNCTIONAL_CANDIDATE_MISSING"))
+    }
+
+    @Test
+    fun `second human approval marks ready to merge only when the first audited approval matches`() {
+        val technical = policy.present(context(candidateState, "technical-validation")) as HumanCheckpointVerdict.Allowed
+        val functional = policy.present(context(candidateState, "functional-validation")) as HumanCheckpointVerdict.Allowed
+        val first = mapOf<String, Any?>(
+            "stepId" to "technical-validation", "outcome" to "pass",
+            "source" to mapOf("kind" to "factory-human", "actorId" to "member-1"),
+            "facts" to technical.facts + mapOf("gate" to "technical-validation", "decidedAt" to "2026-11-19T00:00:00Z"),
+        )
+        val pending = policy.decide(context(candidateState, "functional-validation"), functional.facts, "approve")
+            as HumanCheckpointVerdict.Allowed
+        assertThat(pending.facts).doesNotContainKey("deliveryOutcome")
+        val ready = policy.decide(context(candidateState, "functional-validation", listOf(first)), functional.facts, "approve")
+            as HumanCheckpointVerdict.Allowed
+        assertThat(ready.facts).containsEntry("deliveryOutcome", "READY_TO_MERGE")
+        val stale = first + ("facts" to mapOf("gate" to "technical-validation", "decidedAt" to "2026-11-19T00:00:00Z"))
+        assertThat(policy.decide(context(candidateState, "functional-validation", listOf(stale)), functional.facts, "approve"))
+            .isEqualTo(HumanCheckpointVerdict.Denied("FORGE_DECISION_STALE"))
     }
 }

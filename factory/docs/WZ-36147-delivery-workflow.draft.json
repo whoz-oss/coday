@@ -213,22 +213,6 @@
         "kind": "human",
         "name": "Factory user"
       }
-    },
-    {
-      "dependsOn": ["technical-validation", "functional-validation"],
-      "entry": [
-        "Factory checks both authenticated decisions against the same approved packet and reviewed work commit."
-      ],
-      "exit": [
-        "Mark the run ready to merge only if both audited decisions approve the same current work candidate, whose verification and review were accepted; otherwise keep the Run incomplete. Do not merge or mark the Jira ticket Done."
-      ],
-      "id": "delivery-completion",
-      "mission": "Request Factory's deterministic join after both human validations. The outcome is ready to merge, not merged.",
-      "name": "Mark delivery ready to merge",
-      "responsibility": {
-        "kind": "agent",
-        "name": "ForgeCloser"
-      }
     }
   ],
   "title": "Forge delivery — ready to merge draft",

@@ -240,14 +240,15 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Test
     @Suppress("UNCHECKED_CAST")
-    fun `opted-in human reply audits exact packet and refuses a stale replacement`() {
+    fun `opted-in human reply sees earlier decisions and refuses a stale replacement`() {
         val packet = mapOf("repository" to "whoz", "commit" to "a".repeat(40), "manifestSha256" to "b".repeat(64))
         val policy = object : FactoryHumanCheckpointPolicy {
             override fun supports(flowType: String, stepId: String) =
-                flowType == "forge.delivery" && stepId == "gate"
+                flowType == "sample.delivery" && stepId == "gate"
 
             override fun decide(context: HumanCheckpointContext, presented: Map<String, Any?>, actionId: String) =
-                if (context.run.domainState["approvedPacketCandidate"] == presented)
+                if (context.run.domainState["approvedPacketCandidate"] == presented &&
+                    context.run.humanDecisions.any { it["stepId"] == "prior-gate" && it["outcome"] == "pass" })
                     HumanCheckpointVerdict.Allowed(presented + ("gate" to "packet-approval"))
                 else HumanCheckpointVerdict.Denied("PACKET_DECISION_STALE")
         }
@@ -255,10 +256,10 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
         every { plugins.getExtensions(FactoryHumanCheckpointPolicy::class.java) } returns listOf(policy)
         val governed = WorkflowService(repository, evidenceRepository, interactionRepository, sseHub,
             transactionManager = transactionManager, pluginManager = plugins)
-        registerDefinition(workflowType = "forge.delivery")
+        registerDefinition(workflowType = "sample.delivery")
 
         fun open(workflowId: String): String {
-            startWorkflow(workflowId, workflowType = "forge.delivery")
+            startWorkflow(workflowId, workflowType = "sample.delivery")
             val result = service.openInteraction(organizationScope, namespace, workflowId, "gate", 1,
                 "Approve the packet?", listOf(mapOf("id" to "approve", "label" to "Approve"),
                     mapOf("id" to "reject", "label" to "Reject")), "open-$workflowId")
@@ -266,7 +267,7 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
             val instance = repository.findInstance(organizationScope, namespace, workflowId)!!
             val updated = instance.copy(revision = instance.revision + 1,
                 instance = instance.instance + mapOf("revision" to instance.revision + 1,
-                    "execution" to mapOf("plugin" to "forge", "humanCheckpointPolicyRequired" to true)))
+                    "execution" to mapOf("plugin" to "sample", "humanCheckpointPolicyRequired" to true)))
             assertThat(repository.updateInstance(organizationScope, namespace, workflowId, instance.revision, updated)).isTrue()
             val interaction = interactionRepository.find(organizationScope, namespace, workflowId, interactionId)!!
             assertThat(interactionRepository.update(organizationScope, namespace, workflowId, interactionId,
@@ -279,6 +280,13 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
                 facts = mapOf("acceptedDomainState" to mapOf("approvedPacketCandidate" to packet)),
                 idempotencyKey = null, createdAt = null,
             ))
+            evidenceRepository.append(organizationScope, namespace, workflowId, WorkflowEvidenceItem(
+                evidenceId = "prior-$workflowId", namespaceId = namespace, workflowId = workflowId,
+                stepId = "prior-gate", kind = "human-decision", outcome = "pass",
+                source = mapOf("kind" to "factory-human", "actorId" to "earlier-member"),
+                facts = mapOf("gate" to "prior-gate", "decidedAt" to "2026-11-19T00:00:00Z"),
+                idempotencyKey = null, createdAt = null,
+            ))
             return interactionId
         }
 
@@ -287,7 +295,7 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
             3, "approve", null, "authenticated-member")
         assertThat(data(approved)["evidenceId"]).isNotNull
         val decision = evidenceRepository.list(organizationScope, namespace, "wf-packet-current")
-            .single { it.kind == "human-decision" }
+            .single { it.kind == "human-decision" && it.stepId == "gate" }
         assertThat(decision.source?.get("actorId")).isEqualTo("authenticated-member")
         assertThat(decision.facts).containsEntry("repository", "whoz")
             .containsEntry("commit", "a".repeat(40))
@@ -308,7 +316,7 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
         }.isInstanceOf(WorkflowException::class.java)
             .extracting("errorCode").isEqualTo(WorkflowErrorCodes.INVALID_REPLY)
         assertThat(evidenceRepository.list(organizationScope, namespace, "wf-packet-stale"))
-            .noneMatch { it.kind == "human-decision" }
+            .noneMatch { it.kind == "human-decision" && it.stepId == "gate" }
     }
 
     @Test

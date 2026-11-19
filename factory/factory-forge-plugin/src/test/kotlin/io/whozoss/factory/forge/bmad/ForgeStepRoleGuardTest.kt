@@ -7,8 +7,6 @@ import io.whozoss.factory.sdk.spi.StepValidationContext
 import io.whozoss.factory.sdk.spi.StepValidationVerdict
 import io.whozoss.factory.sdk.spi.WatchedFileSnapshot
 import io.whozoss.factory.sdk.spi.WorkspaceDelta
-import io.whozoss.factory.sdk.spi.HumanCheckpointContext
-import io.whozoss.factory.sdk.spi.HumanCheckpointVerdict
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -30,39 +28,6 @@ class ForgeStepRoleGuardTest {
     )
 
     private fun applicabilityReport(decisions: Map<String, Any?>) = businessReport(mapOf("applicability" to decisions))
-
-    @Test
-    fun `final join requires both audited approvals on the current work candidate`() {
-        val packet = mapOf("repository" to "whoz", "commit" to "a".repeat(40), "manifestSha256" to "b".repeat(64))
-        val workCommit = "c".repeat(40)
-        val state = mapOf<String, Any?>(
-            "approvedPacketCandidate" to packet,
-            "build_report" to mapOf("manifest_sha256" to packet["manifestSha256"], "work_commit" to workCommit),
-            "verification_report" to mapOf("work_commit" to workCommit),
-            "review_report" to mapOf("work_commit" to workCommit, "status" to "PASS"),
-        )
-        val policy = ForgeDeliveryHumanCheckpointPolicy()
-        val base = run.copy(runType = "forge.delivery", domainState = state)
-        fun decision(step: String): Map<String, Any?> {
-            val facts = (policy.present(HumanCheckpointContext(base, "forge.delivery", step))
-                as HumanCheckpointVerdict.Allowed).facts
-            return mapOf("stepId" to step, "outcome" to "pass",
-                "source" to mapOf("kind" to "factory-human", "actorId" to "member-1"),
-                "facts" to facts + mapOf("gate" to step, "decidedAt" to "2026-11-18T22:00:00Z"))
-        }
-        val technical = decision("technical-validation")
-        val functional = decision("functional-validation")
-        fun verdict(decisions: List<Map<String, Any?>>) = validator.validate(StepValidationContext(
-            run = base.copy(humanDecisions = decisions), flowType = "forge.delivery",
-            stepId = "delivery-completion", agentName = "ForgeCloser",
-        ))
-        assertThat((verdict(listOf(technical)) as StepValidationVerdict.Rejected).reasonCode)
-            .isEqualTo("HUMAN_APPROVAL_MISSING")
-        assertThat((verdict(listOf(technical, functional + ("facts" to mapOf("gate" to "functional-validation"))))
-            as StepValidationVerdict.Rejected).reasonCode).isEqualTo("HUMAN_APPROVAL_STALE")
-        val accepted = verdict(listOf(technical, functional)) as StepValidationVerdict.Accepted
-        assertThat(accepted.newDomainState?.get("deliveryOutcome")).isEqualTo("READY_TO_MERGE")
-    }
 
     @Test
     fun `packet assembly cannot advance without trusted Git receipt`() {
