@@ -147,6 +147,25 @@ class CompilerDiagnosticParserUnitSpec :
             summary shouldContain "Some weird compiler crash"
         }
 
+        "buildSummary FAILURE with only warnings parsed still includes the end of the raw output" {
+            val warning = CompilerDiagnosticParser.Diagnostic(Severity.WARNING, "/p/A.kt", 1, 1, "unused")
+
+            val summary =
+                parser.buildSummary(exitCode = 1, diagnostics = listOf(warning), rawOutput = "Could not resolve com.acme:lib:1.0")
+
+            summary shouldContain "[WARN] /p/A.kt:1:1 — unused"
+            summary shouldContain "Raw output"
+            summary shouldContain "Could not resolve com.acme:lib:1.0"
+        }
+
+        "buildSummary FAILURE with a parsed error does not repeat the raw output" {
+            val error = CompilerDiagnosticParser.Diagnostic(Severity.ERROR, "/p/A.kt", 1, 1, "boom")
+
+            val summary = parser.buildSummary(exitCode = 1, diagnostics = listOf(error), rawOutput = "RAW")
+
+            summary shouldNotContain "Raw output"
+        }
+
         "buildSummary FAILURE with no parseable diagnostics bounds the raw output and keeps its end" {
             val raw = "BEGINNING-OF-THE-LOG" + "> Task :a:compileKotlin\n".repeat(5_000) + "What went wrong: THE-VERDICT"
 

@@ -77,7 +77,7 @@ internal class XmlTestReportParser {
                 shown.forEachIndexed { idx, group ->
                     val f = group.first()
                     appendLine()
-                    appendLine("${idx + 1}. ${if (group.size == 1) f.title else "×${group.size} : ${group.joinToString { it.title }}"}")
+                    appendLine("${idx + 1}. ${group.heading()}")
                     if (f.type.isNotBlank()) appendLine("   type    : ${f.type}")
                     if (f.message.isNotBlank()) appendLine("   message : ${f.message.capped(messageCap).indented()}")
                     if (f.stack.isNotEmpty()) appendLine("   stack   : ${f.stack.joinToString("\n").indented()}")
@@ -93,6 +93,14 @@ internal class XmlTestReportParser {
                 appendLine(rawOutput.keepEnd())
             }
         }.trimEnd()
+    }
+
+    /** One title, or the group size followed by the first [MAX_TITLES_PER_GROUP] titles and the count of the rest. */
+    private fun List<FailureDetail>.heading(): String {
+        if (size == 1) return first().title
+        val titles = take(MAX_TITLES_PER_GROUP).joinToString { it.title }
+        val rest = size - MAX_TITLES_PER_GROUP
+        return "×$size : $titles" + if (rest > 0) " … and $rest more" else ""
     }
 
     private fun String.capped(max: Int): String = if (length <= max) this else take(max) + "\n… (${length - max} chars truncated)"
@@ -157,7 +165,7 @@ internal class XmlTestReportParser {
                         "failure", "error" ->
                             // the first problem of a test case is the one reported
                             testcase?.takeIf { it.problem == null }?.let {
-                                it.problem = ProblemUnderRead(reader.attribute("type"), reader.attribute("message"))
+                                it.problem = ProblemUnderRead(reader.attribute("type"), reader.attribute("message").take(MAX_MESSAGE_CHARS))
                                 it.reading = true
                             }
                     }
@@ -255,6 +263,12 @@ internal class XmlTestReportParser {
 
         /** Max chars of the text of one failure (its stack trace) read from a report. */
         private const val MAX_FAILURE_TEXT_CHARS = 200_000
+
+        /** Max chars kept of the `message` attribute of a failure: a big assertion diff must not stay in memory. */
+        private const val MAX_MESSAGE_CHARS = 10_000
+
+        /** Max test titles listed for a group of identical failures, the rest is only counted. */
+        private const val MAX_TITLES_PER_GROUP = 5
 
         /** Max distinct failures listed in a summary, whatever their number. */
         private const val MAX_LISTED_FAILURES = 50

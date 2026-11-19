@@ -450,6 +450,22 @@ class XmlTestReportParserUnitSpec :
             summary.split("message : boom").size shouldBe 2
         }
 
+        "buildSummary lists only the first titles of a big group and counts the rest" {
+            val stack = "at com.example.A.a(A.kt:1)"
+            val summary = summaryOf(*(1..3_000).map { FailingCase("t$it", "boom", stack) }.toTypedArray())
+
+            summary shouldContain "1. ×3000 : MyTest › t1, MyTest › t2, MyTest › t3, MyTest › t4, MyTest › t5 … and 2995 more"
+            summary shouldNotContain "t6,"
+            (summary.length < 2_000) shouldBe true
+        }
+
+        "buildSummary keeps a bounded copy of a huge message" {
+            val summary = summaryOf(FailingCase("t", "x".repeat(5_000_000), "at com.example.A.a(A.kt:1)"))
+
+            summary shouldContain "chars truncated"
+            (summary.length < 10_000) shouldBe true
+        }
+
         // ── buildSummary — multiple reports ─────────────────────────────────────────────────────────
 
         "buildSummary aggregates totals across multiple reports" {

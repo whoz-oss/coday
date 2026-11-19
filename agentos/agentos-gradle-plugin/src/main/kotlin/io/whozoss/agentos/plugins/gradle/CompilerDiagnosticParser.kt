@@ -81,48 +81,54 @@ internal class CompilerDiagnosticParser {
             appendLine("$status (exit $exitCode)")
             appendLine("Errors: $errors  Warnings: $warnings")
 
-            if (diagnostics.isEmpty()) {
-                if (exitCode != 0) {
-                    appendLine()
-                    appendLine("── Raw output ────────────────────────────────────────")
-                    appendLine(rawOutput.keepEnd())
-                }
-                return@buildString
-            }
+            if (diagnostics.isNotEmpty()) appendDiagnostics(diagnostics, fileFilter)
 
-            val (targeted, others) =
-                if (fileFilter != null) {
-                    val normalised = fileFilter.replace('\\', '/')
-                    diagnostics.partition { it.file.replace('\\', '/').endsWith(normalised) }
-                } else {
-                    diagnostics to emptyList()
-                }
-
-            // Errors come first: the list is bounded, and a build with many warnings must not push its errors out of it.
-            val primary = targeted.ifEmpty { diagnostics }.errorsFirst()
-            val secondary = if (targeted.isNotEmpty()) others.errorsFirst() else emptyList()
-
-            appendLine()
-            appendLine("── Diagnostics ───────────────────────────────────────")
-            // The counts above are exact; the list is bounded so a broken build cannot flood the agent context.
-            val primaryShown = primary.take(MAX_LISTED_DIAGNOSTICS)
-            val secondaryShown = secondary.take(MAX_LISTED_DIAGNOSTICS - primaryShown.size)
-            primaryShown.forEach { d -> appendLine(d.format()) }
-
-            if (secondary.isNotEmpty()) {
-                val otherErrors = secondary.count { it.severity == Severity.ERROR }
-                val otherWarnings = secondary.count { it.severity == Severity.WARNING }
+            // A failed build with no parsed error has a cause the parser did not see (dependency resolution, annotation
+            // processing, another module...): warnings alone must not hide it.
+            if (exitCode != 0 && errors == 0) {
                 appendLine()
-                appendLine("── Other files: $otherErrors error(s), $otherWarnings warning(s) ──")
-                secondaryShown.forEach { d -> appendLine(d.format()) }
-            }
-
-            val hidden = primary.size + secondary.size - primaryShown.size - secondaryShown.size
-            if (hidden > 0) {
-                appendLine()
-                appendLine("… $hidden more diagnostic(s) not shown (listed: $MAX_LISTED_DIAGNOSTICS)")
+                appendLine("── Raw output ────────────────────────────────────────")
+                appendLine(rawOutput.keepEnd())
             }
         }.trimEnd()
+    }
+
+    private fun StringBuilder.appendDiagnostics(
+        diagnostics: List<Diagnostic>,
+        fileFilter: String?,
+    ) {
+        val (targeted, others) =
+            if (fileFilter != null) {
+                val normalised = fileFilter.replace('\\', '/')
+                diagnostics.partition { it.file.replace('\\', '/').endsWith(normalised) }
+            } else {
+                diagnostics to emptyList()
+            }
+
+        // Errors come first: the list is bounded, and a build with many warnings must not push its errors out of it.
+        val primary = targeted.ifEmpty { diagnostics }.errorsFirst()
+        val secondary = if (targeted.isNotEmpty()) others.errorsFirst() else emptyList()
+
+        appendLine()
+        appendLine("── Diagnostics ───────────────────────────────────────")
+        // The counts above are exact; the list is bounded so a broken build cannot flood the agent context.
+        val primaryShown = primary.take(MAX_LISTED_DIAGNOSTICS)
+        val secondaryShown = secondary.take(MAX_LISTED_DIAGNOSTICS - primaryShown.size)
+        primaryShown.forEach { d -> appendLine(d.format()) }
+
+        if (secondary.isNotEmpty()) {
+            val otherErrors = secondary.count { it.severity == Severity.ERROR }
+            val otherWarnings = secondary.count { it.severity == Severity.WARNING }
+            appendLine()
+            appendLine("── Other files: $otherErrors error(s), $otherWarnings warning(s) ──")
+            secondaryShown.forEach { d -> appendLine(d.format()) }
+        }
+
+        val hidden = primary.size + secondary.size - primaryShown.size - secondaryShown.size
+        if (hidden > 0) {
+            appendLine()
+            appendLine("… $hidden more diagnostic(s) not shown (listed: $MAX_LISTED_DIAGNOSTICS)")
+        }
     }
 
     /** Errors before warnings, each kept in the order the compiler printed them (the sort is stable). */
