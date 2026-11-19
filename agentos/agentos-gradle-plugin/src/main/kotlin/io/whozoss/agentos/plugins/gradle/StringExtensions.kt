@@ -16,6 +16,19 @@ private val JVM_NOISE =
 private val BLANK_RUNS = Regex("\n{3,}")
 
 /**
+ * Max chars of raw Gradle output that a tool answer may carry as a fallback (no diagnostic or no test report to
+ * explain a failure). The runner keeps up to [GradleRunner.MAX_OUTPUT_CHARS], far more than the agent needs.
+ */
+internal const val MAX_RAW_OUTPUT_CHARS = 20_000
+
+/**
+ * Bounds a raw Gradle output to its last [max] chars. The end of a Gradle log is where the verdict is (the
+ * `What went wrong` block, the last errors), so the beginning is the part dropped, with a note.
+ */
+internal fun String.keepEnd(max: Int = MAX_RAW_OUTPUT_CHARS): String =
+    if (length <= max) this else "[… ${length - max} earlier chars omitted …]\n" + takeLast(max)
+
+/**
  * Strips the JVM restricted-method warnings ([JVM_NOISE]) from Gradle output: they pollute tool output without
  * adding diagnostic value. Runs of 3+ blank lines left by the removal are collapsed to 2.
  */

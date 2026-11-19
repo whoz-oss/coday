@@ -17,8 +17,11 @@ import kotlin.time.Duration.Companion.seconds
  * @property workDir directory the process runs in.
  * @property env entries added to the inherited environment (they win over inherited ones).
  * @property inheritEnvironment tells which variables of the parent environment the process inherits, by name:
- * the others are removed before [env] is added. Everything by default.
- * @property maxOutputChars max chars of the merged stdout+stderr kept; the first ones are kept.
+ * the others are removed before [env] is added. No default: the caller must choose, a forgotten argument would
+ * hand every secret of the parent to the child.
+ * @property maxOutputChars max chars of the merged stdout+stderr kept: the first quarter and the last three
+ * quarters of the budget. The end of a log is where a build says why it failed, the beginning where it starts: a
+ * marker tells how many chars were omitted in between.
  * @property drainGrace max time to wait for the output drain once the process exited or was killed:
  * a background child may keep the pipe open long after.
  * @property label short name of what is launched, for logs and the drain thread name.
@@ -29,9 +32,9 @@ internal data class ProcessSpec(
     val workDir: File,
     val env: Map<String, String>,
     val maxOutputChars: Int,
-    val drainGrace: Duration = DEFAULT_DRAIN_GRACE,
-    val inheritEnvironment: (String) -> Boolean = { true },
+    val inheritEnvironment: (String) -> Boolean,
     val label: String,
+    val drainGrace: Duration = DEFAULT_DRAIN_GRACE,
 ) {
     companion object {
         val DEFAULT_DRAIN_GRACE: Duration = 2.seconds
@@ -41,7 +44,8 @@ internal data class ProcessSpec(
 /**
  * Outcome of [ProcessLauncher.run].
  *
- * @property output merged stdout+stderr, bounded to [ProcessSpec.maxOutputChars].
+ * @property output merged stdout+stderr, bounded to [ProcessSpec.maxOutputChars] (the beginning and the end, with a
+ * marker where the middle was dropped).
  * @property exitCode the process exit code, -1 when it was killed on timeout.
  * @property timedOut true when the process was killed because it exceeded [ProcessSpec.timeout].
  * @property truncated true when the output was longer than [ProcessSpec.maxOutputChars].
@@ -116,15 +120,23 @@ internal object ProcessLauncher : KLogging() {
         process.destroyForcibly()
     }
 
-    /** Keeps the first [max] chars read and keeps reading after that, so the process never blocks on a full pipe. */
+    /**
+     * Keeps the first quarter of [max] chars read and the last three quarters, and keeps reading in between, so the
+     * process never blocks on a full pipe. Memory stays bounded: the tail is trimmed back to its size each time it
+     * doubles, which keeps the cost per char constant.
+     */
     private class BoundedOutput(
-        private val max: Int,
+        max: Int,
     ) {
-        private val buffer = StringBuilder()
+        private val headMax = max / 4
+        private val tailMax = max - headMax
+        private val head = StringBuilder()
+        private val tail = StringBuilder()
+        private var total = 0L
 
-        @Volatile
-        var truncated = false
-            private set
+        /** True when some chars were dropped. Read once the drain is over (or given up on). */
+        val truncated: Boolean
+            @Synchronized get() = omittedChars() > 0
 
         fun drain(stream: InputStream) {
             try {
@@ -146,13 +158,23 @@ internal object ProcessLauncher : KLogging() {
             chunk: CharArray,
             length: Int,
         ) {
-            val room = max - buffer.length
-            if (room > 0) buffer.append(chunk, 0, minOf(length, room))
-            if (length > room) truncated = true
+            total += length
+            val intoHead = minOf(length, headMax - head.length)
+            if (intoHead > 0) head.append(chunk, 0, intoHead)
+            if (intoHead < length) {
+                tail.append(chunk, intoHead, length - intoHead)
+                if (tail.length > 2 * tailMax) tail.delete(0, tail.length - tailMax)
+            }
         }
 
         @Synchronized
-        fun snapshot(): String = buffer.toString()
+        fun snapshot(): String {
+            val keptTail = tail.substring(maxOf(0, tail.length - tailMax))
+            val omitted = omittedChars()
+            return if (omitted == 0L) head.toString() + keptTail else "$head\n[… $omitted chars omitted …]\n$keptTail"
+        }
+
+        private fun omittedChars(): Long = total - head.length - minOf(tail.length, tailMax)
     }
 
     private const val CHUNK_SIZE = 8192

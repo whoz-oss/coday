@@ -1,10 +1,11 @@
 package io.whozoss.agentos.plugins.gradle
 
 import mu.KLogging
-import org.w3c.dom.Element
 import java.io.File
-import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.stream.XMLInputFactory
+import javax.xml.stream.XMLStreamConstants
+import javax.xml.stream.XMLStreamException
+import javax.xml.stream.XMLStreamReader
 import kotlin.math.max
 
 /**
@@ -42,32 +43,15 @@ internal class XmlTestReportParser {
         var unreadable = 0
         val failures = mutableListOf<FailureDetail>()
 
-        val dbf = secureDocumentBuilderFactory()
         for (report in reports) {
             try {
-                val doc = dbf.newDocumentBuilder().parse(report)
-                val suite = doc.documentElement
-                totalTests += suite.getAttribute("tests").toIntOrNull() ?: 0
-                totalSkipped += suite.getAttribute("skipped").toIntOrNull() ?: 0
-                totalFailures += suite.getAttribute("failures").toIntOrNull() ?: 0
-                totalErrors += suite.getAttribute("errors").toIntOrNull() ?: 0
-
-                val testcases = suite.getElementsByTagName("testcase")
-                for (i in 0 until testcases.length) {
-                    val tc = testcases.item(i) as Element
-                    val failureNode = tc.getElementsByTagName("failure").item(0) as? Element
-                    val errorNode = tc.getElementsByTagName("error").item(0) as? Element
-                    val problemNode = failureNode ?: errorNode ?: continue
-
-                    failures +=
-                        FailureDetail(
-                            className = tc.getAttribute("classname").substringAfterLast('.'),
-                            methodName = tc.getAttribute("name"),
-                            type = problemNode.getAttribute("type").trim(),
-                            message = problemNode.getAttribute("message").trim(),
-                            stack = problemNode.textContent.relevantStack(),
-                        )
-                }
+                // A report counts only once fully read: a broken one adds nothing.
+                val parsed = parseReport(report)
+                totalTests += parsed.tests
+                totalSkipped += parsed.skipped
+                totalFailures += parsed.failures
+                totalErrors += parsed.errors
+                failures += parsed.details
             } catch (e: Exception) {
                 unreadable++
                 logger.warn { "Could not parse report ${report.name}: ${e.message}" }
@@ -106,7 +90,7 @@ internal class XmlTestReportParser {
             if (exitCode != 0 && (failures.isEmpty() || unreadable > 0) && rawOutput.isNotBlank()) {
                 appendLine()
                 appendLine("── Raw output ────────────────────────────────────────")
-                appendLine(rawOutput)
+                appendLine(rawOutput.keepEnd())
             }
         }.trimEnd()
     }
@@ -139,16 +123,119 @@ internal class XmlTestReportParser {
     private fun String.isNoise(): Boolean = NOISE_PREFIXES.any { removePrefix("at ").startsWith(it) }
 
     /**
-     * A JUnit XML report has no DOCTYPE: refusing it removes the external entities and DTDs, so a report (written by
-     * test code, which runs freely) cannot make the parser read a file or call a URL. Such a report counts as unreadable.
+     * Reads one report as a stream: the memory used does not depend on the size of the file. Gradle writes the
+     * `system-out` and `system-err` the tests printed into the report, and test code, which runs freely, controls
+     * their size: they are skipped without being read into memory. Only the attributes of the suite and of the
+     * `testcase`, `failure` and `error` elements, and the text of the failures (bounded by [MAX_FAILURE_TEXT_CHARS]), are kept.
+     *
+     * A JUnit XML report has no DOCTYPE: refusing it removes the external entities and DTDs, so a report cannot make
+     * the parser read a file or call a URL. Such a report counts as unreadable.
+     *
+     * @throws XMLStreamException when the report is not well-formed or has a DOCTYPE.
      */
-    private fun secureDocumentBuilderFactory(): DocumentBuilderFactory =
-        DocumentBuilderFactory.newInstance().apply {
-            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            isXIncludeAware = false
-            isExpandEntityReferences = false
+    private fun parseReport(report: File): ParsedReport =
+        report.inputStream().buffered().use { input ->
+            val reader = secureInputFactory().createXMLStreamReader(input)
+            try {
+                readReport(reader)
+            } finally {
+                reader.close()
+            }
         }
+
+    private fun readReport(reader: XMLStreamReader): ParsedReport {
+        var suite: ParsedReport? = null
+        val details = mutableListOf<FailureDetail>()
+        var testcase: TestCaseUnderRead? = null
+        while (reader.hasNext()) {
+            when (reader.next()) {
+                XMLStreamConstants.DTD -> throw XMLStreamException("a DOCTYPE is not allowed in a test report")
+                XMLStreamConstants.START_ELEMENT -> {
+                    if (suite == null) suite = ParsedReport.of(reader)
+                    when (reader.localName) {
+                        "testcase" -> testcase = TestCaseUnderRead(reader.attribute("classname"), reader.attribute("name"))
+                        "failure", "error" ->
+                            // the first problem of a test case is the one reported
+                            testcase?.takeIf { it.problem == null }?.let {
+                                it.problem = ProblemUnderRead(reader.attribute("type"), reader.attribute("message"))
+                                it.reading = true
+                            }
+                    }
+                }
+                XMLStreamConstants.CHARACTERS, XMLStreamConstants.CDATA ->
+                    testcase?.takeIf { it.reading }?.problem?.append(reader.text)
+                XMLStreamConstants.END_ELEMENT ->
+                    when (reader.localName) {
+                        "failure", "error" -> testcase?.reading = false
+                        "testcase" -> {
+                            testcase?.toDetail()?.let { details += it }
+                            testcase = null
+                        }
+                    }
+            }
+        }
+        return (suite ?: throw XMLStreamException("the report has no root element")).copy(details = details)
+    }
+
+    private fun XMLStreamReader.attribute(name: String): String = getAttributeValue(null, name).orEmpty()
+
+    private fun secureInputFactory(): XMLInputFactory =
+        XMLInputFactory.newFactory().apply {
+            setProperty(XMLInputFactory.SUPPORT_DTD, false)
+            setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, false)
+        }
+
+    /** What a report holds, counts of its root element and the failures of its test cases. */
+    private data class ParsedReport(
+        val tests: Int,
+        val skipped: Int,
+        val failures: Int,
+        val errors: Int,
+        val details: List<FailureDetail> = emptyList(),
+    ) {
+        companion object {
+            fun of(root: XMLStreamReader) =
+                ParsedReport(
+                    tests = root.count("tests"),
+                    skipped = root.count("skipped"),
+                    failures = root.count("failures"),
+                    errors = root.count("errors"),
+                )
+
+            private fun XMLStreamReader.count(name: String): Int = getAttributeValue(null, name)?.toIntOrNull() ?: 0
+        }
+    }
+
+    private inner class TestCaseUnderRead(
+        val className: String,
+        val name: String,
+    ) {
+        var problem: ProblemUnderRead? = null
+        var reading = false
+
+        fun toDetail(): FailureDetail? =
+            problem?.let {
+                FailureDetail(
+                    className = className.substringAfterLast('.'),
+                    methodName = name,
+                    type = it.type.trim(),
+                    message = it.message.trim(),
+                    stack = it.text.toString().relevantStack(),
+                )
+            }
+    }
+
+    private class ProblemUnderRead(
+        val type: String,
+        val message: String,
+    ) {
+        val text = StringBuilder()
+
+        fun append(chunk: String) {
+            val room = MAX_FAILURE_TEXT_CHARS - text.length
+            if (room > 0) text.append(chunk, 0, minOf(chunk.length, room))
+        }
+    }
 
     internal data class FailureDetail(
         val className: String,
@@ -165,6 +252,9 @@ internal class XmlTestReportParser {
         private const val MAX_FRAMES = 5
         private const val TOTAL_MESSAGE_BUDGET = 6000
         private const val MIN_MESSAGE_CHARS = 400
+
+        /** Max chars of the text of one failure (its stack trace) read from a report. */
+        private const val MAX_FAILURE_TEXT_CHARS = 200_000
 
         /** Max distinct failures listed in a summary, whatever their number. */
         private const val MAX_LISTED_FAILURES = 50

@@ -2,6 +2,9 @@ package io.whozoss.agentos.plugins.gradle
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldEndWith
+import io.kotest.matchers.string.shouldNotContain
 
 class StringExtensionsUnitSpec :
     StringSpec({
@@ -37,5 +40,17 @@ class StringExtensionsUnitSpec :
 
         "filterJvmNoise leaves an output without noise untouched" {
             "> Task :cli:test\nBUILD SUCCESSFUL".filterJvmNoise() shouldBe "> Task :cli:test\nBUILD SUCCESSFUL"
+        }
+
+        "keepEnd leaves an output within the bound untouched" {
+            "abc".keepEnd(max = 3) shouldBe "abc"
+        }
+
+        "keepEnd keeps the last chars of a longer output and says how many came before" {
+            val bounded = ("START" + "x".repeat(100) + "THE-END").keepEnd(max = 20)
+
+            bounded shouldEndWith "x".repeat(13) + "THE-END"
+            bounded shouldContain "92 earlier chars omitted"
+            bounded shouldNotContain "START"
         }
     })

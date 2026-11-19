@@ -85,7 +85,7 @@ internal class CompilerDiagnosticParser {
                 if (exitCode != 0) {
                     appendLine()
                     appendLine("── Raw output ────────────────────────────────────────")
-                    appendLine(rawOutput)
+                    appendLine(rawOutput.keepEnd())
                 }
                 return@buildString
             }
@@ -98,8 +98,9 @@ internal class CompilerDiagnosticParser {
                     diagnostics to emptyList()
                 }
 
-            val primary = targeted.ifEmpty { diagnostics }
-            val secondary = if (targeted.isNotEmpty()) others else emptyList()
+            // Errors come first: the list is bounded, and a build with many warnings must not push its errors out of it.
+            val primary = targeted.ifEmpty { diagnostics }.errorsFirst()
+            val secondary = if (targeted.isNotEmpty()) others.errorsFirst() else emptyList()
 
             appendLine()
             appendLine("── Diagnostics ───────────────────────────────────────")
@@ -123,6 +124,9 @@ internal class CompilerDiagnosticParser {
             }
         }.trimEnd()
     }
+
+    /** Errors before warnings, each kept in the order the compiler printed them (the sort is stable). */
+    private fun List<Diagnostic>.errorsFirst(): List<Diagnostic> = sortedBy { it.severity != Severity.ERROR }
 
     internal data class Diagnostic(
         val severity: Severity,
