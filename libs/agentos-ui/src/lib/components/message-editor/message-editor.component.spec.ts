@@ -1,17 +1,24 @@
 import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
+import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { MentionedFile } from '../composer-attachments/composer-attachments.utils'
 import { MessageEditorComponent } from './message-editor.component'
 
 describe('MessageEditorComponent', () => {
   let appRef: ApplicationRef
 
-  function makeComponent(text = 'Original text', busy = false): ComponentRef<MessageEditorComponent> {
+  function makeComponent(
+    text = 'Original text',
+    busy = false,
+    files: MentionedFile[] = []
+  ): ComponentRef<MessageEditorComponent> {
     const ref = createComponent(MessageEditorComponent, { environmentInjector: TestBed.inject(EnvironmentInjector) })
     // In the document, so that the focus can be read back.
     document.body.appendChild(ref.location.nativeElement)
     appRef.attachView(ref.hostView)
     ref.setInput('text', text)
     ref.setInput('busy', busy)
+    ref.setInput('files', files)
     appRef.tick()
     return ref
   }
@@ -179,5 +186,89 @@ describe('MessageEditorComponent', () => {
 
     expect(sent).toEqual([])
     expect(event.defaultPrevented).toBe(false)
+  })
+
+  describe('a message that carries files', () => {
+    const files: MentionedFile[] = [
+      { name: 'pasted.png', path: 'pasted.png', scope: ExchangeFileEntryScopeEnum.CASE, kind: 'attached' },
+      {
+        name: 'readme.md',
+        path: 'docs/readme.md',
+        scope: ExchangeFileEntryScopeEnum.NAMESPACE,
+        kind: 'referenced',
+      },
+    ]
+    const chips = (ref: ComponentRef<MessageEditorComponent>) => host(ref).querySelectorAll('agentos-file-chip')
+
+    it('starts from the text alone: the lines of the files are not in the textarea', () => {
+      const ref = makeComponent('Original text', false, files)
+
+      expect(field(ref).value).toBe('Original text')
+      expect(field(ref).value).not.toContain('Files')
+    })
+
+    it('shows the files under the textarea, as chips that cannot be removed', () => {
+      const ref = makeComponent('Original text', false, files)
+
+      expect(chips(ref)).toHaveLength(2)
+      expect(chips(ref)[0]!.textContent).toContain('pasted.png')
+      expect(chips(ref)[1]!.textContent).toContain('readme.md')
+      expect(chips(ref)[1]!.textContent).toContain('namespace')
+      // No cross on a chip: the only buttons are Cancel and Rerun.
+      expect(host(ref).querySelectorAll('agentos-file-chip button')).toHaveLength(0)
+      expect(buttons(ref)).toHaveLength(2)
+      // The chips are under the field, above the buttons.
+      const order = Array.from(host(ref).children).map((element) => element.tagName.toLowerCase())
+      expect(order.indexOf('textarea')).toBeLessThan(order.indexOf('div'))
+      expect(host(ref).querySelector('.message-editor__files')).not.toBeNull()
+    })
+
+    it('shows no chip row for a message without file', () => {
+      const ref = makeComponent('Original text')
+
+      expect(chips(ref)).toHaveLength(0)
+      expect(host(ref).querySelector('.message-editor__files')).toBeNull()
+    })
+
+    it('says Rerun while the text is the original one, files or not, and Save & Rerun once it has changed', () => {
+      const ref = makeComponent('Original text', false, files)
+      expect(rerunButton(ref).textContent?.trim()).toBe('Rerun')
+
+      type(ref, 'Another text')
+      expect(rerunButton(ref).textContent?.trim()).toBe('Save & Rerun')
+
+      type(ref, '  Original text ')
+      expect(rerunButton(ref).textContent?.trim()).toBe('Rerun')
+    })
+
+    it('sends the text alone: the lines of the files are put back by the host', () => {
+      const ref = makeComponent('Original text', false, files)
+      const sent: string[] = []
+      ref.instance.rerun.subscribe((text) => sent.push(text))
+      type(ref, '  Another text ')
+
+      rerunButton(ref).click()
+
+      expect(sent).toEqual(['Another text'])
+    })
+
+    it('can run again with no text at all: the files are the message', () => {
+      const ref = makeComponent('', false, files)
+      const sent: string[] = []
+      ref.instance.rerun.subscribe((text) => sent.push(text))
+
+      expect(rerunButton(ref).disabled).toBe(false)
+      rerunButton(ref).click()
+      type(ref, '   ')
+      press(ref, { key: 'Enter', ctrlKey: true })
+
+      expect(sent).toEqual(['', ''])
+    })
+
+    it('still cannot send while the case runs', () => {
+      const ref = makeComponent('', true, files)
+
+      expect(rerunButton(ref).disabled).toBe(true)
+    })
   })
 })

@@ -1,0 +1,9 @@
+<div class="file-chip" [class.file-chip--readonly]="!removable()">
+  <span class="file-chip__icon material-icons" aria-hidden="true">{{ icon() }}</span>
+  <span class="file-chip__name" [title]="fullPath()">{{ shownName() }}</span>
+  <span class="file-chip__kind">{{ kind() }}</span>
+  <span class="file-chip__badge">{{ scopeWord() }}</span>
+  @if (removable()) {
+    <ds-icon-button icon="close" [title]="'Remove ' + name()" [disabled]="disabled()" (action)="removed.emit()" />
+  }
+</div>

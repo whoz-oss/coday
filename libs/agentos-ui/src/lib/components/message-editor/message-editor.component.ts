@@ -10,32 +10,39 @@ import {
   viewChild,
 } from '@angular/core'
 import { ButtonDirective } from '@whoz-oss/design-system'
+import { MentionedFile } from '../composer-attachments/composer-attachments.utils'
+import { FileChipComponent } from '../file-chip/file-chip.component'
 
 /**
  * MessageEditorComponent: the in-place editor of a user message, shown in the bubble of the message it edits.
  *
  * It holds the draft and nothing else: the host decides what a re-run is. The one button says what it does,
  * `Rerun` while the text is the original one (trimmed), `Save & Rerun` once it has changed: there is no way
- * to save without running again. Escape cancels, Ctrl/Cmd+Enter sends, and an empty text cannot be sent.
- * The textarea takes the focus when the editor appears.
+ * to save without running again. Escape cancels, Ctrl/Cmd+Enter sends, and a message with neither text nor file
+ * cannot be sent. The textarea takes the focus when the editor appears.
+ *
+ * The files the message carries are shown under the text as read-only chips: they are not edited, the host keeps
+ * them and puts them back with the text it receives. A message of files only can therefore be run again with no text.
  *
  * Usage:
- *   <agentos-message-editor [text]="original" [busy]="isRunning()" (rerun)="send($event)" (cancelled)="close()" />
+ *   <agentos-message-editor [text]="body" [files]="files" [busy]="isRunning()" (rerun)="send($event)" (cancelled)="close()" />
  */
 @Component({
   selector: 'agentos-message-editor',
-  imports: [ButtonDirective],
+  imports: [ButtonDirective, FileChipComponent],
   templateUrl: './message-editor.component.html',
   styleUrl: './message-editor.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MessageEditorComponent {
-  /** The text of the message being edited: what the draft starts from, and what `Rerun` is compared to. */
+  /** The text of the message being edited, without its files: what the draft starts from, and what `Rerun` is compared to. */
   readonly text = input.required<string>()
+  /** The files the message carries, shown read-only under the text. */
+  readonly files = input<MentionedFile[]>([])
   /** The case cannot take a message now (a run is in progress): the text can still be edited, not sent. */
   readonly busy = input(false)
 
-  /** The text to run again, trimmed and never empty. */
+  /** The text to run again, trimmed. Empty only for a message that carries files. */
   readonly rerun = output<string>()
   readonly cancelled = output<void>()
 
@@ -43,7 +50,9 @@ export class MessageEditorComponent {
   protected readonly rerunLabel = computed(() =>
     this.draft().trim() === this.text().trim() ? 'Rerun' : 'Save & Rerun'
   )
-  protected readonly canRerun = computed(() => this.draft().trim().length > 0 && !this.busy())
+  protected readonly canRerun = computed(
+    () => (this.draft().trim().length > 0 || this.files().length > 0) && !this.busy()
+  )
 
   private readonly field = viewChild.required<ElementRef<HTMLTextAreaElement>>('field')
 

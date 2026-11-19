@@ -1710,6 +1710,196 @@ describe('CaseChatComponent — submit with attachments', () => {
       })
     })
 
+    describe('a message that carries files', () => {
+      const attachedLine = '[Files attached to the case exchange: pasted.png]'
+      const referencedLine = '[Files referenced: namespace:docs/readme.md]'
+      const withFiles = (id = 'u2', text = 'look at this', ...lines: string[]) =>
+        // As the composer writes it: the text, a blank line, then the lines of the block joined by a newline.
+        user(id, lines.length > 0 ? `${text}\n\n${lines.join('\n')}` : text)
+      const timelineMessage = (ref: ComponentRef<CaseChatComponent>, id: string) => {
+        const item = ref.instance['timeline']().find(
+          (candidate) => candidate.kind === 'message' && candidate.event.id === id
+        )
+        if (item?.kind !== 'message') throw new Error(`no message ${id}`)
+        return item
+      }
+
+      /** A chat of the current user, whose last message carries files. */
+      function makeChatWithFiles(...lines: string[]): ComponentRef<CaseChatComponent> {
+        const ref = makeChat()
+        ref.instance['events'].set([
+          user('u1', 'first question'),
+          agent('a1', 'first answer'),
+          withFiles('u2', 'look at this', ...lines),
+        ])
+        return ref
+      }
+
+      it('carries the files of its lines on the timeline, and shows and copies the text alone', () => {
+        const ref = makeChatWithFiles(attachedLine, referencedLine)
+        const item = timelineMessage(ref, 'u2')
+
+        expect(item.files.map((file) => `${file.kind}:${file.scope}:${file.path}`)).toEqual([
+          `attached:${ExchangeFileEntryScopeEnum.CASE}:pasted.png`,
+          `referenced:${ExchangeFileEntryScopeEnum.NAMESPACE}:docs/readme.md`,
+        ])
+        // What the copy button gets, and what the bubble shows.
+        expect(ref.instance['messageText'](item)).toBe('look at this')
+      })
+
+      it('carries no file for a message without lines, nor for an agent message that has such a line', () => {
+        const ref = makeChat()
+        ref.instance['events'].set([user('u1', 'plain'), agent('a1', `quoting\n\n${attachedLine}`)])
+
+        expect(timelineMessage(ref, 'u1').files).toEqual([])
+        // An agent message is left as it is: its text, line included.
+        expect(timelineMessage(ref, 'a1').files).toEqual([])
+        expect(ref.instance['messageText'](timelineMessage(ref, 'a1'))).toBe(`quoting\n\n${attachedLine}`)
+      })
+
+      it('leaves a line in the middle of the text where it is', () => {
+        const ref = makeChat()
+        const text = `before\n\n${attachedLine}\n\nafter`
+        ref.instance['events'].set([user('u1', text)])
+
+        const item = timelineMessage(ref, 'u1')
+        expect(item.files).toEqual([])
+        expect(ref.instance['messageText'](item)).toBe(text)
+      })
+
+      it('renders the markdown of the text alone: the cache holds no line', () => {
+        const original = globalThis.EventSource
+        const source = Object.assign(new EventTarget(), { close: jest.fn() })
+        globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        const ref = makeChat()
+        try {
+          ref.instance['events'].set([])
+          ref.instance['connectSse']()
+          source.dispatchEvent(
+            new MessageEvent('MessageEvent', {
+              data: JSON.stringify(withFiles('u2', 'look at **this**', attachedLine, referencedLine)),
+            })
+          )
+
+          const html = String(ref.instance['messageHtmlCache'].get('u2'))
+          expect(html).toContain('<strong>this</strong>')
+          expect(html).not.toContain('Files attached')
+          expect(html).not.toContain('Files referenced')
+          expect(String(timelineMessage(ref, 'u2').html)).toBe(html)
+          expect(timelineMessage(ref, 'u2').files).toHaveLength(2)
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
+
+      it('starts the editor from the text alone', () => {
+        const ref = makeChatWithFiles(attachedLine, referencedLine)
+
+        expect(ref.instance['editText'](withFiles('u2', 'look at this', attachedLine, referencedLine))).toBe(
+          'look at this'
+        )
+      })
+
+      it('puts the lines back after the edited text, as they were sent, with the id of the message it replaces', async () => {
+        const ref = makeChatWithFiles(attachedLine)
+
+        await ref.instance['rerunMessage'](withFiles('u2', 'look at this', attachedLine), '  edited ')
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: 'edited\n\n[Files attached to the case exchange: pasted.png]',
+          rerunOf: 'u2',
+        })
+      })
+
+      it('puts back every line of the block, in order', async () => {
+        const ref = makeChatWithFiles(attachedLine, referencedLine)
+
+        await ref.instance['rerunMessage'](withFiles('u2', 'look at this', attachedLine, referencedLine), 'edited')
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: `edited\n\n${attachedLine}\n${referencedLine}`,
+          rerunOf: 'u2',
+        })
+      })
+
+      it('sends the original content as it was on a plain Rerun', async () => {
+        const ref = makeChatWithFiles(attachedLine, referencedLine)
+        const message = withFiles('u2', 'look at this', attachedLine, referencedLine)
+
+        await ref.instance['rerunMessage'](message, ref.instance['editText'](message))
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: `look at this\n\n${attachedLine}\n${referencedLine}`,
+          rerunOf: 'u2',
+        })
+      })
+
+      it('can run a message of files only again: the content is the lines alone', async () => {
+        const ref = makeChat()
+        const filesOnly = user('u2', attachedLine)
+        ref.instance['events'].set([user('u1', 'first question'), agent('a1', 'first answer'), filesOnly])
+
+        expect(ref.instance['editText'](filesOnly)).toBe('')
+        await ref.instance['rerunMessage'](filesOnly, '')
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: attachedLine, rerunOf: 'u2' })
+      })
+
+      it('can give text to a message of files only', async () => {
+        const ref = makeChat()
+        const filesOnly = user('u2', attachedLine)
+        ref.instance['events'].set([user('u1', 'first question'), filesOnly])
+
+        await ref.instance['rerunMessage'](filesOnly, 'now with words')
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: `now with words\n\n${attachedLine}`,
+          rerunOf: 'u2',
+        })
+      })
+
+      it('still sends nothing for a message with neither text nor file', async () => {
+        const ref = makeChat()
+
+        await ref.instance['rerunMessage'](user('u2', 'second question'), ' ')
+
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('shows the new text and the chips while the re-run is pending, never the raw line', async () => {
+        const ref = makeChatWithFiles(attachedLine)
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['rerunMessage'](withFiles('u2', 'look at this', attachedLine), 'edited **text**')
+
+        const bubble = timelineMessage(ref, 'u2')
+        expect(bubble.pending).toBe(true)
+        expect(ref.instance['messageText'](bubble)).toBe('edited **text**')
+        expect(String(bubble.html)).toContain('<strong>text</strong>')
+        expect(String(bubble.html)).not.toContain('Files attached')
+        expect(bubble.files).toEqual([
+          { name: 'pasted.png', path: 'pasted.png', scope: ExchangeFileEntryScopeEnum.CASE, kind: 'attached' },
+        ])
+      })
+
+      it('shows the chips of a message of files only while its re-run is pending', () => {
+        const ref = makeChat()
+        const filesOnly = user('u2', attachedLine)
+        ref.instance['events'].set([user('u1', 'first question'), filesOnly])
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['rerunMessage'](filesOnly, '')
+
+        const bubble = timelineMessage(ref, 'u2')
+        expect(bubble.pending).toBe(true)
+        expect(ref.instance['messageText'](bubble)).toBe('')
+        expect(bubble.files).toHaveLength(1)
+      })
+    })
+
     describe('while the re-run is pending', () => {
       it('keeps the bubble, with the new text, and hides what followed it, without touching the log', () => {
         const ref = makeChat()

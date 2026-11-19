@@ -193,6 +193,7 @@
                       <div class="case-chat__bubble case-chat__bubble--editing">
                         <agentos-message-editor
                           [text]="editText(item.event)"
+                          [files]="item.files"
                           [busy]="isRunning()"
                           (rerun)="rerunMessage(item.event, $event)"
                           (cancelled)="cancelMessageEdit()"
@@ -207,6 +208,19 @@
                           <div class="case-chat__bubble case-chat__bubble--audio" dsBlueprint>
                             <agentos-audio-message [caseId]="caseId" [audio]="audio" />
                             <p class="case-chat__transcript">{{ messageText(item).trim() }}</p>
+                          </div>
+                        } @else if (item.files.length > 0) {
+                          <!-- The files the message carries, as chips under its text: the lines that tell them to the agent
+                               are not shown. A message of files only has no text to render. -->
+                          <div class="case-chat__bubble case-chat__bubble--with-files" dsBlueprint>
+                            @if (messageText(item).trim()) {
+                              <div class="case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                            }
+                            <div class="case-chat__bubble-files">
+                              @for (file of item.files; track file.scope + ':' + file.path) {
+                                <agentos-file-chip [name]="file.name" [path]="file.path" [scope]="file.scope" />
+                              }
+                            </div>
                           </div>
                         } @else {
                           <div

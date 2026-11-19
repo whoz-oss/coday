@@ -106,7 +106,15 @@ import { MessageActionsComponent } from '../message-actions/message-actions.comp
 import { MessageEditorComponent } from '../message-editor/message-editor.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
-import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import {
+  isNamespaceTargeted,
+  joinAttachmentMentions,
+  joinMentionLines,
+  MentionedFile,
+  resolveUploadScope,
+  splitAttachmentMentions,
+} from '../composer-attachments/composer-attachments.utils'
+import { FileChipComponent } from '../file-chip/file-chip.component'
 import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
 import { CostPipe } from '../../pipes/cost.pipe'
@@ -148,6 +156,11 @@ export type TimelineItem =
       kind: 'message'
       event: CaseMessageEvent
       html: SafeHtml
+      /**
+       * The files the message carries, read from the lines the composer put at the end of its text (the text shown
+       * in [html] is what comes before them). Only a user message has any.
+       */
+      files: MentionedFile[]
       isFirstInGroup: boolean
       isLastInGroup: boolean
       /**
@@ -231,6 +244,7 @@ function hasActiveSelection(): boolean {
     MessageActionsComponent,
     MessageEditorComponent,
     ComposerAttachmentsComponent,
+    FileChipComponent,
     QuestionPanelComponent,
     ConfigChangeCardComponent,
     DelegationCardComponent,
@@ -343,7 +357,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly events = signal<CaseEvent[]>([])
 
   /**
-   * Pre-computed markdown HTML per event id.
+   * Pre-computed markdown HTML per event id, of what the message shows as its text (see [bodyOf]).
    * Populated at SSE ingestion time so the computed() timeline stays synchronous.
    */
   private readonly messageHtmlCache = new Map<string, SafeHtml>()
@@ -387,10 +401,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return [...effective.slice(0, index), withText(target, pending.text)]
   })
 
-  /** The markdown of the text being re-run: [messageHtmlCache] holds the one of the original text. */
+  /**
+   * The markdown of the text being re-run: [messageHtmlCache] holds the one of the original text. The files the
+   * text carries are shown as chips, not rendered.
+   */
   private readonly pendingHtml = computed<SafeHtml>(() => {
     const pending = this.pendingRerun()
-    return pending ? this.renderMarkdown(pending.text) : ''
+    return pending ? this.renderMarkdown(splitAttachmentMentions(pending.text).body) : ''
   })
 
   /** The message being edited, as long as it is still part of the conversation. */
@@ -759,6 +776,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           kind: 'message',
           event: msg,
           html: isPending ? this.pendingHtml() : (this.messageHtmlCache.get(e.id) ?? ''),
+          files: role === 'USER' ? splitAttachmentMentions(this.extractText(msg)).files : [],
           isFirstInGroup,
           isLastInGroup: false,
           pending: isPending,
@@ -1177,7 +1195,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
           if (event.type === 'MessageEvent') {
             const msg = event as CaseMessageEvent
-            const text = this.extractText(msg)
+            const text = this.bodyOf(msg)
             if (!this.messageHtmlCache.has(event.id)) {
               this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
             }
@@ -1548,11 +1566,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         }
         const referenceMention = buildReferenceMention(references)
         if (referenceMention) mentions.push(referenceMention)
-        const mentionBlock = mentions.join('\n')
+        const mentionBlock = joinMentionLines(mentions)
         // An upload failure or a mid-flight case switch blocks the send: failed chips carry
         // the mapped errors (or the switch reset the batch), the input stays intact.
         if (this.caseId !== caseIdAtSubmit) return
-        const sent = await this.postMessage(content ? `${content}\n\n${mentionBlock}` : mentionBlock)
+        const sent = await this.postMessage(joinAttachmentMentions(content, mentionBlock))
         // Only a confirmed send clears the composer: on failure the text and the uploaded
         // chips stay, and a retry rebuilds the mention without re-uploading anything.
         if (sent && this.caseId === caseIdAtSubmit) {
@@ -1618,9 +1636,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     )
   }
 
-  /** The text the editor starts from: the text parts of the message, which a re-run replaces. */
+  /**
+   * The text the editor starts from: what the user wrote in the text parts of the message, which a re-run replaces.
+   * The lines of its files are not part of it: they are shown as chips, and put back by [rerunMessage].
+   */
   protected editText(message: CaseMessageEvent): string {
-    return textOfMessage(message)
+    return splitAttachmentMentions(textOfMessage(message)).body
   }
 
   /** Whether the bubble of [message] is the editor right now. */
@@ -1645,12 +1666,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Runs again from the message [message], with [text] in its place. The bubble shows the new text at once
+   * Runs again from the message [message], with [text] in its place, [text] being what the user wrote: the lines of
+   * the files the message carries are put back after it, as they were sent. The bubble shows the new text at once
    * and what followed it disappears, without anything being removed from the log: the server's re-run message
    * confirms it through the stream. A refusal puts the display back and says why.
    */
   protected async rerunMessage(message: CaseMessageEvent, text: string): Promise<void> {
-    const content = text.trim()
+    const { mentions } = splitAttachmentMentions(textOfMessage(message))
+    // A message of files only has nothing to say: it is still a message to run again.
+    const content = joinAttachmentMentions(text.trim(), mentions)
     if (!content || this.isRunning() || this.composerClosed() || this.pendingRerun() !== null) return
     const caseIdAtSend = this.caseId
     this.rerunError.set(null)
@@ -1858,9 +1882,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.collapsedTools().has(requestId)
   }
 
-  /** Extract plain text from a message item for clipboard copy. */
+  /**
+   * What a message shows as its text, which is also what is copied: the text of a user message without the lines of
+   * the files it carries (shown as chips), the whole text otherwise.
+   */
+  private bodyOf(message: CaseMessageEvent): string {
+    const text = this.extractText(message)
+    return message.actor.role === 'USER' ? splitAttachmentMentions(text).body : text
+  }
+
+  /** Extract plain text from a message item for clipboard copy: what the bubble shows, without the file lines. */
   protected messageText(item: TimelineItem & { kind: 'message' }): string {
-    return this.extractText(item.event)
+    return this.bodyOf(item.event)
   }
 
   /** How long the turn took, in the shortest form that still carries the information. */
