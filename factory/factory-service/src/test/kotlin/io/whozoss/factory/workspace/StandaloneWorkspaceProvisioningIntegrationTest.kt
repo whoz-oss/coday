@@ -77,6 +77,7 @@ class StandaloneWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTes
         every { capabilities.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } answers {
             check(executions.add(arg<io.whozoss.factory.workflow.domain.WorkflowStepDefinition>(3).id)) { "Duplicate external execution" }
             assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse()
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()).isFalse()
             assertThat(arg<Path>(4)).isEqualTo(root)
             assertThat(arg<String>(5)).isEqualTo("#1684")
             io.whozoss.factory.capability.CapabilityExecution(
@@ -112,15 +113,24 @@ class StandaloneWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTes
                     Unit
                 }
                 if (afterCommit) {
-                    org.springframework.transaction.support.TransactionTemplate(transactions).execute {
-                        org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                            object : org.springframework.transaction.support.TransactionSynchronization {
-                                override fun afterCommit() {
-                                    org.springframework.transaction.support.TransactionTemplate(transactions).apply {
-                                        propagationBehavior = org.springframework.transaction.TransactionDefinition.PROPAGATION_NOT_SUPPORTED
-                                    }.execute { resume() }
-                                }
-                            })
+                    // afterCommit still has the committed Neo4j resource bound to this thread.
+                    // Dispatch into an independent execution context, as the durable worker does;
+                    // NOT_SUPPORTED cannot restore a suspended Neo4j resource (SDN expects a
+                    // non-null transaction object on resume). Join only AFTER caller cleanup.
+                    val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                    var resumed: java.util.concurrent.Future<*>? = null
+                    try {
+                        org.springframework.transaction.support.TransactionTemplate(transactions).execute {
+                            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                                object : org.springframework.transaction.support.TransactionSynchronization {
+                                    override fun afterCommit() {
+                                        resumed = executor.submit { resume() }
+                                    }
+                                })
+                        }
+                        checkNotNull(resumed).get(30, java.util.concurrent.TimeUnit.SECONDS)
+                    } finally {
+                        executor.shutdownNow()
                     }
                 } else resume()
             } else {
@@ -179,15 +189,21 @@ class StandaloneWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTes
         assertThat(outbox.findAllByOrganization(scope.organizationId).single { it.eventType == "session_continuation" }.status).isEqualTo("dispatched")
     }
 
-    @Test fun `after commit resumption retains durable adoption wait independently of caller transaction`() {
+    @Test fun `continuation on an independent thread after commit retains durable adoption wait`() {
         var status = "PREPARING"
         val (run, advance) = drainFixture(synchronousFirst = true, afterCommit = true) { status }
         run()
-        assertThat(outbox.findAllByOrganization(scope.organizationId).filter { it.eventType == "session_continuation" }).hasSize(1)
+        val wakeup = outbox.findAllByOrganization(scope.organizationId).filter { it.eventType == "session_continuation" }
+        assertThat(wakeup).hasSize(1)
+        assertThat(wakeup.single().status).isEqualTo("pending")
+        assertThat(wakeup.single().retryDeadline).isNotNull()
+        assertThat(environments.findLatestByWorkflowId(scope, "workflow")!!.lifecycleState).isEqualTo(WorkEnvironmentState.PROVISIONING)
+        assertThat(workflowRepository.findStepStates(scope, "ns", "workflow").first { it.stepId == "agent" }.status).isEqualTo("ready")
         status = "READY"
         advance()
         run()
         assertThat(workflowRepository.findStepStates(scope, "ns", "workflow").first { it.stepId == "agent" }.status).isEqualTo("completed")
+        assertThat(outbox.findAllByOrganization(scope.organizationId).single { it.eventType == "session_continuation" }.status).isEqualTo("dispatched")
     }
 
     @Test fun `failed intermediate projection does not prevent remaining ready step or fragment notification`() {

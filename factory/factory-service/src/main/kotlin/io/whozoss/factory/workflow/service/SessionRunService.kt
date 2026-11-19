@@ -215,7 +215,12 @@ class SessionRunService(
         return template.execute { block() }!!
     }
 
-    /** Runs (or resumes) the session DAG to a terminal state or to a human suspension. */
+    /**
+     * Runs (or resumes) the session DAG to a terminal state or to a human suspension.
+     * Call after caller transaction cleanup or from an independent execution context:
+     * NOT_SUPPORTED does not guarantee safe SDN resource restoration when invoked
+     * under an active caller transaction, including inline from afterCommit.
+     */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     fun runSession(
         scope: TenantScope,
@@ -227,7 +232,8 @@ class SessionRunService(
         try {
             runSessionLocked(scope, namespaceId, workflowId, repoRoot, ticket)
         } catch (transient: io.whozoss.factory.workspace.TransientWorkspaceAdoptionException) {
-            // Covers synchronous and after-commit human resumptions as well as the worker.
+            // Covers synchronous human resumptions after caller transaction cleanup,
+            // independent-context continuations after commit, and the worker.
             // A claimed/pending continuation is left untouched; only its fenced owner defers it.
             outboxDrainService?.adoptionDeferred(scope, namespaceId, workflowId, repoRoot, ticket)
             throw transient
