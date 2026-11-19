@@ -200,6 +200,7 @@ class SessionRunService(
     @param:Lazy
     @param:Autowired(required = false)
     private val runService: RunService? = null,
+    private val outboxDrainService: io.whozoss.factory.agentattempt.service.OutboxDrainService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -214,7 +215,13 @@ class SessionRunService(
         return template.execute { block() }!!
     }
 
-    /** Runs (or resumes) the session DAG to a terminal state or to a human suspension. */
+    /**
+     * Runs (or resumes) the session DAG to a terminal state or to a human suspension.
+     * Call after caller transaction cleanup or from an independent execution context:
+     * NOT_SUPPORTED does not guarantee safe SDN resource restoration when invoked
+     * under an active caller transaction, including inline from afterCommit.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     fun runSession(
         scope: TenantScope,
         namespaceId: String,
@@ -222,7 +229,15 @@ class SessionRunService(
         repoRoot: Path,
         ticket: String? = null,
     ): SessionRunResult = withWorkflowLock(scope, namespaceId, workflowId) {
-        runSessionLocked(scope, namespaceId, workflowId, repoRoot, ticket)
+        try {
+            runSessionLocked(scope, namespaceId, workflowId, repoRoot, ticket)
+        } catch (transient: io.whozoss.factory.workspace.TransientWorkspaceAdoptionException) {
+            // Covers synchronous human resumptions after caller transaction cleanup,
+            // independent-context continuations after commit, and the worker.
+            // A claimed/pending continuation is left untouched; only its fenced owner defers it.
+            outboxDrainService?.adoptionDeferred(scope, namespaceId, workflowId, repoRoot, ticket)
+            throw transient
+        }
     }
 
     /**
@@ -323,15 +338,64 @@ class SessionRunService(
                     }?.id
                     ?: return@run
                 val step = steps.first { it.id == readyId }
+                if (step.responsibility.kind == ResponsibilityKind.AGENT && steps.any { it.responsibility.kind == ResponsibilityKind.CODE }) {
+                    try {
+                        // Durable READY state remains replayable if the process dies here, before
+                        // claimStep. There is no RUNNING-without-attempt provisioning window.
+                        capabilityExecutionService.prepareAgentWorkspace(scope, namespaceId, workflowId, step)
+                    } catch (interrupted: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw interrupted
+                    } catch (transient: io.whozoss.factory.workspace.TransientWorkspaceAdoptionException) {
+                        // Leave READY; the outbox owns bounded durable resumption, not an agent retry.
+                        evidenceRepository.append(scope, namespaceId, workflowId, WorkflowEvidenceItem(
+                            evidenceId = UUID.randomUUID().toString(), namespaceId = namespaceId,
+                            workflowId = workflowId, stepId = step.id, kind = "workspace-adoption",
+                            outcome = "deferred", source = mapOf("kind" to "factory-session-sequencer"),
+                            facts = mapOf("code" to "WORKSPACE_ADOPTION_DEFERRED", "executed" to false,
+                                "message" to "Workspace adoption temporarily unavailable; intent retained for bounded durable continuation."),
+                            idempotencyKey = "workspace-adoption-deferred:$workflowId:${step.id}", createdAt = null,
+                        ))
+                        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+                        throw transient
+                    } catch (error: Exception) {
+                        if (claimStep(scope, namespaceId, workflowId, step.id, statuses)) {
+                            recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision(), statuses)
+                        }
+                        continue
+                    }
+                }
                 // Lot F: bind a `code` step's repoRoot to the run's worktree
-                // explicitly. Resolved once, right before the step executes
+                // explicitly. Resolved for each ready code step, right before it executes
                 // (after the entry agent step created the root case) and never
                 // inside a transaction; the waiter either proves the exact
                 // worktree or throws — it never silently uses another directory.
+                var workspaceFacts: Map<String, Any?> = emptyMap()
                 if (step.responsibility.kind == ResponsibilityKind.CODE) {
-                    val worktreeOwnerId = parentRunId(instance) ?: workflowId
                     val resolvedRoot = try {
-                        runWorktreeResolver?.resolve(scope, worktreeOwnerId, effectiveRepoRoot) ?: effectiveRepoRoot
+                        // The entry agent may have reserved rootCaseId since this session began.
+                        val currentInstance = activeInstance(scope, namespaceId, workflowId)
+                        val worktreeOwnerId = parentRunId(currentInstance) ?: workflowId
+                        val binding = runWorktreeResolver?.resolveBinding(
+                            scope, worktreeOwnerId, repoRoot,
+                            namespaceId = namespaceId,
+                            requireBranch = step.responsibility.name != io.whozoss.factory.capability.PREPARE_WORK_BRANCH,
+                            expectedCaseId = currentInstance.rootCaseId,
+                            branchExpectation = { environmentId ->
+                                // Only Factory control-plane preparation is an expectation, not
+                                // provisioning-time branch observations or agent result prose.
+                                // Owner/current fragment only: prior fragments are not searched.
+                                // Without such a proof the resolver requires an attached branch.
+                                (evidenceRepository.list(scope, namespaceId, worktreeOwnerId) +
+                                    if (worktreeOwnerId != workflowId) evidenceRepository.list(scope, namespaceId, workflowId) else emptyList())
+                                    .lastOrNull { it.kind == "branch-preparation" && it.outcome == "pass" &&
+                                        it.source?.get("kind") == "factory-control-plane" &&
+                                        environmentId != null && it.facts["environmentId"] == environmentId }
+                                    ?.facts?.get("branch") as? String
+                            },
+                        )
+                        workspaceFacts = binding?.facts().orEmpty()
+                        binding?.root ?: effectiveRepoRoot
                     } catch (error: Exception) {
                         // Root resolution is part of the code step, not runner infrastructure.
                         // Claim first so the failure has one authoritative owner, then persist the
@@ -357,6 +421,7 @@ class SessionRunService(
                     effectiveTicket,
                     expectedRevision(),
                     workflowType,
+                    workspaceFacts,
                 )?.let { terminal ->
                     if (terminal == WorkflowStatuses.WAITING_HUMAN) {
                         suspended = true
@@ -422,8 +487,6 @@ class SessionRunService(
 
     /** The authenticated actor identity persisted on the workflow instance. */
     private fun instanceActorId(instance: WorkflowInstanceRecord): String? {
-        val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
-        (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
         val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
         return (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }
     }
@@ -605,6 +668,7 @@ class SessionRunService(
         ticket: String?,
         expectedRevision: Int,
         workflowType: String?,
+        workspaceFacts: Map<String, Any?> = emptyMap(),
     ): String? {
         // Atomic claim: only the run that transitions the step `ready -> running`
         // owns its external execution. A concurrent or stale run gets `false` and
@@ -677,7 +741,7 @@ class SessionRunService(
         }
         transition(scope, namespaceId, workflowId, step, terminal, expectedRevision, oracleEvidenceIds)
         setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
-        recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution, statuses)
+        recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution, statuses, workspaceFacts)
         return terminal
     }
 
@@ -1079,6 +1143,7 @@ class SessionRunService(
         status: String,
         execution: CapabilityExecution,
         progress: SessionProgress,
+        workspaceFacts: Map<String, Any?> = emptyMap(),
     ) {
         val startedAt = progress.startedAt[step.id]
         val completedAt = progress.completedAt[step.id]
@@ -1106,7 +1171,8 @@ class SessionRunService(
                     "startedAt" to startedAt,
                     "completedAt" to completedAt,
                     "durationMs" to elapsedMs(startedAt, completedAt),
-                ).filterValues { it != null } + codeVerificationFacts(execution.outcome),
+                ).filterValues { it != null } + codeVerificationFacts(execution.outcome) +
+                    workspaceFacts.filterKeys { it != "observedHead" },
                 idempotencyKey = null,
                 createdAt = null,
             ),
@@ -1145,7 +1211,8 @@ class SessionRunService(
                             "executed" to false,
                             "code" to "CODE_WORKTREE_RESOLUTION_FAILED",
                             "message" to safeDiagnostic(error),
-                            "cwd" to "target-repository-root",
+                            "cwd" to repoRoot.toAbsolutePath().normalize().toString(),
+                            "workspaceProvenance" to "resolution-failed",
                         ),
                         idempotencyKey = null,
                         createdAt = null,

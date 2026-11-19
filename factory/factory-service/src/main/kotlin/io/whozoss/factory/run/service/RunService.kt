@@ -759,6 +759,9 @@ class RunService(
             relations = relations,
             ticket = run.ticket,
             expectedAmendmentSeq = run.amendmentSeq,
+            controllerRequest = actorId?.let { io.whozoss.factory.workflow.domain.ControllerRequestInput(
+                text = "", namespaceId = namespaceId, observedAt = nowIso(), actorId = it, source = "factory-run-driver",
+            ) },
         )
         val controllerExecution = ControllerExecutionInput(
             runtimeId = "factory-run-driver",
@@ -1014,8 +1017,6 @@ class RunService(
             ?: Path.of(".").toAbsolutePath().normalize()
 
     private fun instanceActorId(instance: WorkflowInstanceRecord): String? {
-        val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
-        (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
         val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
         return (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }
     }

@@ -298,4 +298,44 @@ describe('ComposerAttachmentsService', () => {
       expect(service.isUploading()).toBe(false)
     })
   })
+
+  describe('document paste', () => {
+    function imagePaste(target: EventTarget | null, defaultPrevented = false): ClipboardEvent {
+      const screenshot = new File(['png'], 'shot.png', { type: 'image/png' })
+      return {
+        preventDefault: jest.fn(),
+        defaultPrevented,
+        target,
+        clipboardData: {
+          items: [{ kind: 'file', type: 'image/png', getAsFile: () => screenshot }],
+          types: ['Files'],
+          files: [],
+        },
+      } as unknown as ClipboardEvent
+    }
+
+    it('stages an image pasted with nothing focused and prevents the default paste', () => {
+      const event = imagePaste(document.body)
+
+      service.onDocumentPaste(event)
+
+      expect(service.attachments()).toHaveLength(1)
+      expect(event.preventDefault).toHaveBeenCalled()
+    })
+
+    it('does not stage twice when the composer already handled the paste', () => {
+      service.onDocumentPaste(imagePaste(document.body, true))
+
+      expect(service.hasAttachments()).toBe(false)
+    })
+
+    it('leaves a paste aimed at another text field to that field', () => {
+      const event = imagePaste(document.createElement('input'))
+
+      service.onDocumentPaste(event)
+
+      expect(service.hasAttachments()).toBe(false)
+      expect(event.preventDefault).not.toHaveBeenCalled()
+    })
+  })
 })

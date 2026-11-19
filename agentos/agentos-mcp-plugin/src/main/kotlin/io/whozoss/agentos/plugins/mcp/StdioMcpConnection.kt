@@ -4,10 +4,8 @@ import io.modelcontextprotocol.client.McpClient
 import io.modelcontextprotocol.client.McpSyncClient
 import io.modelcontextprotocol.client.transport.ServerParameters
 import io.modelcontextprotocol.client.transport.StdioClientTransport
-import io.modelcontextprotocol.json.McpJsonDefaults
 import io.modelcontextprotocol.spec.McpSchema
 import io.modelcontextprotocol.spec.McpSchema.CallToolRequest
-import io.modelcontextprotocol.spec.McpSchema.TextContent
 import io.modelcontextprotocol.spec.McpSchema.Tool
 import mu.KLogging
 import java.time.Duration
@@ -63,11 +61,12 @@ class StdioMcpConnection(
         val params = paramsBuilder.build()
 
         // Fix 5: use CwdAwareStdioClientTransport when cwd is configured
+        // The mapper is bound to the plugin class loader: see McpJsonMapperFactory for why the SDK default is unsafe.
         transport =
             if (config.cwd != null) {
-                CwdAwareStdioClientTransport(params, McpJsonDefaults.getMapper(), java.io.File(config.cwd))
+                CwdAwareStdioClientTransport(params, McpJsonMapperFactory.mapper, java.io.File(config.cwd))
             } else {
-                StdioClientTransport(params, McpJsonDefaults.getMapper())
+                StdioClientTransport(params, McpJsonMapperFactory.mapper)
             }
 
         // The MCP SDK provides a single requestTimeout for ALL JSON-RPC calls
@@ -131,7 +130,7 @@ class StdioMcpConnection(
                 } catch (e: Exception) {
                     throw McpConnectionException("Tool call '$toolName' failed: ${e.message}", e)
                 }
-            val formatted = formatResult(result)
+            val formatted = McpResultFormatter.format(result)
             return if (result.isError == true) {
                 throw McpToolErrorException(toolName, formatted)
             } else {
@@ -180,22 +179,6 @@ class StdioMcpConnection(
         }
         val closeMs = System.currentTimeMillis() - closeStart
         logger.debug { "[MCP] Close completed in ${closeMs}ms (hash ${configHash.take(8)})" }
-    }
-
-    private fun formatResult(result: McpSchema.CallToolResult): String {
-        val content = result.content() ?: return "(no output)"
-        val parts =
-            content.mapNotNull { item ->
-                when (item) {
-                    is TextContent -> item.text()
-                    else -> "[${item.type()}: unsupported content type]"
-                }
-            }
-        return when {
-            parts.isEmpty() -> "(no output)"
-            parts.size == 1 -> parts[0]
-            else -> parts.joinToString("\n")
-        }
     }
 
     companion object : KLogging()

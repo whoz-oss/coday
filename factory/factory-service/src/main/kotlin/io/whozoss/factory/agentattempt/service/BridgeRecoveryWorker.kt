@@ -402,7 +402,6 @@ class BridgeRecoveryWorker(
     private fun redrive(candidate: ScopedDurableAgentAttempt): Outcome {
         val attempt = candidate.attempt
         val brief = attempt.brief ?: return Outcome.SKIPPED
-        val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
         // The binding carries the full trusted identity of the attempt —
         // including the Lot B case-family parent — so a re-driven turn lands in
         // the exact same case family it was originally dispatched into.
@@ -412,10 +411,19 @@ class BridgeRecoveryWorker(
             // Recovery cannot prove that an unknown workflow is autonomous; never create or redrive.
             return Outcome.SKIPPED
         }
+        val externalUserId = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef)
+        val parentRun = (instance.instance["runId"] as? String)
+            ?: ((instance.instance["relations"] as? Map<*, *>)?.get("runId") as? String)
+        val adopted = workEnvironmentRepository?.findLatestByWorkflowId(candidate.scope, instance.workflowId)?.envType ==
+            io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService.ENV_TYPE
+        if ((!parentRun.isNullOrBlank() || adopted) && externalUserId.isNullOrBlank()) {
+            logger.warn { "Recovery refused before claim: authenticated workspace actor missing for ${attempt.attemptId}" }
+            return Outcome.SKIPPED
+        }
+        val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
         acquireRecoveryOccupancy(candidate)
         val boundAttempt = attempts.find(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)
             ?: error("Recovery attempt disappeared after occupancy binding")
-        val externalUserId = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef)
         val binding = TrustedCaseBinding(
             caseId = attempt.caseId,
             attemptId = attempt.attemptId,
@@ -466,8 +474,9 @@ class BridgeRecoveryWorker(
         val instance = workflowRepository?.findInstance(candidate.scope, attempt.namespaceId, attempt.workflowId) ?: return
         val parentRun = (instance.instance["runId"] as? String)
             ?: ((instance.instance["relations"] as? Map<*, *>)?.get("runId") as? String)
-            ?: return
-        if (parentRun.isBlank()) return
+        val standalone = workEnvironmentRepository?.findLatestByWorkflowId(candidate.scope, instance.workflowId)?.envType ==
+            io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService.ENV_TYPE
+        if (parentRun.isNullOrBlank() && !standalone) return
         val service = worktreeOccupancyService
             ?: error("Worktree execution occupancy service is required for parent Run recovery")
         val environment = attempt.environmentRef
@@ -635,14 +644,8 @@ class BridgeRecoveryWorker(
         environmentRef: String?,
     ): String? {
         if (instance != null) {
-            val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
-            (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
             val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
             (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
-        }
-        if (!environmentRef.isNullOrBlank()) {
-            val env = workEnvironmentRepository?.findByEnvironmentId(scope, environmentRef)
-            env?.createdBy?.takeIf { it.isNotBlank() }?.let { return it }
         }
         return null
     }

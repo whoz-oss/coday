@@ -153,6 +153,44 @@ class TransactionBoundaryIntegrationTest : Neo4jDomainIntegrationTest() {
     // ----- Test Case 1: external execution outside any transaction -------
 
     @Test
+    fun `Spring NOT_SUPPORTED leaves no Neo4j synchronization and commits progress before external execution`() {
+        val workflowId = "wf-tx-no-synchronization"
+        startSession("tx-no-synchronization", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))
+        val reader = Executors.newSingleThreadExecutor()
+        val capability = object : AgentTurnCapability {
+            override fun executeAgentTurn(request: AgentTurnRequest): AgentTurnResult {
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse()
+                // A false actual-transaction flag alone is insufficient: SDN opens a native
+                // transaction when an otherwise empty synchronization is active.
+                assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse()
+                reader.submit {
+                    assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.RUNNING)
+                    assertThat(evidenceRepository.list(scope, namespace, workflowId))
+                        .anyMatch { it.kind == "session-step" && it.outcome == WorkflowStatuses.RUNNING }
+                }.get(10, TimeUnit.SECONDS)
+                return AgentTurnResult.Completed("PASS")
+            }
+        }
+        // A manually constructed service does not exercise @Transactional. Apply the
+        // same annotation-driven advice as the production bean, with the REAL manager.
+        val proxy = org.springframework.aop.framework.ProxyFactory(sessionWith(capability)).apply {
+            isProxyTargetClass = true
+            addAdvice(org.springframework.transaction.interceptor.TransactionInterceptor(
+                transactionManager,
+                org.springframework.transaction.annotation.AnnotationTransactionAttributeSource(),
+            ))
+        }.proxy as SessionRunService
+        try {
+            assertThat(proxy.runSession(scope, namespace, workflowId, repoRoot).status)
+                .isEqualTo(WorkflowStatuses.COMPLETED)
+            assertThat(reader.submit<String> { statusOf(workflowId, "s1") }.get(10, TimeUnit.SECONDS))
+                .isEqualTo(WorkflowStatuses.COMPLETED)
+        } finally {
+            reader.shutdownNow()
+        }
+    }
+
+    @Test
     fun `external agent execution runs with no active transaction and completes`() {
         val workflowId = "wf-tx-isolation"
         startSession("tx-isolation", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))

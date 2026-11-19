@@ -25,8 +25,8 @@ import java.util.UUID
  * Unit tests for [CaseMembershipController].
  *
  * Covers: existence gate, delegation to [PermissionService.applyShareBatch],
- * self-modification filtering, the namespace-membership rule for non-super-admin invitations,
- * and the return of the resulting member list.
+ * self-modification filtering, the namespace-membership rule for every invitation (super-admins
+ * included), and the return of the resulting member list.
  */
 class CaseMembershipControllerSpec :
     StringSpec({
@@ -291,23 +291,18 @@ class CaseMembershipControllerSpec :
             }
         }
 
-        "updateMembers lets a super-admin invite a user outside the case's namespace" {
+        "updateMembers rejects a super-admin inviting a user outside the case's namespace" {
             val superAdmin = caller.copy(isAdmin = true)
             every { caseService.getById(caseId) } returns caseEntity
             every { userService.getCurrentUser() } returns superAdmin
-            every { permissionService.applyShareBatch(any(), any(), any()) } returns listOf(targetUserId.toString())
-            stubCurrentMembers(memberIds = listOf(targetUserId.toString()))
-            every { userService.findByIds(listOf(targetUserId)) } returns listOf(targetUser)
+            stubRelations() // no relation on the case nor on the namespace
 
-            controller.updateMembers(caseId, listOf(UserMembershipRole(targetUserId, "MEMBER")))
+            val ex =
+                shouldThrow<UnprocessableEntityException> {
+                    controller.updateMembers(caseId, listOf(UserMembershipRole(targetUserId, "MEMBER")))
+                }
 
-            verify(exactly = 1) {
-                permissionService.applyShareBatch(
-                    EntityType.CASE,
-                    caseId.toString(),
-                    listOf(targetUserId.toString() to PermissionRelation.MEMBER),
-                )
-            }
-            verify(exactly = 0) { permissionService.listRelationsForUsers(any(), any(), any()) }
+            ex.message shouldContain targetUserId.toString()
+            verify(exactly = 0) { permissionService.applyShareBatch(any(), any(), any()) }
         }
     })

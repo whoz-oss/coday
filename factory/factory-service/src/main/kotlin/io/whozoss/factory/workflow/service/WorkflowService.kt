@@ -1213,8 +1213,7 @@ class WorkflowService(
         if (interaction.interactionType != CHECKPOINT_INTERACTION_TYPE) return
         val runner = sessionRunService ?: return
         val instance = repository.findInstance(scope, namespaceId, workflowId)
-        val actorId = (instance?.instance?.get("controllerExecution") as? Map<*, *>)?.get("actorId") as? String
-            ?: (instance?.instance?.get("controllerRequest") as? Map<*, *>)?.get("actorId") as? String
+        val actorId = (instance?.instance?.get("controllerRequest") as? Map<*, *>)?.get("actorId") as? String
         val root = repoRoot ?: resolveRepoRoot(namespaceId, actorId)
         logger.debug { "Auto-resuming session $workflowId after checkpoint ${interaction.interactionId}" }
         runner.runSession(scope, namespaceId, workflowId, root)

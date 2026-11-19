@@ -18,8 +18,12 @@ import { canViewFile, ensureImageBlob, isFormatViewable, isImageFile } from '../
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeDrawerComponent, ExchangeManifestStatus, ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 
-/** Poll only while a visible filter is in use; slow scans may extend this interval. */
-const FILTER_REFRESH_INTERVAL_MS = 3000
+/**
+ * Poll only while a visible filter is in use; slow scans may extend this interval. Each poll walks the
+ * whole scope on the server, and the agent's own changes already refresh the manifest through events, so
+ * polling only has to catch changes made elsewhere.
+ */
+export const FILTER_REFRESH_INTERVAL_MS = 30000
 
 /**
  * ExchangeShellComponent — smart container for the file-exchange drawer panel.
@@ -152,9 +156,17 @@ export class ExchangeShellComponent {
         this.contextGeneration()
         retry()
         if (!active || !(isCase ? this.activeCaseId : this.activeNamespaceId)) { inFlight = false; backgroundRefresh = false; files.set(null); status.set('idle'); return }
-        const keepResults = backgroundRefresh && untracked(status) === 'ready'
+        // A closed drawer keeps its last result and fetches again when it reopens, not on every change.
+        if (!this.active()) {
+          inFlight = false
+          backgroundRefresh = false
+          return
+        }
+        const background = backgroundRefresh
         backgroundRefresh = false
-        if (!keepResults) { files.set(null); status.set('loading') }
+        // Keep showing the previous result while a refresh is in flight, rather than flashing a spinner.
+        // A poll after a failure likewise keeps the error and its Retry button in place.
+        if (untracked(files) === null && !(background && untracked(status) === 'error')) status.set('loading')
         inFlight = true
         const subscription = untracked(() => this.state.fileManifest(scope)).subscribe({
           next: (result) => {
@@ -376,6 +388,8 @@ export class ExchangeShellComponent {
 
   private resetSelection(): void {
     this.clearSelection()
+    // A confirmation opened in the previous context would otherwise delete the same path in the new one.
+    this.pendingDelete.set(null)
     this.actionError.set(null)
   }
 

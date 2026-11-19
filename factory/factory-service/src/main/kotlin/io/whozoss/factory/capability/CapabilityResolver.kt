@@ -88,8 +88,10 @@ class CapabilityResolver(
                 ) }
             }
         }
+        val headBefore = observedGitHead(repoRoot)
+        val branchBefore = observedGitBranch(repoRoot)
         when (val central = frontVerificationRegistry?.resolve(step.responsibility.name ?: "", repoRoot, modifiedFiles)) {
-            is FactoryFrontVerificationResolution.Executed -> return central.run.toOutcome(step.id, repoRoot)
+            is FactoryFrontVerificationResolution.Executed -> return central.run.toOutcome(step.id, repoRoot, headBefore, branchBefore)
             is FactoryFrontVerificationResolution.Refused -> return CapabilityOutcome.CodeRefused(
                 stepId = step.id,
                 verificationName = step.responsibility.name ?: "",
@@ -115,37 +117,43 @@ class CapabilityResolver(
                 code = run.code,
                 message = "Verification '${run.name}' is not declared in factory/verification.json.",
             )
-            is VerificationRunResult.Executed -> CapabilityOutcome.CodeExecuted(
-                stepId = step.id,
-                verificationName = run.name,
-                command = run.command,
-                timeoutMs = run.timeoutMs,
-                exitCode = run.exitCode,
-                timedOut = run.timedOut,
-                durationMs = run.durationMs,
-                stdout = run.stdout,
-                stderr = run.stderr,
-                cwd = observedRoot(repoRoot),
-                observedHead = observedGitHead(repoRoot),
-                rootIdentity = rootIdentity(repoRoot),
-            )
+            is VerificationRunResult.Executed -> run.toOutcome(step.id, repoRoot, headBefore, branchBefore)
         }
     }
 
-    private fun VerificationRunResult.Executed.toOutcome(stepId: String, repoRoot: Path) = CapabilityOutcome.CodeExecuted(
-        stepId = stepId,
-        verificationName = name,
-        command = command,
-        timeoutMs = timeoutMs,
-        exitCode = exitCode,
-        timedOut = timedOut,
-        durationMs = durationMs,
-        stdout = stdout,
-        stderr = stderr,
-        cwd = observedRoot(repoRoot),
-        observedHead = observedGitHead(repoRoot),
-        rootIdentity = rootIdentity(repoRoot),
-    )
+    private fun observedGitBranch(repoRoot: Path): String? = runCatching {
+        val dotGit = repoRoot.resolve(".git")
+        val gitDir = if (Files.isDirectory(dotGit)) dotGit else {
+            val line = Files.readString(dotGit).trim()
+            check(line.startsWith("gitdir:"))
+            repoRoot.resolve(line.removePrefix("gitdir:").trim()).normalize()
+        }
+        Files.readString(gitDir.resolve("HEAD")).trim()
+    }.getOrNull()
+
+    private fun VerificationRunResult.Executed.toOutcome(
+        stepId: String, repoRoot: Path, headBefore: String?, branchBefore: String?,
+    ): CapabilityOutcome.CodeExecuted {
+        val headAfter = observedGitHead(repoRoot)
+        val branchAfter = observedGitBranch(repoRoot)
+        return CapabilityOutcome.CodeExecuted(
+            stepId = stepId,
+            verificationName = name,
+            command = command,
+            timeoutMs = timeoutMs,
+            exitCode = exitCode,
+            timedOut = timedOut,
+            durationMs = durationMs,
+            stdout = stdout,
+            stderr = stderr,
+            cwd = observedRoot(repoRoot),
+            observedHead = headBefore,
+            rootIdentity = rootIdentity(repoRoot),
+            observedHeadAfter = headAfter,
+            workspaceStable = headBefore == headAfter && branchBefore == branchAfter &&
+                (!Files.exists(repoRoot.resolve(".git")) || (headBefore != null && branchBefore != null)),
+        )
+    }
 
     private fun observedRoot(repoRoot: Path): String =
         runCatching { repoRoot.toRealPath().toString() }.getOrElse { repoRoot.toAbsolutePath().normalize().toString() }

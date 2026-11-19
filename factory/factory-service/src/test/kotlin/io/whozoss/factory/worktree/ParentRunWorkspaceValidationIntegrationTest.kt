@@ -152,6 +152,8 @@ class ParentRunWorkspaceValidationIntegrationTest : Neo4jDomainIntegrationTest()
                 instance = mapOf(
                     "runId" to scenarioRunId,
                     "workflowType" to "test",
+                    "controllerRequest" to mapOf("actorId" to "test"),
+                    "controllerExecution" to mapOf("actorId" to "spoofed-body-actor"),
                 ),
                 projection = mapOf(
                     "steps" to listOf(
@@ -192,6 +194,7 @@ class ParentRunWorkspaceValidationIntegrationTest : Neo4jDomainIntegrationTest()
         val preflightReady = if (mutablePreflight) java.util.concurrent.atomic.AtomicBoolean(false) else null
         if(remoteFailure) every { proxy.fetchWorkspaceChanges(any(),any()) } throws IllegalStateException("down")
         else every { proxy.fetchWorkspaceChanges(any(),any()) } answers {
+            assertThat(secondArg<String?>()).isEqualTo("test")
             if (preflightReady != null && !preflightReady.get()) {
                 mapOf("equipped" to true, "status" to "PROVISIONING", "path" to workspacePath.toString())
             } else {

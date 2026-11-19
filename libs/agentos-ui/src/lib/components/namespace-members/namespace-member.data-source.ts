@@ -6,7 +6,7 @@ const MAX_SUGGESTIONS = 20
 
 /**
  * Minimal shape the data source needs from a candidate. Structural so that both a platform
- * `User` (super-admin directory) and a `MemberItem` (members of a namespace) fit.
+ * `User` and a `MemberItem` fit.
  */
 export interface MemberCandidate {
   id?: string
@@ -23,8 +23,8 @@ export interface MemberCandidate {
  * Keyed on the internal `id` (UUID) — unlike UserGroupMemberAutocompleteDataSource, which
  * keys on `externalId` and sources from `listNamespaceUsers()`. Here we need the internal id
  * because `UserMembershipRole.userId` is the internal UUID. The candidate pool is chosen by
- * the host: the whole platform directory for super-admins (`UserControllerService.listAllUser()`),
- * or the members of the namespace for everyone else.
+ * the host: the platform directory (`UserControllerService.listAllUser()`, super-admin only) for the
+ * namespace members panel, the members of the case's namespace for the case members panel.
  *
  * The candidate list is loaded once by the host component; filtering is synchronous. Both
  * accessors are read lazily on each search so the source always reflects the current selection.

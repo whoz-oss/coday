@@ -1,6 +1,10 @@
 package io.whozoss.agentos.plugins.mcp
 
 import ch.qos.logback.classic.Level
+import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.databind.JavaType
+import com.fasterxml.jackson.databind.JsonMappingException
+import com.fasterxml.jackson.databind.exc.InvalidTypeIdException
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -182,6 +186,51 @@ class McpToolUnitSpec : StringSpec({
 
         result.success shouldBe false
         result.output shouldBe McpTool.TIMEOUT_OUTPUT
+    }
+
+    "a response that reached the client but could not be decoded is not reported as unreachable" {
+        val decodingFailure = InvalidTypeIdException.from(
+            null as JsonParser?,
+            "Could not resolve type id 'x.Y' (secret=XYZ)",
+            null as JavaType?,
+            "x.Y",
+        )
+        val connection = mockk<McpConnectionPort>()
+        every { connection.callTool(any(), any()) } throws
+            McpConnectionException(
+                "Tool call 'search_repos' failed: ${decodingFailure.message}",
+                IllegalArgumentException(decodingFailure.message, decodingFailure),
+            )
+
+        val result = makeTool(connection = connection).execute(McpTool.Input(args = "{}"), ctx)
+
+        result.success shouldBe false
+        result.output shouldBe McpTool.UNREADABLE_RESPONSE_OUTPUT
+        result.output shouldNotContain "XYZ"
+        (result.errorMessage ?: "") shouldNotContain "XYZ"
+    }
+
+    "a plain JsonProcessingException in the cause chain is unreadable, not unreachable" {
+        val failure = RuntimeException("outer", JsonMappingException.from(null as JsonParser?, "bad json"))
+        McpTool.callFailureOutput(failure) shouldBe McpTool.UNREADABLE_RESPONSE_OUTPUT
+    }
+
+    "a timeout still wins over a decoding failure in the same cause chain" {
+        val failure = RuntimeException(
+            "outer",
+            JsonMappingException.from(null as JsonParser?, "bad json", TimeoutException("t")),
+        )
+        McpTool.callFailureOutput(failure) shouldBe McpTool.TIMEOUT_OUTPUT
+    }
+
+    "an MCP error still wins over a decoding failure" {
+        val refusal = McpError(JSONRPCError(McpSchema.ErrorCodes.INVALID_PARAMS, "bad", null))
+        val failure = RuntimeException("outer", RuntimeException(refusal))
+        McpTool.callFailureOutput(failure) shouldBe McpTool.INVALID_PARAMS_OUTPUT
+    }
+
+    "a failure without any decoding cause is still reported as unreachable" {
+        McpTool.callFailureOutput(McpConnectionException("process died")) shouldBe McpTool.TRANSPORT_FAILURE_OUTPUT
     }
 
     "an MCP tool error keeps the tool's own content, which is its answer and not a transport detail" {

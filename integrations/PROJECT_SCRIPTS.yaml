@@ -43,8 +43,8 @@ parameters:
       - "list" - List all projects in workspace
       - "show project client" - Show project configuration
 
-      For Kotlin-specific test filtering (e.g., specific test class):
-      Use gradle directly: "cd agentos && ./gradlew :agentos-service:test --tests ChatClientProviderTest"
+      Gradle builds (Kotlin/Java) are not run through this tool: use the tools of the GRADLE integration
+      (gradle_compile, gradle_tests with a testFilter, gradle_dependency_insight).
 
       Note: Nx handles both TypeScript (Jest) and Kotlin (Gradle) projects seamlessly.
 
@@ -58,29 +58,6 @@ parameters:
       - "run-many --target=test --all"
       - "affected --target=build --base=origin/master"
     path: null
-    timeoutSeconds: 900
-  - name: "gradle"
-    description: |
-      Run Gradle commands for Kotlin/Java projects in the agentos/ directory.
-
-      Common commands:
-      - ":agentos-service:test" - Run all service tests
-      - ":agentos-service:test --tests ChatClientProviderTest" - Run specific test class
-      - ":agentos-service:build" - Build the service
-      - ":agentos-sdk:test" - Run SDK tests
-      - "test" - Run all tests in agentos/
-      - "build" - Build all Gradle projects
-
-      The command runs from agentos/ directory with optimized flags:
-      --no-build-cache --no-configuration-cache --no-daemon
-    command: "./gradlew PARAMETERS --no-build-cache --no-configuration-cache --no-daemon"
-    parametersDescription: |
-      Gradle task with arguments. Examples:
-      - ":agentos-service:test"
-      - ":agentos-service:test --tests ChatClientProviderTest"
-      - ":agentos-sdk:build"
-      - "test" (all tests)
-    path: "agentos"
     timeoutSeconds: 900
   - name: "setup"
     description: |

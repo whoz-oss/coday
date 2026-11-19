@@ -102,6 +102,46 @@ class CapabilityResolverTest {
         assertThat((outcome as CapabilityOutcome.CodeRefused).code).isEqualTo(VERIFICATION_MANIFEST_MISSING)
     }
 
+    @Test
+    fun `build keeps the before HEAD and rejects a changed HEAD even when command passes`() {
+        val git = Files.createDirectories(repoRoot.resolve(".git"))
+        val before = "a".repeat(40)
+        val after = "b".repeat(40)
+        Files.writeString(git.resolve("HEAD"), before)
+        writeManifest("build", "printf '$after' > .git/HEAD")
+
+        val run = resolver.resolve(step(ResponsibilityKind.CODE, "build"), repoRoot) as CapabilityOutcome.CodeExecuted
+        assertThat(run.observedHead).isEqualTo(before)
+        assertThat(run.observedHeadAfter).isEqualTo(after)
+        assertThat(run.exitCode).isZero()
+        assertThat(run.workspaceStable).isFalse()
+        assertThat(run.verdict).isFalse()
+    }
+
+    @Test
+    fun `linked worktree reports common ref HEAD before and after build`() {
+        val gitDir = Files.createDirectories(repoRoot.resolve("metadata/worktree"))
+        val common = Files.createDirectories(repoRoot.resolve("metadata/common/refs/heads"))
+        val head = "c".repeat(40)
+        Files.writeString(repoRoot.resolve(".git"), "gitdir: metadata/worktree")
+        Files.writeString(gitDir.resolve("commondir"), "../common")
+        Files.writeString(gitDir.resolve("HEAD"), "ref: refs/heads/test")
+        Files.writeString(common.resolve("test"), head)
+        writeManifest("build", "exit 0")
+        val run = resolver.resolve(step(ResponsibilityKind.CODE, "build"), repoRoot) as CapabilityOutcome.CodeExecuted
+        assertThat(run.observedHead).isEqualTo(head)
+        assertThat(run.observedHeadAfter).isEqualTo(head)
+        assertThat(run.verdict).isTrue()
+    }
+
+    @Test
+    fun `build timeout is never a pass`() {
+        writeManifest("build", "sleep 2", 20)
+        val run = resolver.resolve(step(ResponsibilityKind.CODE, "build"), repoRoot) as CapabilityOutcome.CodeExecuted
+        assertThat(run.timedOut).isTrue()
+        assertThat(run.verdict).isFalse()
+    }
+
     // ------------------------------------------------------------ agent branch
 
     @Test

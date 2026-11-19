@@ -3,7 +3,6 @@ import {
   CaseMembershipControllerService,
   MemberItem,
   NamespaceMembershipControllerService,
-  UserControllerService,
   UserMembershipRole,
   UserMembershipRoleRoleEnum,
 } from '@whoz-oss/agentos-api-client'
@@ -20,21 +19,20 @@ export interface CaseMemberUpdateEntry {
  * CaseMemberStateService — API-layer facade for case ADMIN/MEMBER management.
  *
  * Follows the two-layer pattern (see NamespaceMemberStateService): components go through this
- * facade rather than injecting CaseMembershipControllerService or UserControllerService directly.
+ * facade rather than injecting CaseMembershipControllerService or NamespaceMembershipControllerService
+ * directly.
  *
  * The backend endpoint accepts a flat `Array<UserMembershipRole>` where each entry carries
  * a userId and an optional role. A missing role means "revoke all relations for this user".
  *
- * `listAllUsers()` wraps `UserControllerService.listAllUser()`, which is SUPER_ADMIN-only on
- * the backend — callers must only invoke it when the current user is a super-admin.
- * `listNamespaceMembers()` is the candidate pool for everyone else: the members of the case's
- * namespace (Namespace READ), the only users a non-super-admin case admin may invite.
+ * `listNamespaceMembers()` is the invitation candidate pool for every caller, super-admins included:
+ * the members of the case's namespace (Namespace READ), the only users the backend lets a case admin
+ * invite.
  */
 @Injectable({ providedIn: 'root' })
 export class CaseMemberStateService {
   private readonly membership = inject(CaseMembershipControllerService)
   private readonly namespaceMembership = inject(NamespaceMembershipControllerService)
-  private readonly userController = inject(UserControllerService)
 
   /** Current members (and their role) of a case. */
   listMembers(caseId: string): Observable<MemberItem[]> {
@@ -42,15 +40,7 @@ export class CaseMemberStateService {
   }
 
   /**
-   * All platform users — SUPER_ADMIN only on the backend. Only call this when the current
-   * user is confirmed to be a super-admin.
-   */
-  listAllUsers() {
-    return this.userController.listAllUser()
-  }
-
-  /**
-   * Members (ADMIN or MEMBER) of a namespace — the invitation candidates of a non-super-admin.
+   * Members (ADMIN or MEMBER) of a namespace — the invitation candidates.
    * Fails (404) when the caller cannot read the namespace.
    */
   listNamespaceMembers(namespaceId: string): Observable<MemberItem[]> {
