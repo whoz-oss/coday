@@ -18,8 +18,18 @@ import java.nio.file.Path
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
+class WorkspaceAdoptionUnavailableException(message: String) : RuntimeException(message)
+
 class TerminalWorkspaceAdoptionException(message: String) : IllegalStateException(message)
 class TransientWorkspaceAdoptionException(cause: Exception) : RuntimeException("Workspace adoption temporarily unavailable; intent retained", cause)
+
+/** Recognized transport failures only; malformed responses/programming errors are not retry policies. */
+fun isTemporaryWorkspaceTransportFailure(error: Exception): Boolean {
+    val causes = generateSequence<Throwable>(error) { it.cause }.toList()
+    val response = causes.filterIsInstance<org.springframework.web.client.RestClientResponseException>().firstOrNull()
+    if (response != null) return response.statusCode.is5xxServerError || response.statusCode.value() in setOf(408, 429)
+    return causes.any { it is java.io.IOException || it is org.springframework.web.client.ResourceAccessException }
+}
 
 /** AgentOS owns creation/setup. Shared by parent Runs and standalone workflows; never creates Git resources. */
 class RootCaseWorkspaceAdoption(
@@ -33,18 +43,19 @@ class RootCaseWorkspaceAdoption(
         propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
     }
 
-    fun awaitReady(scope: TenantScope, reserved: WorkEnvironment, actorId: String, inspectGit: Boolean = false): WorkEnvironment {
+    fun awaitReady(scope: TenantScope, reserved: WorkEnvironment, actorId: String, inspectGit: Boolean = false, singleProbe: Boolean = false): WorkEnvironment {
         check(!TransactionSynchronizationManager.isActualTransactionActive()) { "Workspace adoption must run outside a caller transaction" }
         require(actorId.isNotBlank()) { "Authenticated provisioning identity is required" }
         val root = requireNotNull(reserved.parentCaseId)
         val started = timing.nanoTime()
         while (true) {
             if (Thread.currentThread().isInterrupted) throw InterruptedException("Root workspace provisioning interrupted; intent retained")
-            val raw = proxy.fetchWorkspaceChanges(root, actorId) ?: error("Root workspace is unavailable")
+            val raw = proxy.fetchWorkspaceChanges(root, actorId)
+                ?: throw WorkspaceAdoptionUnavailableException("Root workspace read unavailable; intent retained")
             invariant(raw["equipped"] == true) { "Root case is not equipped with a workspace" }
             when (raw["status"]) {
                 "READY" -> {
-                    check(raw["error"] == null) { "READY workspace Git inspection failed" }
+                    available(raw["error"] == null) { "READY workspace Git inspection failed" }
                     val path = (raw["path"] as? String)?.takeIf { it.isNotBlank() }
                         ?: throw TerminalWorkspaceAdoptionException("READY workspace has no path")
                     val local = try { Path.of(path) } catch (_: java.nio.file.InvalidPathException) {
@@ -54,7 +65,7 @@ class RootCaseWorkspaceAdoption(
                     val identity = LocalWorktreeResourceIdentityResolver().resolve(local)
                     val canonical = local.toRealPath()
                     val head = if (inspectGit) {
-                        check(Files.exists(canonical.resolve(".git"))) { "Root workspace is not an exact Git root" }
+                        invariant(Files.exists(canonical.resolve(".git"))) { "Root workspace is not an exact Git root" }
                         invariant(Path.of(read(canonical, listOf("rev-parse", "--show-toplevel"))).toRealPath() == canonical) { "Root workspace Git root mismatch" }
                         read(canonical, listOf("rev-parse", "--verify", "HEAD")).also { invariant(SHA.matches(it)) { "Root workspace HEAD is invalid" } }
                     } else null
@@ -92,16 +103,22 @@ class RootCaseWorkspaceAdoption(
                         }
                     }!!
                 }
-                "REQUESTED", "PREPARING" -> Unit
+                "REQUESTED", "PREPARING" -> if (singleProbe) {
+                    throw WorkspaceAdoptionUnavailableException("Root workspace not ready; intent retained")
+                }
                 "FAILED" -> throw TerminalWorkspaceAdoptionException("Root workspace preparation failed")
                 else -> throw TerminalWorkspaceAdoptionException("Root workspace has unknown status: ${raw["status"]}")
             }
-            check(timing.nanoTime() - started < TimeUnit.MILLISECONDS.toNanos(timing.timeoutMs)) { "Root workspace provisioning timed out; intent retained" }
+            available(timing.nanoTime() - started < TimeUnit.MILLISECONDS.toNanos(timing.timeoutMs)) { "Root workspace provisioning timed out; intent retained" }
             try { timing.pause(timing.pollIntervalMs) } catch (interrupted: InterruptedException) {
                 Thread.currentThread().interrupt()
                 throw interrupted
             }
         }
+    }
+
+    private fun available(valid: Boolean, message: () -> String) {
+        if (!valid) throw WorkspaceAdoptionUnavailableException(message())
     }
 
     private fun invariant(valid: Boolean, message: () -> String) {
@@ -113,12 +130,12 @@ class RootCaseWorkspaceAdoption(
         // Git's explicit negative ancestry result is permanent. An inspection failure
         // (missing object, temporarily inaccessible repository, timeout) is not that proof.
         invariant(exit != 1) { message }
-        check(exit == 0) { "Root workspace ancestry inspection unavailable" }
+        available(exit == 0) { "Root workspace ancestry inspection unavailable" }
     }
 
     private fun read(root: Path, args: List<String>): String {
         val result = git.run(root, args)
-        check(result.exitCode == 0) { "Cannot inspect root workspace Git ${args.first()}" }
+        available(result.exitCode == 0) { "Cannot inspect root workspace Git ${args.first()}" }
         return result.stdout.trim()
     }
 

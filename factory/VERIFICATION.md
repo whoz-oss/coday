@@ -55,8 +55,9 @@ before registering their first new durable agent attempt. `resolveCaseFamily`
 reserves the root identity first; `StandaloneWorkspaceProvisioningService` persists
 an empty provisioning intent owned by workflowId, then uses the same exact-root
 HTTP creation (`worktree=true`, authenticated `X-External-User-Id`) and shared
-`RootCaseWorkspaceAdoption` reader as parent Runs. REQUESTED/PREPARING are polled
-outside transactions. READY must expose an equipped, locally accessible absolute
+`RootCaseWorkspaceAdoption` reader as parent Runs. Standalone REQUESTED/PREPARING
+uses a single probe outside transactions; the durable continuation owns backoff.
+Parent Runs keep their existing bounded polling. READY must expose an equipped, locally accessible absolute
 path, exact Git root and readable HEAD. Its initial baseline must precede HEAD.
 There is no GitProvisioner call, virtual path, second worktree, setup retry or
 namespace-directory discovery. AgentOS children inherit the root through their
@@ -87,10 +88,15 @@ marks only our unchanged pending intent (`provisioningFailure`), never a foreign
 READY, BUSY or decommissioned environment. Git ancestry exit 1 proves divergence;
 Git inspection errors (other exits) remain transient. Terminal refusal is recorded through claim +
 step failure; continuation never reexecutes the failed step or retries setup.
-HTTP/network errors, missing workspace reads, PREPARING timeout and READY Git
-inspection errors retain the intent and leave the step READY, without an attempt
-or message dispatch. They propagate to the caller; no automatic retry is added.
-Interrupted waits retain the intent, restore the interrupt flag and propagate.
+Recognized network/5xx/408/429 errors, missing workspace reads, PREPARING and
+READY Git inspection unavailability retain intent and leave the step READY,
+without an attempt or message dispatch. The common runSession boundary ensures
+a durable continuation; only these transient pre-claim failures receive bounded
+backoff (5 seconds to 5 minutes; 90 minutes from the first transient failure).
+Other 4xx refusals persist terminal adoption failure through the same helper as
+explicit FAILED/invariant refusals. Programming errors are not transient retries.
+Interrupted waits retain intent and restore the interrupt flag; the worker releases
+its claim by token CAS before returning, without waiting for lease expiry.
 A crash during adoption or after its READY commit leaves a pre-claim step that
 a new sequencer can safely prepare again, with the same root/environment and
 baseline. Already registered/started attempts skip adoption and keep their
@@ -215,10 +221,22 @@ cross-workflow authorization is made.
 None of these new tests has been executed in this tool environment. Old records
 without request attribution are not backfilled; even an empty authenticated
 request is now persisted and participates in new start-command identity. No
-compatibility migration of historical start hashes is claimed. A transient
-failure in an asynchronous outbox continuation is logged by the existing worker;
-the READY step is recoverable by explicit continuation, but this patch does not
-add durable automatic rescheduling.
+compatibility migration of historical start hashes is claimed. Continuation
+handoff/ack is transactional; execution uses a short token-fenced lease claim,
+not a transaction held over polling or agent work. Full turns remain on the
+existing scheduler. After an ungraceful crash recovery may wait up to the fixed
+two-hour lease; no heartbeat framework is added. Agent RUNNING states/attempt
+fences remain authoritative: continuation replay is not an automatic agent retry.
+A distinct durable source arriving during a claim requests a new wake cycle;
+ack/defer consumes that wake and clears the prior attempts/deadline/diagnostic.
+Repeated delivery of the current source does not reset its retry budget.
+Result handoff uses persisted submission repoRoot/ticket where available; legacy
+results carry explicit deferred namespace-resolution provenance. HTTP resolution
+runs only after the durable claim, outside the handoff transaction, with bounded
+recognized-transport retries and no silent '.' fallback. Explicit resubmission
+after dead uses the existing submission path; terminal/removed step guards are
+not relaxed. Previously dispatched events without a durable continuation are not
+retroactively repaired.
 
 ## Deployment order (no incident repair claimed)
 

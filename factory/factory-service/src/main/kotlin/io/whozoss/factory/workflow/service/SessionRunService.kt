@@ -200,6 +200,7 @@ class SessionRunService(
     @param:Lazy
     @param:Autowired(required = false)
     private val runService: RunService? = null,
+    private val outboxDrainService: io.whozoss.factory.agentattempt.service.OutboxDrainService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -215,6 +216,7 @@ class SessionRunService(
     }
 
     /** Runs (or resumes) the session DAG to a terminal state or to a human suspension. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     fun runSession(
         scope: TenantScope,
         namespaceId: String,
@@ -222,7 +224,14 @@ class SessionRunService(
         repoRoot: Path,
         ticket: String? = null,
     ): SessionRunResult = withWorkflowLock(scope, namespaceId, workflowId) {
-        runSessionLocked(scope, namespaceId, workflowId, repoRoot, ticket)
+        try {
+            runSessionLocked(scope, namespaceId, workflowId, repoRoot, ticket)
+        } catch (transient: io.whozoss.factory.workspace.TransientWorkspaceAdoptionException) {
+            // Covers synchronous and after-commit human resumptions as well as the worker.
+            // A claimed/pending continuation is left untouched; only its fenced owner defers it.
+            outboxDrainService?.adoptionDeferred(scope, namespaceId, workflowId, repoRoot, ticket)
+            throw transient
+        }
     }
 
     /**
@@ -332,7 +341,16 @@ class SessionRunService(
                         Thread.currentThread().interrupt()
                         throw interrupted
                     } catch (transient: io.whozoss.factory.workspace.TransientWorkspaceAdoptionException) {
-                        // Leave READY, propagate to caller; no internal polling retry or agent replay.
+                        // Leave READY; the outbox owns bounded durable resumption, not an agent retry.
+                        evidenceRepository.append(scope, namespaceId, workflowId, WorkflowEvidenceItem(
+                            evidenceId = UUID.randomUUID().toString(), namespaceId = namespaceId,
+                            workflowId = workflowId, stepId = step.id, kind = "workspace-adoption",
+                            outcome = "deferred", source = mapOf("kind" to "factory-session-sequencer"),
+                            facts = mapOf("code" to "WORKSPACE_ADOPTION_DEFERRED", "executed" to false,
+                                "message" to "Workspace adoption temporarily unavailable; intent retained for bounded durable continuation."),
+                            idempotencyKey = "workspace-adoption-deferred:$workflowId:${step.id}", createdAt = null,
+                        ))
+                        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
                         throw transient
                     } catch (error: Exception) {
                         if (claimStep(scope, namespaceId, workflowId, step.id, statuses)) {
