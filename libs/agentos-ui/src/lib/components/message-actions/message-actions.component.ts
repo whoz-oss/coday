@@ -9,14 +9,26 @@ export const RERUN_TOOLTIP =
   'Edit and re-run this message. Re-running does not undo what the tools already did (files, commits, tickets, sub-cases).'
 
 /**
+ * What the reload button of a user message says: it runs again from that message with its text untouched, and
+ * nothing it did is rolled back.
+ */
+export const RELOAD_TOOLTIP =
+  'Reload. Runs this message again as it is. Reloading does not undo what the tools already did (files, commits, tickets, sub-cases).'
+
+/**
  * MessageActionsComponent: the actions under the bubble of a message, always visible.
  *
- * Every bubble can be copied. The pencil is offered only when the host says the message can be edited (a user
- * message of the current user, while the case is idle and nothing else is being edited), and asks the host to
- * open the editor: it does nothing else.
+ * Every bubble can be copied. The reload button and the pencil are offered only when the host says the message can
+ * be edited (a user message of the current user, while the case is idle and nothing else is being edited): reload
+ * asks the host to run the message again as it is, the pencil asks it to open the editor. Neither does anything else.
  *
  * Usage:
- *   <agentos-message-actions [text]="text" [editable]="canEdit(item)" (editRequested)="edit(item)" />
+ *   <agentos-message-actions
+ *     [text]="text"
+ *     [editable]="canEdit(item)"
+ *     (reloadRequested)="reload(item)"
+ *     (editRequested)="edit(item)"
+ *   />
  */
 @Component({
   selector: 'agentos-message-actions',
@@ -32,6 +44,9 @@ export class MessageActionsComponent {
   readonly editable = input(false)
 
   readonly editRequested = output<void>()
+  /** Run the message again, text untouched. */
+  readonly reloadRequested = output<void>()
 
   protected readonly editTooltip = RERUN_TOOLTIP
+  protected readonly reloadTooltip = RELOAD_TOOLTIP
 }

@@ -242,12 +242,13 @@
                       }
                     }
                   </div>
-                  <!-- Under the bubble, always visible: copy for every message, the pencil for the user's own. -->
+                  <!-- Under the bubble, always visible: copy for every message, reload and the pencil for the user's own. -->
                   @if (!isEditingMessage(item.event)) {
                     <agentos-message-actions
                       class="case-chat__message-actions"
                       [text]="messageText(item)"
                       [editable]="canEditMessage(item.event)"
+                      (reloadRequested)="reloadMessage(item.event)"
                       (editRequested)="startMessageEdit(item.event)"
                     />
                   }

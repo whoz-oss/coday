@@ -1900,6 +1900,214 @@ describe('CaseChatComponent — submit with attachments', () => {
       })
     })
 
+    describe('reload: a re-run of the message as it is', () => {
+      const attachedLine = '[Files attached to the case exchange: pasted.png]'
+      const referencedLine = '[Files referenced: namespace:docs/readme.md]'
+
+      /** What the editor does on Rerun without a change: the text the editor starts from, sent through rerunMessage. */
+      const editorRerun = (ref: ComponentRef<CaseChatComponent>, message: CaseMessageEvent) =>
+        ref.instance['rerunMessage'](message, ref.instance['editText'](message))
+
+      it('posts exactly what Edit then Rerun without a change posts', async () => {
+        const viaEditor = makeChat()
+        await editorRerun(viaEditor, user('u2', 'second question'))
+        const editorRequest = http.post.mock.calls[0]!
+        http.post.mockClear()
+        const viaReload = makeChat()
+
+        await viaReload.instance['reloadMessage'](user('u2', 'second question'))
+
+        expect(http.post).toHaveBeenCalledTimes(1)
+        expect(http.post.mock.calls[0]).toEqual(editorRequest)
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: 'second question',
+          rerunOf: 'u2',
+        })
+      })
+
+      it('puts the lines of the files back after the text, as they were sent', async () => {
+        const ref = makeChat()
+        const message = user('u2', `look at this\n\n${attachedLine}\n${referencedLine}`)
+        ref.instance['events'].set([user('u1', 'first question'), agent('a1', 'first answer'), message])
+
+        await ref.instance['reloadMessage'](message)
+
+        expect(http.post).toHaveBeenCalledTimes(1)
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: `look at this\n\n${attachedLine}\n${referencedLine}`,
+          rerunOf: 'u2',
+        })
+      })
+
+      it('posts the same content as the editor for a message with files', async () => {
+        const message = user('u2', `look at this\n\n${attachedLine}`)
+        const viaEditor = makeChat()
+        await editorRerun(viaEditor, message)
+        const editorBody = http.post.mock.calls[0]![1]
+        http.post.mockClear()
+        const viaReload = makeChat()
+
+        await viaReload.instance['reloadMessage'](message)
+
+        expect(http.post.mock.calls[0]![1]).toEqual(editorBody)
+      })
+
+      it('can run a message of files only again: the content is the lines alone', async () => {
+        const ref = makeChat()
+        const filesOnly = user('u2', attachedLine)
+        ref.instance['events'].set([user('u1', 'first question'), filesOnly])
+
+        await ref.instance['reloadMessage'](filesOnly)
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: attachedLine, rerunOf: 'u2' })
+      })
+
+      it('posts nothing while the case runs', async () => {
+        const ref = makeChat()
+        ref.instance['isRunning'].set(true)
+
+        await ref.instance['reloadMessage'](user('u2', 'second question'))
+
+        expect(http.post).not.toHaveBeenCalled()
+        expect(ref.instance['pendingRerun']()).toBeNull()
+      })
+
+      it('posts nothing on a message of someone else', async () => {
+        const ref = makeChat()
+        const bob = {
+          ...user('u2', 'second question'),
+          actor: { id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' },
+        }
+
+        await ref.instance['reloadMessage'](bob)
+
+        expect(http.post).not.toHaveBeenCalled()
+        expect(ref.instance['pendingRerun']()).toBeNull()
+      })
+
+      it('posts nothing on an agent message', async () => {
+        const ref = makeChat()
+
+        await ref.instance['reloadMessage'](agent('a1', 'first answer'))
+
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('posts nothing on a case that has ended', async () => {
+        const ref = makeChat()
+        ref.instance['_sseStatus'].set('KILLED')
+
+        await ref.instance['reloadMessage'](user('u2', 'second question'))
+
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('posts nothing while a bubble is being edited', async () => {
+        const ref = makeChat()
+        ref.instance['startMessageEdit'](user('u1', 'first question'))
+
+        await ref.instance['reloadMessage'](user('u2', 'second question'))
+
+        expect(http.post).not.toHaveBeenCalled()
+        expect(ref.instance['isEditingMessage'](user('u1'))).toBe(true)
+      })
+
+      it('posts nothing a second time while the first reload is pending', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['reloadMessage'](user('u2', 'second question'))
+        void ref.instance['reloadMessage'](user('u2', 'second question'))
+        void ref.instance['reloadMessage'](user('u1', 'first question'))
+
+        expect(http.post).toHaveBeenCalledTimes(1)
+      })
+
+      it('shows the same pending state as the editor: same bubble, what followed hidden, case locked, log untouched', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+        const eventsBefore = ref.instance['events']()
+
+        void ref.instance['reloadMessage'](user('u1', 'first question'))
+
+        expect(ref.instance['pendingRerun']()).toEqual({ targetId: 'u1', text: 'first question' })
+        expect(shown(ref)).toEqual([['u1', 'first question']])
+        const bubble = ref.instance['timeline']().find((item) => item.kind === 'message')
+        expect(bubble?.kind === 'message' && bubble.pending).toBe(true)
+        expect(ref.instance['isRunning']()).toBe(true)
+        expect(ref.instance['canEditMessage'](user('u1'))).toBe(false)
+        expect(ref.instance['events']()).toBe(eventsBefore)
+      })
+
+      it('keeps the files as chips while pending, never the raw line', () => {
+        const ref = makeChat()
+        const message = user('u2', `look at this\n\n${attachedLine}`)
+        ref.instance['events'].set([user('u1', 'first question'), message])
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['reloadMessage'](message)
+
+        const bubble = ref.instance['timeline']().find((item) => item.kind === 'message' && item.event.id === 'u2')
+        expect(bubble?.kind === 'message' && bubble.pending).toBe(true)
+        expect(bubble?.kind === 'message' && ref.instance['messageText'](bubble)).toBe('look at this')
+        expect(bubble?.kind === 'message' && bubble.files).toHaveLength(1)
+        expect(bubble?.kind === 'message' && String(bubble.html)).not.toContain('Files attached')
+      })
+
+      it('puts the display back and says why when the server refuses, like the editor', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        try {
+          const ref = makeChat()
+          const before = shown(ref)
+          http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })))
+
+          await ref.instance['reloadMessage'](user('u1', 'first question'))
+
+          expect(ref.instance['pendingRerun']()).toBeNull()
+          expect(shown(ref)).toEqual(before)
+          expect(ref.instance['isRunning']()).toBe(false)
+          expect(ref.instance['rerunErrorOf'](user('u1'))).toContain('run is in progress')
+          expect(ref.instance['rerunErrorOf'](user('u2'))).toBeNull()
+          // And the reload is offered again.
+          expect(ref.instance['canEditMessage'](user('u1'))).toBe(true)
+        } finally {
+          consoleError.mockRestore()
+        }
+      })
+
+      it('says it too for a failure that is not an answer of the server', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        try {
+          const ref = makeChat()
+          http.post.mockReturnValueOnce(throwError(() => new Error('network down')))
+
+          await ref.instance['reloadMessage'](user('u1', 'first question'))
+
+          expect(ref.instance['pendingRerun']()).toBeNull()
+          expect(ref.instance['rerunErrorOf'](user('u1'))).toContain('could not be sent')
+        } finally {
+          consoleError.mockRestore()
+        }
+      })
+
+      it('forgets a previous error when it is sent again', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        try {
+          const ref = makeChat()
+          http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })))
+          await ref.instance['reloadMessage'](user('u1', 'first question'))
+          expect(ref.instance['rerunErrorOf'](user('u1'))).not.toBeNull()
+          http.post.mockReturnValueOnce(new Subject())
+
+          void ref.instance['reloadMessage'](user('u1', 'first question'))
+
+          expect(ref.instance['rerunErrorOf'](user('u1'))).toBeNull()
+        } finally {
+          consoleError.mockRestore()
+        }
+      })
+    })
+
     describe('while the re-run is pending', () => {
       it('keeps the bubble, with the new text, and hides what followed it, without touching the log', () => {
         const ref = makeChat()

@@ -1,6 +1,6 @@
 import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
-import { MessageActionsComponent, RERUN_TOOLTIP } from './message-actions.component'
+import { MessageActionsComponent, RELOAD_TOOLTIP, RERUN_TOOLTIP } from './message-actions.component'
 
 describe('MessageActionsComponent', () => {
   function makeComponent(editable: boolean): ComponentRef<MessageActionsComponent> {
@@ -25,35 +25,62 @@ describe('MessageActionsComponent', () => {
     expect(buttons(ref)[0]!.title).toBe('Copy message')
   })
 
-  it('adds the pencil when the message can be edited, after the copy button', () => {
+  it('adds reload then the pencil when the message can be edited, after the copy button', () => {
     const ref = makeComponent(true)
 
-    expect(buttons(ref)).toHaveLength(2)
+    expect(buttons(ref)).toHaveLength(3)
     expect(buttons(ref)[0]!.title).toBe('Copy message')
-    expect(buttons(ref)[1]!.textContent).toContain('edit')
+    expect(buttons(ref)[1]!.textContent).toContain('refresh')
+    expect(buttons(ref)[2]!.textContent).toContain('edit')
   })
 
   it('says on the pencil that a re-run does not undo what the tools already did', () => {
     const ref = makeComponent(true)
-    const tooltip = buttons(ref)[1]!.title
+    const tooltip = buttons(ref)[2]!.title
 
     expect(tooltip).toBe(RERUN_TOOLTIP)
     for (const word of ['files', 'commits', 'tickets', 'sub-cases']) expect(tooltip).toContain(word)
   })
 
-  it('asks the host to open the editor when the pencil is clicked', () => {
+  it('names the reload button, and says as much as the pencil about what a re-run does not undo', () => {
     const ref = makeComponent(true)
-    let requested = 0
-    ref.instance.editRequested.subscribe(() => requested++)
+    const reload = buttons(ref)[1]!
+
+    expect(reload.title).toBe(RELOAD_TOOLTIP)
+    expect(reload.title.startsWith('Reload')).toBe(true)
+    expect(reload.getAttribute('aria-label')).toBe(RELOAD_TOOLTIP)
+    for (const word of ['files', 'commits', 'tickets', 'sub-cases']) expect(reload.title).toContain(word)
+  })
+
+  it('asks the host to open the editor when the pencil is clicked, and only that', () => {
+    const ref = makeComponent(true)
+    let edits = 0
+    let reloads = 0
+    ref.instance.editRequested.subscribe(() => edits++)
+    ref.instance.reloadRequested.subscribe(() => reloads++)
+
+    buttons(ref)[2]!.click()
+
+    expect(edits).toBe(1)
+    expect(reloads).toBe(0)
+  })
+
+  it('asks the host to run the message again when reload is clicked, and only that', () => {
+    const ref = makeComponent(true)
+    let edits = 0
+    let reloads = 0
+    ref.instance.editRequested.subscribe(() => edits++)
+    ref.instance.reloadRequested.subscribe(() => reloads++)
 
     buttons(ref)[1]!.click()
 
-    expect(requested).toBe(1)
+    expect(reloads).toBe(1)
+    expect(edits).toBe(0)
   })
 
   it('offers neither a fork nor a speaker', () => {
     const icons = Array.from(host(makeComponent(true)).querySelectorAll('mat-icon')).map((icon) => icon.textContent)
 
-    expect(icons).toEqual(['content_copy', 'edit'])
+    expect(icons).toEqual(['content_copy', 'refresh', 'edit'])
   })
 })

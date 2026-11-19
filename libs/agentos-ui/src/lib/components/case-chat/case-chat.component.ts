@@ -1622,7 +1622,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // ---------------------------------------------------------------------------
 
   /**
-   * Whether the pencil is offered on a message: it is the current user's own message, the case is idle and
+   * Whether the pencil and the reload button are offered on a message: it is the current user's own message, the case is idle and
    * open, and no other bubble is being edited or re-run. The server holds the same rules (author, idle case);
    * these only decide what is offered.
    */
@@ -1663,6 +1663,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected cancelMessageEdit(): void {
     this.editingId.set(null)
+  }
+
+  /**
+   * Runs again from the message [message] with its text as it is: exactly the Rerun of the editor opened and sent
+   * without a change, through [rerunMessage] (same request, same pending display, same restoration on a refusal).
+   * Offered under the same conditions as the pencil, which are checked again here.
+   */
+  protected reloadMessage(message: CaseMessageEvent): Promise<void> {
+    if (!this.canEditMessage(message)) return Promise.resolve()
+    return this.rerunMessage(message, this.editText(message))
   }
 
   /**
