@@ -5,6 +5,7 @@ import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 
@@ -26,6 +27,10 @@ import org.springframework.stereotype.Service
  *
  * The cap on tool rounds is the caller's [getChatClient] `maxToolRounds` (the namespace's override)
  * when given, else the platform's `agentos.limits.agent-max-iterations`.
+ *
+ * The prompt cache duration ([getChatClient] `promptCacheTtl`) is required so every caller decides it: agent
+ * runs pass the duration chosen by the user they run for, utility calls (case naming, summary, prompt
+ * translation) pass [PromptCacheTtl.FIVE_MINUTES]. It only changes the request for Claude models via Requesty.
  */
 @Service
 class ChatClientProvider(
@@ -39,6 +44,7 @@ class ChatClientProvider(
         caseId: String? = null,
         accumulator: UsageAccumulator? = null,
         maxToolRounds: Int? = null,
+        promptCacheTtl: PromptCacheTtl,
     ): ChatClient {
         val trackedAccumulator = accumulator?.takeIf { usageConfig.enabled }
         val providerCost = trackedAccumulator?.let { ProviderReportedCost() }
@@ -52,6 +58,7 @@ class ChatClientProvider(
                 maxCompletionTokens = modelConfig.maxCompletionTokens,
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
                 reasoningEffort = modelConfig.reasoningEffort,
+                promptCacheTtl = promptCacheTtl,
                 providerCost = providerCost,
             )
         val trackedModel =

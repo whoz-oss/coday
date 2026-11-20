@@ -9,6 +9,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import java.net.InetSocketAddress
 import java.time.Duration
 import java.util.UUID
@@ -69,6 +70,7 @@ class ProviderCostCaptureSpec :
                 apiKey = "test",
             ),
             accumulator = accumulator,
+            promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
         )
 
         listOf(false, true).forEach { streaming ->
