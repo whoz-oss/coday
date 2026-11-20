@@ -99,17 +99,8 @@ export class SessionPageComponent implements OnDestroy {
     { initialValue: '' }
   )
 
-  /**
-   * Stable step id from the current selection. Forwarded to the timeline
-   * for the block highlight and to the action-bar for step-scoped actions.
-   */
+  /** Stable logical step id for step-scoped actions and graph selection. */
   protected readonly selectedStepId = this.pageState.selectedStepId
-
-  /**
-   * Block highlight key for the timeline (plain string, not the full
-   * selection object, so the timeline component stays decoupled).
-   */
-  protected readonly selectedBlock = computed(() => this.selectedStepId())
 
   /**
    * Phase detail for the currently selected step, falling back to the

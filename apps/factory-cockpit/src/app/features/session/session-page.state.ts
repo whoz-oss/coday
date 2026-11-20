@@ -26,6 +26,8 @@ export class SessionPageState {
     const selection = this.selection()
     if (!selection) return session.phase
     if (selection.kind === 'launch_request') return session.launchRequest
+    // An outcome ledger selection is more specific than its linked agent attempt.
+    if (selection.executionId) return session.phaseByExecutionId?.get(selection.executionId)
     if (selection.attemptId) return session.phaseByAttemptId?.get(selection.attemptId)
     return session.phaseByStepId?.get(selection.stepId)
   })
@@ -41,6 +43,9 @@ export class SessionPageState {
     const selection = this.selection()
     if (!selection) return session.events
     if (selection.kind === 'launch_request') return []
+    if (selection.executionId) {
+      return session.eventsByExecutionId ? (session.eventsByExecutionId.get(selection.executionId) ?? []) : null
+    }
     if (selection.attemptId) {
       return session.eventsByAttemptId ? (session.eventsByAttemptId.get(selection.attemptId) ?? []) : null
     }
@@ -100,11 +105,13 @@ export class SessionPageState {
     const stillExists = blocks.some((block) =>
       selection.kind === 'launch_request'
         ? block.kind === 'launch_request'
-        : selection.attemptId
-          ? block.attemptId === selection.attemptId
-          : (block.stepId ?? block.label) === selection.stepId && !block.attemptId
+        : selection.executionId
+          ? block.executionId === selection.executionId
+          : selection.attemptId
+            ? block.attemptId === selection.attemptId
+            : (block.stepId ?? block.label) === selection.stepId && !block.attemptId && !block.executionId
     )
-    if (stillExists || (!selection.attemptId && session.routingSteps?.some((step) => step.id === selection.stepId)))
+    if (stillExists || (!selection.attemptId && !selection.executionId && session.routingSteps?.some((step) => step.id === selection.stepId)))
       return
     const fallback = blocks[0]
     if (fallback) this.selectBlock(fallback)
@@ -117,6 +124,7 @@ export class SessionPageState {
     if (block.kind === 'launch_request') selection.kind = 'launch_request'
     if (block.attemptId) selection.attemptId = block.attemptId
     if (block.caseId) selection.caseId = block.caseId
+    if (block.executionId) selection.executionId = block.executionId
     this.selection.set(selection)
   }
 

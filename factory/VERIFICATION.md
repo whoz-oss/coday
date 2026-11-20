@@ -1,5 +1,88 @@
 # Code-step workspace binding and build verification (#1684)
 
+## Outcome transitions (unreleased, validation pending)
+
+Integration review: projection `stepExecutions[].status` uses the lower-case workflow
+vocabulary: pending, ready, running, waiting_human, blocked, completed, failed,
+cancelled, needs_research, skipped. It is NOT the durable agent-attempt enum
+(succeeded/indeterminate/interrupted/etc.). `correction.status` is active,
+waiting_human or completed. Cycle 0 is initial work; counters are per replay region.
+`startedAt`/`completedAt` are ISO UTC strings; never inherit another execution's window.
+SKIPPED has completion time but no fabricated start. `attemptId` refers to the latest
+agent attempt bound to that execution; question/research predecessor attempts remain
+in the attempts API, not separate ledger executions. `resultEvidenceId` and evidence
+facts.executionId support exact history selection. The current step projection also
+carries executionId so evidence enrichment must not resurrect old success/timestamps.
+
+The existing GET workflow projection carries the ledger/correction inside `projection`;
+GET attempts remains agent-only. No new write endpoint is introduced. The generated
+factory-openapi.yaml intentionally still describes map-shaped projection/definition
+payloads: it is not a generated copy of factory-authoring-http-api.yaml. The latter is
+packaged directly by processResources and served verbatim. No controller DTO changed;
+regeneration/check-openapi-spec has NOT been executed, so synchronization is a static
+assessment, not a passing generated-spec check. UI must disable FAIL return for code
+and human steps. Backend validation remains authoritative for partial decision regions,
+overlapping regions, inconsistent budgets and branch setup; the UI's early validator
+need not claim a composition is execution-ready.
+
+`outcomeTransitions` is opt-in per step: `pass: {action: continue|activate, target?}` and
+`fail: {action: block|return, target?, maxCycles?}`. Destination is mandatory only for
+activate/return. PASS activate names a direct nonconditional successor and is initially
+redundant with DAG activation: all other successors and all AND prerequisites remain.
+It cannot replace a decision, skip work or bypass an approval. Return is restricted to
+agent steps with a finalized accepted structured FAIL. Technical termination, timeout,
+indeterminate state, validator-rejected PASS, code failure and NEEDS_RESEARCH do not
+consume correction budget. Code/human return declarations are rejected, not ignored.
+
+`OutcomeReplayPlan` validates self/ancestor returns, target plus all descendants,
+complete decision regions (or rejection), and rejects distinct overlapping regions,
+inconsistent budgets and branch initialization in replay. Default budget is two NEW
+correction cycles after initial execution, bounded to 1–10. Counts are persisted per
+region so failures at different steps cannot reset a shared budget. At exhaustion a
+read-only correction_exhausted interaction exposes the need for human intervention;
+this patch does not implement in-place human budget reset. Further work requires an
+explicitly authorized successor workflow. Legacy retry does not reopen an outcome run.
+
+`OutcomeTransitionService` stores `stepExecutions`, `correction`, decision deduplication,
+context and region counters in the existing instance/projection aggregate. Current
+step-state payloads carry execution identity; previous execution entries remain in the
+ledger. A short transaction combines decision, reset, instance revision CAS, audit and
+outbox wakeup. Agent successors get fresh capability/result IDs and frozen envelopes;
+question/research successors remain within their execution. New code executions use
+new oracle idempotency keys. Human checkpoints carry execution identity and stale
+answers are refused. Replay clears timing/activation and historical PASS handoffs are
+filtered by exact execution ID. Review FAIL, reports, workspace/HEAD/branch proofs and
+relations are carried in correctionContext; missing HEAD/PR provenance is not invented.
+This is a context handoff, NOT an authoritative remote PR/HEAD drift validator. Existing
+worktree adoption/occupancy protections still apply; no branch/PR initialization is
+performed by the router. Definitions and historical runs are never migrated.
+
+Parent-Run fragments with outcomeTransitions are explicitly refused during initialization
+(`OUTCOME_PARENT_FRAGMENT_UNSUPPORTED`). Their selectors still classify broad terminal
+fragment failures; enabling local correction without a parent terminal-failure contract
+could trigger a second correction on technical failure. Supporting opted-in parent
+fragments and human in-place continuation is NOT completed by this patch. Legacy parent
+fragments without the new field retain their existing behavior. This is an incomplete
+implementation of the full requested scope, not release-ready support for both engines.
+
+Runtime concurrency remains subject to the existing embedded single-process scheduler
+contract. Execution-generation checks, step revision claims and aggregate CAS add
+fences, but this is NOT a multi-node scheduler certification. Uncertain code execution
+is not automatically rerun after restart. Pending/running code reconciliation and
+full process-kill/concurrent-writer integration coverage remain release blockers.
+The history ledger currently records scheduler execution windows, not an independent
+append-only Neo4j execution-node aggregate; operational growth/retention is unchanged.
+
+No shell tool was available: none of the new tests has been compiled or executed.
+Required checks include OutcomeTransitionsTest, OutcomeTransitionServiceTest,
+OutcomeTransitionPersistenceIntegrationTest, existing ConditionalRoutingIntegrationTest,
+SessionSequencerIntegrationTest, WorkflowTerminalGovernanceTest, durable bridge,
+research/question resumption and parent-run suites, then factory-service build/OpenAPI.
+The authoring source OpenAPI and skill describe the standalone contract (parent fragments
+are refused at execution initialization); the generic generated
+HTTP spec uses map payloads and has no new controller DTO to regenerate in this patch.
+
+
 ## Workspace contract
 
 With `factory.workspace.enabled=true` (default), **every code step**, including
