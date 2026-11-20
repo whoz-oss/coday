@@ -3,8 +3,6 @@ package io.whozoss.agentos.chat
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
@@ -16,6 +14,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.SystemMessage
@@ -23,11 +22,8 @@ import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.ToolDefinition
-import java.net.InetSocketAddress
 import java.time.Duration
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Wire-level regression spec: the provider-specific options configured by [ChatModelFactory] must actually
@@ -89,7 +85,12 @@ class ProviderOptionsWireSpec :
                     reasoningEffort = reasoningEffort,
                 )
             return ChatClientProvider(factory, usageConfig = usageConfig)
-                .getChatClient(model, provider, accumulator = if (usageTracking) UsageAccumulator() else null)
+                .getChatClient(
+                    model,
+                    provider,
+                    accumulator = if (usageTracking) UsageAccumulator() else null,
+                    promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+                )
         }
 
         fun anthropicClient(
@@ -410,82 +411,3 @@ class ProviderOptionsWireSpec :
             }
         }
     })
-
-/**
- * Minimal stub of the Anthropic (`/v1/messages`) and OpenAI-compatible (`/v1/chat/completions`) APIs: records
- * the raw body of each POST per path and answers a valid completion, as plain JSON or, when [streaming] is
- * set, as a server-sent event stream.
- */
-private class ProviderStubServer {
-    private val server: HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-    private val bodies = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>()
-
-    @Volatile
-    var streaming = false
-
-    val baseUrl: String get() = "http://127.0.0.1:${server.address.port}"
-
-    init {
-        server.createContext(ANTHROPIC_PATH) { exchange -> handle(exchange, ANTHROPIC_JSON, ANTHROPIC_SSE) }
-        server.createContext(OPENAI_PATH) { exchange -> handle(exchange, OPENAI_JSON, OPENAI_SSE) }
-    }
-
-    fun start() = server.start()
-
-    fun stop() = server.stop(0)
-
-    fun reset() {
-        bodies.clear()
-        streaming = false
-    }
-
-    fun requestBodies(path: String): List<String> = bodies[path].orEmpty()
-
-    private fun handle(
-        exchange: HttpExchange,
-        json: String,
-        sse: String,
-    ) {
-        exchange.use {
-            bodies.computeIfAbsent(it.requestURI.path) { CopyOnWriteArrayList() } += String(it.requestBody.readBytes(), Charsets.UTF_8)
-            val (contentType, body) = if (streaming) "text/event-stream" to sse else "application/json" to json
-            val bytes = body.toByteArray(Charsets.UTF_8)
-            it.responseHeaders.add("Content-Type", contentType)
-            it.sendResponseHeaders(200, bytes.size.toLong())
-            it.responseBody.use { out -> out.write(bytes) }
-        }
-    }
-
-    companion object {
-        const val ANTHROPIC_PATH = "/v1/messages"
-        const val OPENAI_PATH = "/v1/chat/completions"
-
-        private const val ANTHROPIC_JSON =
-            """{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"Done"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}"""
-
-        private val ANTHROPIC_SSE =
-            listOf(
-                "message_start" to
-                    """{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"claude-sonnet-4-5","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}""",
-                "content_block_start" to
-                    """{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}""",
-                "content_block_delta" to
-                    """{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done"}}""",
-                "content_block_stop" to """{"type":"content_block_stop","index":0}""",
-                "message_delta" to
-                    """{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":2}}""",
-                "message_stop" to """{"type":"message_stop"}""",
-            ).joinToString("") { (event, data) -> "event: $event\ndata: $data\n\n" }
-
-        private const val OPENAI_JSON =
-            """{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"gpt-test","choices":[{"index":0,"message":{"role":"assistant","content":"Done"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}"""
-
-        private val OPENAI_SSE =
-            listOf(
-                """{"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"gpt-test","choices":[{"index":0,"delta":{"role":"assistant","content":"Done"},"finish_reason":null}]}""",
-                """{"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"gpt-test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}""",
-                """{"id":"chatcmpl-1","object":"chat.completion.chunk","created":1,"model":"gpt-test","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}""",
-                "[DONE]",
-            ).joinToString("") { "data: $it\n\n" }
-    }
-}

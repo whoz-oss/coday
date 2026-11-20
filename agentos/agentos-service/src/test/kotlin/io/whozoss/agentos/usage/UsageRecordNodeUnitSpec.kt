@@ -46,6 +46,12 @@ class UsageRecordNodeUnitSpec : StringSpec({
         timestamp = fixedInstant,
     )
 
+    "a keep-alive source round-trips, and a source this instance does not know reads as LLM (rolling deploy)" {
+        UsageRecordNode.fromDomain(baseRecord().copy(source = UsageSource.KEEP_ALIVE)).toDomain().source shouldBe UsageSource.KEEP_ALIVE
+
+        UsageRecordNode.fromDomain(baseRecord()).copy(source = "IMAGE_GENERATION").toDomain().source shouldBe UsageSource.LLM
+    }
+
     // -------------------------------------------------------------------------
     // Round-trip: full record
     // -------------------------------------------------------------------------

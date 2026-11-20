@@ -2,6 +2,7 @@ package io.whozoss.agentos.usage
 
 import io.whozoss.agentos.caseFlow.CaseNode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import mu.KLogging
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import org.springframework.data.neo4j.core.schema.Relationship
@@ -71,7 +72,7 @@ data class UsageRecordNode(
             namespaceId = UUID.fromString(namespaceId),
             caseId = UUID.fromString(caseId),
             userId = userId?.let { UUID.fromString(it) },
-            source = UsageSource.valueOf(source),
+            source = decodeSource(source),
             outcome = UsageOutcome.valueOf(outcome),
             agentConfigId = agentConfigId?.let { UUID.fromString(it) },
             agentName = agentName,
@@ -86,7 +87,15 @@ data class UsageRecordNode(
             timestamp = timestamp,
         )
 
-    companion object {
+    companion object : KLogging() {
+        /**
+         * Tolerant: a record written by a newer instance (a rolling deploy) may carry a source this one does not know
+         * yet. It is read as [UsageSource.LLM], every source being an LLM call so far, rather than failing the read.
+         */
+        internal fun decodeSource(source: String): UsageSource =
+            UsageSource.entries.firstOrNull { it.name == source }
+                ?: UsageSource.LLM.also { logger.warn { "[UsageRecord] Unknown usage source '$source', read as LLM" } }
+
         fun fromDomain(record: UsageRecord): UsageRecordNode =
             UsageRecordNode(
                 id = record.id.toString(),

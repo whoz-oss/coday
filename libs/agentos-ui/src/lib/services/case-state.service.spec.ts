@@ -13,6 +13,7 @@ describe('CaseStateService', () => {
     unstarCase: jest.Mock
     updateCase: jest.Mock
     setReasoningEffortCase: jest.Mock
+    setKeepAliveCase: jest.Mock
   }
 
   function makeService(listMineMock?: jest.Mock): CaseStateService {
@@ -27,6 +28,11 @@ describe('CaseStateService', () => {
         .fn()
         .mockImplementation((id: string, body: { reasoningEffort?: string }) =>
           of({ id, namespaceId: 'ns', favorite: false, reasoningEffort: body.reasoningEffort } as unknown as Case)
+        ),
+      setKeepAliveCase: jest
+        .fn()
+        .mockImplementation((id: string, body: { keepAlive?: boolean }) =>
+          of({ id, namespaceId: 'ns', favorite: false, keepAlive: body.keepAlive } as unknown as Case)
         ),
     }
     TestBed.configureTestingModule({
@@ -594,6 +600,107 @@ describe('CaseStateService', () => {
       expect(controllerMock.setReasoningEffortCase).toHaveBeenCalledTimes(1)
       expect(svc.cases()[0].title).toBe('renamed')
       expect(svc.cases()[0].reasoningEffort).toBe(ReasoningEffort.XHIGH)
+    })
+  })
+
+  describe('setKeepAlive', () => {
+    const keepAliveCase = (id: string, extra: Partial<Case> = {}): Case =>
+      ({ id, namespaceId: 'ns', favorite: false, title: 't', ...extra }) as unknown as Case
+
+    it('patches the flag optimistically and sends it to the dedicated endpoint', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([keepAliveCase('a')])))
+      svc.loadCases('ns')
+
+      svc.setKeepAlive('a', true).subscribe()
+
+      expect(controllerMock.setKeepAliveCase).toHaveBeenCalledWith('a', { keepAlive: true })
+      expect(controllerMock.updateCase).not.toHaveBeenCalled()
+      expect(svc.cases()[0].keepAlive).toBe(true)
+    })
+
+    it('turns it off', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([keepAliveCase('a', { keepAlive: true })])))
+      svc.loadCases('ns')
+
+      svc.setKeepAlive('a', false).subscribe()
+
+      expect(controllerMock.setKeepAliveCase).toHaveBeenCalledWith('a', { keepAlive: false })
+      expect(svc.cases()[0].keepAlive).toBe(false)
+    })
+
+    it('reverts the optimistic flag when the request fails', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([keepAliveCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.setKeepAliveCase.mockReturnValue(throwError(() => new Error('boom')))
+
+      svc.setKeepAlive('a', true).subscribe({ error: () => undefined })
+
+      expect(svc.cases()[0].keepAlive).toBe(false)
+    })
+
+    it('a double toggle sends both saves in order and ends on the last value', () => {
+      const first = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([keepAliveCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.setKeepAliveCase.mockReturnValueOnce(first)
+
+      svc.setKeepAlive('a', true).subscribe()
+      svc.setKeepAlive('a', false).subscribe()
+      expect(controllerMock.setKeepAliveCase).toHaveBeenCalledTimes(1)
+
+      first.next(keepAliveCase('a', { keepAlive: true }))
+      first.complete()
+
+      expect(controllerMock.setKeepAliveCase.mock.calls).toEqual([
+        ['a', { keepAlive: true }],
+        ['a', { keepAlive: false }],
+      ])
+      expect(svc.cases()[0].keepAlive).toBe(false)
+    })
+
+    it('a failed save then a successful one ends on the saved value', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([keepAliveCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.setKeepAliveCase.mockReturnValueOnce(throwError(() => new Error('boom')))
+
+      svc.setKeepAlive('a', true).subscribe({ error: () => undefined })
+      expect(svc.cases()[0].keepAlive).toBe(false)
+      svc.setKeepAlive('a', true).subscribe()
+
+      expect(controllerMock.setKeepAliveCase).toHaveBeenCalledTimes(2)
+      expect(svc.cases()[0].keepAlive).toBe(true)
+    })
+
+    it('a list response requested before the save settled does not revert it; one requested after does count', () => {
+      const lists = [new Subject<Case[]>(), new Subject<Case[]>(), new Subject<Case[]>()]
+      let call = 0
+      const svc = makeService(
+        jest.fn().mockImplementation(() => (call++ === 0 ? of([keepAliveCase('a')]) : lists[call - 2]))
+      )
+      svc.loadCases('ns')
+      const save = new Subject<Case>()
+      controllerMock.setKeepAliveCase.mockReturnValueOnce(save)
+
+      svc.setKeepAlive('a', true).subscribe()
+      // A refresh requested while the save is pending answers the value from before it.
+      svc.refreshCases('ns')
+      lists[0].next([keepAliveCase('a', { keepAlive: false })])
+      lists[0].complete()
+      expect(svc.cases()[0].keepAlive).toBe(true)
+
+      // Requested before the save settles, answered after: still stale.
+      svc.refreshCases('ns')
+      save.next(keepAliveCase('a', { keepAlive: true }))
+      save.complete()
+      lists[1].next([keepAliveCase('a', { keepAlive: false })])
+      lists[1].complete()
+      expect(svc.cases()[0].keepAlive).toBe(true)
+
+      // Requested after the save settled: the server's value counts again.
+      svc.refreshCases('ns')
+      lists[2].next([keepAliveCase('a', { keepAlive: false })])
+      lists[2].complete()
+      expect(svc.cases()[0].keepAlive).toBe(false)
     })
   })
 })

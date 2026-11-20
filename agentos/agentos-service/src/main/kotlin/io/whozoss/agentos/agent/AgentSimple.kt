@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.chat.LlmExchange
 import io.whozoss.agentos.chat.UsageTrackingChatModel
 import io.whozoss.agentos.logging.withMdc
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -47,6 +48,8 @@ import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
+import org.springframework.ai.tool.definition.ToolDefinition
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -64,6 +67,26 @@ import kotlin.time.measureTime
  * because [io.whozoss.agentos.chat.UsageTrackingChatModel] must not count it as a failed run.
  */
 internal class ToolImagesProduced : RuntimeException("A tool produced images", null, false, false)
+
+/**
+ * The last LLM request of a turn of an [AgentSimple] that ended with an answer: what was sent, and the answer.
+ * See [AgentSimple.onFinalRequest].
+ */
+data class FinalLlmRequest(
+    val caseId: UUID,
+    /** The messages of the request, the system message first, exactly as sent. */
+    val messages: List<Message>,
+    /** The tools declared by the request, in their order. */
+    val toolDefinitions: List<ToolDefinition>,
+    /** The text the model answered to this request (not what it said in the earlier tool rounds of the turn). */
+    val finalText: String,
+    /** How many conversation events ([isConversationEvent]) the case has once the answer of the turn is in. */
+    val coveredEventCount: Int,
+    /** The answer of the turn, the last conversation event of the case. */
+    val lastCoveredEventId: UUID,
+    /** When the request was sent, null when unknown. */
+    val sentAt: Instant? = null,
+)
 
 /**
  * Simple agent implementation: the LLM orchestrates the tools through one streamed call.
@@ -118,6 +141,17 @@ class AgentSimple(
      * Mirrors [AgentConfigProperties.maxAttachedImages] (default 20).
      */
     val maxAttachedImages: Int = 20,
+    /**
+     * The last exchange of the chat model with the provider, tool rounds included, or null when it cannot tell
+     * (an untracked model runs its tool rounds out of sight). Without it, [onFinalRequest] is never called.
+     */
+    private val lastExchange: () -> LlmExchange? = { null },
+    /**
+     * Called once a turn has recorded its answer, with its last request ([FinalLlmRequest]): a later request that
+     * only appends to it can be served by the provider's prompt cache. Not called when the turn was stopped, nor
+     * when the exact request is unknown. A failure here never affects the turn.
+     */
+    private val onFinalRequest: ((FinalLlmRequest) -> Unit)? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -195,6 +229,8 @@ class AgentSimple(
                 var content = ""
                 // Set from the last response when the tool round limit cut the run short.
                 var maxIterationsReached: Int? = null
+                // The durable events of the last call (the earlier ones are in runEvents).
+                var lastCallEvents: List<CaseEvent> = emptyList()
 
                 while (true) {
                     val allMessages = listOfNotNull(effectiveSystemMessage) + convertEventsToMessages(events + runEvents)
@@ -205,6 +241,7 @@ class AgentSimple(
                     }
 
                     val iterationEvents = mutableListOf<CaseEvent>()
+                    lastCallEvents = iterationEvents
                     val outcome =
                         streamOnce(
                             allMessages,
@@ -243,15 +280,23 @@ class AgentSimple(
 
                 // Close tool event channel and emit remaining events
                 toolEventChannel.close()
+                val lateToolEvents = mutableListOf<CaseEvent>()
                 for (toolEvent in toolEventChannel) {
                     emit(toolEvent)
+                    lateToolEvents += toolEvent
                 }
 
                 maxIterationsReached?.let { emitMaxIterationsWarning(namespaceId, caseId, it) }
 
                 // Emit the final assistant message
                 if (content.isNotEmpty()) {
-                    emit(agentMessage(namespaceId, caseId, content))
+                    val answer = agentMessage(namespaceId, caseId, content)
+                    emit(answer)
+                    // Only once the answer is recorded, and not when the turn was stopped meanwhile.
+                    if (shouldContinue()) {
+                        val turnEvents = events + runEvents + lastCallEvents + lateToolEvents + answer
+                        reportFinalRequest(caseId, turnEvents, toolCallbacks, answer)
+                    }
                 }
 
                 emit(
@@ -287,6 +332,31 @@ class AgentSimple(
                 handleGenericAgentException(this@AgentSimple, e, namespaceId, caseId, logger)
             }
         }
+
+    /** [turnEvents]: the events of the case once [answer] is in, those of the turn included. */
+    private fun reportFinalRequest(
+        caseId: UUID,
+        turnEvents: List<CaseEvent>,
+        toolCallbacks: List<ToolCallback>,
+        answer: MessageEvent,
+    ) {
+        val callback = onFinalRequest ?: return
+        val exchange = lastExchange() ?: return
+        val finalText = exchange.responseText?.takeIf { it.isNotEmpty() } ?: return
+        runCatching {
+            callback(
+                FinalLlmRequest(
+                    caseId = caseId,
+                    messages = exchange.messages,
+                    toolDefinitions = toolCallbacks.map { it.toolDefinition },
+                    finalText = finalText,
+                    coveredEventCount = turnEvents.count { it.isConversationEvent() },
+                    lastCoveredEventId = answer.id,
+                    sentAt = exchange.sentAt,
+                ),
+            )
+        }.onFailure { logger.warn(it) { "[AgentSimple] agent=$name could not report the final request of case $caseId" } }
+    }
 
     /** What one streamed call (with the Spring AI tool rounds it ran) produced. */
     private class StreamOutcome(

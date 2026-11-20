@@ -220,6 +220,21 @@ interface CaseService : EntityService<Case, UUID> {
     ): Case
 
     /**
+     * Turn the prompt cache keep-alive of the case ([Case.keepAlive]) on or off.
+     *
+     * Goes through [edit], like [setReasoningEffort]: only that field changes. Turning it off stops the refreshes
+     * from the next tick of [CaseKeepAliveScheduler]; turning it on starts them from the next agent turn's request
+     * (or the current one, when the case already has one).
+     *
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist or is soft-deleted
+     * @throws [io.whozoss.agentos.exception.ConflictException] if concurrent writes keep winning
+     */
+    fun setKeepAlive(
+        caseId: UUID,
+        keepAlive: Boolean,
+    ): Case
+
+    /**
      * Start a turn that a [CaseLaunchGate] held back, if there is one to start.
      *
      * Resumes a `PENDING` case whose turn was deferred by this process and nothing else: a case

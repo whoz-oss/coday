@@ -4,6 +4,7 @@ import io.whozoss.agentos.agent.AdvancedExecutionNotSupportedException
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agent.LastLlmRequestRegistry
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -110,6 +111,10 @@ class CaseServiceImpl(
      */
     private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
     coroutineContext: CoroutineContext = Dispatchers.IO,
+    /** The last LLM request of each case's turns: forgotten when a run starts, or the case is killed or deleted. */
+    private val lastLlmRequestRegistry: LastLlmRequestRegistry = LastLlmRequestRegistry(),
+    /** The cases with the prompt cache keep-alive on, kept up to date by [setKeepAlive]. */
+    private val keepAliveCaseIds: CaseKeepAliveIds? = null,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -264,6 +269,11 @@ class CaseServiceImpl(
         reasoningEffort: ReasoningEffort?,
     ): Case = edit(caseId) { it.copy(reasoningEffort = reasoningEffort) }
 
+    override fun setKeepAlive(
+        caseId: UUID,
+        keepAlive: Boolean,
+    ): Case = edit(caseId) { it.copy(keepAlive = keepAlive) }.also { keepAliveCaseIds?.set(caseId, it.keepAlive) }
+
     override fun edit(
         id: UUID,
         change: (Case) -> Case,
@@ -316,11 +326,15 @@ class CaseServiceImpl(
         if (activeRuntimes.containsKey(id)) {
             killSingleCase(id)
         }
+        lastLlmRequestRegistry.forget(id)
         return caseRepository.delete(id)
     }
 
     override fun deleteByParent(parentId: UUID): Int {
-        findByParent(parentId).forEach { killSingleCase(it.id) }
+        findByParent(parentId).forEach {
+            killSingleCase(it.id)
+            lastLlmRequestRegistry.forget(it.id)
+        }
         return caseRepository.deleteByParent(parentId)
     }
 
@@ -763,6 +777,9 @@ class CaseServiceImpl(
         }
 
         logger.info { "Running agent: $agentName for case $caseId" }
+        // The conversation moves on: the last request of the previous turn no longer ends it (a redirect, too), and
+        // a side question about to reuse it falls back on the transcript. The new generation goes to the agent.
+        val llmRequestGeneration = lastLlmRequestRegistry.invalidate(caseId)
         val usageAccumulator = if (usageConfig.enabled) UsageAccumulator() else null
         val context =
             AgentExecutionContext(
@@ -777,6 +794,7 @@ class CaseServiceImpl(
                     saved
                 },
                 usageAccumulator = usageAccumulator,
+                llmRequestGeneration = llmRequestGeneration,
                 // Read at every agent run, so a change applies from the next run on, never during one.
                 reasoningEffort = findById(caseId)?.reasoningEffort,
             )
@@ -1051,6 +1069,7 @@ class CaseServiceImpl(
 
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
+        lastLlmRequestRegistry.invalidate(caseId)
         val runtime = activeRuntimes[caseId]
         if (gatedRuns != null) gatedRuns.kill(caseId, runtime) else runtime?.requestKill()
         if (usageConfig.enabled) runCostService?.stop(caseId)

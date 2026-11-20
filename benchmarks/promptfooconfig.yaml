@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: AgentOS benchmark — example suite
+
+prompts:
+  - '{{question}}'
+
+providers:
+  # Model only, addressed by its AgentOS alias (needs REQUESTY_API_KEY). Cost: Requesty usage.cost.
+  - id: file://providers/agentos-model.mjs
+    label: 'model: requesty-gpt-5.6-sol'
+    config:
+      alias: requesty-gpt-5.6-sol
+  # Same model, cost from the AgentOS AiModel.pricing instead.
+  - id: file://providers/agentos-model.mjs
+    label: 'model: requesty-gpt-5.6-sol (pricing)'
+    config:
+      alias: requesty-gpt-5.6-sol
+      costSource: pricing
+  # Full AgentOS agent run. Cost: AgentOS usage records (Requesty cost when captured, else pricing).
+  - id: file://providers/agentos-agent.mjs
+    label: 'agent: Ali'
+    config:
+      agent: Ali
+
+defaultTest:
+  options:
+    # Grader for model-graded assertions, also addressed by AgentOS alias.
+    provider:
+      id: file://providers/agentos-model.mjs
+      config:
+        alias: requesty-gpt-5.6-sol
+  assert:
+    - type: cost
+      threshold: 0.5
+    - type: latency
+      threshold: 120000
+
+tests:
+  - description: exact arithmetic
+    vars:
+      question: 'What is 17 * 23? Reply with the number only.'
+    assert:
+      - type: contains
+        value: '391'
+  - description: concise explanation
+    vars:
+      question: 'In at most two sentences, explain what an LLM gateway is.'
+    assert:
+      - type: llm-rubric
+        value: Explains that an LLM gateway sits between an application and LLM providers, in at most two sentences.
