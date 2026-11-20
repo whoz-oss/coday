@@ -121,8 +121,12 @@ export class FactoryStore implements OnDestroy {
   /** @deprecated Use {@link runs}. Kept as an alias for compatibility. */
   readonly sandboxes = computed(() => this.runs())
 
-  readonly activeRuns = computed(() => this.runs().filter((run) => run.status !== 'destroyed'))
-  readonly destroyedRuns = computed(() => this.runs().filter((run) => run.status === 'destroyed'))
+  readonly activeRuns = computed(() => this.runs().filter((run) => run.status !== 'destroyed'), {
+    equal: sameReferences,
+  })
+  readonly destroyedRuns = computed(() => this.runs().filter((run) => run.status === 'destroyed'), {
+    equal: sameReferences,
+  })
 
   /**
    * Runs sorted by creation date, most recent first.
@@ -132,10 +136,13 @@ export class FactoryStore implements OnDestroy {
    * The source signal is never mutated: `[...list]` creates a fresh copy
    * before sorting.
    */
-  readonly visibleRuns = computed(() => {
-    const list = this.showDestroyed() ? this.runs() : this.activeRuns()
-    return sortRunsByCreation([...list])
-  })
+  readonly visibleRuns = computed(
+    () => {
+      const list = this.showDestroyed() ? this.runs() : this.activeRuns()
+      return sortRunsByCreation([...list])
+    },
+    { equal: sameReferences }
+  )
 
   /**
    * Runs grouped into workstreams STRICTLY by `namespaceId` (never by title),
@@ -143,6 +150,7 @@ export class FactoryStore implements OnDestroy {
    * without a `namespaceId` land in the explicit {@link UNASSIGNED_NAMESPACE_ID}
    * workstream.
    */
+  private workstreamViews: WorkstreamView[] = []
   readonly workstreams = computed<WorkstreamView[]>(() => {
     const names = this.namespaces()
     const groups = new Map<string, FactoryRun[]>()
@@ -152,29 +160,37 @@ export class FactoryStore implements OnDestroy {
       bucket.push(run)
       groups.set(namespaceId, bucket)
     }
-    return [...groups.entries()]
-      .map(([namespaceId, runs]) => ({
-        namespaceId,
-        title: namespaceId === UNASSIGNED_NAMESPACE_ID ? 'Sans namespace' : (names.get(namespaceId) ?? namespaceId),
-        runs,
-      }))
+    const previous = new Map(this.workstreamViews.map((group) => [group.namespaceId, group]))
+    const next = [...groups.entries()]
+      .map(([namespaceId, runs]) => {
+        const old = previous.get(namespaceId)
+        const title =
+          namespaceId === UNASSIGNED_NAMESPACE_ID ? 'Sans namespace' : (names.get(namespaceId) ?? namespaceId)
+        const stableRuns = retainArray(old?.runs ?? [], runs)
+        return old && old.title === title && old.runs === stableRuns ? old : { namespaceId, title, runs: stableRuns }
+      })
       .sort((left, right) => left.title.localeCompare(right.title))
+    this.workstreamViews = retainArray(this.workstreamViews, next)
+    return this.workstreamViews
   })
 
-  readonly costs = computed<CostSummary>(() => {
-    const active = this.activeRuns()
-    // Best-known real costs from the same bounded enrichment used by cards and detail.
-    const workflowsUsd = active.reduce((sum, run) => sum + (run.run?.costUsd ?? run.costUsd ?? 0), 0)
-    // Uncertainty is propagated verbatim: sum of the runs' unknownCostCount.
-    const unknownCostCount = active.reduce((sum, run) => sum + (run.run?.unknownCostCount ?? 0), 0)
-    // No other real cost source exists (no Archay/destroyed fleet API).
-    return {
-      active: active.length,
-      workflowsUsd,
-      totalUsd: workflowsUsd,
-      unknownCostCount,
-    }
-  })
+  readonly costs = computed<CostSummary>(
+    () => {
+      const active = this.activeRuns()
+      // Best-known real costs from the same bounded enrichment used by cards and detail.
+      const workflowsUsd = active.reduce((sum, run) => sum + (run.run?.costUsd ?? run.costUsd ?? 0), 0)
+      // Uncertainty is propagated verbatim: sum of the runs' unknownCostCount.
+      const unknownCostCount = active.reduce((sum, run) => sum + (run.run?.unknownCostCount ?? 0), 0)
+      // No other real cost source exists (no Archay/destroyed fleet API).
+      return {
+        active: active.length,
+        workflowsUsd,
+        totalUsd: workflowsUsd,
+        unknownCostCount,
+      }
+    },
+    { equal: sameCardData }
+  )
 
   // REAL: latest workflow snapshots from REST, and their mapped session details.
   private readonly workflows = signal<unknown[]>([])
@@ -445,14 +461,15 @@ export class FactoryStore implements OnDestroy {
     const namespaces = extractNamespaceOptions(this.namespaceOptions())
     return from(namespaces).pipe(
       mergeMap(
-        ({ id }) =>
+        ({ id }, index) =>
           forkJoin({
             active: this.api.getWorkflows('active', id),
             removed: this.api.getWorkflows('removed', id),
           }).pipe(
-            map((result) => ({ ...result, error: null as FactoryApiError | null })),
+            map((result) => ({ ...result, index, error: null as FactoryApiError | null })),
             catchError((error: FactoryApiError) =>
               of({
+                index,
                 active: [] as unknown[],
                 removed: [] as unknown[],
                 error: isMissingWorkstreamMapping(error) ? null : error,
@@ -462,6 +479,8 @@ export class FactoryStore implements OnDestroy {
         4
       ),
       toArray(),
+      // Completion order is network-dependent; membership order follows the catalogue.
+      map((results) => results.sort((left, right) => left.index - right.index)),
       tap((results) => {
         if (generation !== this.namespaceGeneration || this.selectedNamespaceId() !== null) return
         this.overviewError.set(results.find((result) => result.error)?.error ?? null)
@@ -532,13 +551,6 @@ export class FactoryStore implements OnDestroy {
       request.unsubscribe()
     }
 
-    // Derive one FactoryRun per real workflow snapshot. Removed snapshots are
-    // surfaced as destroyed runs; `showDestroyed`/`visibleRuns` remain the ONLY
-    // visibility filter.
-    const activeRuns = effectiveActive.map((snapshot) => mapProjectionToFactoryRun(snapshot))
-    const destroyedRuns = effectiveRemoved.map((snapshot) => mapProjectionToFactoryRun(snapshot, 'destroyed'))
-    this.runs.set([...activeRuns, ...destroyedRuns])
-
     // Build the session map by merging fresh projection data with any already-
     // loaded enrichment for each workflow (preserves stable detail on refresh).
     const sessionMap = new Map<string, SessionDetail>()
@@ -559,6 +571,19 @@ export class FactoryStore implements OnDestroy {
       sessionMap.set(detail.id, detail)
     }
     this.sessions.set(sessionMap)
+
+    // Compose the final card before reconciling references: the cached metrics
+    // are independent of projection revisions and must survive either HTTP order.
+    const card = (snapshot: unknown, destroyed = false): FactoryRun => {
+      const run = mapProjectionToFactoryRun(snapshot, destroyed ? 'destroyed' : undefined)
+      // Until enrichment exists, retain the original projection-only status mapping.
+      const detail = this.enrichment.has(run.id) ? sessionMap.get(run.id) : undefined
+      return detail ? withRunSummary(run, mapSessionDetailToRunSummary(snapshot, detail)) : run
+    }
+    this.setRuns([
+      ...effectiveActive.map((snapshot) => card(snapshot)),
+      ...effectiveRemoved.map((snapshot) => card(snapshot, true)),
+    ])
 
     // Cards and details share the same enrichment path. A run is enriched on
     // first sight only: later refreshes are driven by the targeted triggers
@@ -804,6 +829,7 @@ export class FactoryStore implements OnDestroy {
 
   private clearScopedState(): void {
     this.workflows.set([])
+    this.workstreamViews = []
     this.runs.set([])
     this.sessions.set(new Map())
     this.enrichment.clear()
@@ -1052,35 +1078,70 @@ export class FactoryStore implements OnDestroy {
     return this.supervisorCases.open(run)
   }
 
+  /** Reuse unchanged final cards, without confusing runs from different namespaces. */
+  private setRuns(next: FactoryRun[]): void {
+    const current = this.runs()
+    const key = (run: FactoryRun): string => JSON.stringify([run.namespaceId, run.id])
+    const previous = new Map(current.map((run) => [key(run), run]))
+    const reconciled = next.map((run) => {
+      const old = previous.get(key(run))
+      return old && sameCardData(old, run) ? old : run
+    })
+    this.runs.set(retainArray(current, reconciled))
+  }
+
   /** Replace the summary attached to a run once its real cost is known. */
   private updateRun(summary: RunSummary): void {
-    this.runs.update((list) =>
-      list.map((run) =>
-        run.id === summary.id
-          ? {
-              ...run,
-              status:
-                run.status === 'destroyed'
-                  ? 'destroyed'
-                  : summary.cardState === 'failed'
-                    ? 'failed'
-                    : summary.cardState === 'blocked'
-                      ? 'blocked'
-                      : summary.cardState === 'waiting_human'
-                        ? 'waiting_human'
-                        : summary.cardState === 'running'
-                          ? 'working'
-                          : 'idle',
-              run: summary,
-              costUsd: summary.costUsd,
-              durationSec: summary.durationSec,
-              tokens: summary.tokens,
-              phases: summary.phases,
-            }
-          : run
-      )
-    )
+    this.setRuns(this.runs().map((run) => (run.id === summary.id ? withRunSummary(run, summary) : run)))
   }
+}
+
+/** Both overview and enrichment must compose exactly the same final card. */
+function withRunSummary(run: FactoryRun, summary: RunSummary): FactoryRun {
+  return {
+    ...run,
+    status:
+      run.status === 'destroyed'
+        ? 'destroyed'
+        : summary.cardState === 'failed'
+          ? 'failed'
+          : summary.cardState === 'blocked'
+            ? 'blocked'
+            : summary.cardState === 'waiting_human'
+              ? 'waiting_human'
+              : summary.cardState === 'running'
+                ? 'working'
+                : 'idle',
+    run: summary,
+    costUsd: summary.costUsd,
+    durationSec: summary.durationSec,
+    tokens: summary.tokens,
+    phases: summary.phases,
+  }
+}
+
+function sameReferences<T>(previous: T[], next: T[]): boolean {
+  return previous.length === next.length && previous.every((item, index) => item === next[index])
+}
+
+function retainArray<T>(previous: T[], next: T[]): T[] {
+  return sameReferences(previous, next) ? previous : next
+}
+
+/** Cards contain only plain mapped objects, arrays and scalar values (no raw payloads). */
+function sameCardData(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((item, index) => sameCardData(item, right[index]))
+  }
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
+  if (Array.isArray(left) || Array.isArray(right)) return false
+  const a = left as Record<string, unknown>
+  const b = right as Record<string, unknown>
+  const keys = Object.keys(a)
+  return (
+    keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && sameCardData(a[key], b[key]))
+  )
 }
 
 function generateResearchResumptionKey(): string {
