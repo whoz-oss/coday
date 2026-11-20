@@ -66,6 +66,7 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
     fun `getRunCost parses the run-cost reply into the local dto`() {
         val (client, server) = buildClient()
         server.expect(requestTo("http://agentos.test/api/cases/case-1/run-cost"))
+            .andExpect(header("X-External-User-Id", "reader-1"))
             .andRespond(
                 withSuccess(
                     """{"caseId":"case-1","since":"2026-01-01T00:00:00Z","cost":12.5,""" +
@@ -75,7 +76,7 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
                 ),
             )
 
-        val runCost = client.getRunCost("case-1", null)
+        val runCost = client.getRunCost("case-1", "reader-1")
 
         assertThat(runCost).isEqualTo(
             RunCostDto(
@@ -106,6 +107,18 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
         // swallows every failure: the metrics endpoint must still answer 200.
         assertThat(failing.getRunCost("broken", null)).isNull()
         failingServer.verify()
+    }
+
+    @Test
+    fun `getRunCost degrades to null on forbidden without retrying as a privileged identity`() {
+        val (client, server) = buildClient()
+        server.expect(requestTo("http://agentos.test/api/cases/private-case/run-cost"))
+            .andExpect(header("X-External-User-Id", "reader-1"))
+            .andRespond(withStatus(HttpStatus.FORBIDDEN))
+
+        assertThat(client.getRunCost("private-case", "reader-1")).isNull()
+
+        server.verify()
     }
 
     @Test

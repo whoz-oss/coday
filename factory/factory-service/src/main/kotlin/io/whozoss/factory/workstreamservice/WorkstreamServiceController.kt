@@ -124,7 +124,7 @@ class WorkstreamServiceController(
         val steps = (projection?.get("steps") as? List<*>).orEmpty().filterIsInstance<Map<*, *>>().map { step ->
             mapOf("id" to step["id"], "name" to step["name"], "status" to step["status"])
         }
-        val actions = workflowService.workflowActions(caller.scope, namespace, id, canReply = false)
+        val actions = workflowService.workflowActions(caller.scope, namespace, id, canReply = false, actorId = caller.userId)
         val attempts = durableAttempts.findByWorkflow(caller.scope, namespace, id)
         return WorkflowDataEnvelope(
             linkedMapOf(
@@ -176,7 +176,7 @@ class WorkstreamServiceController(
     ): WorkflowDataEnvelope<Map<String, Any?>> {
         val caller = resolveCaller(user, namespaceId)
         val blockers = workflowService
-            .workflowActions(caller.scope, workstreamService.requireConfiguredNamespace(caller.scope), requireWorkflowId(workflowId), canReply = false)
+            .workflowActions(caller.scope, workstreamService.requireConfiguredNamespace(caller.scope), requireWorkflowId(workflowId), canReply = false, actorId = caller.userId)
             .blockers
         return WorkflowDataEnvelope(
             mapOf("items" to blockers.take(MAX_ITEMS).map(::blockerView), "truncated" to (blockers.size > MAX_ITEMS)),

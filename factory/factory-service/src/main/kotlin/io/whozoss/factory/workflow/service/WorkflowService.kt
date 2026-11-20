@@ -1523,12 +1523,12 @@ class WorkflowService(
     }
 
     @Transactional(readOnly = true)
-    fun metrics(scope: TenantScope, namespaceId: String, workflowId: String, scopeName: String): Map<String, Any?> {
+    fun metrics(scope: TenantScope, namespaceId: String, workflowId: String, scopeName: String, actorId: String): Map<String, Any?> {
         val timing = timing(scope, namespaceId, workflowId)
         val retries = retries(scope, namespaceId, workflowId)
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = false)
-        val realCost = aggregateRealCost(scope, namespaceId, workflowId)
+        val realCost = aggregateRealCost(scope, namespaceId, workflowId, actorId)
         return mapOf(
             "namespaceId" to namespaceId,
             "workflowId" to workflowId,
@@ -1596,7 +1596,8 @@ class WorkflowService(
 
     /**
      * Aggregates the real run cost of the workflow over its distinct case ids,
-     * read from AgentOS `GET /api/cases/{caseId}/run-cost`.
+     * read from AgentOS `GET /api/cases/{caseId}/run-cost` as the authenticated
+     * reader [actorId], never as the persisted workflow creator.
      *
      * Degradation is total: a disabled proxy, an unreachable AgentOS, an unknown
      * case or any unexpected error yields the zero aggregate and never breaks
@@ -1604,12 +1605,12 @@ class WorkflowService(
      * never folded into `cost` as 0.
      */
     @Suppress("UNCHECKED_CAST")
-    private fun aggregateRealCost(scope: TenantScope, namespaceId: String, workflowId: String): RealCostAggregate {
+    private fun aggregateRealCost(scope: TenantScope, namespaceId: String, workflowId: String, actorId: String): RealCostAggregate {
         val proxy = agentOsProxyClient ?: return RealCostAggregate()
         return try {
             var aggregate = RealCostAggregate()
             for (caseId in resolveWorkflowCaseIds(scope, namespaceId, workflowId, null)) {
-                val runCost = proxy.getRunCost(caseId, null) ?: continue
+                val runCost = proxy.getRunCost(caseId, actorId) ?: continue
                 val pausedCases = if (runCost.paused) {
                     runCost.pausedCaseIds.ifEmpty { listOf(runCost.caseId) }
                 } else {
@@ -1651,6 +1652,7 @@ class WorkflowService(
         namespaceId: String,
         workflowId: String,
         canReply: Boolean,
+        actorId: String,
     ): WorkflowActionsResponseDto {
         val projectionState = getProjection(scope, namespaceId, workflowId)
         requireExistingWorkflow(projectionState)
@@ -1666,7 +1668,7 @@ class WorkflowService(
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = true)
         val attempts = durableAgentAttemptService?.findByWorkflow(scope, namespaceId, workflowId).orEmpty()
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
-        val realCost = aggregateRealCost(scope, namespaceId, workflowId)
+        val realCost = aggregateRealCost(scope, namespaceId, workflowId, actorId)
 
         val actions = mutableListOf<AllowedActionDto>()
         val blockers = mutableListOf<WorkflowBlockerDto>()
