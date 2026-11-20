@@ -12,6 +12,7 @@ import io.whozoss.agentos.auth.StaticCredentialFactory
 import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.caseEvent.effectiveConversation
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.chat.sentTo
@@ -1001,7 +1002,7 @@ class AgentServiceImpl(
             parentCaseId = context.caseId,
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
-            loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            loadCaseEvents = { caseId -> caseEventService.findByParent(caseId).effectiveConversation() },
             timeoutMs =
                 (
                     config.delegationTimeoutSeconds

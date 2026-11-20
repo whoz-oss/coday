@@ -51,7 +51,6 @@ import { AgentConfig, Case, Prompt } from '@whoz-oss/agentos-api-client'
 import {
   BlueprintDirective,
   ConfirmDialogComponent,
-  CopyButtonComponent,
   DrawerComponent,
   IconButtonComponent,
   KebabMenuComponent,
@@ -94,10 +93,30 @@ import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
-import { findLegitimateAnswer, runningAfter, senderLabel } from './case-chat.utils'
+import {
+  effectiveConversation,
+  findLegitimateAnswer,
+  isAuthorOf,
+  rerunErrorMessage,
+  rerunTargetOf,
+  runningAfter,
+  senderLabel,
+  textOfMessage,
+  withText,
+} from './case-chat.utils'
+import { MessageActionsComponent } from '../message-actions/message-actions.component'
+import { MessageEditorComponent } from '../message-editor/message-editor.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
-import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import {
+  isNamespaceTargeted,
+  joinAttachmentMentions,
+  joinMentionLines,
+  MentionedFile,
+  resolveUploadScope,
+  splitAttachmentMentions,
+} from '../composer-attachments/composer-attachments.utils'
+import { FileChipComponent } from '../file-chip/file-chip.component'
 import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
 import { CostPipe } from '../../pipes/cost.pipe'
@@ -139,8 +158,18 @@ export type TimelineItem =
       kind: 'message'
       event: CaseMessageEvent
       html: SafeHtml
+      /**
+       * The files the message carries, read from the lines the composer put at the end of its text (the text shown
+       * in [html] is what comes before them). Only a user message has any.
+       */
+      files: MentionedFile[]
       isFirstInGroup: boolean
       isLastInGroup: boolean
+      /**
+       * True while the message is being re-run: it shows the text that was sent, and what followed the
+       * message it replaces is already hidden, until the server's own re-run message comes back.
+       */
+      pending: boolean
       /**
        * What the agent turn this message closes cost, when the turn reported any usage.
        *
@@ -215,8 +244,10 @@ function hasActiveSelection(): boolean {
     FileAutocompleteComponent,
     BlueprintDirective,
     CaseStatusGlyphComponent,
-    CopyButtonComponent,
+    MessageActionsComponent,
+    MessageEditorComponent,
     ComposerAttachmentsComponent,
+    FileChipComponent,
     QuestionPanelComponent,
     ConfigChangeCardComponent,
     DelegationCardComponent,
@@ -329,10 +360,64 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly events = signal<CaseEvent[]>([])
 
   /**
-   * Pre-computed markdown HTML per event id.
+   * Pre-computed markdown HTML per event id, of what the message shows as its text (see [bodyOf]).
    * Populated at SSE ingestion time so the computed() timeline stays synchronous.
    */
   private readonly messageHtmlCache = new Map<string, SafeHtml>()
+
+  // ---------------------------------------------------------------------------
+  // Edit and re-run of a user message
+  // ---------------------------------------------------------------------------
+
+  /** Id of the user message whose bubble is the editor, if any: one at a time. */
+  private readonly editingId = signal<string | null>(null)
+
+  /**
+   * The re-run on its way: the message it replaces and the text that was sent. Set when the user sends, lifted
+   * when the server's re-run message comes back on the stream (or when the request fails).
+   *
+   * It never touches [events]: the log only grows. The timeline hides what followed the message and shows the
+   * new text in its place, so nothing blinks between the send and the answer of the server.
+   */
+  protected readonly pendingRerun = signal<{ targetId: string; text: string } | null>(null)
+
+  /** Why the last re-run was refused, shown under the message it concerns. */
+  protected readonly rerunError = signal<{ eventId: string; message: string } | null>(null)
+
+  /**
+   * The conversation as it effectively stands: the log without what a re-run replaced (see
+   * [effectiveConversation], the same rule as the server). The log itself, [events], stays whole.
+   */
+  private readonly effectiveEvents = computed(() => effectiveConversation(this.events()))
+
+  /**
+   * What the timeline, the delegations and the activity line read: the effective conversation and, while a re-run
+   * is on its way, its optimistic form, where the message being replaced shows the new text and nothing follows it.
+   */
+  private readonly conversationEvents = computed<CaseEvent[]>(() => {
+    const effective = this.effectiveEvents()
+    const pending = this.pendingRerun()
+    if (!pending) return effective
+    const index = effective.findLastIndex((event) => event.id === pending.targetId)
+    const target = index >= 0 ? effective[index] : undefined
+    if (target?.type !== 'MessageEvent') return effective
+    return [...effective.slice(0, index), withText(target, pending.text)]
+  })
+
+  /**
+   * The markdown of the text being re-run: [messageHtmlCache] holds the one of the original text. The files the
+   * text carries are shown as chips, not rendered.
+   */
+  private readonly pendingHtml = computed<SafeHtml>(() => {
+    const pending = this.pendingRerun()
+    return pending ? this.renderMarkdown(splitAttachmentMentions(pending.text).body) : ''
+  })
+
+  /** The message being edited, as long as it is still part of the conversation. */
+  protected readonly activeEditId = computed<string | null>(() => {
+    const id = this.editingId()
+    return id !== null && this.conversationEvents().some((event) => event.id === id) ? id : null
+  })
 
   protected inputValue = signal('')
   protected isRunning = signal(false)
@@ -537,6 +622,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       if (this.isRunning() || this.isTerminal()) return
       queueMicrotask(() => {
         if (this.isEditing()) return
+        // A message being edited keeps the focus the editor took.
+        if (this.activeEditId() !== null) return
         if (hasActiveSelection()) return
         // A pending question takes the focus instead (see the effect below).
         if (this.pendingQuestionId()) return
@@ -591,7 +678,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * 2. Walk events in order to emit timeline items, deduplicating tool entries
    *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
    */
-  protected readonly delegations = computed(() => buildDelegations(this.events()))
+  protected readonly delegations = computed(() => buildDelegations(this.conversationEvents()))
 
   /**
    * What each agent turn cost, keyed by the id of its `AgentFinishedEvent`.
@@ -599,6 +686,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Keyed on `events()` alone, like [delegations]: the timeline also depends on the technical-log
    * and tool-call toggles, and walking the whole stream again on every flip of a checkbox buys
    * nothing.
+   *
+   * Computed on the whole log, not on the effective conversation: what a re-run replaced was spent all the
+   * same, so the running total of a turn counts it.
    */
   private readonly turnMetrics = computed(() => buildTurnMetrics(this.events()))
 
@@ -607,10 +697,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Derived from the event stream and from the delegation pairing above, so it follows the turn
    * without any extra bookkeeping.
    */
-  protected readonly activity = computed<AgentActivity>(() => describeAgentActivity(this.events(), this.delegations()))
+  protected readonly activity = computed<AgentActivity>(() =>
+    describeAgentActivity(this.conversationEvents(), this.delegations())
+  )
 
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
-    const allEvents = this.events()
+    const allEvents = this.conversationEvents()
+    const pendingRerun = this.pendingRerun()
     const showTechnical = this.showTechnical()
     const showToolCalls = this.showToolCalls()
     const delegations = this.delegations()
@@ -694,12 +787,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           warningsThisTurn.clear()
           lastAgentMessageIndex = null
         }
+        // The message being re-run shows the text that was sent: its cached markdown is the one of the original.
+        const isPending = pendingRerun?.targetId === e.id
         items.push({
           kind: 'message',
           event: msg,
-          html: this.messageHtmlCache.get(e.id) ?? '',
+          html: isPending ? this.pendingHtml() : (this.messageHtmlCache.get(e.id) ?? ''),
+          files: role === 'USER' ? splitAttachmentMentions(this.extractText(msg)).files : [],
           isFirstInGroup,
           isLastInGroup: false,
+          pending: isPending,
         })
         if (role === 'AGENT') lastAgentMessageIndex = items.length - 1
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
@@ -771,7 +868,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Id of the latest run stopped at its iteration limit, while no user message has followed it. */
   protected readonly continuableStopId = computed<string | null>(() => {
-    const events = this.events()
+    const events = this.conversationEvents()
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i]
       if (e?.type === 'MessageEvent' && (e as CaseMessageEvent).actor.role === 'USER') return null
@@ -781,7 +878,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   })
 
   /** Questions answered through a configuration card: see {@link configChangeQuestionIds}. */
-  protected readonly configChangeQuestionIds = computed(() => configChangeQuestionIds(this.events()))
+  protected readonly configChangeQuestionIds = computed(() => configChangeQuestionIds(this.conversationEvents()))
 
   /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
   protected readonly timeline = computed<TimelineItem[]>(() => {
@@ -1115,7 +1212,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
           if (event.type === 'MessageEvent') {
             const msg = event as CaseMessageEvent
-            const text = this.extractText(msg)
+            const text = this.bodyOf(msg)
             if (!this.messageHtmlCache.has(event.id)) {
               this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
             }
@@ -1125,6 +1222,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
+
+          // The server's own re-run message replaces the one on screen: nothing is pending any more, and the
+          // effective conversation takes it from here.
+          const rerunTarget = rerunTargetOf(event)
+          if (rerunTarget !== null && rerunTarget === this.pendingRerun()?.targetId) {
+            this.pendingRerun.set(null)
+          }
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1421,6 +1525,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.caseGone.set(false)
     this.events.set([])
     this.messageHtmlCache.clear()
+    this.editingId.set(null)
+    this.pendingRerun.set(null)
+    this.rerunError.set(null)
     this.inputValue.set('')
     this.isRunning.set(false)
     // isTerminal is now computed; clearing _sseStatus is sufficient.
@@ -1476,11 +1583,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         }
         const referenceMention = buildReferenceMention(references)
         if (referenceMention) mentions.push(referenceMention)
-        const mentionBlock = mentions.join('\n')
+        const mentionBlock = joinMentionLines(mentions)
         // An upload failure or a mid-flight case switch blocks the send: failed chips carry
         // the mapped errors (or the switch reset the batch), the input stays intact.
         if (this.caseId !== caseIdAtSubmit) return
-        const sent = await this.postMessage(content ? `${content}\n\n${mentionBlock}` : mentionBlock)
+        const sent = await this.postMessage(joinAttachmentMentions(content, mentionBlock))
         // Only a confirmed send clears the composer: on failure the text and the uploaded
         // chips stay, and a retry rebuilds the mention without re-uploading anything.
         if (sent && this.caseId === caseIdAtSubmit) {
@@ -1525,6 +1632,107 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return false
       }
     )
+  }
+
+  // ---------------------------------------------------------------------------
+  // Edit and re-run of a user message
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Whether the pencil and the reload button are offered on a message: it is the current user's own message, the case is idle and
+   * open, and no other bubble is being edited or re-run. The server holds the same rules (author, idle case);
+   * these only decide what is offered.
+   */
+  protected canEditMessage(message: CaseMessageEvent): boolean {
+    return (
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      this.activeEditId() === null &&
+      this.pendingRerun() === null &&
+      isAuthorOf(message.actor, this.currentUserId())
+    )
+  }
+
+  /**
+   * The text the editor starts from: what the user wrote in the text parts of the message, which a re-run replaces.
+   * The lines of its files are not part of it: they are shown as chips, and put back by [rerunMessage].
+   */
+  protected editText(message: CaseMessageEvent): string {
+    return splitAttachmentMentions(textOfMessage(message)).body
+  }
+
+  /** Whether the bubble of [message] is the editor right now. */
+  protected isEditingMessage(message: CaseMessageEvent): boolean {
+    return this.activeEditId() === message.id
+  }
+
+  /** Why the last re-run of [message] was refused, if it was. */
+  protected rerunErrorOf(message: CaseMessageEvent): string | null {
+    const error = this.rerunError()
+    return error?.eventId === message.id ? error.message : null
+  }
+
+  protected startMessageEdit(message: CaseMessageEvent): void {
+    if (!this.canEditMessage(message)) return
+    this.rerunError.set(null)
+    this.editingId.set(message.id)
+  }
+
+  protected cancelMessageEdit(): void {
+    this.editingId.set(null)
+  }
+
+  /**
+   * Runs again from the message [message] with its text as it is: exactly the Rerun of the editor opened and sent
+   * without a change, through [rerunMessage] (same request, same pending display, same restoration on a refusal).
+   * Offered under the same conditions as the pencil, which are checked again here.
+   */
+  protected reloadMessage(message: CaseMessageEvent): Promise<void> {
+    if (!this.canEditMessage(message)) return Promise.resolve()
+    return this.rerunMessage(message, this.editText(message))
+  }
+
+  /**
+   * Runs again from the message [message], with [text] in its place, [text] being what the user wrote: the lines of
+   * the files the message carries are put back after it, as they were sent. The bubble shows the new text at once
+   * and what followed it disappears, without anything being removed from the log: the server's re-run message
+   * confirms it through the stream. A refusal puts the display back and says why.
+   */
+  protected async rerunMessage(message: CaseMessageEvent, text: string): Promise<void> {
+    const { mentions } = splitAttachmentMentions(textOfMessage(message))
+    // A message of files only has nothing to say: it is still a message to run again.
+    const content = joinAttachmentMentions(text.trim(), mentions)
+    if (!content || this.isRunning() || this.composerClosed() || this.pendingRerun() !== null) return
+    const caseIdAtSend = this.caseId
+    this.rerunError.set(null)
+    this.editingId.set(null)
+    this.pendingRerun.set({ targetId: message.id, text: content })
+    this.isRunning.set(true)
+    try {
+      await firstValueFrom(
+        this.http.post(`${this.config.basePath}/api/cases/${caseIdAtSend}/messages`, {
+          content,
+          rerunOf: message.id,
+        })
+      )
+    } catch (err) {
+      console.error('[CaseChat] Failed to re-run a message', err)
+      // The chat moved to another case meanwhile: its state was reset, and is not ours to touch.
+      if (this.caseId !== caseIdAtSend) return
+      this.pendingRerun.set(null)
+      // Not simply idle: another run may have started on the case, which is what a 409 can mean.
+      this.isRunning.set(this.isRunningPerLog())
+      this.rerunError.set({
+        eventId: message.id,
+        message: rerunErrorMessage(err instanceof HttpErrorResponse ? err.status : undefined),
+      })
+    }
+  }
+
+  /** Whether the log says that the case runs, which is where the running state comes back to after a refusal. */
+  private isRunningPerLog(): boolean {
+    const latest = this.events().findLast((event) => runningAfter(event) !== null)
+    return !!latest && runningAfter(latest) === true
   }
 
   protected interrupt(): void {
@@ -1701,9 +1909,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.collapsedTools().has(requestId)
   }
 
-  /** Extract plain text from a message item for clipboard copy. */
+  /**
+   * What a message shows as its text, which is also what is copied: the text of a user message without the lines of
+   * the files it carries (shown as chips), the whole text otherwise.
+   */
+  private bodyOf(message: CaseMessageEvent): string {
+    const text = this.extractText(message)
+    return message.actor.role === 'USER' ? splitAttachmentMentions(text).body : text
+  }
+
+  /** Extract plain text from a message item for clipboard copy: what the bubble shows, without the file lines. */
   protected messageText(item: TimelineItem & { kind: 'message' }): string {
-    return this.extractText(item.event)
+    return this.bodyOf(item.event)
   }
 
   /** How long the turn took, in the shortest form that still carries the information. */
