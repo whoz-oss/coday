@@ -1,7 +1,11 @@
 package io.whozoss.agentos.userGroup
 
+import io.swagger.v3.oas.annotations.Operation
+import io.whozoss.agentos.sdk.api.common.ListMetadata
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupApi
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupMember
+import io.whozoss.agentos.sdk.api.userGroup.UserGroupMembersListRequest
+import io.whozoss.agentos.sdk.api.userGroup.UserGroupMembersListResponse
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupSearchResult
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import jakarta.validation.Valid
@@ -51,6 +55,22 @@ class UserGroupController(
         @PathVariable userGroupId: UUID,
     ): List<UserGroupMember> = userGroupService.getMembers(userGroupId).map { it.toDto() }
 
+    // Not on UserGroupApi: the paged variant stays out of the shared Feign contract.
+    @PostMapping("/{userGroupId}/members/list", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#userGroupId, 'UserGroup', 'READ')")
+    @HideOnAccessDenied
+    @Operation(summary = "List the members of a group, one cursor-paged page at a time")
+    fun listMembers(
+        @PathVariable userGroupId: UUID,
+        @Valid @RequestBody request: UserGroupMembersListRequest,
+    ): UserGroupMembersListResponse =
+        userGroupService.getMembersPage(userGroupId, request.limit, request.next).let { page ->
+            UserGroupMembersListResponse(
+                data = page.items.map { it.toDto() },
+                metadata = ListMetadata(next = page.next, totalCount = page.totalCount),
+            )
+        }
+
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'WRITE')")
@@ -72,6 +92,8 @@ class UserGroupController(
                     userExternalIdsToAdd = request.userExternalIdsToAdd,
                     userExternalIdsToRemove = request.userExternalIdsToRemove,
                     adminExternalIds = request.adminExternalIds,
+                    adminExternalIdsToAdd = request.adminExternalIdsToAdd,
+                    adminExternalIdsToRemove = request.adminExternalIdsToRemove,
                     agentIds = request.agentIds,
                 ),
             ).toDto()

@@ -6,9 +6,13 @@ import io.whozoss.agentos.entity.GetByIdsRequest
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.common.ListMetadata
 import io.whozoss.agentos.sdk.api.user.GroupsByExternalIdsRequest
 import io.whozoss.agentos.sdk.api.user.UserApi
 import io.whozoss.agentos.sdk.api.user.UserDto
+import io.whozoss.agentos.sdk.api.user.UsersListFilters
+import io.whozoss.agentos.sdk.api.user.UsersListRequest
+import io.whozoss.agentos.sdk.api.user.UsersListResponse
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupSummary
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.userGroup.UserGroupService
@@ -74,6 +78,26 @@ class UserController(
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     override fun listAll(): List<UserDto> = userService.findAll().map(::toDto)
+
+    // Not on UserApi: the paged variant stays out of the shared Feign contract.
+    @PostMapping("/list", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @Operation(summary = "List users, one cursor-paged page at a time, optionally filtered")
+    fun list(
+        @Valid @RequestBody request: UsersListRequest,
+    ): UsersListResponse =
+        userService
+            .findPage(
+                filters = request.filters ?: UsersListFilters(),
+                limit = request.limit,
+                next = request.next,
+            ).let { page ->
+                UsersListResponse(
+                    data = page.items.map(::toDto),
+                    metadata = ListMetadata(next = page.next, totalCount = page.totalCount),
+                )
+            }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN') or #id.toString() == authentication.name")

@@ -1,0 +1,25 @@
+<div class="agentos-list-footer">
+  <p #status class="agentos-list-footer__status" role="status" tabindex="-1">
+    @if (error()) {
+      <span class="agentos-list-footer__error">Loading failed.</span>
+    } @else if (loading() && loaded() > 0) {
+      Loading…
+    } @else if (total() > 0) {
+      Showing {{ loaded() }} of {{ total() }}
+    }
+  </p>
+  @if (showButton()) {
+    <button
+      #button
+      type="button"
+      class="agentos-list-footer__button"
+      [disabled]="loading()"
+      (click)="loadMoreRequested.emit()"
+    >
+      <mat-icon aria-hidden="true" [class.agentos-list-footer__spin]="loading()">{{
+        loading() || error() ? 'refresh' : 'expand_more'
+      }}</mat-icon>
+      {{ loading() ? 'Loading…' : error() ? 'Retry' : 'Load more' }}
+    </button>
+  }
+</div>
