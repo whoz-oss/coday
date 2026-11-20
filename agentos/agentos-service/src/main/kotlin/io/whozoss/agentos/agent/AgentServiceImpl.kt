@@ -12,6 +12,7 @@ import io.whozoss.agentos.auth.StaticCredentialFactory
 import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.chat.AiProviderErrorProperties
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.chat.sentTo
@@ -98,6 +99,8 @@ class AgentServiceImpl(
     private val agentConfigProperties: AgentConfigProperties,
     private val limitsConfig: LimitsConfigProperties,
     private val exchangeRootResolver: ExchangeRootResolver,
+    /** Whether a provider error shown to the case carries the provider response body. */
+    private val aiProviderErrorProperties: AiProviderErrorProperties = AiProviderErrorProperties(),
     /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
     private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
     private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
@@ -733,6 +736,7 @@ class AgentServiceImpl(
                     reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
                     requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
+                    exposeProviderResponseBody = aiProviderErrorProperties.exposeResponseBody,
                 )
             }
 
@@ -761,6 +765,7 @@ class AgentServiceImpl(
                     requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                    exposeProviderResponseBody = aiProviderErrorProperties.exposeResponseBody,
                 )
             }
         }
