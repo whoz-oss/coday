@@ -96,7 +96,71 @@ export function validateStructure(
     return false
   }
   if (steps.some((step) => cycle(step.id))) return 'Dependency cycle: remove a predecessor connection.'
-  return validateRouting(steps)
+  const routingError = validateRouting(steps)
+  if (routingError) return routingError
+  const replayScope = (target: string): Set<string> => {
+    const scope = new Set([target])
+    let changed = true
+    while (changed) {
+      changed = false
+      for (const candidate of steps) {
+        if (!scope.has(candidate.id) && candidate.dependsOn?.some((dependency) => scope.has(dependency))) {
+          scope.add(candidate.id)
+          changed = true
+        }
+      }
+    }
+    return scope
+  }
+  const returnRegions: Array<{ scope: Set<string>; maxCycles: number }> = []
+  for (const step of steps) {
+    const transitions = step.outcomeTransitions
+    const pass = transitions?.pass
+    const fail = transitions?.fail
+    if (
+      pass?.action === 'activate' &&
+      (step.decision ||
+        !pass.target ||
+        !ids.has(pass.target) ||
+        pass.target === step.id ||
+        !steps.find((candidate) => candidate.id === pass.target)?.dependsOn?.includes(step.id) ||
+        steps.some((candidate) => candidate.decision?.routes.some((route) => route.target === pass.target)))
+    ) return `${step.id}: PASS activation must target a non-conditional direct successor of a non-decision step.`
+    if (fail?.action !== 'return') continue
+    if (step.responsibility?.kind !== 'agent') return `${step.id}: FAIL return requires an agent step.`
+    const isSelfOrAncestor = (target: string): boolean => {
+      if (target === step.id) return true
+      const visited = new Set<string>()
+      const visit = (id: string): boolean => {
+        if (!visited.add(id)) return false
+        const candidate = index.get(id)
+        return candidate?.dependsOn?.some((dependency) => dependency === target || visit(dependency)) ?? false
+      }
+      return visit(step.id)
+    }
+    if (!fail.target || !ids.has(fail.target) || !isSelfOrAncestor(fail.target))
+      return `${step.id}: FAIL return must target this step or an ancestor.`
+    if (fail.maxCycles !== undefined && (!Number.isInteger(fail.maxCycles) || fail.maxCycles < 1 || fail.maxCycles > 10))
+      return `${step.id}: correction budget must be an integer from 1 to 10.`
+    const scope = replayScope(fail.target)
+    for (const decision of steps.filter((candidate) => candidate.decision)) {
+      const region = new Set([
+        decision.id,
+        ...(decision.decision?.routes.map((route) => route.target) ?? []),
+        ...steps.filter((candidate) => candidate.join === decision.id).map((candidate) => candidate.id),
+      ])
+      if ([...region].some((id) => scope.has(id)) && ![...region].every((id) => scope.has(id)))
+        return `${step.id}: FAIL return cannot split a conditional-routing region.`
+    }
+    if (steps.some((candidate) => scope.has(candidate.id) && ['Gitay', 'prepare-work-branch'].includes(candidate.responsibility?.name ?? '')))
+      return `${step.id}: FAIL return cannot replay branch initialization.`
+    const maxCycles = fail.maxCycles ?? 2
+    if (returnRegions.some((other) => [...other.scope].some((id) => scope.has(id)) &&
+      (![...other.scope].every((id) => scope.has(id)) || ![...scope].every((id) => other.scope.has(id)) || other.maxCycles !== maxCycles)))
+      return `${step.id}: FAIL return overlaps an incompatible correction scope.`
+    returnRegions.push({ scope, maxCycles })
+  }
+  return null
 }
 
 export function validateRouting(steps: FullWorkflowStep[]): string | null {
@@ -310,6 +374,19 @@ export class WorkflowStepEditorState {
           }
         : {}),
       ...(id !== selected.id && step.join ? { join: step.join === selected.id ? id : step.join } : {}),
+      ...(id !== selected.id && step.outcomeTransitions
+        ? {
+            outcomeTransitions: {
+              ...step.outcomeTransitions,
+              ...(step.outcomeTransitions.pass?.target === selected.id
+                ? { pass: { ...step.outcomeTransitions.pass, target: id } }
+                : {}),
+              ...(step.outcomeTransitions.fail?.target === selected.id
+                ? { fail: { ...step.outcomeTransitions.fail, target: id } }
+                : {}),
+            },
+          }
+        : {}),
     }))
     if (id !== selected.id) {
       const drafts = { ...this.drafts() }
@@ -348,6 +425,53 @@ export class WorkflowStepEditorState {
         ],
       },
     })
+  }
+
+  canConfigureFailReturn(step: FullWorkflowStep | null = this.selected()): boolean {
+    return step?.responsibility?.kind === 'agent'
+  }
+
+  canConfigurePassActivate(step: FullWorkflowStep | null = this.selected()): boolean {
+    return !!step && !step.decision && this.passActivationTargets(step).length > 0
+  }
+
+  passActivationTargets(step: FullWorkflowStep | null = this.selected()): FullWorkflowStep[] {
+    if (!step || step.decision) return []
+    return (this.definition()?.steps ?? []).filter(
+      (candidate) =>
+        candidate.dependsOn?.includes(step.id) &&
+        !(this.definition()?.steps ?? []).some((source) => source.decision?.routes.some((route) => route.target === candidate.id))
+    )
+  }
+
+  updateOutcome(action: 'pass' | 'fail', value: 'continue' | 'activate' | 'block' | 'return'): void {
+    const step = this.selected()
+    if (
+      !step ||
+      (action === 'fail' && value === 'return' && !this.canConfigureFailReturn(step)) ||
+      (action === 'pass' && value === 'activate' && !this.canConfigurePassActivate(step))
+    ) return
+    const current = step.outcomeTransitions ?? {}
+    if (action === 'pass') {
+      this.updateBlock({ outcomeTransitions: { ...current, pass: value === 'activate' ? { action: 'activate' } : { action: 'continue' } } })
+    } else {
+      this.updateBlock({ outcomeTransitions: { ...current, fail: value === 'return' ? { action: 'return', maxCycles: 2 } : { action: 'block' } } })
+    }
+  }
+
+  updateOutcomeTarget(action: 'pass' | 'fail', target: string): void {
+    const current = this.selected()?.outcomeTransitions
+    if (!current) return
+    const branch = current[action]
+    if (!branch) return
+    this.updateBlock({ outcomeTransitions: { ...current, [action]: { ...branch, target } } })
+  }
+
+  updateFailBudget(raw: string): void {
+    const current = this.selected()?.outcomeTransitions
+    if (current?.fail?.action !== 'return') return
+    const maxCycles = Number(raw)
+    this.updateBlock({ outcomeTransitions: { ...current, fail: { ...current.fail, maxCycles } } })
   }
 
   updateRoute(index: number, field: 'name' | 'target', value: string): void {
@@ -416,22 +540,28 @@ export class WorkflowStepEditorState {
   removeBlock(): void {
     const selected = this.selected()
     if (!this.canRemoveSelected() || !selected) return
-    const removesCodeStep = selected.responsibility?.kind === 'code'
     const steps =
       this.definition()
         ?.steps?.filter((step) => step.id !== selected.id)
         .map((step) => ({
           ...step,
           dependsOn: step.dependsOn?.filter((id) => id !== selected.id),
-          ...(removesCodeStep && step.decision
+          ...(step.decision
+            ? { decision: { ...step.decision, routes: step.decision.routes.filter((route) => route.target !== selected.id) } }
+            : {}),
+          ...(step.join === selected.id ? { join: undefined } : {}),
+          ...(step.outcomeTransitions
             ? {
-                decision: {
-                  ...step.decision,
-                  routes: step.decision.routes.filter((route) => route.target !== selected.id),
+                outcomeTransitions: {
+                  ...(step.outcomeTransitions.pass?.target === selected.id
+                    ? { pass: { action: 'continue' as const } }
+                    : step.outcomeTransitions.pass ? { pass: step.outcomeTransitions.pass } : {}),
+                  ...(step.outcomeTransitions.fail?.target === selected.id
+                    ? { fail: { action: 'block' as const } }
+                    : step.outcomeTransitions.fail ? { fail: step.outcomeTransitions.fail } : {}),
                 },
               }
             : {}),
-          ...(removesCodeStep && step.join === selected.id ? { join: undefined } : {}),
           legacyContract: step.dependsOn?.includes(selected.id) ? undefined : step.legacyContract,
         })) ?? []
     const drafts = { ...this.drafts() }

@@ -254,6 +254,52 @@ describe('workflow block composition', () => {
     ).toContain('unique')
   })
 
+  it('round-trips outcome transitions, rewrites targets on rename and resets them when their target is removed', () => {
+    const { state, api } = setup()
+    state.metadata('workflowType', 'correction')
+    state.metadata('title', 'Correction')
+    state.discoverAgents('ns')
+    for (let i = 0; i < 2; i++) {
+      state.addBlock()
+      state.setAgent('Dev')
+      state.update('mission', 'Work')
+    }
+    state.select('step-2')
+    state.connect('step-1', true)
+    state.select('step-1')
+    state.updateOutcome('pass', 'activate')
+    state.updateOutcomeTarget('pass', 'step-1')
+    expect(state.validation()).toContain('direct successor')
+    state.updateOutcome('pass', 'continue')
+    state.select('step-2')
+    state.updateOutcome('fail', 'return')
+    state.updateOutcomeTarget('fail', 'step-1')
+    state.updateFailBudget('2')
+    expect(state.validation()).toBeNull()
+    expect(state.canConfigureFailReturn()).toBe(true)
+    state.select('step-1')
+    state.updateBlock({ id: 'implement' })
+    expect(state.definition()?.steps?.[1]?.outcomeTransitions?.fail).toEqual({ action: 'return', target: 'implement', maxCycles: 2 })
+    state.removeBlock()
+    expect(state.definition()?.steps?.[0]?.outcomeTransitions?.fail).toEqual({ action: 'block' })
+    state.save()
+    expect(api.createWorkflowDefinition.mock.calls[0][0].steps[0].outcomeTransitions.fail).toEqual({ action: 'block' })
+  })
+
+  it('matches the backend outcome contract: return requires an agent, self/ancestor and a 1–10 integer budget', () => {
+    const base: any = {
+      workflowType: 'x', title: 'X', steps: [
+        { id: 'a', name: 'A', responsibility: { kind: 'agent', name: 'Dev' }, dependsOn: [], outcomeTransitions: { fail: { action: 'return', target: 'missing', maxCycles: 0 } } },
+      ],
+    }
+    expect(validateStructure(base)).toContain('ancestor')
+    base.steps[0].outcomeTransitions.fail.target = 'a'
+    expect(validateStructure(base)).toContain('budget')
+    base.steps[0].outcomeTransitions.fail.maxCycles = 2
+    base.steps[0].responsibility.kind = 'code'
+    expect(validateStructure(base)).toContain('agent step')
+  })
+
   it('invalidates server adoption metadata when the loaded responsibility changes', () => {
     const { state } = setup()
     state.definition.set({
@@ -553,6 +599,15 @@ describe('step instruction editing', () => {
 })
 
 describe('workflow definition diagram', () => {
+  it('adds a FAIL return edge without changing DAG dependency layout', () => {
+    const layout = layoutDefinition([
+      { id: 'implement', name: 'Implement', dependsOn: [] },
+      { id: 'review', name: 'Review', dependsOn: ['implement'], outcomeTransitions: { fail: { action: 'return', target: 'implement', maxCycles: 2 } } },
+    ])
+    expect(layout.edges.filter((edge) => edge.kind === 'dependency')).toHaveLength(1)
+    expect(layout.edges.find((edge) => edge.kind === 'fail-return')).toMatchObject({ from: 'review', to: 'implement', label: 'FAIL → correction (≤2)' })
+  })
+
   it('represents branching and merging dependencies even when steps are not topologically ordered', () => {
     const steps = [
       { id: 'end', name: 'End', dependsOn: ['left', 'right'] },
