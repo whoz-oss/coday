@@ -13,6 +13,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -515,6 +516,29 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 }.message shouldContain expected
             }
             coVerify(exactly = 0) { structuredLlmClient.call(any(), any(), any(), any()) }
+        }
+
+        "the base's resolveTargets is given to the planner as the recipient of each case, only when usable" {
+            fun plannerMessageFor(params: String?): String {
+                val message = slot<String>()
+                coEvery { structuredLlmClient.call(any(), any(), any(), capture(message)) } returns planAnswer()
+                val baseConfig = params?.let { json("""{"search": {"params": $it}}""") }
+                service.generate(namespaceId, userId, request(baseFlowConfiguration = baseConfig))
+                return message.captured
+            }
+
+            val line = "Recipient of each case (its relation to the entity of the case):"
+            plannerMessageFor("""{"resolveTargets": ["MANAGER"]}""") shouldContain "$line MANAGER"
+            plannerMessageFor("""{"resolveTargets": ["OWNER", "MANAGER", "OWNER"]}""") shouldContain "$line OWNER, MANAGER"
+            forAll(
+                row(null),
+                row("""{"agentConfigId": "x"}"""),
+                row("""{"resolveTargets": []}"""),
+                row("""{"resolveTargets": "MANAGER"}"""),
+                row("""{"resolveTargets": [1]}"""),
+            ) { params ->
+                plannerMessageFor(params) shouldNotContain "Recipient of each case"
+            }
         }
 
         "a malformed base part is a 400 even when the request field overrides it" {
