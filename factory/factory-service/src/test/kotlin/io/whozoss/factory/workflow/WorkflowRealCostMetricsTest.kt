@@ -28,6 +28,7 @@ class WorkflowRealCostMetricsTest {
     private val scope = TenantScope("org", "workstream")
     private val namespace = "00000000-0000-4000-8000-000000000001"
     private val workflowId = "workflow-1"
+    private val reader = "reader-1"
 
     private val repository = mockk<WorkflowRepository>()
     private val evidenceRepository = mockk<WorkflowEvidenceRepository>()
@@ -53,7 +54,7 @@ class WorkflowRealCostMetricsTest {
             status = "active",
             creationCommandHash = null,
             instance = controllerCaseId
-                ?.let { mapOf("controllerExecution" to mapOf("caseId" to it)) }
+                ?.let { mapOf("controllerExecution" to mapOf("caseId" to it, "actorId" to "creator-1")) }
                 ?: emptyMap(),
             projection = emptyMap(),
         )
@@ -89,12 +90,15 @@ class WorkflowRealCostMetricsTest {
     fun `realCost aggregates a single known root case and keeps the existing metrics keys`() {
         stubWorkflow(controllerCaseId = "case-1")
         every { attempts.findByWorkflow(scope, namespace, workflowId) } returns emptyList()
-        every { proxy.getRunCost("case-1", null) } returns runCost(
+        every { proxy.getRunCost("case-1", reader) } returns runCost(
             "case-1", cost = 12.5, liveTokens = 100, active = true, runCostThreshold = 50.0,
         )
 
-        val metrics = service.metrics(scope, namespace, workflowId, "test")
+        val metrics = service.metrics(scope, namespace, workflowId, "test", reader)
 
+        verify(exactly = 1) { proxy.getRunCost("case-1", reader) }
+        verify(exactly = 0) { proxy.getRunCost(any(), "creator-1") }
+        verify(exactly = 0) { proxy.getRunCost(any(), null) }
         assertThat(metrics.keys).contains(
             "namespaceId", "workflowId", "scope", "observedAt",
             "timing", "retries", "evidenceCount", "interactionCount", "realCost",
@@ -112,15 +116,18 @@ class WorkflowRealCostMetricsTest {
     fun `unknown costs are summed verbatim across distinct cases and never folded into cost`() {
         stubWorkflow(controllerCaseId = "case-1")
         every { attempts.findByWorkflow(scope, namespace, workflowId) } returns listOf(attempt("case-2"))
-        every { proxy.getRunCost("case-1", null) } returns runCost(
+        every { proxy.getRunCost("case-1", reader) } returns runCost(
             "case-1", cost = 4.0, unknownCostCount = 3, liveTokens = 10, paused = true, runCostThreshold = 50.0,
         )
-        every { proxy.getRunCost("case-2", null) } returns runCost(
+        every { proxy.getRunCost("case-2", reader) } returns runCost(
             "case-2", cost = 2.0, unknownCostCount = 1, liveTokens = 20, active = true, runCostThreshold = 30.0,
         )
 
-        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test"))
+        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test", reader))
 
+        verify(exactly = 1) { proxy.getRunCost("case-1", reader) }
+        verify(exactly = 1) { proxy.getRunCost("case-2", reader) }
+        verify(exactly = 2) { proxy.getRunCost(any(), any()) }
         assertThat(realCost["cost"]).isEqualTo(6.0)
         assertThat(realCost["unknownCostCount"]).isEqualTo(4L)
         assertThat(realCost["liveTokens"]).isEqualTo(30L)
@@ -136,9 +143,9 @@ class WorkflowRealCostMetricsTest {
             attempt("case-1", "step-a"),
             attempt("case-1", "step-b"),
         )
-        every { proxy.getRunCost("case-1", null) } returns runCost("case-1", cost = 7.0)
+        every { proxy.getRunCost("case-1", reader) } returns runCost("case-1", cost = 7.0)
 
-        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test"))
+        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test", reader))
 
         assertThat(realCost["cost"]).isEqualTo(7.0)
         verify(exactly = 1) { proxy.getRunCost(any(), any()) }
@@ -150,7 +157,7 @@ class WorkflowRealCostMetricsTest {
         every { attempts.findByWorkflow(scope, namespace, workflowId) } returns listOf(attempt("case-2"))
         every { proxy.getRunCost(any(), any()) } returns null
 
-        val metrics = service.metrics(scope, namespace, workflowId, "test")
+        val metrics = service.metrics(scope, namespace, workflowId, "test", reader)
 
         assertThat(metrics["workflowId"]).isEqualTo(workflowId)
         val realCost = realCostOf(metrics)
@@ -167,7 +174,7 @@ class WorkflowRealCostMetricsTest {
         stubWorkflow(controllerCaseId = null)
         every { attempts.findByWorkflow(scope, namespace, workflowId) } returns emptyList()
 
-        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test"))
+        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test", reader))
 
         assertThat(realCost["cost"]).isEqualTo(0.0)
         assertThat(realCost["unknownCostCount"]).isEqualTo(0L)
@@ -189,7 +196,7 @@ class WorkflowRealCostMetricsTest {
             durableAgentAttemptService = attempts,
         )
 
-        val realCost = realCostOf(proxyLessService.metrics(scope, namespace, workflowId, "test"))
+        val realCost = realCostOf(proxyLessService.metrics(scope, namespace, workflowId, "test", reader))
 
         assertThat(realCost["cost"]).isEqualTo(0.0)
         assertThat(realCost["unknownCostCount"]).isEqualTo(0L)
