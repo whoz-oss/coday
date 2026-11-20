@@ -953,6 +953,123 @@ class UserGroupServiceImplUnitSpec :
             }
         }
 
+        // -------------------------------------------------------------------------
+        // updateFromRequest — admin delta mode
+        // -------------------------------------------------------------------------
+
+        val alice = makeUser("alice@example.com") // MEMBER
+        val bob = makeUser("bob@example.com") // ADMIN
+        val carol = makeUser("carol@example.com") // ADMIN, never named by the delta requests
+
+        class DeltaFixture {
+            val groupId = randomUUID()
+            val repo = mockk<UserGroupRepository>(relaxed = true)
+            val permissions = mockk<PermissionService>(relaxed = true)
+            val users = mockk<UserService>(relaxed = true)
+
+            init {
+                val group = UserGroup(metadata = EntityMetadata(id = groupId), namespaceId = namespaceId, name = "Team")
+                every { repo.findByIds(listOf(groupId), withRemoved = true) } returns listOf(group)
+                every { repo.save(any()) } returns group
+                every { repo.findByIdWithDetails(groupId) } returns
+                    UserGroupSearchResult(groupId, namespaceId, externalId, "Team")
+                every { repo.findMembers(groupId) } returns
+                    listOf(alice to "MEMBER", bob to "ADMIN", carol to "ADMIN").map { (u, role) ->
+                        UserGroupMember(u.id, u.externalId, role, null, null, null)
+                    }
+            }
+
+            fun update(request: UserGroupUpdateRequest) =
+                buildService(repo, userService = users, permissionService = permissions).updateFromRequest(groupId, request)
+
+            fun verifyRoleBatch(vararg changes: Pair<User, PermissionRelation>) =
+                verify(exactly = 1) {
+                    permissions.applyShareBatch(EntityType.USER_GROUP, groupId.toString(), changes.map { (u, r) -> u.id.toString() to r })
+                }
+        }
+
+        "delta mode promotes the added admins, demotes the removed ones and never touches unnamed admins" {
+            val f = DeltaFixture()
+
+            f.update(UserGroupUpdateRequest("Team", adminExternalIdsToAdd = setOf(alice.externalId), adminExternalIdsToRemove = setOf(bob.externalId)))
+
+            f.verifyRoleBatch(alice to PermissionRelation.ADMIN, bob to PermissionRelation.MEMBER)
+        }
+
+        "delta mode with one field sent leaves the other direction alone" {
+            DeltaFixture().apply {
+                update(UserGroupUpdateRequest("Team", adminExternalIdsToAdd = setOf(alice.externalId)))
+                verifyRoleBatch(alice to PermissionRelation.ADMIN)
+            }
+            DeltaFixture().apply {
+                update(UserGroupUpdateRequest("Team", adminExternalIdsToRemove = setOf(bob.externalId)))
+                verifyRoleBatch(bob to PermissionRelation.MEMBER)
+            }
+        }
+
+        "delta mode demoting a non-admin or an absent user, or promoting an existing admin, changes no role" {
+            listOf(
+                UserGroupUpdateRequest("Team", adminExternalIdsToRemove = setOf(alice.externalId, "ghost@example.com")),
+                UserGroupUpdateRequest("Team", adminExternalIdsToAdd = setOf(bob.externalId)),
+            ).forEach { request ->
+                val f = DeltaFixture()
+                f.update(request)
+                verify(exactly = 0) { f.permissions.applyShareBatch(any(), any(), any()) }
+            }
+        }
+
+        "delta mode promotes a user added by the same request" {
+            val f = DeltaFixture()
+            val newcomer = makeUser("new@example.com")
+            every { f.users.findByExternalIds(setOf("new@example.com")) } returns listOf(newcomer)
+
+            f.update(UserGroupUpdateRequest("Team", userExternalIdsToAdd = setOf("new@example.com"), adminExternalIdsToAdd = setOf("new@example.com")))
+
+            f.verifyRoleBatch(newcomer to PermissionRelation.ADMIN)
+        }
+
+        "without delta fields an omitted adminExternalIds still demotes every admin" {
+            val f = DeltaFixture()
+
+            f.update(UserGroupUpdateRequest("Team"))
+
+            f.verifyRoleBatch(bob to PermissionRelation.MEMBER, carol to PermissionRelation.MEMBER)
+        }
+
+        "updateFromRequest throws 422 (rule 1) when a non-empty adminExternalIds comes with a delta field" {
+            listOf(
+                UserGroupUpdateRequest("Team", adminExternalIds = setOf(bob.externalId), adminExternalIdsToAdd = setOf(alice.externalId)),
+                UserGroupUpdateRequest("Team", adminExternalIds = setOf(bob.externalId), adminExternalIdsToRemove = emptySet()),
+            ).forEach { shouldThrow<UnprocessableEntityException> { DeltaFixture().update(it) } }
+        }
+
+        "updateFromRequest throws 422 (rule 2) when a user is in both delta lists" {
+            shouldThrow<UnprocessableEntityException> {
+                DeltaFixture().update(
+                    UserGroupUpdateRequest("Team", adminExternalIdsToAdd = setOf(alice.externalId), adminExternalIdsToRemove = setOf(alice.externalId)),
+                )
+            }
+        }
+
+        "updateFromRequest throws 422 (rule 3) when a user to promote is also being removed from the group" {
+            shouldThrow<UnprocessableEntityException> {
+                DeltaFixture().update(
+                    UserGroupUpdateRequest("Team", userExternalIdsToRemove = setOf(alice.externalId), adminExternalIdsToAdd = setOf(alice.externalId)),
+                )
+            }
+        }
+
+        "updateFromRequest throws 422 (rule 4) and writes nothing when a user to promote is not a member after the update" {
+            val f = DeltaFixture()
+
+            shouldThrow<UnprocessableEntityException> {
+                f.update(UserGroupUpdateRequest("Team", adminExternalIdsToAdd = setOf("stranger@example.com")))
+            }
+
+            verify(exactly = 0) { f.repo.save(any()) }
+            verify(exactly = 0) { f.permissions.applyShareBatch(any(), any(), any()) }
+        }
+
         "updateFromRequest throws 422 when an admin is also being removed" {
             val groupId = randomUUID()
             val service = buildService()

@@ -73,6 +73,15 @@
           </div>
         }
 
+        <agentos-list-footer
+          [hasMore]="nextCursor() !== null"
+          [loading]="isLoadingMoreMembers()"
+          [error]="loadMoreMembersFailed()"
+          [loaded]="baseline().size"
+          [total]="totalMembers()"
+          (loadMoreRequested)="loadMoreMembers()"
+        />
+
         <ds-form-field [error]="memberInputError()">
           <div class="ds-inline">
             <input

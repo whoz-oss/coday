@@ -1,0 +1,22 @@
+// Status left, button centred in the row.
+:host {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+}
+
+.list-footer__spin {
+  animation: list-footer-spin 0.7s linear infinite;
+}
+
+@keyframes list-footer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-footer__spin {
+    animation-duration: 1.6s;
+  }
+}

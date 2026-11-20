@@ -87,6 +87,7 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.data.neo4j.config.EnableNeo4jAuditing
 import org.springframework.data.neo4j.core.Neo4jClient
+import org.springframework.data.neo4j.core.Neo4jTemplate
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 import java.time.Clock
 import java.time.Instant
@@ -203,9 +204,12 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
-    fun neo4jUserRepository(userNodeNeo4jRepository: UserNodeNeo4jRepository): UserRepository {
+    fun neo4jUserRepository(
+        userNodeNeo4jRepository: UserNodeNeo4jRepository,
+        neo4jTemplate: Neo4jTemplate,
+    ): UserRepository {
         logger.info { "[Persistence] Neo4jUserRepository active" }
-        return Neo4jUserRepository(userNodeNeo4jRepository)
+        return Neo4jUserRepository(userNodeNeo4jRepository, neo4jTemplate)
     }
 
     @Bean

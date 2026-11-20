@@ -1,12 +1,12 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, OnInit, output } from '@angular/core'
-import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, input, output, signal } from '@angular/core'
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { MemberItem, Namespace, NamespaceMembershipControllerService, User } from '@whoz-oss/agentos-api-client'
+import { Namespace, User } from '@whoz-oss/agentos-api-client'
 import { ButtonDirective, TableDirective } from '@whoz-oss/design-system'
-import { catchError, map, of, switchMap } from 'rxjs'
+import { debounceTime, skip } from 'rxjs'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
-import { createRowFilter } from '../../utils/filter-rows'
 import { createRowDeletionState } from '../../utils/row-deletion-state'
+import { ListFooterComponent } from '../list-footer/list-footer.component'
 import { NamespaceSelectComponent } from '../namespace-select/namespace-select.component'
 import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
@@ -15,7 +15,8 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  * UserListComponent — admin table of all users.
  *
  * Embedded in the admin Users & Groups console (/agentos/admin/users). Responsibilities:
- * - Load and display all users in a table (name, email) with a local text filter
+ * - Load users one server page at a time ("Load more" appends) and display them in a table (name, email)
+ * - Filter server-side: the text filter (debounced) and the namespace picker both reset the list to page 1
  * - Navigate to the create form (/agentos/admin/users/new)
  * - Navigate to the edit form (/agentos/admin/users/:userId/edit)
  * - Delete with an inline two-step confirmation
@@ -27,15 +28,21 @@ import { TableFilterComponent } from '../table-filter/table-filter.component'
  */
 @Component({
   selector: 'agentos-user-list',
-  imports: [ButtonDirective, TableDirective, TableFilterComponent, NamespaceSelectComponent, RowDeleteActionComponent],
+  imports: [
+    ButtonDirective,
+    TableDirective,
+    TableFilterComponent,
+    NamespaceSelectComponent,
+    RowDeleteActionComponent,
+    ListFooterComponent,
+  ],
   templateUrl: './user-list.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class UserListComponent implements OnInit {
+export class UserListComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly userAdminState = inject(UserAdminStateService)
-  private readonly namespaceMembership = inject(NamespaceMembershipControllerService)
+  protected readonly state = inject(UserAdminStateService)
 
   /** When provided (admin console), a namespace `<select>` is shown in the toolbar. */
   readonly namespaces = input<Namespace[] | undefined>(undefined)
@@ -44,42 +51,21 @@ export class UserListComponent implements OnInit {
 
   readonly namespaceFilterChange = output<string | null>()
 
-  protected readonly isLoading = this.userAdminState.isLoading
+  protected readonly query = signal('')
   protected readonly deletion = createRowDeletionState()
 
-  /** Ids of the users belonging to the selected namespace, or null when unfiltered. */
-  private readonly namespaceUserIds = toSignal(
-    toObservable(this.selectedNamespaceId).pipe(
-      switchMap((namespaceId) =>
-        namespaceId
-          ? this.namespaceMembership.getMembersNamespaceMembership(namespaceId).pipe(
-              map((members: MemberItem[]) => new Set(members.map((m) => m.id))),
-              // catchError on the inner observable so a failed load does not terminate the
-              // outer stream (which would freeze the signal in an error state for the session);
-              // fall back to unfiltered and log so the failure stays diagnosable (#1076).
-              catchError((err) => {
-                console.error('[UserList] Failed to load namespace users', err)
-                return of(null)
-              })
-            )
-          : of(null)
-      )
-    ),
-    { initialValue: null as Set<string> | null }
-  )
+  constructor() {
+    // The namespace input's initial emission is the one initial load.
+    toObservable(this.selectedNamespaceId)
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.reload())
+    toObservable(this.query)
+      .pipe(skip(1), debounceTime(300), takeUntilDestroyed())
+      .subscribe(() => this.reload())
+  }
 
-  /** Users of the selected namespace (or all users when unfiltered). */
-  protected readonly users = computed<User[]>(() => {
-    const filterIds = this.namespaceUserIds()
-    return this.userAdminState.users().filter((u) => filterIds === null || filterIds.has(u.id ?? ''))
-  })
-
-  protected readonly rowFilter = createRowFilter(this.users, (user) =>
-    [this.displayName(user), user.email, user.externalId].filter(Boolean).join(' ')
-  )
-
-  ngOnInit(): void {
-    this.userAdminState.loadAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+  private reload(): void {
+    this.state.reset(this.selectedNamespaceId(), this.query())
   }
 
   protected displayName(user: User): string {
@@ -101,7 +87,7 @@ export class UserListComponent implements OnInit {
   protected confirmDelete(user: User): void {
     if (!user.id) return
     this.deletion.execute(user.id, {
-      request$: this.userAdminState.deleteUser(user.id).pipe(takeUntilDestroyed(this.destroyRef)),
+      request$: this.state.deleteUser(user.id).pipe(takeUntilDestroyed(this.destroyRef)),
       errorMessage: `Deleting "${this.displayName(user)}" failed. Try again.`,
     })
   }

@@ -1,0 +1,17 @@
+<p #status class="settings-table__status" role="status" tabindex="-1">
+  @if (error()) {
+    <span class="settings-table__error">Loading failed.</span>
+  } @else if (loading() && loaded() > 0) {
+    Loading…
+  } @else if (total() > 0) {
+    Showing {{ loaded() }} of {{ total() }}
+  }
+</p>
+@if (showButton()) {
+  <button #button dsButton type="button" [disabled]="loading()" (click)="loadMoreRequested.emit()">
+    <mat-icon aria-hidden="true" [class.list-footer__spin]="loading()">{{
+      loading() || error() ? 'refresh' : 'expand_more'
+    }}</mat-icon>
+    {{ loading() ? 'Loading…' : error() ? 'Retry' : 'Load more' }}
+  </button>
+}

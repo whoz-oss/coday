@@ -11,8 +11,8 @@
     <agentos-table-filter
       label="Filter users"
       placeholder="Filter users…"
-      [query]="rowFilter.query()"
-      (queryChange)="rowFilter.query.set($event)"
+      [query]="query()"
+      (queryChange)="query.set($event)"
     />
     <button dsButton variant="primary" type="button" (click)="navigateToCreate()">New user</button>
   </div>
@@ -20,53 +20,69 @@
 @if (deletion.error()) {
   <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
 }
-@if (isLoading()) {
+@if (state.isLoading() && state.users().length === 0) {
   <p class="settings-table__status" role="status">Loading users…</p>
-} @else if (users().length === 0) {
-  <p class="settings-table__status">No users found.</p>
-} @else if (rowFilter.filteredRows().length === 0) {
-  <p class="settings-table__status" role="status">No users match the current filter.</p>
+} @else if (state.users().length === 0 && !state.loadError()) {
+  @if (state.isFiltered()) {
+    <p class="settings-table__status" role="status">No users match the current filter.</p>
+  } @else {
+    <p class="settings-table__status">No users found.</p>
+  }
 } @else {
-  <div class="settings-table__wrap">
-    <table dsTable role="table" aria-label="Users">
-      <thead role="rowgroup">
-        <tr role="row">
-          <th role="columnheader">Name</th>
-          <th role="columnheader">Email</th>
-          <th role="columnheader"><span class="sr-only">Actions</span></th>
-        </tr>
-      </thead>
-      <tbody role="rowgroup">
-        @for (user of rowFilter.filteredRows(); track user.id ?? user.email) {
+  @if (state.users().length > 0) {
+    <div class="settings-table__wrap">
+      <table dsTable role="table" aria-label="Users">
+        <thead role="rowgroup">
           <tr role="row">
-            <td role="cell" data-label="Name" data-title class="settings-table__name">{{ displayName(user) }}</td>
-            <td role="cell" data-label="Email" class="settings-table__secondary">
-              {{ user.email ?? user.externalId ?? '—' }}
-            </td>
-            <td role="cell" data-label="Actions" data-actions>
-              <div class="settings-table__actions">
-                @if (deletion.confirmingId() !== user.id) {
-                  <button type="button" [attr.aria-label]="'Edit ' + displayName(user)" (click)="navigateToEdit(user)">
-                    Edit
-                  </button>
-                }
-                @if (user.id) {
-                  <agentos-row-delete-action
-                    [rowKey]="user.id"
-                    [rowLabel]="displayName(user)"
-                    [state]="deletion"
-                    deleteClass="settings-table__delete"
-                    confirmLabelClass="settings-table__confirm-label"
-                    (deleteRequested)="deletion.request(user.id)"
-                    (deleteConfirmed)="confirmDelete(user)"
-                    (deleteCancelled)="deletion.cancel()"
-                  />
-                }
-              </div>
-            </td>
+            <th role="columnheader">Name</th>
+            <th role="columnheader">Email</th>
+            <th role="columnheader"><span class="sr-only">Actions</span></th>
           </tr>
-        }
-      </tbody>
-    </table>
-  </div>
+        </thead>
+        <tbody role="rowgroup">
+          @for (user of state.users(); track user.id ?? user.email) {
+            <tr role="row">
+              <td role="cell" data-label="Name" data-title class="settings-table__name">{{ displayName(user) }}</td>
+              <td role="cell" data-label="Email" class="settings-table__secondary">
+                {{ user.email ?? user.externalId ?? '—' }}
+              </td>
+              <td role="cell" data-label="Actions" data-actions>
+                <div class="settings-table__actions">
+                  @if (deletion.confirmingId() !== user.id) {
+                    <button
+                      type="button"
+                      [attr.aria-label]="'Edit ' + displayName(user)"
+                      (click)="navigateToEdit(user)"
+                    >
+                      Edit
+                    </button>
+                  }
+                  @if (user.id) {
+                    <agentos-row-delete-action
+                      [rowKey]="user.id"
+                      [rowLabel]="displayName(user)"
+                      [state]="deletion"
+                      deleteClass="settings-table__delete"
+                      confirmLabelClass="settings-table__confirm-label"
+                      (deleteRequested)="deletion.request(user.id)"
+                      (deleteConfirmed)="confirmDelete(user)"
+                      (deleteCancelled)="deletion.cancel()"
+                    />
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+  <agentos-list-footer
+    [hasMore]="state.nextCursor() !== null"
+    [loading]="state.isLoading() || state.isLoadingMore()"
+    [error]="state.loadError()"
+    [loaded]="state.users().length"
+    [total]="state.totalCount()"
+    (loadMoreRequested)="state.loadMore()"
+  />
 }

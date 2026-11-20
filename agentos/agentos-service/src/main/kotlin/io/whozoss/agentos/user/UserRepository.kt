@@ -1,6 +1,7 @@
 package io.whozoss.agentos.user
 
 import io.whozoss.agentos.entity.EntityRepository
+import io.whozoss.agentos.sdk.api.user.UsersListFilters
 
 /**
  * Repository for [User] persistence.
@@ -21,6 +22,16 @@ interface UserRepository : EntityRepository<User, String> {
     fun findByExternalId(externalId: String): User?
 
     fun findByExternalIds(externalIds: Set<String>): List<User>
+
+    /**
+     * Keyset page of the non-removed users matching [filters], sorted by external id ascending:
+     * at most [limit] users whose external id is strictly greater than [afterExternalId]
+     * (from the start when null).
+     */
+    fun findPage(filters: UsersListFilters, afterExternalId: String?, limit: Int): List<User>
+
+    /** Number of non-removed users matching [filters]. */
+    fun countMatching(filters: UsersListFilters): Long
 
     /**
      * Count the total number of non-removed users in the system.

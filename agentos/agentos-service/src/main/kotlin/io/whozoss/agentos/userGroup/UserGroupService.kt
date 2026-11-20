@@ -1,6 +1,8 @@
 package io.whozoss.agentos.userGroup
 
 import io.whozoss.agentos.entity.EntityService
+import io.whozoss.agentos.pagination.KeysetPage
+import io.whozoss.agentos.pagination.KeysetPaging
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupCreateRequest
 import io.whozoss.agentos.user.User
 import java.util.UUID
@@ -11,6 +13,12 @@ interface UserGroupService : EntityService<UserGroup, UUID> {
     fun findByIdWithDetails(id: UUID): UserGroupSearchResult?
 
     fun getMembers(userGroupId: UUID): List<UserGroupMember>
+
+    /**
+     * One page of the members of [userGroupId], sorted by external id; [limit] is 1..500 (default 100, validated at the edge) and [next]
+     * is the cursor of the previous page (see [KeysetPaging]). `totalCount` is the whole roster size.
+     */
+    fun getMembersPage(userGroupId: UUID, limit: Int?, next: String?): KeysetPage<UserGroupMember>
 
     /**
      * Returns all non-removed users who are members of any UserGroup in [namespaceId]

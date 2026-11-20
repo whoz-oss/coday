@@ -10,9 +10,17 @@
 
 export interface UserGroupUpdateRequest {
   /**
-   * Complete desired set of member external IDs holding the ADMIN role (replace semantics): members not listed are demoted to MEMBER, and an omitted or empty set demotes every current admin. Every listed id must be a member after the update.
+   * Complete desired set of member external IDs holding the ADMIN role (replace semantics): members not listed are demoted to MEMBER, and an omitted or empty set demotes every current admin. Every listed id must be a member after the update. Must stay empty when a delta field (adminExternalIdsToAdd / adminExternalIdsToRemove) is sent.
    */
   adminExternalIds: Set<string>
+  /**
+   * Delta mode: member external IDs to promote to ADMIN. Null (not sent) differs from empty: sending either delta field, even empty, selects delta mode. Must not be combined with a non-empty adminExternalIds, and every listed id must be a member after the update.
+   */
+  adminExternalIdsToAdd?: Set<string>
+  /**
+   * Delta mode: member external IDs to demote to MEMBER; a non-admin is left unchanged. Null (not sent) differs from empty: sending either delta field, even empty, selects delta mode. Must not be combined with a non-empty adminExternalIds, nor list an id also in adminExternalIdsToAdd.
+   */
+  adminExternalIdsToRemove?: Set<string>
   agentIds: Set<string>
   name: string
   userExternalIdsToAdd: Set<string>

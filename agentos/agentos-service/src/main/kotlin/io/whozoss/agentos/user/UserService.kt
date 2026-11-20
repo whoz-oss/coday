@@ -1,6 +1,9 @@
 package io.whozoss.agentos.user
 
 import io.whozoss.agentos.entity.EntityService
+import io.whozoss.agentos.pagination.KeysetPage
+import io.whozoss.agentos.pagination.KeysetPaging
+import io.whozoss.agentos.sdk.api.user.UsersListFilters
 
 /**
  * Service for managing [User] entities.
@@ -34,6 +37,12 @@ interface UserService : EntityService<User, String> {
     fun findByExternalId(externalId: String): User?
 
     fun findByExternalIds(externalIds: Set<String>): List<User>
+
+    /**
+     * One page of the non-removed users matching [filters], sorted by external id; [next] is the cursor of the
+     * previous page (see [KeysetPaging]). `totalCount` respects [filters].
+     */
+    fun findPage(filters: UsersListFilters, limit: Int?, next: String?): KeysetPage<User>
 
     /**
      * Resolve the user matching [externalId], auto-creating one on first access.
