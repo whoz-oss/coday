@@ -388,12 +388,17 @@ openApi {
     // beat application-embedded-neo4j.yml (last active profile wins over the openapi one):
     // spec generation must not fail when a locally running dev stack already binds the
     // default embedded port 7688. The driver resolves the actual port at runtime.
+    // data-dir is a command-line arg for the same reason, against the environment this time: an
+    // AGENTOS_PERSISTENCE_DATA_DIR in the shell (a machine that runs AgentOS itself has one) beats
+    // application-openapi.yml, and the fork then opens the store of that running instance and dies
+    // on its file lock, which shows only as "Connection refused" after the 60 s wait.
     customBootRun {
         args.set(
             listOf(
                 "--spring.profiles.active=openapi,embedded-neo4j",
                 "--server.port=$openApiGenPort",
                 "--agentos.persistence.embedded-bolt-port=0",
+                "--agentos.persistence.data-dir=build/openapi-neo4j-data/",
             ),
         )
     }

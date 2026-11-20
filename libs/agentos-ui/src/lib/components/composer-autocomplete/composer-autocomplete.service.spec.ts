@@ -184,6 +184,80 @@ describe('ComposerAutocompleteService', () => {
   // Slash-command pipeline
   // -------------------------------------------------------------------------
 
+  describe('/btw command', () => {
+    it('is not offered until the host enables it', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy')]))
+
+      service.onInput('/b', { set: jest.fn() })
+      tick(60)
+
+      expect(service.slashSuggestions()).toEqual([])
+    }))
+
+    it('heads the slash suggestions, with its description', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy'), makePrompt('bug-report')]))
+      service.enableBtwCommand(() => false)
+
+      service.onInput('/', { set: jest.fn() })
+      tick(60)
+
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['btw', 'deploy', 'bug-report'])
+      expect(service.slashSuggestions()[0]!.description).toBe('Ask a side question without interrupting the agent')
+    }))
+
+    it('is filtered by the prefix like any other command', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy'), makePrompt('bug-report')]))
+      service.enableBtwCommand(() => false)
+
+      service.onInput('/b', { set: jest.fn() })
+      tick(60)
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['btw', 'bug-report'])
+
+      service.onInput('/d', { set: jest.fn() })
+      tick(60)
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['deploy'])
+    }))
+
+    it('wins over a prompt of the same name', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('btw')]))
+      service.enableBtwCommand(() => false)
+
+      service.onInput('/bt', { set: jest.fn() })
+      tick(60)
+
+      expect(service.slashSuggestions()).toHaveLength(1)
+      expect(service.slashSuggestions()[0]!.description).toBe('Ask a side question without interrupting the agent')
+    }))
+
+    it('is the only command offered while the agent runs, and shows before the prompts are loaded', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy')]))
+      service.enableBtwCommand(() => true)
+
+      service.onInput('/', { set: jest.fn() })
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['btw'])
+      tick(60)
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['btw'])
+
+      service.onInput('/d', { set: jest.fn() })
+      tick(60)
+      expect(service.slashSuggestions()).toEqual([])
+    }))
+
+    it('inserts "/btw " when selected', () => {
+      const { service } = setup()
+      const inputValue = { set: jest.fn() }
+
+      service.onPromptSelected({ name: 'btw' } as Prompt, refSignal(undefined), refSignal(undefined), inputValue)
+
+      expect(inputValue.set).toHaveBeenCalledWith('/btw ')
+    })
+  })
+
   describe('/effort command', () => {
     it('is not offered until the host enables it', fakeAsync(() => {
       const { service } = setup()
