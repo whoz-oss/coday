@@ -8,13 +8,10 @@
   }
 </p>
 @if (showButton()) {
-  <button
-    #button
-    dsButton
-    type="button"
-    [attr.aria-disabled]="loading()"
-    (click)="loading() || loadMoreRequested.emit()"
-  >
+  <button #button dsButton type="button" [disabled]="loading()" (click)="loadMoreRequested.emit()">
+    <mat-icon aria-hidden="true" [class.list-footer__spin]="loading()">{{
+      loading() || error() ? 'refresh' : 'expand_more'
+    }}</mat-icon>
     {{ loading() ? 'Loading…' : error() ? 'Retry' : 'Load more' }}
   </button>
 }

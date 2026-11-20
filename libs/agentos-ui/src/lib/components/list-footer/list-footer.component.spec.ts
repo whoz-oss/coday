@@ -5,6 +5,8 @@ describe('ListFooterComponent', () => {
   let fixture: ComponentFixture<ListFooterComponent>
   const el = () => fixture.nativeElement as HTMLElement
   const button = () => el().querySelector<HTMLButtonElement>('button')
+  const icon = () => button()!.querySelector<HTMLElement>('mat-icon')!
+  const label = () => button()!.textContent!.replace(icon().textContent!, '').trim()
   const status = () => el().querySelector<HTMLElement>('[role="status"]')!
 
   function render(inputs: Partial<Record<'hasMore' | 'loading' | 'error' | 'loaded' | 'total', boolean | number>>) {
@@ -23,20 +25,25 @@ describe('ListFooterComponent', () => {
     button()!.click()
 
     expect(button()!.classList).toContain('ds-button')
-    expect(button()!.textContent?.trim()).toBe('Load more')
+    expect(label()).toBe('Load more')
+    expect(icon().textContent).toBe('expand_more')
+    expect(icon().getAttribute('aria-hidden')).toBe('true')
+    expect(icon().classList).not.toContain('list-footer__spin')
+    expect(button()!.disabled).toBe(false)
     expect(requested).toHaveBeenCalledTimes(1)
   })
 
-  it('ignores clicks while loading, keeping the button focusable', () => {
+  it('disables the button while loading', () => {
     render({ loading: true })
     const requested = jest.fn()
     fixture.componentInstance.loadMoreRequested.subscribe(requested)
     button()!.click()
 
     expect(requested).not.toHaveBeenCalled()
-    expect(button()!.getAttribute('aria-disabled')).toBe('true')
-    expect(button()!.disabled).toBe(false)
-    expect(button()!.textContent?.trim()).toBe('Loading…')
+    expect(button()!.disabled).toBe(true)
+    expect(label()).toBe('Loading…')
+    expect(icon().textContent).toBe('refresh')
+    expect(icon().classList).toContain('list-footer__spin')
     expect(status().textContent).toContain('Loading…')
   })
 
@@ -48,7 +55,9 @@ describe('ListFooterComponent', () => {
 
     expect(status().textContent).toContain('Loading failed.')
     expect(status().querySelector('.settings-table__error')).not.toBeNull()
-    expect(button()!.textContent?.trim()).toBe('Retry')
+    expect(label()).toBe('Retry')
+    expect(icon().textContent).toBe('refresh')
+    expect(icon().classList).not.toContain('list-footer__spin')
   })
 
   it.each([
@@ -70,6 +79,18 @@ describe('ListFooterComponent', () => {
     fixture.detectChanges()
 
     expect(button()).toBeNull()
+    expect(document.activeElement).toBe(status())
+  })
+
+  it('moves the focus to the status line when the focused button gets disabled', () => {
+    render({})
+    button()!.focus()
+    expect(document.activeElement).toBe(button())
+
+    fixture.componentRef.setInput('loading', true)
+    fixture.detectChanges()
+
+    expect(button()!.disabled).toBe(true)
     expect(document.activeElement).toBe(status())
   })
 

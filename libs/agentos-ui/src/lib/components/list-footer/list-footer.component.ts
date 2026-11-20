@@ -8,19 +8,21 @@ import {
   output,
   viewChild,
 } from '@angular/core'
+import { MatIcon } from '@angular/material/icon'
 import { ButtonDirective } from '@whoz-oss/design-system'
 
 /**
  * ListFooterComponent — "Load more" control shared by the cursor-paged lists: a count / loading /
  * error status line and the button. The status line is always rendered (it is a live region); the
  * button is hidden during the initial load and when there is nothing more to load, and a failed
- * initial page still shows it as a retry. A button that had focus when it disappears hands the
+ * initial page still shows it as a retry. A button that had focus when it disappears or is disabled hands the
  * focus to the status line, so keyboard users do not fall back to the page start.
  */
 @Component({
   selector: 'agentos-list-footer',
-  imports: [ButtonDirective],
+  imports: [ButtonDirective, MatIcon],
   templateUrl: './list-footer.component.html',
+  styleUrl: './list-footer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ListFooterComponent {
@@ -43,7 +45,7 @@ export class ListFooterComponent {
   constructor() {
     // Runs before the template refresh, while the button is still in the DOM.
     effect(() => {
-      if (this.showButton()) return
+      if (this.showButton() && !this.loading()) return
       const button = this.button()?.nativeElement
       if (button?.matches(':focus')) this.status().nativeElement.focus()
     })
