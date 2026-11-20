@@ -14,20 +14,17 @@ export const CODE_VERIFICATION_PRESETS: readonly CodeVerificationPreset[] = [
   {
     id: 'build',
     label: 'Build',
-    hint:
-      'Repository-defined verification. The target repository must declare build in factory/verification.json (Coday: build, lint, tests and OpenAPI).',
+    hint: 'Repository-defined verification. The target repository must declare build in factory/verification.json (Coday: build, lint, tests and OpenAPI).',
   },
   {
     id: 'frontend-build',
     label: 'Frontend build',
-    hint:
-      'Factory Nx development build for server-configured buildHosts (default: aphrodite, admin, agentic-studio, copilot-chat). It needs specific server/project configuration and is not ready by default for Coday; use Build.',
+    hint: 'Factory Nx development build for server-configured buildHosts (default: aphrodite, admin, agentic-studio, copilot-chat). It needs specific server/project configuration and is not ready by default for Coday; use Build.',
   },
   {
     id: 'frontend-tests',
     label: 'Frontend tests',
-    hint:
-      'Factory-owned Nx frontend-test verifier. It needs PASS-agent ancestor claims.modifiedFiles plus specific server/project configuration and is not ready by default for Coday; use Build.',
+    hint: 'Factory-owned Nx frontend-test verifier. It needs PASS-agent ancestor claims.modifiedFiles plus specific server/project configuration and is not ready by default for Coday; use Build.',
   },
 ] as const
 

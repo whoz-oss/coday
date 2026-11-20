@@ -79,6 +79,7 @@ import { parseBtwCommand } from '../composer-autocomplete/btw-command'
 import { SideQuestionStateService } from '../../services/side-question-state.service'
 import { CaseSettingsComponent } from '../case-settings/case-settings.component'
 import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
+import { stripSettingsCommand } from '../composer-autocomplete/settings-command'
 import { AiModelStateService } from '../../services/ai-model-state.service'
 import { chatModelOptions } from '../../services/chat-model.utils'
 import { ModelOption } from '../agent-config-form/model-options'
@@ -1645,16 +1646,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return !!this.activeCase() && !this.isTerminal() && !this.isRunning()
   }
 
-  /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
+  /** Apply the level picked after /effort (or with the chip), and remove the command, only it, from the composer. */
   protected onEffortSelected(option: EffortOption): void {
     this.autocomplete.effortSuggestions.set([])
     if (!this.canChangeEffort()) return
-    this.inputValue.set('')
-    const input = this.composerInput()?.nativeElement
-    if (input) {
-      input.value = ''
-      this.resizeComposer(input)
-    }
+    this.removeSettingsCommand()
     this.caseState
       .setReasoningEffort(this.caseId, option.effort)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -1663,22 +1659,33 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       })
   }
 
-  /** Apply the model picked after /model (null = back to each agent's own) and clear the command from the composer. */
+  /** Apply the model picked after /model (null = back to each agent's own), and remove the command from the composer. */
   protected onModelSelected(choice: ModelChoice): void {
     this.autocomplete.modelSuggestions.set([])
     if (!this.canChangeEffort()) return
-    this.inputValue.set('')
-    const input = this.composerInput()?.nativeElement
-    if (input) {
-      input.value = ''
-      this.resizeComposer(input)
-    }
+    this.removeSettingsCommand()
     this.caseState
       .setModel(this.caseId, choice.model)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: (err) => console.error('[CaseChat] Failed to set the AI model', err),
       })
+  }
+
+  /**
+   * A choice made from the chip leaves the composer alone: its text, its cursor, the attachments. Only a typed
+   * `/model` or `/effort` command is removed, and the textarea is touched only when the text really changes.
+   */
+  private removeSettingsCommand(): void {
+    const current = this.inputValue()
+    const next = stripSettingsCommand(current)
+    if (next === current) return
+    this.inputValue.set(next)
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = next
+      this.resizeComposer(input)
+    }
   }
 
   protected closeAtAutocomplete(): void {
