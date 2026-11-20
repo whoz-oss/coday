@@ -1160,7 +1160,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.wizzEnabled.set(true)
     // The live observer filters its frames without entering Angular; only a completion schedules DOM work.
     this.zone.runOutsideAngular(() =>
-      this.wizzObserver.start(this.config.basePath, this.caseId, () => this.onWizzAnswerCompleted())
+      this.wizzObserver.start(this.config.basePath!!, this.caseId, () => this.onWizzAnswerCompleted())
     )
   }
 
