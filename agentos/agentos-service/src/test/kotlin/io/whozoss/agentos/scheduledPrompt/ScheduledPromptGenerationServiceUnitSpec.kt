@@ -518,7 +518,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
             coVerify(exactly = 0) { structuredLlmClient.call(any(), any(), any(), any()) }
         }
 
-        "the base's resolveTargets is given to the planner as the recipient of each case, only when usable" {
+        "the base search params are shown as is to the planner, only when there are some" {
             suspend fun plannerMessageFor(params: String?): String {
                 val message = slot<String>()
                 coEvery { structuredLlmClient.call(any(), any(), any(), capture(message)) } returns planAnswer()
@@ -527,17 +527,14 @@ class ScheduledPromptGenerationServiceUnitSpec :
                 return message.captured
             }
 
-            val line = "Recipient of each case (its relation to the entity of the case):"
-            plannerMessageFor("""{"resolveTargets": ["MANAGER"]}""") shouldContain "$line MANAGER"
-            plannerMessageFor("""{"resolveTargets": ["OWNER", "MANAGER", "OWNER"]}""") shouldContain "$line OWNER, MANAGER"
+            // any key, whatever the search tool: the service does not interpret them
+            plannerMessageFor("""{"recipient": ["MANAGER"], "scope": "x"}""") shouldContain
+                "Base search parameters (they may say who each case is opened with):\n{\"recipient\":[\"MANAGER\"],\"scope\":\"x\"}"
             forAll(
                 row(null),
-                row("""{"agentConfigId": "x"}"""),
-                row("""{"resolveTargets": []}"""),
-                row("""{"resolveTargets": "MANAGER"}"""),
-                row("""{"resolveTargets": [1]}"""),
+                row("{}"),
             ) { params ->
-                plannerMessageFor(params) shouldNotContain "Recipient of each case"
+                plannerMessageFor(params) shouldNotContain "Base search parameters"
             }
         }
 
