@@ -519,7 +519,7 @@ class ScheduledPromptGenerationServiceUnitSpec :
         }
 
         "the base's resolveTargets is given to the planner as the recipient of each case, only when usable" {
-            fun plannerMessageFor(params: String?): String {
+            suspend fun plannerMessageFor(params: String?): String {
                 val message = slot<String>()
                 coEvery { structuredLlmClient.call(any(), any(), any(), capture(message)) } returns planAnswer()
                 val baseConfig = params?.let { json("""{"search": {"params": $it}}""") }
