@@ -1,4 +1,4 @@
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
+import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser'
 
 /**
  * Lets an HTML file be used as the `srcdoc` of a sandboxed iframe.
@@ -19,4 +19,19 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
  */
 export function trustSandboxedSrcdoc(sanitizer: DomSanitizer, raw: string): SafeHtml {
   return sanitizer.bypassSecurityTrustHtml(raw)
+}
+
+/**
+ * Lets the object URL of a PDF be the `src` of an iframe, which Angular otherwise refuses (resource URL context).
+ *
+ * This iframe carries NO `sandbox` attribute: browsers do not run their built-in PDF viewer inside a sandboxed frame
+ * (it stays blank). That is acceptable because what loads is a `blob:` URL created by this app from the bytes of the
+ * download endpoint, typed `application/pdf` (see `ensurePdfBlob`), and rendered by the browser's PDF viewer, never
+ * parsed as HTML. Hence the guard: anything that is not a `blob:` URL gets no trusted URL (null, so the frame stays
+ * empty), and this must never be used for HTML
+ * (an HTML blob URL would run with the origin of the app: HTML goes through `trustSandboxedSrcdoc` only).
+ */
+export function trustPdfBlobUrl(sanitizer: DomSanitizer, url: string | null): SafeResourceUrl | null {
+  if (!url?.startsWith('blob:')) return null
+  return sanitizer.bypassSecurityTrustResourceUrl(url)
 }

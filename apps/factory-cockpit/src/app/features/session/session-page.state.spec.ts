@@ -58,6 +58,37 @@ describe('SessionPageState', () => {
     expect(state.caseLink('case-1')).toContain('ns=namespace-1')
   })
 
+  it('keeps a projected non-agent execution scoped to its own evidence', () => {
+    const executionEvent = { id: 'execution-event' }
+    sessions.update((current) => new Map(current).set('run-1', {
+      phase: { stepId: 'current' }, events: [], attempts: [], lanes: [],
+      phaseByExecutionId: new Map([['execution-1', { stepId: 'build', name: 'Build execution' }]]),
+      eventsByExecutionId: new Map([['execution-1', [executionEvent]]]),
+    }))
+    const state = TestBed.inject(SessionPageState)
+    state.selectSession('run-1')
+    state.selectBlock({ label: 'Build execution', stepId: 'build', executionId: 'execution-1' } as any)
+    expect(state.selectedPhase()).toEqual({ stepId: 'build', name: 'Build execution' })
+    expect(state.selectedEvents()).toEqual([executionEvent])
+  })
+
+  it('does not preserve a vanished execution merely because its linked attempt remains', () => {
+    const session: any = {
+      phase: { stepId: 'build' }, events: [], attempts: [{ attemptId: 'attempt-1' }],
+      phaseByExecutionId: new Map([['execution-1', { stepId: 'build' }]]),
+      eventsByExecutionId: new Map([['execution-1', []]]),
+      lanes: [{ blocks: [{ label: 'Execution', stepId: 'build', executionId: 'execution-1', attemptId: 'attempt-1' }] }],
+    }
+    sessions.update((current) => new Map(current).set('run-1', session))
+    const state = TestBed.inject(SessionPageState)
+    state.selectSession('run-1')
+    state.selectBlock(session.lanes[0].blocks[0])
+    session.lanes[0].blocks = [{ label: 'Later attempt', stepId: 'build', attemptId: 'attempt-1' }]
+    sessions.update((current) => new Map(current).set('run-1', session))
+    state.reconcileSelection()
+    expect(state.selection()?.executionId).toBeUndefined()
+  })
+
   it('shows request detail without leaking the active agent phase or events', () => {
     const launchRequest = {
       name: 'Run title',

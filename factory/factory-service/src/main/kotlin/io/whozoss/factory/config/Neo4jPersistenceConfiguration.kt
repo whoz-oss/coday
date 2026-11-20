@@ -12,6 +12,7 @@ import org.springframework.data.neo4j.core.convert.Neo4jConversions
 import org.springframework.data.neo4j.core.mapping.Neo4jMappingContext
 import org.springframework.data.neo4j.core.transaction.Neo4jTransactionManager
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
+import org.springframework.transaction.support.AbstractPlatformTransactionManager
 
 /**
  * Enables the Spring Data Neo4j repositories backing the migrated aggregates and
@@ -87,35 +88,32 @@ class Neo4jPersistenceConfiguration {
         neo4jMappingContext: Neo4jMappingContext,
     ): Neo4jTemplate = Neo4jTemplate(neo4jClient, neo4jMappingContext)
 
-  /**
-   * Synchronize only actual transactions (SYNCHRONIZATION_ON_ACTUAL_TRANSACTION).
-   * Spring's default ALWAYS also activates synchronization for a NOT_SUPPORTED
-   * scope without a caller transaction. SDN can then attach a native transaction
-   * to that empty synchronization and retain it across external execution.
-   * Actual short transactions retain their normal commit/rollback callbacks.
-   *
-   * This does not fix SDN's NOT_SUPPORTED suspension/resumption under an active
-   * caller transaction. Session orchestration must start after caller cleanup
-   * or in an independent execution context, not inline in afterCommit.
-   */
-  @Bean
-  @Primary
-  fun transactionManager(
-    driver: Driver,
-    databaseSelectionProvider: ObjectProvider<DatabaseSelectionProvider>,
-  ): Neo4jTransactionManager =
-    Neo4jTransactionManager
-      .with(driver)
-      .withDatabaseSelectionProvider(resolve(databaseSelectionProvider))
-      .build()
-      .apply {
-        // NOT_SUPPORTED must mean no native transaction either. With ALWAYS (Spring's
-        // default), Neo4jClient creates a synchronized native transaction even though
-        // isActualTransactionActive() is false, retaining it across external execution.
-        setTransactionSynchronization(
-          org.springframework.transaction.support.AbstractPlatformTransactionManager.SYNCHRONIZATION_ON_ACTUAL_TRANSACTION
-        )
-      }
+    /**
+     * Synchronize only actual transactions (SYNCHRONIZATION_ON_ACTUAL_TRANSACTION).
+     * Spring's default ALWAYS also activates synchronization for a NOT_SUPPORTED
+     * scope without a caller transaction. SDN can then attach a native transaction
+     * to that empty synchronization and retain it across external execution.
+     * Actual short transactions retain their normal commit/rollback callbacks.
+     *
+     * This does not fix SDN's NOT_SUPPORTED suspension/resumption under an active
+     * caller transaction. Session orchestration must start after caller cleanup
+     * or in an independent execution context, not inline in afterCommit.
+     */
+    @Bean
+    @Primary
+    fun transactionManager(
+        driver: Driver,
+        databaseSelectionProvider: ObjectProvider<DatabaseSelectionProvider>,
+    ): Neo4jTransactionManager =
+        Neo4jTransactionManager
+            .with(driver)
+            .withDatabaseSelectionProvider(resolve(databaseSelectionProvider))
+            .build()
+            .apply {
+                // Keep the same database selection as Neo4jClient, without retaining a
+                // synchronized native transaction across NOT_SUPPORTED external execution.
+                setTransactionSynchronization(AbstractPlatformTransactionManager.SYNCHRONIZATION_ON_ACTUAL_TRANSACTION)
+            }
 
     /** Spring Boot's provider (`spring.data.neo4j.database`), or the default database when absent. */
     private fun resolve(provider: ObjectProvider<DatabaseSelectionProvider>): DatabaseSelectionProvider =

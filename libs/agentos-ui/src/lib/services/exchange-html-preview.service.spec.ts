@@ -52,4 +52,39 @@ describe('ExchangeHtmlPreviewService', () => {
     const blob = create.mock.calls[0]![0] as Blob
     expect(await readBlob(blob)).toBe(buildSandboxedHtmlDocument('<p>x</p>', 'a.html'))
   })
+
+  describe('openBlobInNewTab', () => {
+    it('opens a PDF from its own object URL, noopener, and revokes that URL later', () => {
+      jest.useFakeTimers()
+      const create = jest.fn().mockReturnValue('blob:http://localhost/pdf')
+      const revoke = jest.fn()
+      URL.createObjectURL = create
+      URL.revokeObjectURL = revoke
+      const open = jest.spyOn(window, 'open').mockReturnValue(null)
+      const pdf = new Blob(['%PDF'], { type: 'application/pdf' })
+
+      TestBed.inject(ExchangeHtmlPreviewService).openBlobInNewTab(pdf)
+
+      expect(create).toHaveBeenCalledWith(pdf)
+      expect(open).toHaveBeenCalledWith('blob:http://localhost/pdf', '_blank', 'noopener')
+      expect(revoke).not.toHaveBeenCalled()
+      jest.advanceTimersByTime(HTML_PREVIEW_URL_TTL_MS)
+      expect(revoke).toHaveBeenCalledWith('blob:http://localhost/pdf')
+    })
+
+    it.each(['text/html', 'image/svg+xml', 'application/octet-stream', ''])(
+      'refuses a blob typed %j: it would run with the origin of the app',
+      (type) => {
+        const create = jest.fn()
+        URL.createObjectURL = create
+        URL.revokeObjectURL = jest.fn()
+        const open = jest.spyOn(window, 'open').mockReturnValue(null)
+
+        TestBed.inject(ExchangeHtmlPreviewService).openBlobInNewTab(new Blob(['<script>1</script>'], { type }))
+
+        expect(create).not.toHaveBeenCalled()
+        expect(open).not.toHaveBeenCalled()
+      }
+    )
+  })
 })

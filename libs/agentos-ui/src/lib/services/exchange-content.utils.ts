@@ -5,7 +5,10 @@
  * No Angular, no HTTP — safe to import anywhere in the exchange UI.
  */
 
-export type ContentFormat = 'markdown' | 'json' | 'yaml' | 'text' | 'html' | 'image'
+export type ContentFormat = 'markdown' | 'json' | 'yaml' | 'text' | 'html' | 'image' | 'pdf'
+
+/** MIME type a PDF blob must carry for the browser to render it instead of downloading it. */
+export const PDF_MIME_TYPE = 'application/pdf'
 
 /** Maximum size (bytes) a file may have to be previewed inline. 20 MB, per legacy. */
 export const MAX_VIEWABLE_SIZE = 20 * 1024 * 1024
@@ -117,9 +120,21 @@ export function detectFormat(filename: string): ContentFormat {
     case 'html':
     case 'htm':
       return 'html'
+    case 'pdf':
+      return 'pdf'
     default:
       return 'text'
   }
+}
+
+/** True for PDF files, previewed by the browser's own viewer from an object URL (like images). */
+export function isPdfFile(filename: string): boolean {
+  return extensionOf(filename) === 'pdf'
+}
+
+/** True for the files previewed from the bytes of the download endpoint: images and PDFs. */
+export function isBlobPreviewFile(filename: string): boolean {
+  return isImageFile(filename) || isPdfFile(filename)
 }
 
 /** True for the image extensions the preview renders natively. */
@@ -141,6 +156,19 @@ export function ensureImageBlob(blob: Blob, filename: string): Blob {
   return typeOk ? blob : new Blob([blob], { type: expected })
 }
 
+/**
+ * Make sure a downloaded PDF blob carries `application/pdf`: with the generic type some servers answer with
+ * (octet-stream), the browser would download the file instead of rendering it in an iframe.
+ */
+export function ensurePdfBlob(blob: Blob): Blob {
+  return blob.type === PDF_MIME_TYPE ? blob : new Blob([blob], { type: PDF_MIME_TYPE })
+}
+
+/** The blob of a previewed image or PDF, with the MIME type its extension calls for. */
+export function ensureTypedBlob(blob: Blob, filename: string): Blob {
+  return isPdfFile(filename) ? ensurePdfBlob(blob) : ensureImageBlob(blob, filename)
+}
+
 /** True when the format (by extension) can be shown as text — binary types are excluded. */
 export function isFormatViewable(filename: string): boolean {
   return !BINARY_EXTENSIONS.includes(extensionOf(filename))
@@ -152,14 +180,14 @@ export function isViewable(fileSize: number): boolean {
 }
 
 /**
- * A file can be previewed when its format is viewable (text or image) AND it is within the size limit.
+ * A file can be previewed when its format is viewable (text, image or PDF) AND it is within the size limit.
  *
  * Accepts either shape of entry: the manifest calls the leaf `filename`, a directory listing calls
  * it `name`. A directory reports no size, and is never previewable.
  */
 export function canViewFile(file: { filename?: string; name?: string; size?: number }): boolean {
   const leaf = file.filename ?? file.name ?? ''
-  return file.size !== undefined && (isImageFile(leaf) || isFormatViewable(leaf)) && isViewable(file.size)
+  return file.size !== undefined && (isBlobPreviewFile(leaf) || isFormatViewable(leaf)) && isViewable(file.size)
 }
 
 /**

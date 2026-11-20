@@ -90,6 +90,8 @@ class CapabilityExecutionRoutingRecoveryTest {
     private fun assertLateResolution(decision: Boolean) {
         val scope = TenantScope("org", "ws")
         val workflows = mockk<WorkflowRepository>()
+        // Legacy workflow: no outcome-transition execution ledger.
+        every { workflows.findStepStates(scope, "ns", "wf") } returns emptyList()
         val attempts = mockk<DurableAgentAttemptService>()
         val results = mockk<AgentStepResultService>()
         val evidence = mockk<WorkflowEvidenceRepository>(relaxed = true)
@@ -134,6 +136,8 @@ class CapabilityExecutionRoutingRecoveryTest {
     private fun assertRecoveryWithoutSubmissionService(manager: PlatformTransactionManager? = null, routing: Boolean = true) {
         val scope = TenantScope("org", "ws")
         val workflows = mockk<WorkflowRepository>()
+        // Legacy workflow: no outcome-transition execution ledger.
+        every { workflows.findStepStates(scope, "ns", "wf") } returns emptyList()
         val attempts = mockk<DurableAgentAttemptService>()
         val evidence = mockk<WorkflowEvidenceRepository>(relaxed = true)
         val attempt = DurableAgentAttempt(

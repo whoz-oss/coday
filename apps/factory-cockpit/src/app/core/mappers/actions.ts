@@ -118,6 +118,8 @@ export function extractInteractions(payload: unknown): HumanInteraction[] {
     if (recipientRole) interaction.recipientRole = recipientRole
     const namespaceId = getString(obj, 'namespaceId') ?? getString(payloadObj, 'namespaceId')
     if (namespaceId) interaction.namespaceId = namespaceId
+    const executionId = getString(obj, 'executionId') ?? getString(payloadObj, 'executionId')
+    if (executionId) interaction.executionId = executionId
     const createdAt = getString(obj, 'createdAt') ?? getString(payloadObj, 'createdAt')
     if (createdAt) interaction.createdAt = createdAt
     return interaction
@@ -173,6 +175,12 @@ export function extractAttempts(payload: unknown): AgentAttempt[] {
     if (waitingDurationMs !== undefined) attempt.waitingDurationMs = waitingDurationMs
     const waitingSince = getString(obj, 'waitingSince')
     if (waitingSince) attempt.waitingSince = waitingSince
+    const correctionCycleId = getString(obj, 'correctionCycleId')
+    if (correctionCycleId) attempt.correctionCycleId = correctionCycleId
+    const correctionCycleNumber = getNumber(obj, 'correctionCycleNumber')
+    if (correctionCycleNumber !== undefined) attempt.correctionCycleNumber = correctionCycleNumber
+    const triggeringExecutionId = getString(obj, 'triggeringExecutionId')
+    if (triggeringExecutionId) attempt.triggeringExecutionId = triggeringExecutionId
     return attempt
   })
 }

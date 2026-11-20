@@ -19,6 +19,9 @@ import org.springframework.boot.autoconfigure.data.neo4j.Neo4jDataAutoConfigurat
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.data.neo4j.core.DatabaseSelection
 import org.springframework.data.neo4j.core.DatabaseSelectionProvider
+import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.support.AbstractPlatformTransactionManager
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
@@ -106,6 +109,24 @@ class Neo4jDatabaseSelectionTest {
 
         assertThat(sessionConfigs).isNotEmpty
         assertThat(sessionConfigs).allSatisfy { assertThat(it.database()).isEmpty }
+    }
+
+    @Test
+    fun `configured and default database managers synchronize only actual transactions`() {
+        val configuration = Neo4jPersistenceConfiguration()
+        val named = DatabaseSelectionProvider { DatabaseSelection.byName("foo") }
+        for (provider in listOf(named, null)) {
+            val manager = configuration.transactionManager(driver, providerOf(provider))
+            assertThat(manager.transactionSynchronization)
+                .isEqualTo(AbstractPlatformTransactionManager.SYNCHRONIZATION_ON_ACTUAL_TRANSACTION)
+
+            TransactionTemplate(manager).apply {
+                propagationBehavior = TransactionDefinition.PROPAGATION_NOT_SUPPORTED
+            }.execute {
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse()
+                assertThat(TransactionSynchronizationManager.isSynchronizationActive()).isFalse()
+            }
+        }
     }
 
     private fun providerOf(provider: DatabaseSelectionProvider?): ObjectProvider<DatabaseSelectionProvider> {

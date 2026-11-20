@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core'
-import { buildSandboxedHtmlDocument } from './exchange-content.utils'
+import { buildSandboxedHtmlDocument, PDF_MIME_TYPE } from './exchange-content.utils'
 
 /** How long the blob URL of a wrapper document lives: revoking too early can break the load of the new tab. */
 export const HTML_PREVIEW_URL_TTL_MS = 60_000
@@ -20,6 +20,20 @@ export class ExchangeHtmlPreviewService {
   openInNewTab(content: string, filename: string): void {
     const html = buildSandboxedHtmlDocument(content, filename)
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+    window.open(url, '_blank', 'noopener')
+    setTimeout(() => URL.revokeObjectURL(url), HTML_PREVIEW_URL_TTL_MS)
+  }
+
+  /**
+   * Opens a PDF in a new tab from a dedicated object URL (the one of the preview is owned, and revoked, by the shell).
+   * Same rules as above: synchronous in the click handler, URL revoked after a delay.
+   *
+   * Only `application/pdf` is accepted: the tab renders the blob straight in the browser's PDF viewer, which is
+   * only safe for a PDF. Any other type (HTML in particular) would run with the origin of the app, and is refused.
+   */
+  openBlobInNewTab(blob: Blob): void {
+    if (blob.type !== PDF_MIME_TYPE) return
+    const url = URL.createObjectURL(blob)
     window.open(url, '_blank', 'noopener')
     setTimeout(() => URL.revokeObjectURL(url), HTML_PREVIEW_URL_TTL_MS)
   }
