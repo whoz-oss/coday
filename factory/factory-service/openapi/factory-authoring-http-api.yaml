@@ -70,6 +70,46 @@ components:
           schema:
             $ref: '#/components/schemas/WorkflowDefinition'
   schemas:
+    OutcomeTransitions:
+      type: object
+      additionalProperties: false
+      description: >-
+        Optional definition-owned routing. Omission preserves legacy behavior and hashes.
+        PASS activate names a direct nonconditional successor but retains every DAG activation and AND prerequisite;
+        it is initially declarative/redundant, not an exclusive branch or jump.
+        FAIL return requires a finalized accepted agent FAIL, never runtime failure, code refusal, timeout,
+        NEEDS_RESEARCH or human rejection. Target is self or ancestor; replay invalidates target and all descendants.
+        Partial decision regions, overlapping distinct regions and branch-initialization replay are rejected.
+        Budget exhaustion waits for human intervention; further work requires an explicitly authorized successor run.
+        Runtime support is standalone only; parent-Run fragments declaring this field are refused at initialization.
+      properties:
+        pass:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [action]
+              properties:
+                action: { type: string, enum: [continue] }
+            - type: object
+              additionalProperties: false
+              required: [action, target]
+              properties:
+                action: { type: string, enum: [activate] }
+                target: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+        fail:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [action]
+              properties:
+                action: { type: string, enum: [block] }
+            - type: object
+              additionalProperties: false
+              required: [action, target]
+              properties:
+                action: { type: string, enum: [return] }
+                target: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+                maxCycles: { type: integer, minimum: 1, maximum: 10, default: 2 }
     WorkflowDefinition:
       type: object
       additionalProperties: false
@@ -140,6 +180,8 @@ components:
                 properties:
                   name: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
                   target: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+        outcomeTransitions:
+          $ref: '#/components/schemas/OutcomeTransitions'
         join:
           type: string
           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'

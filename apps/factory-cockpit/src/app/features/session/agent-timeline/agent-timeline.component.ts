@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core'
 import { MatIconModule } from '@angular/material/icon'
 import { MatTooltipModule } from '@angular/material/tooltip'
-import { TimelineBlock, TimelineLane } from '../../../core/models'
+import { BlockSelection, TimelineBlock, TimelineLane } from '../../../core/models'
 import { DurationPipe } from '../../../shared/pipes/format.pipes'
 
 /** Agent timeline with one lane per actor (human, workspace, agents). */
@@ -20,7 +20,8 @@ export class AgentTimelineComponent {
   /** Canonical ISO origin shared with the lane mapper. */
   readonly timelineOriginAt = input<string>()
   readonly tickEverySec = input(120)
-  readonly selected = input<string>()
+  /** Exact timeline selection: attempt/execution wins over stable logical step. */
+  readonly selected = input<BlockSelection | null>(null)
   readonly blockSelect = output<TimelineBlock>()
 
   /** Local wall clock; read by effectiveNowSec so signal writes refresh OnPush views. */
@@ -48,7 +49,10 @@ export class AgentTimelineComponent {
   /** Visible execution lanes, with any running block stretched to the effective now. */
   protected readonly effectiveLanes = computed(() => {
     const now = this.effectiveNowSec()
-    const isVisible = (block: TimelineBlock): boolean => block.status !== 'pending' && block.status !== 'ready'
+    // Ordinary planned steps remain absent. A durable outcome execution is a
+    // real historical/current generation even before it starts, so keep it selectable.
+    const isVisible = (block: TimelineBlock): boolean =>
+      block.status !== 'pending' && block.status !== 'ready' || block.executionId !== undefined || block.attemptId !== undefined
     const extend = (block: TimelineBlock): TimelineBlock => {
       if (block.status !== 'running' || now <= block.endSec) return block
       const deltaSec = now - block.endSec
@@ -89,7 +93,9 @@ export class AgentTimelineComponent {
   }
 
   protected trackBlock(block: TimelineBlock): string {
-    return block.attemptId ?? block.stepId ?? block.label
+    // The durable outcome execution is the unique history unit. An attempt is
+    // subordinate metadata and must not collapse two projected executions.
+    return block.executionId ?? block.attemptId ?? block.stepId ?? block.label
   }
 
   protected iconFor(lane: TimelineLane): string {
@@ -147,16 +153,20 @@ export class AgentTimelineComponent {
     if (block.attemptNumber !== undefined) parts.push(`attempt #${block.attemptNumber}`)
     if (block.caseId) parts.push(`case: ${block.caseId}`)
     if (block.failureCode) parts.push(`failure: ${block.failureCode}`)
+    if (block.cycleNumber !== undefined) parts.push(`correction cycle ${block.cycleNumber}`)
+    if (block.triggeringExecutionId) parts.push(`triggered by execution: ${block.triggeringExecutionId}`)
     return parts.join(' \u00b7 ')
   }
 
-  /**
-   * Whether a block is currently selected. Selection is keyed on `stepId`
-   * (stable across SSE refreshes and attempt retries) with a fallback to label.
-   */
+  /** Exact attempt/execution highlighting prevents a historical click from selecting every retry bar. */
   protected isSelected(block: TimelineBlock): boolean {
-    const key = this.selected()
-    if (!key) return false
-    return (block.stepId ?? block.label) === key
+    const selection = this.selected()
+    if (!selection) return false
+    if (selection.kind === 'launch_request') return block.kind === 'launch_request'
+    // Outcome executions are the authoritative generation identity; an attempt
+    // is a linked agent detail, not a reason to broaden this highlight.
+    if (selection.executionId) return block.executionId === selection.executionId
+    if (selection.attemptId) return block.attemptId === selection.attemptId
+    return (block.stepId ?? block.label) === selection.stepId
   }
 }
