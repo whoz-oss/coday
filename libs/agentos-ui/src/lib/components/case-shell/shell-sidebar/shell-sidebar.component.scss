@@ -344,6 +344,12 @@
     flex-shrink: 0;
   }
 
+  // ── Mine / All cases switch (namespace admins, when the namespace enables it) ──────────
+  &__list-mode {
+    padding: 8px 12px 0;
+    flex-shrink: 0;
+  }
+
   // ── Case list scroll area ──────────────────────────────────────────────────────────────
   &__cases-scroll {
     flex: 1;

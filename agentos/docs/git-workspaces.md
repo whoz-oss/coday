@@ -102,6 +102,8 @@ Only HTTPS remotes are allowed by default. Private network remotes (a self-hoste
 
 The setup command runs with a cleared environment, so service secrets are not readable from it. Anyone able to push a branch can still run code through dependency lifecycle scripts: prefer a command that disables them, such as `npm ci --ignore-scripts` or `pnpm install --ignore-scripts`.
 
+When the setup fails or times out, the service logs at ERROR the command, the exit code and the full stderr and stdout, with common credential shapes (URL userinfo, bearer tokens, GitHub/npm/GitLab tokens, `_authToken`/`password`/`token` values) redacted; the public failure reason stays generic. Per stream, at most `AGENTOS_GIT_MAX_OUTPUT_CHARS` characters (100,000 by default) are kept, from the end, so the final error is always included and the log says when the beginning was dropped. Raise that setting for a very verbose setup.
+
 Workspace-backed execution is single-instance **by construction**, not just by configuration.
 `WorkspaceLifecycleLocks` is a JVM singleton (`object`), and the admission model (`deferredRuns`,
 `executionJobs`, `whenAvailable` callbacks) is entirely in-process. Horizontal scaling would

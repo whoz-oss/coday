@@ -424,7 +424,7 @@ class WorkflowResearchResumptionTest {
     fun `the action is fenced on the instance revision and the blocker is distinct from UNKNOWN_RUNTIME`() {
         stubActions(instance(revision = 7), listOf(predecessor))
 
-        val response = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val response = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = "reader-1")
 
         val action = response.allowedActions.single { it.type == WorkflowActionTypes.RESUME_RESEARCH }
         assertThat(action.stepId).isEqualTo("A")
@@ -441,7 +441,7 @@ class WorkflowResearchResumptionTest {
         val unknown = predecessor.copy(failureCode = "AGENT_INDETERMINATE")
         stubActions(instance(aStatus = WorkflowStatuses.FAILED), listOf(unknown))
 
-        val response = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val response = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = "reader-1")
 
         assertThat(response.blockers.map { it.code }).contains(WorkflowBlockerCodes.UNKNOWN_RUNTIME)
             .doesNotContain(WorkflowBlockerCodes.NEEDS_RESEARCH)
@@ -452,7 +452,7 @@ class WorkflowResearchResumptionTest {
     fun `a sealed run keeps the blocker visible but offers no resumption`() {
         stubActions(instance(runStatus = WorkflowStatuses.FAILED), listOf(predecessor))
 
-        val response = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val response = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = "reader-1")
 
         assertThat(response.blockers.map { it.code }).contains(WorkflowBlockerCodes.NEEDS_RESEARCH)
         assertThat(response.allowedActions.map { it.type }).doesNotContain(WorkflowActionTypes.RESUME_RESEARCH)
@@ -465,7 +465,7 @@ class WorkflowResearchResumptionTest {
         )
         stubActions(instance(aStatus = WorkflowStatuses.READY), listOf(predecessor, successor))
 
-        val response = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val response = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = "reader-1")
 
         assertThat(response.blockers.map { it.code }).doesNotContain(WorkflowBlockerCodes.NEEDS_RESEARCH)
         assertThat(response.allowedActions.map { it.type }).doesNotContain(WorkflowActionTypes.RESUME_RESEARCH)

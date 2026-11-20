@@ -719,7 +719,7 @@ class WorkflowController(
         if (resolvedScope !in setOf("self", "descendants")) {
             throw workflowException("INVALID_METRICS_SCOPE", "scope must be self or descendants.")
         }
-        return WorkflowDataEnvelope(service.metrics(caller.scope, caller.namespaceId, workflowId, resolvedScope))
+        return WorkflowDataEnvelope(service.metrics(caller.scope, caller.namespaceId, workflowId, resolvedScope, caller.actorId))
     }
 
     // ----- evidence ------------------------------------------------------
@@ -965,7 +965,7 @@ class WorkflowController(
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<WorkflowActionsResponseDto> {
         val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
-        return WorkflowDataEnvelope(service.workflowActions(caller.scope, caller.namespaceId, workflowId, canReply = true))
+        return WorkflowDataEnvelope(service.workflowActions(caller.scope, caller.namespaceId, workflowId, canReply = true, actorId = caller.actorId))
     }
 
     @PostMapping(path = ["/{workflowId}/cost/continue"], produces = [MediaType.APPLICATION_JSON_VALUE])

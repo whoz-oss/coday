@@ -7,8 +7,13 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { AdminCaseListing } from './admin-case-listing'
 
 export interface NamespaceListItem {
+  /**
+   * Resolved cases admins see. Read-only.
+   */
+  adminCaseListingEffective?: AdminCaseListing
   configPath?: string
   defaultAgentName?: string
   description?: string

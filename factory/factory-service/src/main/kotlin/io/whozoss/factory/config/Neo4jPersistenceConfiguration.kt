@@ -1,6 +1,7 @@
 package io.whozoss.factory.config
 
 import org.neo4j.driver.Driver
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
@@ -30,6 +31,16 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
  * auto-configuration ordering, and guarantees the default `@Transactional`
  * lookup resolves to the Neo4j transaction manager — the only
  * `PlatformTransactionManager` left now that the relational store is gone.
+ *
+ * ## Database selection
+ * The [Neo4jClient] and the transaction manager are both built with the Spring Boot
+ * [DatabaseSelectionProvider], which is bound to the standard property
+ * `spring.data.neo4j.database` (env `SPRING_DATA_NEO4J_DATABASE`). This lets Factory and
+ * AgentOS live in separate named databases of a shared multi-database server. When the
+ * property is unset the provider selects the server default database, which is also the only
+ * choice in embedded mode (Community Edition has a single user database). Any code that talks
+ * to Neo4j must go through the [Neo4jClient] (or a repository), never through a raw
+ * `driver.session()`, otherwise it would silently target the default database.
  */
 @Configuration
 @EnableNeo4jRepositories(
@@ -61,7 +72,14 @@ class Neo4jPersistenceConfiguration {
     fun neo4jConversions(): Neo4jConversions = Neo4jConversions(setOf(Neo4jStringToInstantConverter()))
 
     @Bean
-    fun neo4jClient(driver: Driver): Neo4jClient = Neo4jClient.create(driver)
+    fun neo4jClient(
+        driver: Driver,
+        databaseSelectionProvider: ObjectProvider<DatabaseSelectionProvider>,
+    ): Neo4jClient =
+        Neo4jClient
+            .with(driver)
+            .withDatabaseSelectionProvider(resolve(databaseSelectionProvider))
+            .build()
 
     @Bean
     fun neo4jTemplate(
@@ -89,4 +107,16 @@ class Neo4jPersistenceConfiguration {
             // isActualTransactionActive() is false, retaining it across external execution.
             setTransactionSynchronization(org.springframework.transaction.support.AbstractPlatformTransactionManager.SYNCHRONIZATION_ON_ACTUAL_TRANSACTION)
         }
+    fun transactionManager(
+        driver: Driver,
+        databaseSelectionProvider: ObjectProvider<DatabaseSelectionProvider>,
+    ): Neo4jTransactionManager =
+        Neo4jTransactionManager
+            .with(driver)
+            .withDatabaseSelectionProvider(resolve(databaseSelectionProvider))
+            .build()
+
+    /** Spring Boot's provider (`spring.data.neo4j.database`), or the default database when absent. */
+    private fun resolve(provider: ObjectProvider<DatabaseSelectionProvider>): DatabaseSelectionProvider =
+        provider.getIfAvailable { DatabaseSelectionProvider.getDefaultSelectionProvider() }
 }
