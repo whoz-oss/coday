@@ -21,4 +21,16 @@ class UserNodeUnitSpec :
 
             node.toDomain().promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
         }
+
+        "an unknown stored promptCacheTtl reads as FIVE_MINUTES instead of making the user unreadable" {
+            val node =
+                UserNode(
+                    id = UUID.randomUUID().toString(),
+                    externalId = "carol@example.com",
+                    email = "carol@example.com",
+                    promptCacheTtl = "ONE_DAY",
+                )
+
+            node.toDomain().promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
+        }
     })

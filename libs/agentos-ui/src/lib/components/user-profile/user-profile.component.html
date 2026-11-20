@@ -107,7 +107,7 @@
             </select>
           </ds-form-field>
           <ds-form-field
-            label="Prompt cache duration (Requesty models)"
+            label="Prompt cache duration (Claude models via Requesty)"
             controlId="up-promptCacheTtl"
             hintId="up-promptCacheTtl-hint"
             hint="1 hour costs more per cache write but keeps the conversation cached during longer pauses."
@@ -152,7 +152,7 @@
           <dd>{{ user.bio || '—' }}</dd>
           <dt>Language</dt>
           <dd>{{ user.preferredLanguage || '—' }}</dd>
-          <dt>Prompt cache duration (Requesty models)</dt>
+          <dt>Prompt cache duration (Claude models via Requesty)</dt>
           <dd>{{ promptCacheTtlLabel() }}</dd>
         </dl>
       </ds-group>

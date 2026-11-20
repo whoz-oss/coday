@@ -26,6 +26,10 @@ import org.springframework.stereotype.Service
  *
  * The cap on tool rounds is the caller's [getChatClient] `maxToolRounds` (the namespace's override)
  * when given, else the platform's `agentos.limits.agent-max-iterations`.
+ *
+ * The prompt cache duration ([getChatClient] `promptCacheTtl`) is required so every caller decides it: agent
+ * runs pass the duration chosen by the user they run for, utility calls (case naming, summary, prompt
+ * translation) pass [PromptCacheTtl.FIVE_MINUTES]. It only changes the request for Claude models via Requesty.
  */
 @Service
 class ChatClientProvider(
@@ -39,8 +43,7 @@ class ChatClientProvider(
         caseId: String? = null,
         accumulator: UsageAccumulator? = null,
         maxToolRounds: Int? = null,
-        /** The prompt cache duration chosen by the user the agent runs for; utility calls keep the default. */
-        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+        promptCacheTtl: PromptCacheTtl,
     ): ChatClient {
         val chatModel =
             chatModelFactory.createChatModel(

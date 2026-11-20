@@ -28,36 +28,77 @@ class RequestyPromptCacheUnitSpec :
         fun JsonNode.cacheControlCount(): Int =
             (if (has("cache_control")) 1 else 0) + elements().asSequence().sumOf { it.cacheControlCount() }
 
-        // ---------------------------------------------------------------------------------------------
-        // isRequesty
-        // ---------------------------------------------------------------------------------------------
+        /** The body after a pass that must have placed markers. */
+        fun marked(json: String): ObjectNode {
+            val body = body(json)
+            withClue("expected markers to be placed in $json") { RequestyPromptCache.addOneHourCacheControl(body) shouldBe true }
+            return body
+        }
 
-        "isRequesty matches the Requesty router and its subdomains only" {
-            RequestyPromptCache.isRequesty("https://router.eu.requesty.ai") shouldBe true
-            RequestyPromptCache.isRequesty("https://router.requesty.ai/v1") shouldBe true
-            RequestyPromptCache.isRequesty("https://requesty.ai") shouldBe true
-            RequestyPromptCache.isRequesty("HTTPS://ROUTER.REQUESTY.AI") shouldBe true
-            RequestyPromptCache.isRequesty("https://api.openai.com") shouldBe false
-            RequestyPromptCache.isRequesty("https://notrequesty.ai") shouldBe false
-            RequestyPromptCache.isRequesty("https://requesty.ai.evil.com") shouldBe false
-            RequestyPromptCache.isRequesty("http://127.0.0.1:8080") shouldBe false
-            RequestyPromptCache.isRequesty("not a url") shouldBe false
-            RequestyPromptCache.isRequesty("") shouldBe false
-            RequestyPromptCache.isRequesty(null) shouldBe false
+        /** Asserts a pass leaves the body exactly as it was. */
+        fun assertUntouched(json: String) {
+            val body = body(json)
+            val snapshot = body.deepCopy()
+            withClue("expected $json to be left as is") { RequestyPromptCache.addOneHourCacheControl(body) shouldBe false }
+            body shouldBeJson snapshot
         }
 
         // ---------------------------------------------------------------------------------------------
-        // withOneHourCacheControl
+        // isRequesty / isClaudeModel
+        // ---------------------------------------------------------------------------------------------
+
+        "isRequesty matches the Requesty router and its subdomains" {
+            listOf(
+                "https://router.eu.requesty.ai",
+                "https://router.requesty.ai/v1",
+                "https://requesty.ai",
+                "HTTPS://ROUTER.REQUESTY.AI",
+                "https://router.requesty.ai:443/v1",
+                "https://router.requesty.ai.",
+                "https://router.requesty.ai./v1",
+                " https://router.requesty.ai ",
+                // Userinfo before the host: the request still goes to Requesty.
+                "https://evil.com@router.requesty.ai",
+            ).forEach { url -> withClue(url) { RequestyPromptCache.isRequesty(url) shouldBe true } }
+        }
+
+        "isRequesty rejects every other host" {
+            listOf(
+                "https://api.openai.com",
+                "https://evilrequesty.ai",
+                "https://notrequesty.ai",
+                "https://requesty.ai.evil.com",
+                "https://router.requesty.ai.evil.com:443",
+                // Userinfo trick: the host is evil.com.
+                "https://requesty.ai@evil.com",
+                "https://router.requesty.ai:443@evil.com/v1",
+                "http://127.0.0.1:8080",
+                "not a url",
+                "",
+                "   ",
+                null,
+            ).forEach { url -> withClue(url.toString()) { RequestyPromptCache.isRequesty(url) shouldBe false } }
+        }
+
+        "isClaudeModel matches Claude model names, whatever the prefix or case" {
+            RequestyPromptCache.isClaudeModel("anthropic/claude-sonnet-4-5") shouldBe true
+            RequestyPromptCache.isClaudeModel("policy/claude-opus") shouldBe true
+            RequestyPromptCache.isClaudeModel("bedrock/Claude-Haiku") shouldBe true
+            RequestyPromptCache.isClaudeModel("openai/gpt-5") shouldBe false
+            RequestyPromptCache.isClaudeModel("") shouldBe false
+            RequestyPromptCache.isClaudeModel(null) shouldBe false
+        }
+
+        // ---------------------------------------------------------------------------------------------
+        // addOneHourCacheControl
         // ---------------------------------------------------------------------------------------------
 
         "a string system message and the last user message get a one-hour marker, and auto caching is turned off" {
             val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body(
-                        """{"model":"anthropic/claude-sonnet-4-5","messages":[
-                        {"role":"system","content":"You are helpful."},
-                        {"role":"user","content":"Hello"}],"temperature":0.7}""",
-                    ),
+                marked(
+                    """{"model":"anthropic/claude-sonnet-4-5","messages":[
+                    {"role":"system","content":"You are helpful."},
+                    {"role":"user","content":"Hello"}],"temperature":0.7}""",
                 )
 
             result.get("requesty") shouldBeJson json("""{"auto_cache":false}""")
@@ -71,12 +112,10 @@ class RequestyPromptCacheUnitSpec :
 
         "a system message already made of parts gets the marker on its last text part" {
             val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body(
-                        """{"messages":[
-                        {"role":"system","content":[{"type":"text","text":"Part one"},{"type":"text","text":"Part two"}]},
-                        {"role":"user","content":"Hello"}]}""",
-                    ),
+                marked(
+                    """{"messages":[
+                    {"role":"system","content":[{"type":"text","text":"Part one"},{"type":"text","text":"Part two"}]},
+                    {"role":"user","content":"Hello"}]}""",
                 )
 
             val parts = result.message(0).get("content")
@@ -86,13 +125,11 @@ class RequestyPromptCacheUnitSpec :
 
         "only the last of several system messages is marked" {
             val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body(
-                        """{"messages":[
-                        {"role":"system","content":"Agent prompt"},
-                        {"role":"system","content":"Namespace context"},
-                        {"role":"user","content":"Hello"}]}""",
-                    ),
+                marked(
+                    """{"messages":[
+                    {"role":"system","content":"Agent prompt"},
+                    {"role":"system","content":"Namespace context"},
+                    {"role":"user","content":"Hello"}]}""",
                 )
 
             result.message(0).get("content").isTextual shouldBe true
@@ -101,25 +138,28 @@ class RequestyPromptCacheUnitSpec :
         }
 
         "a system message that is also the last message with text gets a single marker" {
-            val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body("""{"messages":[{"role":"system","content":"Only a system prompt"}]}"""),
-                )
+            val result = marked("""{"messages":[{"role":"system","content":"Only a system prompt"}]}""")
 
             result.message(0).get("content").get(0).get("cache_control") shouldBeJson oneHour
             result.cacheControlCount() shouldBe 1
         }
 
+        "a system message with null content is skipped, the last message with text is still marked" {
+            val result = marked("""{"messages":[{"role":"system","content":null},{"role":"user","content":"Hello"}]}""")
+
+            result.message(0).get("content").isNull shouldBe true
+            result.message(1).get("content").get(0).get("cache_control") shouldBeJson oneHour
+            result.cacheControlCount() shouldBe 1
+        }
+
         "a last tool message is the one marked after the system message" {
             val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body(
-                        """{"messages":[
-                        {"role":"system","content":"System"},
-                        {"role":"user","content":"Weather in Paris?"},
-                        {"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{}"}}]},
-                        {"role":"tool","tool_call_id":"call_1","content":"sunny"}]}""",
-                    ),
+                marked(
+                    """{"messages":[
+                    {"role":"system","content":"System"},
+                    {"role":"user","content":"Weather in Paris?"},
+                    {"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{}"}}]},
+                    {"role":"tool","tool_call_id":"call_1","content":"sunny"}]}""",
                 )
 
             result.message(3).get("content") shouldBeJson
@@ -129,14 +169,26 @@ class RequestyPromptCacheUnitSpec :
             result.cacheControlCount() shouldBe 2
         }
 
+        "a last assistant message with text and tool calls gets the marker on its text, its tool calls kept" {
+            val toolCalls = """[{"id":"call_1","type":"function","function":{"name":"f","arguments":"{}"}}]"""
+            val result =
+                marked(
+                    """{"messages":[{"role":"user","content":"Go"},
+                    {"role":"assistant","content":"Let me check.","tool_calls":$toolCalls}]}""",
+                )
+
+            result.message(1).get("content") shouldBeJson
+                json("""[{"type":"text","text":"Let me check.","cache_control":{"type":"ephemeral","ttl":"1h"}}]""")
+            result.message(1).get("tool_calls") shouldBeJson json(toolCalls)
+            result.message(0).get("content").isTextual shouldBe true
+        }
+
         "a user message with media gets the marker on its last text part, the image is left alone" {
             val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body(
-                        """{"messages":[{"role":"user","content":[
-                        {"type":"text","text":"What is on this picture?"},
-                        {"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]}]}""",
-                    ),
+                marked(
+                    """{"messages":[{"role":"user","content":[
+                    {"type":"text","text":"What is on this picture?"},
+                    {"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]}]}""",
                 )
 
             val parts = result.message(0).get("content")
@@ -144,105 +196,114 @@ class RequestyPromptCacheUnitSpec :
             parts.get(1) shouldBeJson json("""{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}""")
         }
 
+        "an image-only last user message is skipped, the previous message with text is marked" {
+            val image = """{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]}"""
+            val result = marked("""{"messages":[{"role":"user","content":"Look at this"},$image]}""")
+
+            result.message(1) shouldBeJson json(image)
+            result.message(0).get("content").get(0).get("cache_control") shouldBeJson oneHour
+        }
+
         "an assistant message that only carries tool calls is never touched" {
             val assistant =
                 """{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"f","arguments":"{}"}}]}"""
-            val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body("""{"messages":[{"role":"user","content":"Go"},$assistant]}"""),
-                )
+            val result = marked("""{"messages":[{"role":"user","content":"Go"},$assistant]}""")
 
             result.message(1) shouldBeJson json(assistant)
             result.message(0).get("content").get(0).get("cache_control") shouldBeJson oneHour
         }
 
         "messages with empty text are skipped" {
-            val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body("""{"messages":[{"role":"user","content":"Hello"},{"role":"user","content":""}]}"""),
-                )
+            val result = marked("""{"messages":[{"role":"user","content":"Hello"},{"role":"user","content":""}]}""")
 
             result.message(1).get("content").asText() shouldBe ""
             result.message(0).get("content").get(0).get("cache_control") shouldBeJson oneHour
         }
 
         "applying it twice changes nothing" {
-            val original =
-                body(
+            val once =
+                marked(
                     """{"messages":[
                     {"role":"system","content":"System"},
                     {"role":"user","content":[{"type":"text","text":"Hi"},{"type":"image_url","image_url":{"url":"x"}}]}],
                     "requesty":{"tags":["a"]}}""",
                 )
-            val once = RequestyPromptCache.withOneHourCacheControl(original)
-            val twice = RequestyPromptCache.withOneHourCacheControl(once)
+            val snapshot = once.deepCopy()
 
-            twice shouldBeJson once
-            twice.cacheControlCount() shouldBe 2
-        }
-
-        "the input body is not modified" {
-            val original = body("""{"messages":[{"role":"user","content":"Hello"}]}""")
-            val snapshot = original.deepCopy()
-
-            RequestyPromptCache.withOneHourCacheControl(original)
-
-            original shouldBeJson snapshot
+            RequestyPromptCache.addOneHourCacheControl(once) shouldBe false
+            once shouldBeJson snapshot
+            once.cacheControlCount() shouldBe 2
         }
 
         "existing requesty fields are kept, auto_cache is forced to false" {
             val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body(
-                        """{"messages":[{"role":"user","content":"Hello"}],
-                        "requesty":{"auto_cache":true,"tags":["agentos"],"trace_id":"t-1"}}""",
-                    ),
+                marked(
+                    """{"messages":[{"role":"user","content":"Hello"}],
+                    "requesty":{"auto_cache":true,"tags":["agentos"],"trace_id":"t-1"}}""",
                 )
 
             result.get("requesty") shouldBeJson json("""{"auto_cache":false,"tags":["agentos"],"trace_id":"t-1"}""")
         }
 
-        "never more than four breakpoints in the body" {
-            val marked = """{"type":"text","text":"old","cache_control":{"type":"ephemeral","ttl":"1h"}}"""
+        "a null requesty field is replaced by the auto_cache option" {
+            marked("""{"messages":[{"role":"user","content":"Hello"}],"requesty":null}""").get("requesty") shouldBeJson
+                json("""{"auto_cache":false}""")
+        }
+
+        "unicode content survives the rewrite" {
+            val text = "Café 日本語 🎉 « quotes »"
+            val rewritten =
+                RequestyPromptCache.rewriteChatCompletionsBody(
+                    "/v1/chat/completions",
+                    mapper.writeValueAsBytes(mapOf("messages" to listOf(mapOf("role" to "user", "content" to text)))),
+                )
+
+            mapper.readTree(rewritten).get("messages").get(0).get("content").get(0).get("text").asText() shouldBe text
+        }
+
+        "a tool parameter named cache_control does not count as a marker" {
             val result =
-                RequestyPromptCache.withOneHourCacheControl(
-                    body(
-                        """{"messages":[
-                        {"role":"system","content":"System"},
-                        {"role":"user","content":[$marked]},
-                        {"role":"user","content":[$marked]},
-                        {"role":"user","content":[$marked]},
-                        {"role":"user","content":"Latest"}]}""",
-                    ),
+                marked(
+                    """{"messages":[{"role":"user","content":"Hello"}],"tools":[{"type":"function","function":{"name":"f",
+                    "parameters":{"type":"object","properties":{"cache_control":{"type":"string"}}}}}]}""",
                 )
 
-            result.cacheControlCount() shouldBe RequestyPromptCache.MAX_BREAKPOINTS
-            // The system marker comes first and takes the last free slot.
             result.message(0).get("content").get(0).get("cache_control") shouldBeJson oneHour
-            result.message(4).get("content").isTextual shouldBe true
         }
 
-        "a body that is not a chat completions body is returned untouched" {
-            val embeddings = body("""{"model":"text-embedding-3","input":["hello"]}""")
+        // ---------------------------------------------------------------------------------------------
+        // Bodies left as they are
+        // ---------------------------------------------------------------------------------------------
 
-            RequestyPromptCache.withOneHourCacheControl(embeddings) shouldBeSameInstanceAs embeddings
-            embeddings.has("requesty") shouldBe false
+        "a body whose messages already carry markers is left as is, so we never mix TTLs nor exceed four breakpoints" {
+            val marker = """{"type":"text","text":"old","cache_control":{"type":"ephemeral"}}"""
+            assertUntouched(
+                """{"messages":[
+                {"role":"system","content":"System"},
+                {"role":"user","content":[$marker]},
+                {"role":"user","content":[$marker]},
+                {"role":"user","content":[$marker]},
+                {"role":"user","content":"Latest"}]}""",
+            )
         }
 
-        "a body with markers it did not set is returned untouched" {
-            val foreign =
-                body(
-                    """{"messages":[{"role":"user","content":[
-                    {"type":"text","text":"Hello","cache_control":{"type":"ephemeral"}}]}]}""",
-                )
-
-            RequestyPromptCache.withOneHourCacheControl(foreign) shouldBeSameInstanceAs foreign
+        "a body that is not a chat completions body is left as is" {
+            assertUntouched("""{"model":"text-embedding-3","input":["hello"]}""")
         }
 
-        "a body whose requesty field is not an object is returned untouched" {
-            val odd = body("""{"messages":[{"role":"user","content":"Hello"}],"requesty":"yes"}""")
+        "a body with no messages is left as is, without auto_cache" {
+            assertUntouched("""{"messages":[]}""")
+        }
 
-            RequestyPromptCache.withOneHourCacheControl(odd) shouldBeSameInstanceAs odd
+        "a body without any text is left as is, without auto_cache" {
+            assertUntouched(
+                """{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"x"}}]},
+                {"role":"assistant","content":null,"tool_calls":[]}]}""",
+            )
+        }
+
+        "a body whose requesty field is not an object is left as is" {
+            assertUntouched("""{"messages":[{"role":"user","content":"Hello"}],"requesty":"yes"}""")
         }
 
         // ---------------------------------------------------------------------------------------------
@@ -256,7 +317,7 @@ class RequestyPromptCacheUnitSpec :
 
             val text = String(rewritten)
             mapper.readTree(text).get("requesty").get("auto_cache").asBoolean() shouldBe false
-            (text.contains("\"temperature\":0.7")) shouldBe true
+            text.contains("\"temperature\":0.7") shouldBe true
         }
 
         "the raw body of another endpoint is returned as is" {
@@ -273,4 +334,17 @@ class RequestyPromptCacheUnitSpec :
             RequestyPromptCache.rewriteChatCompletionsBody("/v1/chat/completions", array) shouldBeSameInstanceAs array
             RequestyPromptCache.rewriteChatCompletionsBody("/v1/chat/completions", empty) shouldBeSameInstanceAs empty
         }
+
+        "a raw body above the size cap is returned as is" {
+            val huge = RequestyPromptCacheTestBodies.chatBody(RequestyPromptCache.MAX_REWRITE_BYTES.toInt() + 1)
+
+            RequestyPromptCache.rewriteChatCompletionsBody("/v1/chat/completions", huge) shouldBeSameInstanceAs huge
+        }
     })
+
+/** Request bodies shared by the specs of [RequestyPromptCache]. */
+internal object RequestyPromptCacheTestBodies {
+    /** A valid chat completions body of at least [minSize] bytes. */
+    fun chatBody(minSize: Int): ByteArray =
+        """{"messages":[{"role":"user","content":"${"a".repeat(minSize)}"}]}""".toByteArray()
+}

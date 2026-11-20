@@ -66,7 +66,7 @@ describe('UserProfileComponent (prompt cache duration)', () => {
   it('shows the default duration in read mode for a user who never chose one', () => {
     const element = render()
 
-    expect(element.textContent).toContain('Prompt cache duration (Requesty models)')
+    expect(element.textContent).toContain('Prompt cache duration (Claude models via Requesty)')
     expect(element.textContent).toContain('5 minutes (default)')
   })
 

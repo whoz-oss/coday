@@ -27,7 +27,7 @@ data class User(
     val isAdmin: Boolean = false,
     /** BCP 47 language tag (e.g. "en", "fr", "en-US"). Null means no preference set. */
     val preferredLanguage: String? = null,
-    /** How long the user's conversation prompt stays cached between LLM calls (Requesty Claude models only). */
+    /** How long the user's conversation prompt stays cached between LLM calls (Claude models via Requesty only). */
     val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
 ) : Entity {
     /** Full name when available, falling back to the UUID string for a guaranteed non-blank identity label. */

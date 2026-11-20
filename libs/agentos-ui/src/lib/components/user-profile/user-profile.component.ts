@@ -133,8 +133,8 @@ export class UserProfileComponent implements OnInit {
   ]
 
   /**
-   * How long Claude models behind Requesty keep the conversation cached between two calls. One hour costs more per
-   * cache write (2x the input price instead of 1.25x) but survives longer pauses.
+   * How long Claude models via Requesty keep the conversation cached between two calls. Anthropic list prices: 5m
+   * writes 1.25x, 1h writes 2x input; reads are much cheaper (0.05x-0.1x depending on model) and refresh the TTL.
    */
   protected readonly promptCacheTtlOptions: ReadonlyArray<{ value: PromptCacheTtl; label: string }> = [
     { value: PromptCacheTtl.FIVE_MINUTES, label: '5 minutes (default)' },

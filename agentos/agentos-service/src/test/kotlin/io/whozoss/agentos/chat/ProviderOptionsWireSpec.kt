@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.SystemMessage
@@ -84,7 +85,12 @@ class ProviderOptionsWireSpec :
                     reasoningEffort = reasoningEffort,
                 )
             return ChatClientProvider(factory, usageConfig = usageConfig)
-                .getChatClient(model, provider, accumulator = if (usageTracking) UsageAccumulator() else null)
+                .getChatClient(
+                    model,
+                    provider,
+                    accumulator = if (usageTracking) UsageAccumulator() else null,
+                    promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+                )
         }
 
         fun anthropicClient(

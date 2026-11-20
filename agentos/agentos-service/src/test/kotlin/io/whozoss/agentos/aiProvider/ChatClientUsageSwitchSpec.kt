@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
 import org.springframework.ai.openai.api.OpenAiApi
@@ -135,7 +136,7 @@ class ChatClientUsageSwitchSpec : StringSpec({
                         }
                     }
                     val client = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled))
-                        .getChatClient(model, provider, accumulator = accumulator)
+                        .getChatClient(model, provider, accumulator = accumulator, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
                     // AgentSimple attaches resolved tool callbacks to each prompt, not to model defaults.
                     val prompt = client.prompt("Hello")
                     if (withTool) prompt.toolCallbacks(callback)

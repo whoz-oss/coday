@@ -8,14 +8,15 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Minimal stub of the Anthropic (`/v1/messages`) and OpenAI-compatible (`/v1/chat/completions`) APIs: records
- * the raw body of each POST per path and answers a valid completion, as plain JSON or, when [streaming] is
- * set, as a server-sent event stream.
+ * the raw body and the headers of each POST per path and answers a valid completion, as plain JSON or, when
+ * [streaming] is set, as a server-sent event stream.
  *
  * Shared by the wire specs ([ProviderOptionsWireSpec], [RequestyPromptCacheWireSpec]).
  */
 internal class ProviderStubServer {
     private val server: HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     private val bodies = ConcurrentHashMap<String, CopyOnWriteArrayList<String>>()
+    private val headers = ConcurrentHashMap<String, CopyOnWriteArrayList<Map<String, String>>>()
 
     @Volatile
     var streaming = false
@@ -33,10 +34,14 @@ internal class ProviderStubServer {
 
     fun reset() {
         bodies.clear()
+        headers.clear()
         streaming = false
     }
 
     fun requestBodies(path: String): List<String> = bodies[path].orEmpty()
+
+    /** The headers of each POST received on [path], names lowercased, first value only. */
+    fun requestHeaders(path: String): List<Map<String, String>> = headers[path].orEmpty()
 
     private fun handle(
         exchange: HttpExchange,
@@ -44,6 +49,8 @@ internal class ProviderStubServer {
         sse: String,
     ) {
         exchange.use {
+            headers.computeIfAbsent(it.requestURI.path) { CopyOnWriteArrayList() } +=
+                it.requestHeaders.entries.associate { (name, values) -> name.lowercase() to values.first() }
             bodies.computeIfAbsent(it.requestURI.path) { CopyOnWriteArrayList() } += String(it.requestBody.readBytes(), Charsets.UTF_8)
             val (contentType, body) = if (streaming) "text/event-stream" to sse else "application/json" to json
             val bytes = body.toByteArray(Charsets.UTF_8)

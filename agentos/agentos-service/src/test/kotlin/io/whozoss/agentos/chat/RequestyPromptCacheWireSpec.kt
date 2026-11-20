@@ -19,6 +19,12 @@ import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.model.tool.DefaultToolCallingManager
+import org.springframework.ai.model.tool.DefaultToolExecutionEligibilityPredicate
+import org.springframework.ai.openai.OpenAiChatModel
+import org.springframework.ai.openai.OpenAiChatOptions
+import org.springframework.ai.openai.api.OpenAiApi
+import org.springframework.ai.retry.RetryUtils
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.ToolDefinition
 import java.time.Duration
@@ -29,8 +35,11 @@ import java.util.UUID
  * what actually leaves AgentOS for an OpenAI-compatible provider, for blocking calls (RestClient) and for
  * streaming calls (WebClient, the path agent turns use).
  *
- * The loopback [ProviderStubServer] stands in for Requesty through [ChatModelFactory.isRequestyBaseUrl]; the
- * "not Requesty" cases keep the production host matching, which never matches 127.0.0.1.
+ * The loopback [ProviderStubServer] stands in for Requesty through the internal [ChatModelFactory] constructor;
+ * the "not Requesty" cases keep the production host matching, which never matches 127.0.0.1.
+ *
+ * "Unchanged" is checked byte for byte against the construction path that existed before the setting: a plain
+ * `OpenAiApi.Builder().baseUrl().apiKey().build()` model, with no RestClient / WebClient builder of ours.
  */
 class RequestyPromptCacheWireSpec :
     StringSpec({
@@ -40,14 +49,22 @@ class RequestyPromptCacheWireSpec :
         afterSpec { stub.stop() }
         beforeTest { stub.reset() }
 
+        val claude = "anthropic/claude-sonnet-4-5"
+
         fun chatClient(
             ttl: PromptCacheTtl,
             requesty: Boolean,
             usageTracking: Boolean = true,
+            modelName: String = claude,
         ): ChatClient {
             val usageConfig = UsageConfigProperties(enabled = usageTracking)
-            val factory = ChatModelFactory(ObservationRegistry.NOOP, AnthropicProperties(promptCachingEnabled = true), usageConfig)
-            if (requesty) factory.isRequestyBaseUrl = { true }
+            val factory =
+                ChatModelFactory(
+                    ObservationRegistry.NOOP,
+                    AnthropicProperties(promptCachingEnabled = true),
+                    usageConfig,
+                    isRequestyBaseUrl = { baseUrl -> requesty || RequestyPromptCache.isRequesty(baseUrl) },
+                )
             val providerId = UUID.randomUUID()
             val provider =
                 AiProvider(
@@ -62,7 +79,7 @@ class RequestyPromptCacheWireSpec :
                 AiModel(
                     metadata = EntityMetadata(id = UUID.randomUUID()),
                     aiProviderId = providerId,
-                    apiModelName = "anthropic/claude-sonnet-4-5",
+                    apiModelName = modelName,
                     temperature = 0.7,
                     maxCompletionTokens = 1024,
                 )
@@ -73,6 +90,35 @@ class RequestyPromptCacheWireSpec :
                 accumulator = if (usageTracking) UsageAccumulator() else null,
                 promptCacheTtl = ttl,
             )
+        }
+
+        /**
+         * The chat client as built before the setting existed (no usage tracking): the reference for "unchanged".
+         */
+        fun originalChatClient(modelName: String = claude): ChatClient {
+            val api =
+                OpenAiApi
+                    .Builder()
+                    .baseUrl(stub.baseUrl)
+                    .apiKey("sk-test")
+                    .build()
+            val options =
+                OpenAiChatOptions
+                    .builder()
+                    .temperature(0.7)
+                    .model(modelName)
+                    .maxCompletionTokens(1024)
+                    .build()
+            val model =
+                OpenAiChatModel(
+                    api,
+                    options,
+                    DefaultToolCallingManager.builder().build(),
+                    RetryUtils.DEFAULT_RETRY_TEMPLATE,
+                    ObservationRegistry.NOOP,
+                    DefaultToolExecutionEligibilityPredicate(),
+                )
+            return ChatClient.builder(model).build()
         }
 
         val weatherTool =
@@ -107,11 +153,20 @@ class RequestyPromptCacheWireSpec :
                 ),
             )
 
-        /** Sends the prompt blocking or streaming and returns the raw body the stub received. */
+        /** What the stub received: the raw body and the headers (names lowercased). */
+        data class Sent(
+            val body: String,
+            val headers: Map<String, String>,
+        ) {
+            /** The headers that frame and authenticate the request; the host differs per connection only by port. */
+            val framing: Map<String, String> get() = headers - "host"
+        }
+
+        /** Sends the prompt blocking or streaming and returns what the stub received. */
         fun send(
             client: ChatClient,
             streaming: Boolean,
-        ): String {
+        ): Sent {
             stub.reset()
             stub.streaming = streaming
             val request = client.prompt(prompt()).toolCallbacks(weatherTool)
@@ -130,7 +185,14 @@ class RequestyPromptCacheWireSpec :
             answer shouldBe "Done"
             val bodies = stub.requestBodies(ProviderStubServer.OPENAI_PATH)
             withClue("expected exactly one POST ${ProviderStubServer.OPENAI_PATH} to reach the stub") { bodies shouldHaveSize 1 }
-            return bodies.single()
+            val sent = Sent(bodies.single(), stub.requestHeaders(ProviderStubServer.OPENAI_PATH).single())
+            withClue("headers sent were: ${sent.headers}") {
+                sent.headers["authorization"] shouldBe "Bearer sk-test"
+                // A Content-Length, when sent, must match the body actually sent; otherwise the body is chunked.
+                sent.headers["content-length"]?.let { it shouldBe sent.body.toByteArray(Charsets.UTF_8).size.toString() }
+                    ?: (sent.headers["transfer-encoding"] shouldBe "chunked")
+            }
+            return sent
         }
 
         fun JsonNode.message(role: String): JsonNode = get("messages").single { it.get("role").asText() == role }
@@ -166,33 +228,48 @@ class RequestyPromptCacheWireSpec :
             val mode = if (streaming) "streaming (WebClient)" else "blocking (RestClient)"
 
             "$mode, Requesty with 1h: the body carries 1h markers and turns automatic caching off" {
-                val body = send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true), streaming)
+                val sent = send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true), streaming)
 
-                assertOneHourMarkers(body)
-                (mapper.readTree(body).get("stream")?.asBoolean() ?: false) shouldBe streaming
+                assertOneHourMarkers(sent.body)
+                (mapper.readTree(sent.body).get("stream")?.asBoolean() ?: false) shouldBe streaming
+                // The rewritten body is sent with its own, exact length (checked in send).
+                sent.headers["content-length"] shouldBe sent.body.toByteArray(Charsets.UTF_8).size.toString()
             }
 
             "$mode, Requesty with 1h and usage tracking disabled: the body carries 1h markers" {
-                assertOneHourMarkers(send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true, usageTracking = false), streaming))
+                assertOneHourMarkers(send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true, usageTracking = false), streaming).body)
             }
 
-            "$mode, Requesty with 5m: the body is byte-for-byte the one sent without the setting" {
-                val baseline = send(chatClient(PromptCacheTtl.FIVE_MINUTES, requesty = false), streaming)
-                val fiveMinutes = send(chatClient(PromptCacheTtl.FIVE_MINUTES, requesty = true), streaming)
+            "$mode, Requesty with 5m: the body is byte-for-byte the one sent before the setting existed" {
+                val baseline = send(originalChatClient(), streaming)
+                val fiveMinutes = send(chatClient(PromptCacheTtl.FIVE_MINUTES, requesty = true, usageTracking = false), streaming)
 
-                fiveMinutes shouldBe baseline
-                withClue("no cache field expected with 5m, body was: $fiveMinutes") {
-                    fiveMinutes.contains("cache_control") shouldBe false
-                    fiveMinutes.contains("requesty") shouldBe false
+                fiveMinutes.body shouldBe baseline.body
+                fiveMinutes.framing shouldBe baseline.framing
+                withClue("no cache field expected with 5m, body was: ${fiveMinutes.body}") {
+                    fiveMinutes.body.contains("cache_control") shouldBe false
+                    fiveMinutes.body.contains("requesty") shouldBe false
                 }
             }
 
-            "$mode, another provider with 1h: the body is byte-for-byte the one sent without the setting" {
-                val baseline = send(chatClient(PromptCacheTtl.FIVE_MINUTES, requesty = false), streaming)
-                val otherProvider = send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = false), streaming)
+            "$mode, another provider with 1h: the body is byte-for-byte the one sent before the setting existed" {
+                val baseline = send(originalChatClient(), streaming)
+                val otherProvider = send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = false, usageTracking = false), streaming)
 
-                otherProvider shouldBe baseline
-                otherProvider.contains("cache_control") shouldBe false
+                otherProvider.body shouldBe baseline.body
+                otherProvider.framing shouldBe baseline.framing
+                otherProvider.body.contains("cache_control") shouldBe false
+            }
+
+            "$mode, a non-Claude model on Requesty with 1h: the body is byte-for-byte the one sent before the setting existed" {
+                val gpt = "openai/gpt-5"
+                val baseline = send(originalChatClient(gpt), streaming)
+                val otherModel =
+                    send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true, usageTracking = false, modelName = gpt), streaming)
+
+                otherModel.body shouldBe baseline.body
+                otherModel.framing shouldBe baseline.framing
+                otherModel.body.contains("cache_control") shouldBe false
             }
         }
     })
