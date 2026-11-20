@@ -10,6 +10,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
@@ -167,7 +168,7 @@ class CachePrefixWireSpec :
 
             val lastSent = AtomicReference<List<Message>>()
             clients
-                .getChatClient(model, provider, caseId, UsageAccumulator(), onRequest = { lastSent.set(it.instructions.toList()) })
+                .getChatClient(model, provider, caseId, UsageAccumulator(), promptCacheTtl = PromptCacheTtl.FIVE_MINUTES, onRequest = { lastSent.set(it.instructions.toList()) })
                 .prompt(Prompt(listOf(SystemMessage("You are the planner."), UserMessage("Status?"))))
                 .toolCallbacks(tools)
                 .stream()
@@ -179,7 +180,7 @@ class CachePrefixWireSpec :
 
             val answer =
                 clients
-                    .getChatClient(model, provider, caseId, UsageAccumulator(), runTools = false)
+                    .getChatClient(model, provider, caseId, UsageAccumulator(), promptCacheTtl = PromptCacheTtl.FIVE_MINUTES, runTools = false)
                     .prompt(Prompt(lastSent.get() + AssistantMessage("Done") + UserMessage("By the way, which tool ran?")))
                     .toolCallbacks(tools.map { DefinitionOnlyToolCallback(it.toolDefinition) })
                     .call()
@@ -208,7 +209,7 @@ class CachePrefixWireSpec :
             val answer =
                 transport
                     .chatClientProvider(usageEnabled = false)
-                    .getChatClient(model, provider, caseId, runTools = false)
+                    .getChatClient(model, provider, caseId, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES, runTools = false)
                     .prompt(Prompt(listOf(UserMessage("Status?"))))
                     .toolCallbacks(tool("lookup", executed))
                     .call()

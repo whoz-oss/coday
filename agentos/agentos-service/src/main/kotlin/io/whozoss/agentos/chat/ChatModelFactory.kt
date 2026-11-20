@@ -25,6 +25,7 @@ import org.springframework.ai.openai.OpenAiChatModel
 import org.springframework.ai.openai.OpenAiChatOptions
 import org.springframework.ai.openai.api.OpenAiApi
 import org.springframework.ai.retry.RetryUtils
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.bind.DefaultValue
 import org.springframework.stereotype.Component
@@ -51,17 +52,29 @@ data class AnthropicProperties(
     val promptCachingEnabled: Boolean,
 )
 
+/**
+ * Builds the provider-specific [ChatModel] for an [AiApiType].
+ *
+ * [requestyPromptCache] tells which models get the one-hour prompt cache markers through Requesty.
+ * [isRequestyBaseUrl] tells whether a base URL is the Requesty router. Spring always uses the public constructor,
+ * which matches on the host ([RequestyPromptCache.isRequesty]); the internal one lets the wire tests stand a
+ * loopback stub in for Requesty.
+ */
 @Component
-class ChatModelFactory(
+class ChatModelFactory internal constructor(
     private val observationRegistry: ObservationRegistry,
     private val anthropicProperties: AnthropicProperties,
-    private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
+    private val usageConfig: UsageConfigProperties,
+    private val requestyPromptCache: RequestyPromptCacheProperties = RequestyPromptCacheProperties(),
+    private val isRequestyBaseUrl: (String) -> Boolean,
 ) {
-    /**
-     * Whether a base URL is the Requesty router. A seam for the wire tests, which stand a loopback stub in for
-     * Requesty; production always matches on the host ([RequestyPromptCache.isRequesty]).
-     */
-    internal var isRequestyBaseUrl: (String) -> Boolean = RequestyPromptCache::isRequesty
+    @Autowired
+    constructor(
+        observationRegistry: ObservationRegistry,
+        anthropicProperties: AnthropicProperties,
+        usageConfig: UsageConfigProperties = UsageConfigProperties(),
+        requestyPromptCache: RequestyPromptCacheProperties = RequestyPromptCacheProperties(),
+    ) : this(observationRegistry, anthropicProperties, usageConfig, requestyPromptCache, RequestyPromptCache::isRequesty)
 
     fun createChatModel(
         apiType: AiApiType,
@@ -74,7 +87,7 @@ class ChatModelFactory(
         headers: Map<String, String> = emptyMap(),
         /** Null keeps the provider default; ignored for Anthropic and Gemini, where it is rejected at save time. */
         reasoningEffort: ReasoningEffort? = null,
-        /** The calling user's choice; only changes the request for Claude models behind Requesty (OpenAI API type). */
+        /** The calling user's choice; only changes the request for Claude models via Requesty (OpenAI API type). */
         promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
     ): ChatModel {
         val resolvedApiKey = apiKey ?: ""
@@ -146,7 +159,9 @@ class ChatModelFactory(
         // Same defaults as OpenAiApi.Builder; request/response hooks are added only when needed.
         val restClientBuilder = RestClient.builder()
         val webClientBuilder = WebClient.builder()
-        if (promptCacheTtl == PromptCacheTtl.ONE_HOUR && isRequestyBaseUrl(baseUrl)) {
+        val oneHourRequestyCache =
+            promptCacheTtl == PromptCacheTtl.ONE_HOUR && isRequestyBaseUrl(baseUrl) && requestyPromptCache.matchesModel(model)
+        if (oneHourRequestyCache) {
             restClientBuilder.requestInterceptor(RequestyPromptCache.interceptor())
             webClientBuilder.filter(RequestyPromptCache.filter())
         }

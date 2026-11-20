@@ -295,6 +295,24 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
         }
 
+        "PUT self with an explicit null promptCacheTtl keeps the stored value" {
+            val captured = slot<User>()
+            val oneHourUser = regularUser.copy(promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+            every { userService.getCurrentUser() } returns oneHourUser
+            every { userService.findByIds(listOf(regularUserId), false) } returns listOf(oneHourUser)
+            every { userService.update(capture(captured)) } answers { firstArg() }
+
+            mockMvc
+                .perform(
+                    put("/api/users/$regularUserId")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "$regularUserId", "email": "alice@example.com", "promptCacheTtl": null }"""),
+                ).andExpect(status().isOk)
+                .andExpect(jsonPath("$.promptCacheTtl").value("ONE_HOUR"))
+
+            captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        }
+
         "PUT with an unknown promptCacheTtl returns 400" {
             every { userService.getCurrentUser() } returns regularUser
 

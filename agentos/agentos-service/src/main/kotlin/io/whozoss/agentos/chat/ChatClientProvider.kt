@@ -35,6 +35,10 @@ import org.springframework.stereotype.Service
  * `onRequest` sees the prompt of every request sent to the provider, tool rounds included. It is only called
  * through [UsageTrackingChatModel] (usage tracked, or `runTools` false): an untracked model runs its tool rounds
  * out of sight.
+ *
+ * The prompt cache duration ([getChatClient] `promptCacheTtl`) is required so every caller decides it: agent
+ * runs pass the duration chosen by the user they run for, utility calls (case naming, summary, prompt
+ * translation) pass [PromptCacheTtl.FIVE_MINUTES]. It only changes the request for Claude models via Requesty.
  */
 @Service
 class ChatClientProvider(
@@ -48,8 +52,7 @@ class ChatClientProvider(
         caseId: String? = null,
         accumulator: UsageAccumulator? = null,
         maxToolRounds: Int? = null,
-        /** The prompt cache duration chosen by the user the agent runs for; utility calls keep the default. */
-        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+        promptCacheTtl: PromptCacheTtl,
         runTools: Boolean = true,
         onRequest: ((Prompt) -> Unit)? = null,
     ): ChatClient {

@@ -689,6 +689,8 @@ class AgentServiceImpl(
         logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
+        // Anonymous and system runs keep the default.
+        val promptCacheTtl = resolvedUser?.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES
 
         return when (executionMode) {
             ExecutionMode.LOOP -> {
@@ -711,7 +713,7 @@ class AgentServiceImpl(
                         context.caseId?.toString(),
                         context.usageAccumulator,
                         maxToolRounds,
-                        resolvedUser?.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES,
+                        promptCacheTtl,
                     )
                 val advancedContext =
                     AgentAdvancedContext(
@@ -756,7 +758,7 @@ class AgentServiceImpl(
                         context.caseId?.toString(),
                         context.usageAccumulator,
                         maxToolRounds,
-                        resolvedUser?.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES,
+                        promptCacheTtl,
                         onRequest = recordRequest,
                     )
                 AgentSimple(
@@ -789,7 +791,7 @@ class AgentServiceImpl(
                                 agentConfigId = agentId,
                                 coveredEventCount = request.coveredEventCount,
                                 lastCoveredEventId = request.lastCoveredEventId,
-                                promptCacheTtl = resolvedUser?.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES,
+                                promptCacheTtl = promptCacheTtl,
                                 userId = resolvedUser?.metadata?.id,
                             ),
                         )

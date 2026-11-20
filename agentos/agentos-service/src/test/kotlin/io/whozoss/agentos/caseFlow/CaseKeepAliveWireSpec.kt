@@ -16,6 +16,7 @@ import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.chat.ProviderStubServer
+import io.whozoss.agentos.chat.RequestyPromptCacheProperties
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
@@ -89,8 +90,13 @@ class CaseKeepAliveWireSpec :
 
         fun clients(requesty: Boolean): ChatClientProvider {
             val usageConfig = UsageConfigProperties(enabled = true)
-            val factory = ChatModelFactory(ObservationRegistry.NOOP, AnthropicProperties(promptCachingEnabled = true), usageConfig)
-            if (requesty) factory.isRequestyBaseUrl = { true }
+            val factory =
+                ChatModelFactory(
+                    ObservationRegistry.NOOP,
+                    AnthropicProperties(promptCachingEnabled = true),
+                    usageConfig,
+                    RequestyPromptCacheProperties(),
+                ) { requesty }
             return ChatClientProvider(factory, usageConfig = usageConfig)
         }
 

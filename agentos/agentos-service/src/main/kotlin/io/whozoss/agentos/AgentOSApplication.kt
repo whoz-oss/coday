@@ -5,6 +5,7 @@ import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseKeepAliveProperties
 import io.whozoss.agentos.casePlugin.CasePluginConfigProperties
 import io.whozoss.agentos.chat.AnthropicProperties
+import io.whozoss.agentos.chat.RequestyPromptCacheProperties
 import io.whozoss.agentos.codayAgent.CodayAgentProperties
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
@@ -37,6 +38,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
 @EnableConfigurationProperties(
     AgentConfigProperties::class,
     AnthropicProperties::class,
+    RequestyPromptCacheProperties::class,
     CaseConfigProperties::class,
     CaseKeepAliveProperties::class,
     CasePluginConfigProperties::class,

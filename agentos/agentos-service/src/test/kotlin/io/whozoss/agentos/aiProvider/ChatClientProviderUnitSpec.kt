@@ -81,7 +81,7 @@ class ChatClientProviderUnitSpec :
                 )
             } returns chatModel
 
-            val client = chatClientProvider.getChatClient(m, p)
+            val client = chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
 
             client.shouldNotBeNull()
             verify(exactly = 1) {
@@ -112,7 +112,7 @@ class ChatClientProviderUnitSpec :
                 )
             } returns chatModel
 
-            chatClientProvider.getChatClient(m, p).shouldNotBeNull()
+            chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES).shouldNotBeNull()
         }
 
         "getChatClient forwards the model reasoning effort to ChatModelFactory" {
@@ -132,7 +132,7 @@ class ChatClientProviderUnitSpec :
                 )
             } returns chatModel
 
-            chatClientProvider.getChatClient(m, p).shouldNotBeNull()
+            chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES).shouldNotBeNull()
             verify(exactly = 1) {
                 chatModelFactory.createChatModel(
                     apiType = AiApiType.OpenAI,
@@ -214,6 +214,7 @@ class ChatClientProviderUnitSpec :
                         provider(),
                         accumulator = UsageAccumulator(),
                         maxToolRounds = namespaceMaxToolRounds,
+                        promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
                     )
 
             val response = client.prompt("Hello").toolCallbacks(callback).call().chatResponse()
@@ -243,7 +244,7 @@ class ChatClientProviderUnitSpec :
                 every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
             }
             val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
-            val client = clientProvider.getChatClient(model(), provider())
+            val client = clientProvider.getChatClient(model(), provider(), promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
 
             client.prompt("Hello").call().content() shouldBe "Done"
             verify(exactly = 1) { nativeModel.call(any<Prompt>()) }

@@ -348,6 +348,15 @@ agentos:
   # savings on multi-turn agent runs. Disable if prompt caching is not available on your plan.
   # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
   # prompt-caching-enabled: true
+  requesty:
+    prompt-cache:
+      # Models that get explicit 1-hour cache markers (cache_control ttl 1h, requesty.auto_cache false) when
+      # their user chose the 1-hour prompt cache duration and the provider's base URL is Requesty (requesty.ai).
+      # A regular expression searched in the API model name. The default matches every Claude model name;
+      # Requesty policy names do not always tell the backing model, so extend it for policies backed by Claude,
+      # e.g. "(?i)claude|^policy/sonnet-with-fallback$". Only Anthropic models accept these markers.
+      # Override with env var: AGENTOS_REQUESTY_PROMPT_CACHE_MODEL_PATTERN
+      model-pattern: "(?i)claude"
   plugins:
     # PF4J runtime directory, relative to the working directory. Coday (cwd = <configDir>/agentos),
     # the IntelliJ run configuration and bootRun (cwd = agentos/) all start from the AgentOS root,

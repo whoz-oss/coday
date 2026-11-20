@@ -18,5 +18,5 @@ export interface User {
   isAdmin: boolean
   lastname?: string
   preferredLanguage?: string
-  promptCacheTtl?: PromptCacheTtl
+  promptCacheTtl?: PromptCacheTtl | null
 }
