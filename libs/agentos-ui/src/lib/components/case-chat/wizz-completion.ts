@@ -35,6 +35,7 @@ export class WizzCompletionTracker {
       case 'AgentSelectedEvent':
       case 'ErrorEvent':
       case 'QuestionEvent':
+      case 'AnswerEvent':
         this.reset()
         return false
       case 'CaseStatusEvent':

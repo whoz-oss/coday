@@ -41,7 +41,7 @@ describe('WizzCompletionTracker', () => {
   it('resets eligibility for questions, errors and terminal statuses', () => {
     const tracker = new WizzCompletionTracker()
     const content = () => 'answer'
-    for (const boundary of ['QuestionEvent', 'ErrorEvent', 'CaseStatusEvent']) {
+    for (const boundary of ['QuestionEvent', 'AnswerEvent', 'ErrorEvent', 'CaseStatusEvent']) {
       tracker.accept(event('ThinkingEvent'), content)
       tracker.accept(event('MessageEvent', { actor: { role: 'AGENT', id: 'agent-1' } }), content)
       tracker.accept(event(boundary, boundary === 'CaseStatusEvent' ? { status: 'IDLE' } : {}), content)

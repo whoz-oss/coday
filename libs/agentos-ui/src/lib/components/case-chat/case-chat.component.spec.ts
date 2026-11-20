@@ -128,6 +128,11 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   it('only pulses Wizz after observed live activity, matching agent text, and completion', () => {
     const original = globalThis.EventSource
+    const originalFrame = globalThis.requestAnimationFrame
+    globalThis.requestAnimationFrame = jest.fn((callback: FrameRequestCallback) => {
+      callback(0)
+      return 1
+    })
     const source = Object.assign(new EventTarget(), { close: jest.fn() })
     globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
     const ref = makeComponent()
@@ -153,6 +158,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     } finally {
       ref.destroy()
       globalThis.EventSource = original
+      globalThis.requestAnimationFrame = originalFrame
     }
   })
 
