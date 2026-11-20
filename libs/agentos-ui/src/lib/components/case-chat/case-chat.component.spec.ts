@@ -236,15 +236,37 @@ describe('CaseChatComponent — submit with attachments', () => {
       installPanel(ref, animations, [])
       try {
         ref.instance['playWizzEffect']()
+        const oldFinish = animations[0]!.onfinish!
+        const oldCancel = animations[0]!.oncancel!
         listener!({ matches: true } as MediaQueryListEvent)
         expect(animations).toHaveLength(2)
         expect(animations[0]!.cancel).toHaveBeenCalledTimes(1)
-        // A stale callback from the replaced shake cannot clear the highlight owner.
-        animations[0]!.onfinish?.()
+        // Captured callbacks from the replaced shake cannot clear the highlight owner.
+        oldFinish()
+        oldCancel()
         expect(ref.instance['wizzAnimation']).toBe(animations[1])
       } finally {
         ref.destroy()
         Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+      }
+    })
+
+    it('keeps two same-turn completions and lets the later cue replace the active one', () => {
+      jest.useFakeTimers()
+      const ref = makeComponent()
+      const animations: FakeAnimation[] = []
+      installPanel(ref, animations, [])
+      try {
+        ref.instance['wizzEnabled'].set(true)
+        ref.instance['onWizzAnswerCompleted']()
+        ref.instance['onWizzAnswerCompleted']()
+        jest.runOnlyPendingTimers()
+
+        expect(animations).toHaveLength(2)
+        expect(animations[0]!.cancel).toHaveBeenCalledTimes(1)
+      } finally {
+        ref.destroy()
+        jest.useRealTimers()
       }
     })
 
