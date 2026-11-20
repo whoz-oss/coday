@@ -1,3 +1,15 @@
+## 3.51.0 (2026-11-20)
+
+### 🚀 Features
+
+- wz-36265 - increase limit of cases run by agent loop to 100 ([b7238bcea](https://github.com/whoz-oss/coday/commit/b7238bcea))
+- wz-36265 - increase limit of cases run by agent loop to 100 ([#1707](https://github.com/whoz-oss/coday/pull/1707))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.50.0 (2026-11-20)
 
 ### 🚀 Features
