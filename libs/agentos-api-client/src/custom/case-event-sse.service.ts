@@ -42,8 +42,11 @@ export class CaseEventSseService {
    * Runs EventSource callbacks outside NgZone for performance,
    * then re-enters the zone to emit — ensuring Angular change detection fires.
    */
-  connect(caseId: string): Observable<CaseEvent> {
-    const url = `${this.config.basePath}/api/cases/${caseId}/events`
+  connect(caseId: string, options: { includePreviousEvents?: boolean } = {}): Observable<CaseEvent> {
+    // A live-only connection deliberately has no replay or catch-up. Keep the default URL
+    // byte-for-byte compatible for ordinary timeline consumers.
+    const query = options.includePreviousEvents === false ? '?includePreviousEvents=false' : ''
+    const url = `${this.config.basePath}/api/cases/${caseId}/events${query}`
 
     return new Observable<CaseEvent>((subscriber) => {
       const source = this.zone.runOutsideAngular(() => new EventSource(url))

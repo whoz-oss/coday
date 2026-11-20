@@ -107,6 +107,7 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { CaseChatWizzStateService } from './case-chat-wizz-state.service'
 
 export interface ToolCall {
   requestId: string
@@ -227,7 +228,7 @@ function hasActiveSelection(): boolean {
     CostPipe,
     TokenCountPipe,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService, CaseChatWizzStateService],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -246,6 +247,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly caseState = inject(CaseStateService)
   private readonly oauthService = inject(OAuthAgentosService)
   private readonly userState = inject(UserStateService)
+  private readonly wizz = inject(CaseChatWizzStateService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -321,12 +323,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
+  private readonly messagesRegion = viewChild<ElementRef<HTMLDivElement>>('messagesRegion')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
   private readonly effortAutocompleteRef = viewChild(EffortAutocompleteComponent)
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
+  protected readonly wizzEnabled = this.wizz.enabled
+  private wizzAnimationTimer: ReturnType<typeof setTimeout> | null = null
+  private wizzAnimationGeneration = 0
 
   /**
    * Pre-computed markdown HTML per event id.
@@ -572,6 +578,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           this.scrollToBottom()
         })
       }
+    })
+
+    // Reconcile the live-only provenance stream with ordered conversation events. This never mutates the timeline.
+    effect(() => this.wizz.setMainEvents(this.events()))
+
+    // The animation belongs only to the messages region. Restart by toggling a class after rendering,
+    // not by replacing the scroll container or forcing layout.
+    effect(() => {
+      const cue = this.wizz.cue()
+      if (cue === 0 || !this.wizz.enabled()) return
+      this.playWizzCue()
     })
 
     // Register DOM-dependent behaviour after the first render.
@@ -995,6 +1012,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.cancelWizzCue()
+    this.wizz.reset()
     if (this.terminalCloseTimer !== null) {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
@@ -1039,6 +1058,32 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected onScrollToBottomClick(): void {
     this.isAtBottom.set(true)
     this.scrollToBottom()
+  }
+
+  protected toggleWizz(): void {
+    this.wizz.toggle(this.caseId)
+    if (!this.wizz.enabled()) this.cancelWizzCue()
+  }
+
+  private playWizzCue(): void {
+    const region = this.messagesRegion()?.nativeElement
+    if (!region) return
+    this.cancelWizzCue()
+    const generation = ++this.wizzAnimationGeneration
+    afterNextRender(() => {
+      if (generation !== this.wizzAnimationGeneration || !this.wizz.enabled()) return
+      region.classList.add('case-chat__messages-region--wizz')
+      this.wizzAnimationTimer = setTimeout(() => {
+        if (generation === this.wizzAnimationGeneration) region.classList.remove('case-chat__messages-region--wizz')
+      }, 350)
+    }, { injector: this.injector })
+  }
+
+  private cancelWizzCue(): void {
+    this.wizzAnimationGeneration++
+    if (this.wizzAnimationTimer !== null) clearTimeout(this.wizzAnimationTimer)
+    this.wizzAnimationTimer = null
+    this.messagesRegion()?.nativeElement.classList.remove('case-chat__messages-region--wizz')
   }
 
   // ---------------------------------------------------------------------------
@@ -1183,6 +1228,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
                 // Re-read derived state: if a later IDLE frame arrived, isTerminal is false.
                 if (this.isTerminal()) {
                   this.isRunning.set(false)
+                  this.wizz.terminal()
+                  this.cancelWizzCue()
                   this.eventSource?.close()
                   this.eventSource = null
                 }
@@ -1408,6 +1455,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called when the router reuses this component instance for a different case.
    */
   private reinitialise(): void {
+    this.cancelWizzCue()
+    this.wizz.reset()
+    this.wizz.setCase(this.caseId)
     // Cancel any pending terminal-close timer before reconnecting: a stale timer must
     // not close the freshly created EventSource for the reopened case.
     if (this.terminalCloseTimer !== null) {

@@ -35,6 +35,7 @@ import { ComposerAttachmentsService } from '../composer-attachments/composer-att
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
 import { CaseChatComponent } from './case-chat.component'
+import { CaseChatWizzStateService } from './case-chat-wizz-state.service'
 
 /**
  * The component is created WITHOUT rendering (no attachView / detectChanges): ngOnInit never
@@ -125,6 +126,30 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   afterEach(() => TestBed.resetTestingModule())
+
+  it('keeps Wizz off until requested and resets it without scrolling on a case reset', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      const wizz = ref.injector.get(CaseChatWizzStateService)
+      const scroll = jest.spyOn(ref.instance, 'scrollToBottom')
+      expect(wizz.enabled()).toBe(false)
+
+      ref.instance['toggleWizz']()
+      expect(wizz.enabled()).toBe(true)
+      expect(globalThis.EventSource).toHaveBeenCalledWith('/api/cases/c-1/events?includePreviousEvents=false')
+
+      ref.instance['reinitialise']()
+      expect(wizz.enabled()).toBe(false)
+      expect(source.close).toHaveBeenCalled()
+      expect(scroll).not.toHaveBeenCalled()
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
 
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
