@@ -923,7 +923,7 @@ class WorkflowController(
         @PathVariable interactionId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
         @Parameter(hidden = true) user: AuthenticatedUser,
-    ): WorkflowDataEnvelope<Any?> {
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
         val allowed = setOf("namespaceId", "expectedRevision", "actionId", "text")
         val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
@@ -935,7 +935,7 @@ class WorkflowController(
             throw workflowException(WorkflowErrorCodes.INVALID_REPLY)
         }
         val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
-        return WorkflowDataEnvelope(
+        return respond(
             service.replyInteraction(
                 caller.scope,
                 caller.namespaceId,
@@ -945,7 +945,7 @@ class WorkflowController(
                 actionId,
                 text,
                 caller.actorId,
-            ).data,
+            ),
         )
     }
 

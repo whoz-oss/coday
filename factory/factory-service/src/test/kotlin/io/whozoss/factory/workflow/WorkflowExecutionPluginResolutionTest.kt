@@ -10,6 +10,7 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowException
 import io.whozoss.factory.workflow.domain.WorkflowExecutionPolicy
+import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
@@ -154,5 +155,26 @@ class WorkflowExecutionPluginResolutionTest {
         verify(exactly = 0) { pluginManager.getExtensions(any<Class<FactoryWorkflowExecutionPolicy>>()) }
         verify(exactly = 0) { pluginManager.getPlugin(any<String>()) }
         verify(exactly = 1) { repository.insertInstance(scope, any()) }
+    }
+
+    @Test
+    fun `a policy-required checkpoint cannot be opened through the generic manual endpoint`() {
+        every { repository.findInstance(scope, namespace, "wf-1") } returns WorkflowInstanceRecord(
+            namespaceId = namespace,
+            workflowId = "wf-1",
+            revision = 1,
+            status = "active",
+            creationCommandHash = "hash",
+            instance = mapOf("workflowType" to "forge.delivery",
+                "execution" to mapOf("plugin" to "forge", "humanCheckpointPolicyRequired" to true)),
+            projection = emptyMap(),
+        )
+
+        assertThatThrownBy {
+            service().openInteraction(scope, namespace, "wf-1", "packet-approval", 1,
+                "Approve packet", listOf(mapOf("id" to "approve"), mapOf("id" to "reject")), "manual")
+        }.isInstanceOf(WorkflowException::class.java)
+            .extracting("errorCode")
+            .isEqualTo(WorkflowErrorCodes.INVALID_INTERACTION)
     }
 }

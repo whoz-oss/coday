@@ -14,8 +14,8 @@ package io.whozoss.factory.workflow.domain
  *  - a `pending` step with AT LEAST ONE dependency in `{failed, blocked, cancelled}`
  *    becomes `blocked` (which propagates transitively, since a `blocked` step
  *    blocks its own dependents);
- *  - a `human` step that requires a decision is `waiting_human` and suspends the
- *    whole session until the interaction is answered;
+ *  - a `human` step that requires a decision is `waiting_human`; independent
+ *    ready steps may continue, while its dependants wait for the answer;
  *  - the session is `completed` iff every step completed; it is `failed` if any
  *    step failed or was blocked and no step can run any more. There is NO retry.
  */

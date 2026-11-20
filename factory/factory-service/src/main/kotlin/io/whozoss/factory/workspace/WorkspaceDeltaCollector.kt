@@ -58,6 +58,45 @@ class WorkspaceDeltaCollector(
     private val logger = KotlinLogging.logger {}
 
     /**
+     * Captures a baseline after Case preparation; a new Case can precede its Git worktree.
+     * @param requireTrustedBaseline Reject missing inventory, patches, or watched-file proof instead of inferring them.
+     */
+    fun captureBeforeTurnWhenReady(
+        caseId: String,
+        watchedPaths: Collection<String> = emptyList(),
+        externalUserId: String? = null,
+        maxWaitMillis: Long = 60_000,
+        requireTrustedBaseline: Boolean = false,
+    ): WorkspaceTurnSnapshot {
+        fun capture(): WorkspaceTurnSnapshot = captureSnapshot(
+            caseId = caseId,
+            watchedPaths = watchedPaths,
+            externalUserId = externalUserId,
+            requireTrustedBaseline = requireTrustedBaseline,
+        )
+        val deadline = System.nanoTime() + maxWaitMillis.coerceAtLeast(0) * 1_000_000
+        var snapshot = capture()
+        while (snapshot.captureStatus == WorkspaceCaptureStatus.UNAVAILABLE &&
+            snapshot.degradedReason.isWorkspacePreparationPending() &&
+            System.nanoTime() < deadline
+        ) {
+            try {
+                Thread.sleep(250)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return snapshot
+            }
+            snapshot = capture()
+        }
+        return snapshot
+    }
+
+    private fun String?.isWorkspacePreparationPending(): Boolean =
+        this == "WORKSPACE_NOT_FOUND" ||
+            this?.contains("status=REQUESTED") == true ||
+            this?.contains("status=PREPARING") == true
+
+    /**
      * Captures a point-in-time snapshot of [caseId]'s workspace for the given
      * [watchedPaths]. Never throws: an unreachable or unequipped workspace is
      * reported via [WorkspaceCaptureStatus.UNAVAILABLE] or [WorkspaceCaptureStatus.DEGRADED].
@@ -67,6 +106,7 @@ class WorkspaceDeltaCollector(
         watchedPaths: Collection<String> = emptyList(),
         fallbackWorktreeRoot: Path? = null,
         externalUserId: String? = null,
+        requireTrustedBaseline: Boolean = false,
     ): WorkspaceTurnSnapshot {
         val proxy = agentOsProxyClient
             ?: return WorkspaceTurnSnapshot(
@@ -109,7 +149,20 @@ class WorkspaceDeltaCollector(
         val branch = rawEnv["branch"] as? String
         val changesMap = rawEnv["changes"] as? Map<*, *>
         val baseSha = changesMap?.get("base") as? String
-        val rawFiles = (changesMap?.get("files") as? List<*>).orEmpty().filterIsInstance<Map<*, *>>()
+        val fileInventory = changesMap?.get("files") as? List<*>
+        val rawFiles = fileInventory.orEmpty().filterIsInstance<Map<*, *>>()
+        if (requireTrustedBaseline && (status != "READY" || (rawEnv["path"] as? String).isNullOrBlank() ||
+                baseSha?.matches(GIT_OBJECT_ID) != true || fileInventory == null ||
+                rawFiles.size != fileInventory.size || rawFiles.any { entry ->
+                    (entry["path"] as? String).isNullOrBlank() ||
+                        (entry["status"] as? String)?.let(GIT_FILE_STATUSES::contains) != true
+                } || rawFiles.distinctBy { it["path"] }.size != rawFiles.size)
+        ) {
+            return WorkspaceTurnSnapshot(
+                captureStatus = WorkspaceCaptureStatus.DEGRADED,
+                degradedReason = "WORKSPACE_BASELINE_INCOMPLETE",
+            )
+        }
 
         val changedStatuses = LinkedHashMap<String, String>()
         val changedPatchHashes = LinkedHashMap<String, String?>()
@@ -128,6 +181,8 @@ class WorkspaceDeltaCollector(
                 val msg = diffMap?.get("message") as? String
                 if (msg != null && msg.contains("too large to preview", ignoreCase = true)) {
                     degradedReason = "PATCH_TOO_LARGE:$path"
+                } else if (requireTrustedBaseline && patch.isNullOrEmpty()) {
+                    degradedReason = "WORKSPACE_PATCH_UNAVAILABLE:$path"
                 }
                 changedPatchHashes[path] = patch?.let(::sha256Hex)
             } else {
@@ -157,7 +212,11 @@ class WorkspaceDeltaCollector(
             val explicitExists = (fileEntry?.get("exists") as? Boolean)
                 ?: (diffMap?.get("exists") as? Boolean)
 
+            val observedAbsent = changedStatuses[watchedPath] == "DELETED" || explicitExists == false
+            val observedDigest = explicitSha?.takeIf(SHA256::matches)
             val (exists, contentSha) = when {
+                requireTrustedBaseline && observedAbsent -> false to null
+                requireTrustedBaseline -> (observedDigest != null) to observedDigest
                 explicitSha != null -> (explicitExists ?: true) to explicitSha
                 explicitExists == false || changedStatuses[watchedPath] == "DELETED" -> false to null
                 resolvedRootPath != null -> readSafeFileSha256(resolvedRootPath, watchedPath)
@@ -165,6 +224,11 @@ class WorkspaceDeltaCollector(
                 // an untracked full-file patch (`--no-index` against `/dev/null`) or the patch itself.
                 patch != null -> true to sha256Hex(patch)
                 else -> false to null
+            }
+
+            if (requireTrustedBaseline && !observedAbsent && observedDigest == null) {
+                // A missing local file does not prove absence on a remote Case worktree.
+                degradedReason = "WATCHED_FILE_EVIDENCE_UNAVAILABLE:$watchedPath"
             }
 
             watchedSnapshots[watchedPath] = WatchedFilePoint(
@@ -292,6 +356,10 @@ class WorkspaceDeltaCollector(
     }
 
     companion object {
+        private val GIT_OBJECT_ID = Regex("[0-9a-f]{40}([0-9a-f]{24})?")
+        private val SHA256 = Regex("[0-9a-f]{64}")
+        private val GIT_FILE_STATUSES = setOf("ADDED", "MODIFIED", "DELETED", "TYPE_CHANGED", "CONFLICTED", "UNTRACKED")
+
         fun sha256Hex(input: String): String = sha256Hex(input.toByteArray(Charsets.UTF_8))
 
         fun sha256Hex(bytes: ByteArray): String {

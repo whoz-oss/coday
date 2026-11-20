@@ -72,6 +72,14 @@
       [agentQuestionsError]="s.agentQuestionsError ?? null"
       [answeringQuestionId]="store.answeringQuestionId()"
       [questionFeedback]="store.questionFeedback()"
+      [retryingStepId]="store.retrying()?.stepId ?? null"
+      [retryRefreshPending]="store.retryConflict() !== null"
+      [retryFeedback]="
+        store.retryFeedback()?.workflowId === effectiveRunId() &&
+        (!store.retryFeedback()?.namespaceId || store.retryFeedback()?.namespaceId === currentNamespaceId())
+          ? store.retryFeedback()
+          : null
+      "
       [resumingResearchStepId]="store.resumingResearchStepId()"
       [researchResumptionFeedback]="store.researchResumptionFeedback()"
       (reply)="onReply($event)"

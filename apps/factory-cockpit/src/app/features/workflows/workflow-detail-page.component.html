@@ -30,29 +30,35 @@
   @if (state.definition(); as def) {
     @if (!state.editing() && !state.creating() && !state.loading()) {
       <div>
-        <div class="save-actions">
-          <button mat-flat-button class="sf-primary" (click)="state.edit()" [disabled]="deleting()" data-edit-workflow>
-            Edit workflow
-          </button>
-          <button
-            mat-stroked-button
-            class="sf-danger"
-            type="button"
-            (click)="deleteWorkflow()"
-            [disabled]="deleting()"
-            [attr.aria-label]="
-              'Delete workflow ' + (def.title || def.workflowType) + ' ' + def.workflowType + '@' + def.version
-            "
-            data-delete-workflow
-          >
-            <mat-icon>delete_outline</mat-icon>{{ deleting() ? 'Deleting…' : 'Delete workflow' }}
-          </button>
-        </div>
+        @if (!(def.workflowType || '').startsWith('forge.')) {
+          <div class="save-actions">
+            <button mat-flat-button class="sf-primary" (click)="state.edit()" [disabled]="deleting()" data-edit-workflow>
+              Edit workflow
+            </button>
+            <button
+              mat-stroked-button
+              class="sf-danger"
+              type="button"
+              (click)="deleteWorkflow()"
+              [disabled]="deleting()"
+              [attr.aria-label]="
+                'Delete workflow ' + (def.title || def.workflowType) + ' ' + def.workflowType + '@' + def.version
+              "
+              data-delete-workflow
+            >
+              <mat-icon>delete_outline</mat-icon>{{ deleting() ? 'Deleting…' : 'Delete workflow' }}
+            </button>
+          </div>
+        }
         @if (deleteError(); as message) {
           <p class="banner banner--warn" role="alert" data-delete-error>{{ message }}</p>
         }
         <p class="sf-muted">
-          Read-only definition. Editing saves a new immutable version; existing runs keep their version and hash.
+          @if ((def.workflowType || '').startsWith('forge.')) {
+            This Forge workflow is published by the plugin. Its version and steps are read-only.
+          } @else {
+            Read-only definition. Editing saves a new immutable version; existing runs keep their version and hash.
+          }
         </p>
       </div>
     }

@@ -135,6 +135,7 @@ class WorkflowDefinitionController(
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
         val caller = resolveWorkflowCaller(user, requireNamespace = false)
+        rejectPluginManagedWorkflow(workflowType)
         val deleted = service.deleteDefinition(caller.scope, workflowType, version)
         if (!deleted) {
             throw workflowException(
@@ -164,6 +165,7 @@ class WorkflowDefinitionController(
         createOnly: Boolean = false,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
         val record = validatedRecord(body)
+        rejectPluginManagedWorkflow(record.workflowType)
         if (createOnly) {
             if (!definitionCreator.createIfAbsent(caller.scope, record)) {
                 throw workflowException(
@@ -189,6 +191,15 @@ class WorkflowDefinitionController(
                 ),
             ),
         )
+    }
+
+    private fun rejectPluginManagedWorkflow(workflowType: String) {
+        if (workflowType.startsWith("forge.")) {
+            throw workflowException(
+                WorkflowErrorCodes.WORKFLOW_DEFINITION_PLUGIN_MANAGED,
+                "Forge workflow definitions are published by the plugin and cannot be edited through this API.",
+            )
+        }
     }
 
     private fun validatedRecord(body: Map<String, Any?>?): WorkflowDefinitionRecord {

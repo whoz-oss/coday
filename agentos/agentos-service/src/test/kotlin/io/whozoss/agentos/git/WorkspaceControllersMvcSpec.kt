@@ -4,6 +4,7 @@ import com.ninjasquad.springmockk.MockkBean
 import com.ninjasquad.springmockk.SpykBean
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
+import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.verify
 import io.whozoss.agentos.caseFlow.Case
@@ -64,6 +65,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var storage: ExchangeStorageService
     @MockkBean(relaxed = true) lateinit var lifecycle: GitWorkspaceLifecycleService
     @MockkBean(relaxed = true) lateinit var diffs: ExchangeGitDiff
+    @MockkBean(relaxed = true) lateinit var pinnedObjects: GitPinnedObjectService
     @MockkBean(relaxed = true) lateinit var associations: GitRepositoryAssociationService
     @MockkBean(relaxed = true) lateinit var integrationConfigs: IntegrationConfigService
     @MockkBean(relaxed = true) lateinit var checkoutProvisioner: RepositoryCheckoutProvisioner
@@ -135,13 +137,39 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
         }
 
-        "a caller without case READ cannot inspect workspace changes or diff" {
+        "a caller without case READ cannot inspect workspace changes or pinned Git objects" {
             val caseId = UUID.randomUUID()
-            listOf("workspace/changes", "workspace/diff?path=secret.txt").forEach { suffix ->
+            listOf(
+                "workspace/changes",
+                "workspace/diff?path=secret.txt",
+                "workspace/git-commit?commit=${"a".repeat(40)}",
+                "workspace/git-blob?commit=${"a".repeat(40)}&path=secret.txt",
+            ).forEach { suffix ->
                 mockMvc.perform(get("/api/cases/$caseId/$suffix"))
                     .andExpect(status().isForbidden)
             }
             verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
+        }
+
+        "an authorized Case reader receives exact pinned Git bytes" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            val binding = CaseResourceBinding(rootCaseId = case.id, namespaceId = case.namespaceId,
+                integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY)
+            val commit = "a".repeat(40)
+            val bytes = byteArrayOf(0, 1, -1, 10)
+            stubCase(case, binding)
+            allow(EntityType.CASE, case.id, Action.READ)
+            every { pinnedObjects.readBlob(any(), commit, "SPEC.md") } returns bytes
+
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/git-commit").param("commit", commit))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.exists").value(true))
+            val response = mockMvc.perform(get("/api/cases/${case.id}/workspace/git-blob")
+                .param("commit", commit).param("path", "SPEC.md"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_OCTET_STREAM))
+                .andReturn().response
+            response.contentAsByteArray.contentEquals(bytes) shouldBe true
         }
 
         "a caller without namespace READ cannot inspect Git settings or workspace inventory" {
@@ -247,7 +275,12 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 mockMvc.perform(get("/api/cases/${child.id}/files/$suffix")).andExpect(status().isNotFound)
             }
             mockMvc.perform(get("/api/cases/${child.id}/workspace")).andExpect(status().isNotFound)
-            listOf("workspace/changes", "workspace/diff?path=private.txt").forEach { suffix ->
+            listOf(
+                "workspace/changes",
+                "workspace/diff?path=private.txt",
+                "workspace/git-commit?commit=${"a".repeat(40)}",
+                "workspace/git-blob?commit=${"a".repeat(40)}&path=private.txt",
+            ).forEach { suffix ->
                 mockMvc.perform(get("/api/cases/${child.id}/$suffix")).andExpect(status().isForbidden)
             }
             mockMvc.perform(delete("/api/cases/${child.id}/files").param("path", "private.txt"))

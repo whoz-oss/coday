@@ -16,6 +16,9 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.capability.NeedsResearchRouter
 import io.whozoss.factory.capability.CapabilityOutcome
+import io.whozoss.factory.capability.CapabilityExecutionService
+import io.whozoss.factory.capability.CapabilityExecutionService.Companion.WORKSPACE_RETRY_CODE
+import io.whozoss.factory.sdk.spi.StepEvidenceObservation
 import io.whozoss.factory.workflow.domain.ProjectionValidation
 import io.whozoss.factory.workflow.domain.WorkflowException
 import io.whozoss.factory.workflow.domain.WorkflowStepContract
@@ -25,6 +28,10 @@ import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.proxy.AgentOsUnavailableException
 import io.whozoss.factory.proxy.UsageTrackingUnavailableException
 import io.whozoss.factory.sdk.spi.FactoryWorkflowExecutionPolicy
+import io.whozoss.factory.sdk.spi.FactoryHumanCheckpointPolicy
+import io.whozoss.factory.sdk.spi.HumanCheckpointContext
+import io.whozoss.factory.sdk.spi.HumanCheckpointVerdict
+import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.workflow.domain.LegacyStepContract
 import io.whozoss.factory.workflow.domain.AllowedActionDto
 import io.whozoss.factory.workflow.domain.CanonicalHash
@@ -133,6 +140,7 @@ class WorkflowService(
     private val needsResearchRouter: NeedsResearchRouter? = null,
     private val idempotencyRepository: IdempotencyRepository? = null,
     private val objectMapper: ObjectMapper? = null,
+    private val workspaceRetryCapability: CapabilityExecutionService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -154,6 +162,32 @@ class WorkflowService(
 
     /** Durable outcome of the transactional part of a human reply. */
     private data class HumanReplyOutcome(val interaction: HumanInteractionRecord, val result: WorkflowHttpResult)
+
+    private fun checkpointPolicyRequired(instance: WorkflowInstanceRecord): Boolean =
+        ((instance.instance["execution"] as? Map<*, *>)?.get("humanCheckpointPolicyRequired") == true)
+
+    /** Rebuilds the plugin's accepted direct-workflow state from durable evidence. */
+    private fun checkpointRunView(
+        scope: TenantScope,
+        namespaceId: String,
+        instance: WorkflowInstanceRecord,
+    ): RunView {
+        val evidence = evidenceRepository.list(scope, namespaceId, instance.workflowId)
+        val accepted = evidence
+            .lastOrNull { it.kind == "agent-result" && it.outcome == "pass" && it.facts["acceptedDomainState"] is Map<*, *> }
+        val state = (accepted?.facts?.get("acceptedDomainState") as? Map<*, *>)?.entries
+            ?.associate { it.key.toString() to it.value }.orEmpty()
+        return RunView(
+            runId = instance.workflowId,
+            runType = instance.instance["workflowType"] as? String ?: "",
+            ticket = instance.instance["ticket"] as? String,
+            domainState = state,
+            humanDecisions = evidence.filter { it.kind == "human-decision" }.map { decision ->
+                mapOf("stepId" to decision.stepId, "outcome" to decision.outcome,
+                    "facts" to decision.facts, "source" to decision.source)
+            },
+        )
+    }
 
     // ------------------------------------------------------------------
     // Definitions
@@ -893,6 +927,9 @@ class WorkflowService(
         idempotencyKey: String,
     ): WorkflowHttpResult {
         val instance = activeInstance(scope, namespaceId, workflowId)
+        if (checkpointPolicyRequired(instance)) {
+            throw workflowException(WorkflowErrorCodes.INVALID_INTERACTION, "This checkpoint must be opened from the workflow's pinned evidence.")
+        }
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
         val validation = WorkflowTransitionPolicy.validateRequest(
@@ -987,16 +1024,40 @@ class WorkflowService(
         actorId: String,
         repoRoot: Path? = null,
     ): WorkflowHttpResult {
+        val pending = interactionRepository.find(scope, namespaceId, workflowId, interactionId)
+        val retryRoot = if (actionId == "approve" && pending?.isWorkspaceRetry() == true) (repoRoot ?: resolveRepoRoot(namespaceId, actorId)).toAbsolutePath().normalize().toString() else null
+        val checkpointEvidence = pending?.takeIf { it.interactionType == CHECKPOINT_INTERACTION_TYPE &&
+            it.status == "waiting" && it.revision == expectedRevision && !actorId.isBlank()
+        }?.let { interaction ->
+            repository.findInstance(scope, namespaceId, workflowId)?.let { instance ->
+                workspaceRetryCapability?.observeBeforeSideEffect(scope, instance, interaction.stepId, actorId, interactionId)
+            }
+        }
         // Transaction 1 (short): commit the human response + evidence + transition
         // + interaction closure atomically.
-        val outcome = inReplyTransaction {
-            replyInteractionTransactional(scope, namespaceId, workflowId, interactionId, expectedRevision, actionId, text, actorId)
+        val commitReply = {
+            inReplyTransaction {
+                replyInteractionTransactional(scope, namespaceId, workflowId, interactionId, expectedRevision, actionId, text, actorId, retryRoot, checkpointEvidence)
+            }
         }
+        // Let the sequencer finish projecting the pause before replacing it with READY.
+        val outcome = if (retryRoot != null) {
+            val runner = sessionRunService
+                ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The workflow sequencer is unavailable.")
+            runner.withWorkflowLock(scope, namespaceId, workflowId, commitReply)
+        } else commitReply()
         // Post-transaction resumption: a separate execution context that does not
         // join (or inherit) the committed reply transaction.
-        resumeCheckpointSession(scope, namespaceId, workflowId, outcome.interaction, repoRoot)
+        if (outcome.result.status == 200) {
+            resumeCheckpointSession(scope, namespaceId, workflowId, outcome.interaction, repoRoot)
+        } else {
+            sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+        }
         return outcome.result
     }
+
+    private fun HumanInteractionRecord.isWorkspaceRetry(): Boolean = interactionType == "retry" &&
+        payload["reasonCode"] == WORKSPACE_RETRY_CODE
 
     private fun replyInteractionTransactional(
         scope: TenantScope,
@@ -1007,6 +1068,8 @@ class WorkflowService(
         actionId: String,
         text: String?,
         actorId: String,
+        retryRoot: String?,
+        checkpointEvidence: CapabilityExecutionService.SideEffectEvidence?,
     ): HumanReplyOutcome {
         val interaction = interactionRepository.find(scope, namespaceId, workflowId, interactionId)
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_NOT_FOUND)
@@ -1019,8 +1082,17 @@ class WorkflowService(
         assertNotSealed(instance)
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
+        val workspaceRetry = interaction.isWorkspaceRetry()
         val isRetry = interaction.interactionType == "retry"
-        val expectedStepStatus = if (isRetry) "blocked" else "waiting_human"
+        val expectedStepStatus = if (isRetry && !workspaceRetry) "blocked" else "waiting_human"
+        val retryPredecessor = if (workspaceRetry) {
+            val predecessor = durableAgentAttemptService?.findLatestForStep(scope, namespaceId, workflowId, interaction.stepId)
+            if (interaction.status != "waiting" || actionId != "approve" || actorId.isBlank() || predecessor == null ||
+                predecessor.attemptId != interaction.payload["attemptId"] || predecessor.status != AgentAttemptStatus.FAILED ||
+                predecessor.failureCode != WORKSPACE_RETRY_CODE
+            ) throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "This workspace retry is no longer current.")
+            predecessor
+        } else null
         val stepStateStatus = repository.findStepStates(scope, namespaceId, workflowId)
             .firstOrNull { it.stepId == interaction.stepId }
             ?.status
@@ -1054,18 +1126,62 @@ class WorkflowService(
         if (expectedRevision != interactionRevision) {
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
         }
+        val observedFacts = checkpointEvidence?.let { observed ->
+            if (workspaceRetryCapability?.sideEffectEvidenceIsCurrent(scope, instance, observed) != true || interaction.status != "waiting") {
+                throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "Workflow changed during external evidence observation.")
+            }
+            when (val verdict = observed.verdict) {
+                is StepEvidenceObservation.Observed -> verdict.facts
+                is StepEvidenceObservation.Invalid -> return persistCheckpointPause(scope, instance, interaction, verdict.code, verdict.message)
+                is StepEvidenceObservation.Unavailable -> return persistCheckpointPause(scope, instance, interaction, verdict.code, verdict.message)
+            }
+        }
+        val checkpointFacts = if (workspaceRetry) {
+            mapOf("retryAttemptId" to retryPredecessor?.attemptId)
+        } else if (checkpointPolicyRequired(instance)) {
+            val flowType = instance.instance["workflowType"] as? String
+                ?: throw workflowException(WorkflowErrorCodes.INVALID_REPLY, "Workflow type unavailable.")
+            val presented = (interaction.payload["presented"] as? Map<*, *>)?.entries
+                ?.associate { it.key.toString() to it.value }
+                ?: throw workflowException(WorkflowErrorCodes.INVALID_REPLY, "The presented checkpoint identity is missing.")
+            val policies = pluginManager?.getExtensions(FactoryHumanCheckpointPolicy::class.java).orEmpty()
+                .filter { it.supports(flowType, interaction.stepId) }
+            if (policies.size != 1) {
+                throw workflowException(WorkflowErrorCodes.INVALID_REPLY, "The checkpoint policy is unavailable or ambiguous.")
+            }
+            if (policies.single().requiresExternalEvidence(flowType, interaction.stepId) && observedFacts == null) {
+                return persistCheckpointPause(scope, instance, interaction, "CHECKPOINT_EVIDENCE_UNAVAILABLE", "Trusted checkpoint evidence is unavailable. Retry this decision after restoring access.")
+            }
+            val run = checkpointRunView(scope, namespaceId, instance)
+            val verdict = runCatching {
+                policies.single().decide(HumanCheckpointContext(run, flowType, interaction.stepId), presented, actionId)
+            }.getOrElse {
+                throw workflowException(WorkflowErrorCodes.INVALID_REPLY, "The checkpoint policy could not verify this decision.")
+            }
+            when (verdict) {
+                is HumanCheckpointVerdict.Allowed -> {
+                    if (observedFacts != null && (observedFacts.isEmpty() || observedFacts.any { (key, value) -> verdict.facts[key] != value })) {
+                        return persistCheckpointPause(scope, instance, interaction, "PRESENTED_EVIDENCE_MISMATCH", "Trusted evidence does not match the presented checkpoint.")
+                    }
+                    verdict.facts + observedFacts?.let { mapOf("trustedCheckpointEvidence" to it) }.orEmpty()
+                }
+                is HumanCheckpointVerdict.Denied -> throw workflowException(WorkflowErrorCodes.INVALID_REPLY, verdict.code)
+            }
+        } else emptyMap()
         val outcome = if (actionId == "approve") "pass" else "fail"
         val evidenceItem = WorkflowEvidenceItem(
             evidenceId = UUID.randomUUID().toString(),
             namespaceId = namespaceId,
             workflowId = workflowId,
             stepId = interaction.stepId,
-            kind = "human-decision",
-            outcome = outcome,
+            kind = if (workspaceRetry) "agent-retry-decision" else "human-decision",
+            outcome = if (workspaceRetry) "retry" else outcome,
             source = mapOf("kind" to "factory-human", "runtimeId" to "factory-dashboard", "actorId" to actorId),
             facts = buildMap {
                 put("interactionId", interactionId)
                 put("actionId", actionId)
+                put("decidedAt", nowIso())
+                putAll(checkpointFacts)
                 if (!text.isNullOrEmpty()) put("decisionTextHash", "sha256:${CanonicalHash.sha256Hex(text)}")
             },
             idempotencyKey = "human:$interactionId",
@@ -1076,7 +1192,11 @@ class WorkflowService(
             is EvidenceAppendResult.Idempotent -> result.item
             is EvidenceAppendResult.Collision -> throw workflowException(result.code)
         }
-        val requestedStatus = if (actionId == "approve") "completed" else "failed"
+        val requestedStatus = when {
+            workspaceRetry -> WorkflowStatuses.READY
+            actionId == "approve" -> WorkflowStatuses.COMPLETED
+            else -> WorkflowStatuses.FAILED
+        }
         val validation = WorkflowTransitionPolicy.validateRequest(
             mapOf(
                 "workflowId" to workflowId,
@@ -1097,8 +1217,12 @@ class WorkflowService(
             actorId = actorId,
             namespaceId = namespaceId,
         )
-        val decision = WorkflowTransitionPolicy.evaluateHumanResolutionTransition(request, synchronizedSnapshot, definition, evidence, execution)
-        if (decision is TransitionDecision.Denied) throw decision.toException()
+        // Workspace retry authorizes a new attempt, never a successful step.
+        // Its authenticated reply is bound to the terminal predecessor above.
+        if (!workspaceRetry) {
+            val decision = WorkflowTransitionPolicy.evaluateHumanResolutionTransition(request, synchronizedSnapshot, definition, evidence, execution)
+            if (decision is TransitionDecision.Denied) throw decision.toException()
+        }
         val applied = WorkflowTransitionPolicy.applyTransition(synchronizedSnapshot, definition, request)
         if (!repository.updateInstance(scope, namespaceId, workflowId, workflowRevision, applied.toInstance(instance))) {
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
@@ -1111,7 +1235,7 @@ class WorkflowService(
             request = request,
             fromStepId = interaction.stepId,
             toStepId = interaction.stepId,
-            payload = mapOf("kind" to "human_resolution", "actionId" to actionId),
+            payload = mapOf("kind" to if (workspaceRetry) "workspace_retry" else "human_resolution", "actionId" to actionId),
         )
         // Strict CAS verification: the interaction closure must win its
         // compare-and-swap. A stale revision means the interaction was answered
@@ -1150,7 +1274,8 @@ class WorkflowService(
                     scope,
                     targetState.copy(
                         status = requestedStatus,
-                        payload = targetState.payload + ("completedAt" to nowIso()),
+                        payload = if (workspaceRetry) targetState.payload - setOf("startedAt", "completedAt", "waitingQuestion")
+                            else targetState.payload + ("completedAt" to nowIso()),
                     ),
                 )
             }
@@ -1170,6 +1295,14 @@ class WorkflowService(
                     expectedRevision = null,
                 )
             }
+        }
+        if (retryPredecessor != null) {
+            val capability = workspaceRetryCapability
+                ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Workspace retry is unavailable.")
+            val submitter = sessionRunSubmissionService
+                ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The durable workflow runner is unavailable.")
+            val successor = capability.registerWorkspaceRetry(scope, instance, retryPredecessor)
+            submitter.submit(scope, namespaceId, workflowId, requireNotNull(retryRoot), "workspace-retry:$successor", null)
         }
         sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
         return HumanReplyOutcome(
@@ -1192,6 +1325,34 @@ class WorkflowService(
     // ------------------------------------------------------------------
     // Automatic session resumption
     // ------------------------------------------------------------------
+
+    private fun persistCheckpointPause(
+        scope: TenantScope, instance: WorkflowInstanceRecord, interaction: HumanInteractionRecord, code: String, message: String,
+    ): HumanReplyOutcome {
+        // Fence workflow lifecycle as well as concurrent replies before recording the pause.
+        val nextRevision = instance.revision + 1
+        if (!repository.updateInstance(scope, instance.namespaceId, instance.workflowId, instance.revision,
+                instance.copy(revision = nextRevision, instance = instance.instance + ("revision" to nextRevision)))) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The workflow revision is stale.")
+        }
+        if (!interactionRepository.update(scope, instance.namespaceId, instance.workflowId, interaction.interactionId,
+                interaction.revision, interaction.copy(revision = interaction.revision + 1,
+                    payload = interaction.payload + ("technicalPause" to mapOf("code" to code, "message" to message))))) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The interaction revision is stale.")
+        }
+        val facts = mapOf("interactionId" to interaction.interactionId, "code" to code, "message" to message,
+            "expectedRevision" to interaction.revision + 1)
+        evidenceRepository.append(scope, instance.namespaceId, instance.workflowId, WorkflowEvidenceItem(
+            evidenceId = UUID.randomUUID().toString(), namespaceId = instance.namespaceId, workflowId = instance.workflowId,
+            stepId = interaction.stepId, kind = "checkpoint-evidence", outcome = "technical_pause",
+            source = mapOf("kind" to "factory-control-plane"), facts = facts, idempotencyKey = null, createdAt = null,
+        ))
+        interactionRepository.appendEvent(scope, instance.namespaceId, instance.workflowId, HumanInteractionEventRecord(
+            eventId = UUID.randomUUID().toString(), interactionId = interaction.interactionId,
+            eventType = "technical_pause", actorId = "factory-control-plane", payload = facts,
+        ))
+        return HumanReplyOutcome(interaction, WorkflowHttpResult(409, facts))
+    }
 
     /**
      * Re-runs the DAG after a human checkpoint is resolved.

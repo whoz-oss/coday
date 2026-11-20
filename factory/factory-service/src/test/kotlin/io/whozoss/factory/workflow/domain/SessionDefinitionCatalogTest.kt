@@ -43,44 +43,8 @@ class SessionDefinitionCatalogTest {
     }
 
     @Test
-    fun `the bundled forge controller definition loads and validates`() {
-        val records = catalogue.load()
-
-        val record = records.firstOrNull { it.workflowType == FORGE_CONTROLLER_TYPE }
-        assertThat(record).isNotNull
-        assertThat(record!!.version).isEqualTo("1.0.0")
-
-        @Suppress("UNCHECKED_CAST")
-        val steps = record.definition["steps"] as List<Map<String, Any?>>
-        assertThat(steps.map { it["id"] }).containsExactly(
-            "product-specification",
-            "product-approval",
-            "ux-assessment",
-            "technical-assessment",
-            "ux-design",
-            "codebase-research",
-            "technical-design",
-            "specification-approval",
-            "frontend-implementation",
-            "frontend-verification",
-            "backend-implementation",
-            "backend-verification",
-            "code-review",
-            "functional-approval",
-        )
-        // The controller catalogue currently declares only `agent` and `human`
-        // lanes: its two verification steps are agent-driven. Running a build or
-        // a test suite is a deterministic command and therefore belongs to the
-        // `code` lane (an actor must not be its own oracle) — restoring that lane
-        // is a pending catalogue decision, NOT a test relaxation.
-        @Suppress("UNCHECKED_CAST")
-        val kinds = steps.map { (it["responsibility"] as Map<String, Any?>)["kind"] }.toSet()
-        assertThat(kinds).isEqualTo(setOf("agent", "human"))
-
-        // The definition selects the Forge execution plugin; the catalogue must
-        // surface that selection on the loaded record.
-        assertThat(record.executionPolicy?.plugin).isEqualTo("forge")
-        assertThat(record.definition["execution"]).isEqualTo(mapOf("plugin" to "forge"))
+    fun `legacy forge controller is absent from the bundled catalogue`() {
+        assertThat(catalogue.load().map { it.workflowType }).doesNotContain(FORGE_CONTROLLER_TYPE)
     }
 
     private companion object {

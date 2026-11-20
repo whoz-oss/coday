@@ -234,6 +234,28 @@
         </div>
       }
 
+      @if (retryFeedback(); as feedback) {
+        <div class="action-card">
+          <p class="action-feedback action-feedback--error" role="alert">
+            Retry request failed or could not be confirmed for step {{ feedback.stepId }}. {{ feedback.code }}
+            @if (feedback.status > 0) {
+              (HTTP {{ feedback.status }})
+            }
+            : {{ feedback.message }}
+            Check the workflow state and allowed actions before trying again.
+            @if (retryRefreshPending()) {
+              Retry is unavailable until allowed actions are retrieved. If they cannot be loaded, refresh the workflow.
+            }
+          </p>
+        </div>
+      }
+
+      @if (retryRefreshPending() && !retryFeedback()) {
+        <p class="action-feedback" role="status">
+          Retry is unavailable until allowed actions are retrieved. If they cannot be loaded, refresh the workflow.
+        </p>
+      }
+
       @for (action of retryActions(); track $index) {
         <div class="action-card">
           <div class="action-title">
@@ -244,7 +266,14 @@
             <span class="action-meta sf-mono">step {{ action.stepId }}</span>
           }
           <div class="action-row">
-            <button mat-flat-button class="sf-primary" (click)="requestRetry(action)">Retry step</button>
+            <button
+              mat-flat-button
+              class="sf-primary"
+              [disabled]="retryingStepId() !== null || retryRefreshPending()"
+              (click)="requestRetry(action)"
+            >
+              {{ retryingStepId() === action.stepId ? 'Submitting…' : 'Retry step' }}
+            </button>
           </div>
         </div>
       }

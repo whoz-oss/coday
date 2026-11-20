@@ -320,6 +320,31 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `direct launch allows two independent requests for one ticket and replays one request`() {
+        registerDefinition()
+        registerWorkstream()
+        val request = mapOf(
+            "namespaceId" to namespace,
+            "workflowType" to "wf-http",
+            "parameters" to mapOf("ticket" to "ABC-123"),
+        )
+
+        val first = createRun(request, "delivery-attempt-a")
+        val second = createRun(request, "delivery-attempt-b")
+        val replay = createRun(request, "delivery-attempt-a")
+
+        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(second.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
+        val firstId = data(first.body)["workflowId"] as String
+        val secondId = data(second.body)["workflowId"] as String
+        assertThat(firstId).isNotEqualTo(secondId)
+        assertThat(data(replay.body)["workflowId"]).isEqualTo(firstId)
+        assertThat(service.getProjection(scope, namespace, firstId)["state"]).isNotEqualTo("absent")
+        assertThat(service.getProjection(scope, namespace, secondId)["state"]).isNotEqualTo("absent")
+    }
+
+    @Test
     fun `explicit versions coexist launch independently and keep active runs pinned on replay`() {
         registerDefinition()
         registerWorkstream()

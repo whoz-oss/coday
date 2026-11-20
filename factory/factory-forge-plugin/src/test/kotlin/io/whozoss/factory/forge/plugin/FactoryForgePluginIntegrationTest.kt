@@ -5,6 +5,7 @@ import io.whozoss.factory.sdk.spi.FactoryBriefContributor
 import io.whozoss.factory.sdk.spi.FactoryCallerIdentity
 import io.whozoss.factory.sdk.spi.FactoryFlowCatalogContributor
 import io.whozoss.factory.sdk.spi.FactoryFlowSelector
+import io.whozoss.factory.sdk.spi.FactoryHumanCheckpointPolicy
 import io.whozoss.factory.sdk.spi.FactoryRouteContributor
 import io.whozoss.factory.sdk.spi.FactoryRouteRequest
 import io.whozoss.factory.sdk.spi.FactoryRunLifecycleObserver
@@ -76,14 +77,23 @@ class FactoryForgePluginIntegrationTest {
             "factory-forge-plugin",
         )
         assertThat(catalogContributors).hasSize(1)
-        assertThat(catalogContributors.single().flows()).hasSize(10)
+        assertThat(catalogContributors.single().flows()).hasSize(1)
 
         val selectors = pluginManager.getExtensions(
             FactoryFlowSelector::class.java,
             "factory-forge-plugin",
         )
         assertThat(selectors).hasSize(1)
-        assertThat(selectors.single().runTypes()).contains("forge-controller-v1")
+        assertThat(selectors.single().runTypes()).contains("forge-bmad")
+
+        val checkpointPolicies = pluginManager.getExtensions(
+            FactoryHumanCheckpointPolicy::class.java,
+            "factory-forge-plugin",
+        )
+        assertThat(checkpointPolicies).hasSize(1)
+        assertThat(checkpointPolicies.single().supports("forge.delivery", "packet-approval")).isTrue()
+        assertThat(checkpointPolicies.single().supports("forge.delivery", "technical-validation")).isTrue()
+        assertThat(checkpointPolicies.single().supports("forge.delivery", "functional-validation")).isTrue()
 
         val validators = pluginManager.getExtensions(
             FactoryStepResultValidator::class.java,

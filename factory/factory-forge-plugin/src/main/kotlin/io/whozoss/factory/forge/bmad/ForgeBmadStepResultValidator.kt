@@ -1,5 +1,6 @@
 package io.whozoss.factory.forge.bmad
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
 import io.whozoss.factory.sdk.spi.FindingResolution
 import io.whozoss.factory.sdk.spi.FindingSeverity
@@ -23,24 +24,43 @@ import org.pf4j.Extension
  * 2. **Expected amendment section:** the patch of `SPEC.md` must contain the
  *    expected section header (`## Product`, `## UX`, `## Technical`) when a
  *    patch is available.
- * 3. **Write-lock on `SPEC.md`:** any non-authoring worker (`ForgeBuilder`,
- *    `ForgeVerifier`, `ForgeReviewer`, `Searcher`) is forbidden from mutating
- *    `SPEC.md` (`sha256After == sha256Before`).
+ * 3. **Write-lock on `SPEC.md`:** implementation, verification and review steps
+ *    cannot mutate `SPEC.md`, regardless of the assigned agent name.
  * 4. **Grooming report integrity:** `product-grooming` must materialize the
  *    grooming file with a non-null `sha256After`, recorded in `domainState`.
- * 5. **Step file-scope enforcement (`file_paths`):** during `ForgeBuilder`
- *    turns, `changedFilesDuringTurn.keys` must be a subset of the step's
- *    declared `file_paths` (when non-empty).
+ * 5. **Step file-scope enforcement (`file_paths`):** implementation and
+ *    correction steps constrain changed files to the declared scope, regardless
+ *    of the assigned agent name (when non-empty).
  * 6. **Structured delivery plan validation (D8):** `technical-design` must
  *    produce a non-empty `delivery_plan.steps[]` list in its structured report.
  */
 @Extension
 class ForgeBmadStepResultValidator : FactoryStepResultValidator {
 
+    private val mapper = ObjectMapper()
+
     override fun supports(flowType: String, stepId: String, agentName: String): Boolean =
         flowType.startsWith("forge.")
 
+    override fun requiresTrustedWorkspaceBaseline(flowType: String, stepId: String, agentName: String): Boolean =
+        flowType == "forge.delivery"
+
+    override fun requiresDispatchEvidence(flowType: String, stepId: String): Boolean =
+        flowType == "forge.delivery" && stepId == "implementation-build"
+
     override fun validate(context: StepValidationContext): StepValidationVerdict {
+        val businessOutput = ForgeBusinessOutputArtifact.read(context.report)
+        if (businessOutput is ForgeBusinessOutputArtifact.ReadResult.Invalid) {
+            return StepValidationVerdict.Rejected(
+                reasonCode = "INVALID_FORGE_OUTPUT_ARTIFACT",
+                findings = listOf(NewFinding(
+                    code = "INVALID_FORGE_OUTPUT_ARTIFACT",
+                    severity = FindingSeverity.CRITICAL,
+                    message = businessOutput.reason,
+                    stepId = context.stepId,
+                )),
+            )
+        }
         val domainState = context.run.domainState
         val specPath = (domainState["spec_path"] as? String)
             ?: (context.fragmentInputs["spec_path"] as? String)
@@ -53,6 +73,18 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         val watched = context.workspaceDelta.watchedFiles
 
         return when (context.flowType) {
+            "forge.delivery" -> when (context.stepId) {
+                "delivery-preflight" -> checkReadOnlyWorkspace(context) ?: StepValidationVerdict.Accepted()
+                "design-assessment" -> validateDeliveryAssessment(context)
+                "implementation-planning" -> validateDeliveryImplementationPlan(context)
+                "qa-design" -> validateDeliveryVerificationPlan(context)
+                "packet-assembly" -> validateObservedPacket(context)
+                "implementation-build" -> validateDeliveryBuild(context)
+                "implementation-verification" -> validateDeliveryVerification(context)
+                "implementation-review" -> validateDeliveryReview(context)
+                else -> StepValidationVerdict.Accepted()
+            }
+
             ForgeBmadCatalogContributor.FLOW_PRODUCT_SPEC ->
                 validateSpecAmendment(
                     context = context,
@@ -89,12 +121,24 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 val readOnlyViolation = checkReadOnlyWorkspace(context)
                 if (readOnlyViolation != null) return readOnlyViolation
                 val outputs = extractOutputs(context.report)
+                val required = if (context.stepId == "ux-assessment") "ux_applicable" else "tech_spec_applicable"
+                if (outputs[required] !is Boolean) {
+                    return StepValidationVerdict.Rejected(
+                        reasonCode = "MISSING_ASSESSMENT_OUTPUT",
+                        findings = listOf(NewFinding(
+                            code = "MISSING_ASSESSMENT_OUTPUT",
+                            severity = FindingSeverity.CRITICAL,
+                            message = "Forge assessment requires a Boolean $required output.",
+                            stepId = context.stepId,
+                        )),
+                    )
+                }
                 val nextState = LinkedHashMap(domainState)
-                if (context.stepId == "ux-assessment" || context.agentName == "ForgeUXDesigner") {
+                if (context.stepId == "ux-assessment") {
                     val uxApplicable = outputs["ux_applicable"] as? Boolean ?: false
                     nextState["ux_applicable"] = uxApplicable
                 }
-                if (context.stepId == "technical-assessment" || context.agentName == "ForgeTechDesigner") {
+                if (context.stepId == "technical-assessment") {
                     val trivial = outputs["trivial"] as? Boolean ?: false
                     val techApplicable = outputs["tech_spec_applicable"] as? Boolean ?: !trivial
                     nextState["tech_spec_applicable"] = techApplicable
@@ -113,7 +157,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 )
 
             ForgeBmadCatalogContributor.FLOW_TECH_DESIGN -> {
-                if (context.agentName == "Searcher" || context.stepId == "codebase-research") {
+                if (context.stepId == "codebase-research") {
                     val readOnlyViolation = checkReadOnlyWorkspace(context)
                     if (readOnlyViolation != null) return readOnlyViolation
                     return StepValidationVerdict.Accepted()
@@ -131,8 +175,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 // Validate structured delivery_plan.steps[] (D8)
                 val outputs = extractOutputs(context.report)
                 @Suppress("UNCHECKED_CAST")
-                val deliveryPlan = (outputs["delivery_plan"] as? Map<String, Any?>)
-                    ?: (context.report["delivery_plan"] as? Map<String, Any?>)
+                val deliveryPlan = outputs["delivery_plan"] as? Map<String, Any?>
                 val steps = (deliveryPlan?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
                 if (steps.isEmpty()) {
                     return StepValidationVerdict.Rejected(
@@ -145,6 +188,28 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                                 stepId = context.stepId,
                             ),
                         ),
+                    )
+                }
+                val ids = steps.map { it["id"] as? String }
+                val malformed = steps.any { step ->
+                    val paths = step["file_paths"] as? List<*>
+                    (step["id"] as? String).isNullOrBlank() ||
+                        (step["title"] as? String).isNullOrBlank() ||
+                        (step["verification"] as? String).isNullOrBlank() ||
+                        paths.isNullOrEmpty() || paths.any { path ->
+                            path !is String || path.isBlank() || path.startsWith('/') ||
+                                path.split('/').any { segment -> segment == ".." || segment == "." }
+                        }
+                } || ids.size != ids.distinct().size
+                if (malformed) {
+                    return StepValidationVerdict.Rejected(
+                        reasonCode = "INVALID_DELIVERY_PLAN_STEP",
+                        findings = listOf(NewFinding(
+                            code = "INVALID_DELIVERY_PLAN_STEP",
+                            severity = FindingSeverity.CRITICAL,
+                            message = "Each delivery step needs a distinct id, title, relative file_paths and verification command.",
+                            stepId = context.stepId,
+                        )),
                     )
                 }
                 val baseState = LinkedHashMap(acceptedSpec.newDomainState ?: domainState)
@@ -167,19 +232,49 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                 val lockViolation = checkSpecWriteLock(context, specPath, watched[specPath])
                 if (lockViolation != null) return lockViolation
 
-                if (context.agentName == "ForgeVerifier") {
+                if (context.run.runType == "forge.delivery" && context.stepId !in setOf(
+                        "step-implementation", "step-correction", "step-verification",
+                    )
+                ) {
+                    return StepValidationVerdict.Rejected(
+                        reasonCode = "UNKNOWN_DELIVERY_STEP",
+                        findings = listOf(NewFinding(
+                            code = "UNKNOWN_DELIVERY_STEP",
+                            severity = FindingSeverity.CRITICAL,
+                            message = "Step '${context.stepId}' has no delivery role guard in '${context.flowType}'.",
+                            stepId = context.stepId,
+                        )),
+                    )
+                }
+
+                if (context.stepId == "step-verification") {
                     val readOnlyViolation = checkReadOnlyWorkspace(context)
                     if (readOnlyViolation != null) return readOnlyViolation
                 }
 
-                if (context.agentName == "ForgeBuilder") {
+                if (context.stepId == "step-implementation" || context.stepId == "step-correction") {
                     @Suppress("UNCHECKED_CAST")
                     val planStep = context.fragmentInputs["step"] as? Map<String, Any?>
-                    val allowedFiles = (planStep?.get("file_paths") as? List<*>)
+                    val rawPaths = planStep?.get("file_paths") as? List<*>
+                    val allowedFiles = rawPaths
                         ?.mapNotNull { it?.toString()?.trim() }
                         ?.filter { it.isNotEmpty() }
                         ?.toSet()
                         .orEmpty()
+                    if (context.run.runType == "forge.delivery" &&
+                        (rawPaths.isNullOrEmpty() || rawPaths.any { it !is String || !safeRelativePath(it) } ||
+                            allowedFiles.size != rawPaths.size)
+                    ) {
+                        return StepValidationVerdict.Rejected(
+                            reasonCode = "MISSING_STEP_SCOPE",
+                            findings = listOf(NewFinding(
+                                code = "MISSING_STEP_SCOPE",
+                                severity = FindingSeverity.CRITICAL,
+                                message = "Delivery step '${context.stepId}' requires distinct, safe relative file_paths before code changes.",
+                                stepId = context.stepId,
+                            )),
+                        )
+                    }
                     if (allowedFiles.isNotEmpty()) {
                         val touched = context.workspaceDelta.changedFilesDuringTurn.keys
                         val outOfScope = touched.filterNot { it in allowedFiles || it == memlogPath }
@@ -190,7 +285,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
                                     NewFinding(
                                         code = "STEP_SCOPE_VIOLATION",
                                         severity = FindingSeverity.MAJOR,
-                                        message = "ForgeBuilder modified files outside step file_paths: ${outOfScope.joinToString(", ")}",
+                                        message = "Step '${context.stepId}' modified files outside step file_paths: ${outOfScope.joinToString(", ")}",
                                         stepId = context.stepId,
                                         filePath = outOfScope.first(),
                                         details = mapOf("outOfScopeFiles" to outOfScope, "allowedFiles" to allowedFiles.toList()),
@@ -285,6 +380,19 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         domainState["revisions"] = revisions
 
         val outputs = extractOutputs(context.report)
+        if (context.flowType == ForgeBmadCatalogContributor.FLOW_PRODUCT_SPEC) {
+            val brief = (outputs["run_brief"] as? String)?.takeIf { it.isNotBlank() && it.length <= 16_000 }
+                ?: return StepValidationVerdict.Rejected(
+                    reasonCode = "MISSING_RUN_BRIEF",
+                    findings = listOf(NewFinding(
+                        code = "MISSING_RUN_BRIEF",
+                        severity = FindingSeverity.MAJOR,
+                        message = "Product specification must provide a bounded run_brief output for downstream fragments.",
+                        stepId = context.stepId,
+                    )),
+                )
+            domainState["run_brief"] = brief
+        }
         outputs["question_evidence"]?.let { domainState["question_evidence"] = it }
 
         return StepValidationVerdict.Accepted(newDomainState = domainState)
@@ -307,6 +415,222 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
             ),
         )
     }
+
+    private fun validateDeliveryAssessment(context: StepValidationContext): StepValidationVerdict {
+        checkReadOnlyWorkspace(context)?.let { return it }
+        val outputs = (ForgeBusinessOutputArtifact.read(context.report) as? ForgeBusinessOutputArtifact.ReadResult.Valid)
+            ?.values
+        val decisions = outputs?.get("applicability") as? Map<*, *>
+        val kinds = setOf("detailed_spec", "ux_spec", "technical_spec", "qa_spec")
+        val valid = decisions != null && decisions.keys == kinds && decisions.values.all { value ->
+            val decision = value as? Map<*, *>
+            decision?.keys == setOf("applicable", "reason") &&
+                decision["applicable"] is Boolean &&
+                (decision["reason"] as? String)?.let { it.isNotBlank() && it.length <= 4_000 } == true
+        }
+        if (valid != true) {
+            return StepValidationVerdict.Rejected(
+                reasonCode = "INVALID_DESIGN_APPLICABILITY",
+                findings = listOf(NewFinding(
+                    code = "INVALID_DESIGN_APPLICABILITY",
+                    severity = FindingSeverity.CRITICAL,
+                    message = "Design assessment requires explicit applicable and reason values for detailed, UX, technical and QA specifications in one Forge business-output artifact.",
+                    stepId = context.stepId,
+                )),
+            )
+        }
+        val nextState = LinkedHashMap(context.run.domainState)
+        nextState["applicability"] = decisions
+        val references = outputs.get("evidence_refs") as? List<*>
+        if (references != null && references.size <= 8 && references.all { it is String && it.isNotBlank() && it.length <= 1_000 }) {
+            nextState["designEvidenceRefs"] = references
+        }
+        return StepValidationVerdict.Accepted(newDomainState = nextState)
+    }
+
+    private fun validateDeliveryImplementationPlan(context: StepValidationContext): StepValidationVerdict {
+        val plan = extractOutputs(context.report)["delivery_plan"] as? Map<*, *>
+        val steps = plan?.get("steps") as? List<*>
+        if (steps.isNullOrEmpty()) return rejectDeliveryPlan(context, "MISSING_DELIVERY_PLAN_STEPS")
+        val ids = mutableSetOf<String>()
+        val valid = steps.all { raw ->
+            val step = raw as? Map<*, *> ?: return@all false
+            val id = step["id"] as? String
+            val paths = step["file_paths"] as? List<*>
+            val dependency = step["depends_on"]
+            val validDependency = step.containsKey("depends_on") &&
+                (dependency == null || dependency is String && dependency in ids)
+            val validId = !id.isNullOrBlank() && id.length <= 64 && id.matches(Regex("[A-Za-z][A-Za-z0-9_-]*")) &&
+                id !in ids
+            if (validId) ids.add(id)
+            validId &&
+                step["stack"] in setOf("frontend", "backend") && validDependency &&
+                !(step["title"] as? String).isNullOrBlank() &&
+                !(step["verification"] as? String).isNullOrBlank() &&
+                !paths.isNullOrEmpty() && paths.all { it is String && safeRelativePath(it) } &&
+                paths.size == paths.distinct().size
+        }
+        return if (valid) StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+            put("delivery_plan", plan)
+        })
+        else rejectDeliveryPlan(context, "INVALID_DELIVERY_PLAN_STEP")
+    }
+
+    private fun validateDeliveryVerificationPlan(context: StepValidationContext): StepValidationVerdict {
+        val content = extractOutputs(context.report)["verification_plan"] as? String
+        return if (content != null && content.isNotBlank() && content.length <= 32_000)
+            StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+                put("verification_plan", content)
+            })
+        else rejectDeliveryPlan(context, "EMPTY_VERIFICATION_PLAN")
+    }
+
+    private fun validateObservedPacket(context: StepValidationContext): StepValidationVerdict {
+        val evidence = context.externalEvidence
+        val repository = evidence["repository"] as? String
+        val commit = evidence["commit"] as? String
+        val manifestSha = evidence["manifestSha256"] as? String
+        val canonicalManifest = evidence["canonicalManifest"] as? String
+        if (repository.isNullOrBlank() || commit?.matches(Regex("^[0-9a-f]{40}$")) != true ||
+            manifestSha?.matches(Regex("^[0-9a-f]{64}$")) != true || canonicalManifest.isNullOrBlank()
+        ) return StepValidationVerdict.Rejected("PACKET_GIT_EVIDENCE_MISSING", listOf(NewFinding(
+            code = "PACKET_GIT_EVIDENCE_MISSING", severity = FindingSeverity.MAJOR,
+            message = "The design packet has no trusted Git observation.", stepId = context.stepId,
+        )))
+        val packet = mapOf(
+            "repository" to repository,
+            "commit" to commit,
+            "manifestSha256" to manifestSha,
+            "canonicalManifest" to canonicalManifest,
+        ) + (evidence["packetGeneration"] as? String)?.let { mapOf("packetGeneration" to it) }.orEmpty()
+        val clearedTechnicalPauses = context.run.findings
+            .filter { it.id.startsWith("technical-pause:") && it.stepId == context.stepId && it.status == FindingStatus.OPEN }
+            .associate { it.id to FindingResolution(FindingStatus.RESOLVED, "Pinned Git packet observed again") }
+        return StepValidationVerdict.Accepted(
+            newDomainState = LinkedHashMap(context.run.domainState).apply { put("approvedPacketCandidate", packet) },
+            findingResolutions = clearedTechnicalPauses,
+        )
+    }
+
+    private fun validateDeliveryBuild(context: StepValidationContext): StepValidationVerdict {
+        if (context.agentName != "ForgeDeveloper") return StepValidationVerdict.Rejected("INVALID_BUILD_COORDINATOR")
+        val plan = context.run.domainState["delivery_plan"] as? Map<*, *>
+        val planned = plan?.get("steps") as? List<*>
+        val packet = context.run.domainState["approvedPacketCandidate"] as? Map<*, *>
+        val manifestSha = packet?.get("manifestSha256") as? String
+        if (planned.isNullOrEmpty() || manifestSha.isNullOrBlank()) {
+            return StepValidationVerdict.Rejected("BUILD_INPUT_UNAVAILABLE")
+        }
+        val identity = mapOf("repository" to packet["repository"], "commit" to packet["commit"],
+            "manifestSha256" to manifestSha)
+        if (identity.any { (key, value) -> value == null || context.externalEvidence[key] != value }) {
+            return StepValidationVerdict.Rejected("APPROVED_PACKET_GIT_UNAVAILABLE")
+        }
+        val approvals = context.run.humanDecisions.filter {
+            it["stepId"] == "packet-approval" && it["outcome"] == "pass" &&
+                (it["facts"] as? Map<*, *>)?.get("gate") == "packet-approval"
+        }
+        val approvalFacts = approvals.singleOrNull()?.get("facts") as? Map<*, *>
+        val approvalSource = approvals.singleOrNull()?.get("source") as? Map<*, *>
+        if (approvalFacts == null || approvalSource?.get("kind") != "factory-human" ||
+            (approvalSource["actorId"] as? String).isNullOrBlank() ||
+            (approvalFacts["decidedAt"] as? String).isNullOrBlank() ||
+            approvalFacts["gate"] != "packet-approval" || identity.any { (key, value) -> approvalFacts[key] != value }
+        ) return StepValidationVerdict.Rejected("PACKET_APPROVAL_MISSING_OR_STALE")
+        val report = extractOutputs(context.report)["build_report"] as? Map<*, *>
+            ?: return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
+        val items = report["items"] as? List<*>
+        val workCommit = report["work_commit"] as? String
+        if (report["manifest_sha256"] != manifestSha ||
+            workCommit?.matches(Regex("^[0-9a-f]{40}$")) != true ||
+            items?.size != planned.size
+        ) return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
+        val allowed = mutableSetOf<String>()
+        for (index in planned.indices) {
+            val step = planned[index] as? Map<*, *> ?: return StepValidationVerdict.Rejected("INVALID_BUILD_PLAN")
+            val receipt = items[index] as? Map<*, *> ?: return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
+            val scope = (step["file_paths"] as? List<*>)?.filterIsInstance<String>()?.toSet()
+                ?: return StepValidationVerdict.Rejected("INVALID_BUILD_PLAN")
+            val changed = receipt["changed_files"] as? List<*>
+            if (receipt["step_id"] != step["id"] || receipt["stack"] != step["stack"] ||
+                receipt["status"] != "PASS" || (receipt["summary"] as? String).isNullOrBlank() ||
+                changed.isNullOrEmpty() || changed.any { it !is String || !safeRelativePath(it) || it !in scope } ||
+                changed.size != changed.distinct().size
+            ) return StepValidationVerdict.Rejected("INVALID_BUILD_REPORT")
+            allowed.addAll(scope)
+        }
+        if (context.workspaceDelta.changedFilesDuringTurn.keys.any { it !in allowed }) {
+            return StepValidationVerdict.Rejected("BUILD_FILE_SCOPE_VIOLATION")
+        }
+        return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+            put("build_report", report)
+        })
+    }
+
+    private fun validateDeliveryVerification(context: StepValidationContext): StepValidationVerdict {
+        if (context.agentName != "ForgeVerifier") return StepValidationVerdict.Rejected("INVALID_VERIFICATION_COORDINATOR")
+        checkReadOnlyWorkspace(context)?.let { return it }
+        val planned = ((context.run.domainState["delivery_plan"] as? Map<*, *>)?.get("steps") as? List<*>)
+        val built = context.run.domainState["build_report"] as? Map<*, *>
+        val workCommit = built?.get("work_commit") as? String
+        val report = extractOutputs(context.report)["verification_report"] as? Map<*, *>
+        val items = report?.get("items") as? List<*>
+        if (planned.isNullOrEmpty() || workCommit.isNullOrBlank() || report?.get("work_commit") != workCommit ||
+            items?.size != planned.size
+        ) return StepValidationVerdict.Rejected("INVALID_VERIFICATION_REPORT")
+        for (index in planned.indices) {
+            val step = planned[index] as? Map<*, *> ?: return StepValidationVerdict.Rejected("INVALID_VERIFICATION_PLAN")
+            val receipt = items[index] as? Map<*, *> ?: return StepValidationVerdict.Rejected("INVALID_VERIFICATION_REPORT")
+            if (receipt["step_id"] != step["id"] || receipt["stack"] != step["stack"] ||
+                receipt["status"] != "PASS" || receipt["green"] != true ||
+                receipt["command"] != step["verification"] ||
+                (receipt["case_id"] as? String).isNullOrBlank() ||
+                (receipt["summary"] as? String).isNullOrBlank()
+            ) return StepValidationVerdict.Rejected("INVALID_VERIFICATION_REPORT")
+        }
+        return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+            put("verification_report", report)
+        })
+    }
+
+    private fun validateDeliveryReview(context: StepValidationContext): StepValidationVerdict {
+        if (context.agentName != "Reviewer") return StepValidationVerdict.Rejected("INVALID_REVIEWER")
+        checkReadOnlyWorkspace(context)?.let { return it }
+        val workCommit = (context.run.domainState["build_report"] as? Map<*, *>)?.get("work_commit") as? String
+        val verification = context.run.domainState["verification_report"] as? Map<*, *>
+        if (workCommit.isNullOrBlank() || verification?.get("work_commit") != workCommit) {
+            return StepValidationVerdict.Rejected("REVIEW_INPUT_UNAVAILABLE")
+        }
+        val report = extractOutputs(context.report)["review_report"] as? Map<*, *>
+            ?: return StepValidationVerdict.Rejected("INVALID_REVIEW_REPORT")
+        val votes = report["votes"] as? Map<*, *>
+        val findings = report["findings"] as? List<*>
+        val lenses = listOf("clarity_correctness", "scope_architecture", "security_permissions", "edge_cases_resilience")
+        if (report["status"] != "PASS" || report["work_commit"] != workCommit ||
+            votes?.keys?.toSet() != lenses.toSet() || lenses.any { votes[it] != "PASS" } ||
+            findings == null || findings.any { it !is Map<*, *> ||
+                (it["severity"] as? String)?.lowercase() !in setOf("minor", "info") ||
+                (it["description"] as? String).isNullOrBlank() }
+        ) return StepValidationVerdict.Rejected("INVALID_REVIEW_REPORT")
+        return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
+            put("review_report", report)
+        })
+    }
+
+    private fun rejectDeliveryPlan(context: StepValidationContext, code: String): StepValidationVerdict.Rejected =
+        StepValidationVerdict.Rejected(
+            reasonCode = code,
+            findings = listOf(NewFinding(
+                code = code,
+                severity = FindingSeverity.CRITICAL,
+                message = "Delivery step '${context.stepId}' requires a nonempty, valid plan in forge.business-outputs.v1.",
+                stepId = context.stepId,
+            )),
+        )
+
+    private fun safeRelativePath(path: String): Boolean = path.isNotBlank() && path == path.trim() &&
+        !path.startsWith('/') && !path.contains('\\') && !path.contains('\u0000') &&
+        path.split('/').all { it.isNotEmpty() && it != "." && it != ".." }
 
     private fun checkSpecWriteLock(
         context: StepValidationContext,
@@ -332,30 +656,32 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         return null
     }
 
-    @Suppress("UNCHECKED_CAST")
     private fun extractOutputs(report: Map<String, Any?>): Map<String, Any?> =
-        (report["outputs"] as? Map<String, Any?>) ?: report
+        ForgeBusinessOutputArtifact.values(report)
 
     private fun extractReportedFindings(context: StepValidationContext): List<NewFinding> {
-        val outputs = extractOutputs(context.report)
-        val rawFindings = (outputs["findings"] as? List<*>)
-            ?: (context.report["findings"] as? List<*>)
-            ?: return emptyList()
+        val rawFindings = context.report["findings"] as? List<*> ?: return emptyList()
         return rawFindings.mapNotNull { entry ->
-            val map = entry as? Map<*, *> ?: return@mapNotNull null
+            val map = runCatching { mapper.convertValue(entry, Map::class.java) }.getOrNull()
+                ?: return@mapNotNull null
             val code = (map["code"] as? String)?.takeIf { it.isNotBlank() } ?: "REVIEW_FINDING"
             val message = (map["message"] as? String)?.takeIf { it.isNotBlank() }
                 ?: (map["summary"] as? String)?.takeIf { it.isNotBlank() }
                 ?: return@mapNotNull null
-            val rawSev = (map["severity"] as? String)?.uppercase() ?: "MAJOR"
-            val severity = runCatching { FindingSeverity.valueOf(rawSev) }.getOrDefault(FindingSeverity.MAJOR)
+            val severity = when ((map["severity"] as? String)?.uppercase()) {
+                "BLOCKING", "CRITICAL" -> FindingSeverity.CRITICAL
+                "ERROR", "MAJOR" -> FindingSeverity.MAJOR
+                "WARNING", "MINOR" -> FindingSeverity.MINOR
+                "INFO" -> FindingSeverity.INFO
+                else -> FindingSeverity.MAJOR
+            }
             NewFinding(
                 id = map["id"] as? String,
                 code = code,
                 severity = severity,
                 message = message,
                 stepId = context.stepId,
-                filePath = map["filePath"] as? String,
+                filePath = (map["file"] ?: map["filePath"]) as? String,
             )
         }
     }

@@ -13,11 +13,20 @@ import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.service.WorkflowService
+import io.whozoss.factory.workflow.sse.WorkflowSseHub
+import io.whozoss.factory.sdk.spi.FactoryHumanCheckpointPolicy
+import io.whozoss.factory.sdk.spi.HumanCheckpointContext
+import io.whozoss.factory.sdk.spi.HumanCheckpointVerdict
+import io.mockk.every
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.transaction.PlatformTransactionManager
+import org.pf4j.PluginManager
 
 /**
  * Integration tests of the workflow aggregate against a real PostgreSQL
@@ -38,6 +47,15 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var evidenceRepository: WorkflowEvidenceRepository
+
+    @Autowired
+    private lateinit var interactionRepository: HumanInteractionRepository
+
+    @Autowired
+    private lateinit var sseHub: WorkflowSseHub
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
 
     private val organizationScope: TenantScope get() = scope
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
@@ -185,6 +203,154 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
     // ------------------------------------------------------------------
     // Atomic interaction -> evidence -> transition
     // ------------------------------------------------------------------
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `generic human reply has no Forge gate role authorization`() {
+        registerDefinition(workflowType = "forge.delivery")
+        startWorkflow("wf-forge-role-gap", workflowType = "forge.delivery")
+        val opened = service.openInteraction(
+            organizationScope,
+            namespace,
+            "wf-forge-role-gap",
+            "gate",
+            1,
+            "Approve the packet?",
+            listOf(
+                mapOf("id" to "approve", "label" to "Approve"),
+                mapOf("id" to "reject", "label" to "Reject"),
+            ),
+            "open-role-gap",
+        )
+        val interactionId = (data(opened)["interaction"] as Map<String, Any?>)["interactionId"] as String
+
+        // The service receives an actor ID but no trusted role/entitlements.
+        // This succeeds today and demonstrates the missing policy hook.
+        val replied = service.replyInteraction(
+            organizationScope, namespace, "wf-forge-role-gap", interactionId, 2,
+            "approve", null, "unassigned-member",
+        )
+        assertThat(data(replied)["evidenceId"]).isNotNull
+        val evidence = evidenceRepository.list(organizationScope, namespace, "wf-forge-role-gap").single()
+        assertThat(evidence.source?.get("actorId")).isEqualTo("unassigned-member")
+        assertThat(evidence.facts["decidedAt"]).isInstanceOf(String::class.java)
+        assertThat(evidence.facts).doesNotContainKey("packetArtifactId")
+        assertThat(evidence.facts).doesNotContainKey("candidateGeneration")
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `opted-in human reply sees earlier decisions and refuses a stale replacement`() {
+        val packet = mapOf("repository" to "whoz", "commit" to "a".repeat(40), "manifestSha256" to "b".repeat(64))
+        val policy = object : FactoryHumanCheckpointPolicy {
+            override fun supports(flowType: String, stepId: String) =
+                flowType == "sample.delivery" && stepId == "gate"
+
+            override fun decide(context: HumanCheckpointContext, presented: Map<String, Any?>, actionId: String) =
+                if (context.run.domainState["approvedPacketCandidate"] == presented &&
+                    context.run.humanDecisions.any { it["stepId"] == "prior-gate" && it["outcome"] == "pass" })
+                    HumanCheckpointVerdict.Allowed(presented + ("gate" to "packet-approval"))
+                else HumanCheckpointVerdict.Denied("PACKET_DECISION_STALE")
+        }
+        val plugins = mockk<PluginManager>()
+        every { plugins.getExtensions(FactoryHumanCheckpointPolicy::class.java) } returns listOf(policy)
+        val governed = WorkflowService(repository, evidenceRepository, interactionRepository, sseHub,
+            transactionManager = transactionManager, pluginManager = plugins)
+        registerDefinition(workflowType = "sample.delivery")
+
+        fun open(workflowId: String): String {
+            startWorkflow(workflowId, workflowType = "sample.delivery")
+            val result = service.openInteraction(organizationScope, namespace, workflowId, "gate", 1,
+                "Approve the packet?", listOf(mapOf("id" to "approve", "label" to "Approve"),
+                    mapOf("id" to "reject", "label" to "Reject")), "open-$workflowId")
+            val interactionId = (data(result)["interaction"] as Map<String, Any?>)["interactionId"] as String
+            val instance = repository.findInstance(organizationScope, namespace, workflowId)!!
+            val updated = instance.copy(revision = instance.revision + 1,
+                instance = instance.instance + mapOf("revision" to instance.revision + 1,
+                    "execution" to mapOf("plugin" to "sample", "humanCheckpointPolicyRequired" to true)))
+            assertThat(repository.updateInstance(organizationScope, namespace, workflowId, instance.revision, updated)).isTrue()
+            val interaction = interactionRepository.find(organizationScope, namespace, workflowId, interactionId)!!
+            assertThat(interactionRepository.update(organizationScope, namespace, workflowId, interactionId,
+                interaction.revision, interaction.copy(revision = interaction.revision + 1,
+                    payload = interaction.payload + ("presented" to packet)))).isTrue()
+            evidenceRepository.append(organizationScope, namespace, workflowId, WorkflowEvidenceItem(
+                evidenceId = "packet-$workflowId", namespaceId = namespace, workflowId = workflowId,
+                stepId = "gate", kind = "agent-result", outcome = "pass",
+                source = mapOf("kind" to "factory-control-plane"),
+                facts = mapOf("acceptedDomainState" to mapOf("approvedPacketCandidate" to packet)),
+                idempotencyKey = null, createdAt = null,
+            ))
+            evidenceRepository.append(organizationScope, namespace, workflowId, WorkflowEvidenceItem(
+                evidenceId = "prior-$workflowId", namespaceId = namespace, workflowId = workflowId,
+                stepId = "prior-gate", kind = "human-decision", outcome = "pass",
+                source = mapOf("kind" to "factory-human", "actorId" to "earlier-member"),
+                facts = mapOf("gate" to "prior-gate", "decidedAt" to "2026-11-19T00:00:00Z"),
+                idempotencyKey = null, createdAt = null,
+            ))
+            return interactionId
+        }
+
+        // An outage must not consume the decision. A fresh observation can accept the same presentation.
+        val outageWorkflow = "wf-packet-outage"
+        val outageId = open(outageWorkflow)
+        val capability = mockk<io.whozoss.factory.capability.CapabilityExecutionService>()
+        val outage = io.whozoss.factory.capability.CapabilityExecutionService.SideEffectEvidence(
+            3, null, io.whozoss.factory.sdk.spi.RunView(outageWorkflow, "sample.delivery"),
+            io.whozoss.factory.sdk.spi.StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "Git unavailable"),
+        )
+        every { capability.observeBeforeSideEffect(organizationScope, any(), "gate", "authenticated-member", outageId) } returnsMany
+            listOf(outage, outage.copy(verdict = io.whozoss.factory.sdk.spi.StepEvidenceObservation.Observed(packet)))
+        every { capability.sideEffectEvidenceIsCurrent(organizationScope, any(), any()) } returns true
+        val guarded = WorkflowService(repository, evidenceRepository, interactionRepository, sseHub,
+            transactionManager = transactionManager, pluginManager = plugins, workspaceRetryCapability = capability)
+        val paused = guarded.replyInteraction(organizationScope, namespace, outageWorkflow, outageId, 3, "approve", null, "authenticated-member")
+        assertThat(paused.status).isEqualTo(409)
+        val waiting = interactionRepository.find(organizationScope, namespace, outageWorkflow, outageId)!!
+        assertThat(waiting.status).isEqualTo("waiting")
+        assertThat(evidenceRepository.list(organizationScope, namespace, outageWorkflow, "gate"))
+            .noneMatch { it.kind == "human-decision" }
+        val retried = guarded.replyInteraction(organizationScope, namespace, outageWorkflow, outageId,
+            waiting.revision, "approve", null, "authenticated-member")
+        assertThat(retried.status).isEqualTo(200)
+
+        val racedWorkflow = "wf-packet-observation-race"
+        val racedId = open(racedWorkflow)
+        every { capability.observeBeforeSideEffect(organizationScope, any(), "gate", "authenticated-member", racedId) } returns
+            outage.copy(verdict = io.whozoss.factory.sdk.spi.StepEvidenceObservation.Observed(packet))
+        every { capability.sideEffectEvidenceIsCurrent(organizationScope, match { it?.workflowId == racedWorkflow }, any()) } returns false
+        assertThatThrownBy {
+            guarded.replyInteraction(organizationScope, namespace, racedWorkflow, racedId, 3, "approve", null, "authenticated-member")
+        }.isInstanceOf(WorkflowException::class.java).hasMessageContaining("changed during external evidence observation")
+        assertThat(interactionRepository.find(organizationScope, namespace, racedWorkflow, racedId)?.status).isEqualTo("waiting")
+
+        val currentId = open("wf-packet-current")
+        val approved = governed.replyInteraction(organizationScope, namespace, "wf-packet-current", currentId,
+            3, "approve", null, "authenticated-member")
+        assertThat(data(approved)["evidenceId"]).isNotNull
+        val decision = evidenceRepository.list(organizationScope, namespace, "wf-packet-current")
+            .single { it.kind == "human-decision" && it.stepId == "gate" }
+        assertThat(decision.source?.get("actorId")).isEqualTo("authenticated-member")
+        assertThat(decision.facts).containsEntry("repository", "whoz")
+            .containsEntry("commit", "a".repeat(40))
+            .containsEntry("manifestSha256", "b".repeat(64))
+        assertThat(decision.facts["decidedAt"]).isInstanceOf(String::class.java)
+
+        val staleId = open("wf-packet-stale")
+        evidenceRepository.append(organizationScope, namespace, "wf-packet-stale", WorkflowEvidenceItem(
+            evidenceId = "replacement-packet", namespaceId = namespace, workflowId = "wf-packet-stale",
+            stepId = "gate", kind = "agent-result", outcome = "pass",
+            source = mapOf("kind" to "factory-control-plane"),
+            facts = mapOf("acceptedDomainState" to mapOf("approvedPacketCandidate" to
+                (packet + ("commit" to "c".repeat(40))))), idempotencyKey = null, createdAt = null,
+        ))
+        assertThatThrownBy {
+            governed.replyInteraction(organizationScope, namespace, "wf-packet-stale", staleId,
+                3, "approve", null, "authenticated-member")
+        }.isInstanceOf(WorkflowException::class.java)
+            .extracting("errorCode").isEqualTo(WorkflowErrorCodes.INVALID_REPLY)
+        assertThat(evidenceRepository.list(organizationScope, namespace, "wf-packet-stale"))
+            .noneMatch { it.kind == "human-decision" && it.stepId == "gate" }
+    }
 
     @Test
     @Suppress("UNCHECKED_CAST")

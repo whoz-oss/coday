@@ -102,6 +102,23 @@ class GitCommandRunnerSpec :
             rawGit(repository, "branch", "--list").shouldContain("trusted-branch")
         }
 
+        "pinned Git blob reads preserve binary bytes and refuse oversized output" {
+            val repository = newRepository()
+            val bytes = byteArrayOf(0, 1, -1, 10, 13, 0)
+            Files.write(repository.resolve("fixture.bin"), bytes)
+            rawGit(repository, "add", "fixture.bin")
+            rawGit(repository, "commit", "--quiet", "-m", "binary fixture")
+            val commit = rawGit(repository, "rev-parse", "HEAD").trim()
+            val invocation = GitInvocation(
+                args = listOf("cat-file", "blob", "$commit:fixture.bin"),
+                gitDir = repository.resolve(".git"),
+                workTree = repository,
+            )
+
+            runner.runBinaryOrThrow(invocation, 1024).contentEquals(bytes) shouldBe true
+            shouldThrow<GitCommandException> { runner.runBinaryOrThrow(invocation, bytes.size - 1) }
+        }
+
         "a rewritten .git pointer does not redirect an invocation with a pinned git directory" {
             val clone = newRepository()
             val worktreeA = Files.createTempDirectory("agentos-git-spec-a-").resolve("wt")
