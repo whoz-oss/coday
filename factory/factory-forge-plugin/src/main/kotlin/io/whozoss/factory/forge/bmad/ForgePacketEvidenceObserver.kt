@@ -48,6 +48,7 @@ class ForgePacketEvidenceObserver : FactoryStepEvidenceObserver {
                 "commit" to result.commit,
                 "manifestSha256" to result.sha256,
                 "canonicalManifest" to result.canonicalManifest.toString(Charsets.UTF_8),
+                "packetGeneration" to context.attemptId,
             ))
             is ForgeGitPacketSnapshot.Result.Invalid -> when (result.code) {
                 "GIT_COMMIT_UNAVAILABLE", "GIT_DOCUMENT_UNAVAILABLE", "GIT_SNAPSHOT_UNAVAILABLE" ->

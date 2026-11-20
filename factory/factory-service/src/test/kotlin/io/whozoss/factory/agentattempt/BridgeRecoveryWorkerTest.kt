@@ -295,6 +295,29 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `ambiguous STARTING only resumes observation and never sends a turn`() {
+        //given
+        val id = "attempt-ambiguous-start"
+        attempts.register(scope, attempt(id))
+        attempts.claim(scope, namespace, "wf-recovery", "step-1", id, "crashed", leaseTtlMs = 0)
+        attempts.transition(scope, namespace, "wf-recovery", "step-1", id, "crashed", AgentAttemptStatus.STARTING)
+        val adapter = FakeAdapter(
+            reconcileVerdict = { AgentOsExecutionVerdict.Indeterminate("dispatch acceptance unknown") },
+            observeVerdict = { AgentOsExecutionVerdict.Indeterminate("no turn observed") },
+        )
+
+        //when
+        val report = BridgeRecoveryWorker(attempts, adapter, workflowRepository = workflowRepository).recover()
+
+        //then
+        assertThat(report.resumed).isEqualTo(1)
+        assertThat(report.redriven).isZero()
+        assertThat(adapter.startTurns).isEmpty()
+        assertThat(adapter.createCalls).isEmpty()
+        assertThat(adapter.observeCalls.get()).isEqualTo(1)
+    }
+
+    @Test
     fun `a re-driven turn preserves the case-family parentCaseId`() {
         val root = caseIdFor("root-attempt")
         insertAutonomousWorkflow()
@@ -313,7 +336,28 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         assertThat(create.parentCaseId).isEqualTo(root)
     }
 
-    private fun insertAutonomousWorkflow() {
+    @Test
+    fun `plugin workflow cannot use legacy redrive when dispatch policy is unavailable`() {
+        //given
+        insertAutonomousWorkflow(execution = mapOf("plugin" to "sample"))
+        val id = "attempt-plugin-policy-unavailable"
+        attempts.register(scope, attempt(id))
+        val adapter = FakeAdapter(
+            reconcileVerdict = { AgentOsExecutionVerdict.Indeterminate("not started") },
+            observeVerdict = { error("no turn should be observed") },
+        )
+
+        //when
+        val report = BridgeRecoveryWorker(attempts, adapter, workflowRepository = workflowRepository).recover()
+
+        //then
+        assertThat(report.skipped).isEqualTo(1)
+        assertThat(status(id)).isEqualTo(AgentAttemptStatus.PENDING)
+        assertThat(adapter.startTurns).isEmpty()
+        assertThat(adapter.createCalls).isEmpty()
+    }
+
+    private fun insertAutonomousWorkflow(execution: Map<String, Any?> = emptyMap()) {
         workflowRepository.insertInstance(
             scope,
             WorkflowInstanceRecord(
@@ -322,7 +366,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
                 revision = 1,
                 status = "active",
                 creationCommandHash = "recovery-autonomous",
-                instance = mapOf("workflowId" to "wf-recovery", "workflowType" to "recovery-test"),
+                instance = mapOf("workflowId" to "wf-recovery", "workflowType" to "recovery-test", "execution" to execution),
                 projection = emptyMap(),
             ),
         )

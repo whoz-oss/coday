@@ -30,10 +30,47 @@ class ForgeStepRoleGuardTest {
     private fun applicabilityReport(decisions: Map<String, Any?>) = businessReport(mapOf("applicability" to decisions))
 
     @Test
+    fun `Build brief carries the accepted plan and packet approval`() {
+        val packet = mapOf("repository" to "coday", "commit" to "a".repeat(40),
+            "manifestSha256" to "b".repeat(64))
+        val plan = mapOf("steps" to listOf(mapOf("id" to "title-policy", "stack" to "backend",
+            "file_paths" to listOf("factory/FactoryCaseTitles.kt"), "verification" to "./gradlew test")))
+        val decision = mapOf<String, Any?>("stepId" to "packet-approval", "outcome" to "pass",
+            "source" to mapOf("kind" to "factory-human", "actorId" to "member-1"),
+            "facts" to packet + mapOf("gate" to "packet-approval", "decidedAt" to "2026-11-19T03:42:57Z"))
+        val sessionReceipt = mapOf<String, Any?>("stepId" to "packet-approval", "outcome" to "pass",
+            "source" to mapOf("kind" to "factory-human", "interactionId" to "interaction-1"),
+            "facts" to mapOf("stepId" to "packet-approval", "status" to "completed"))
+        val run = run.copy(runType = "forge.delivery", domainState = mapOf(
+            "approvedPacketCandidate" to packet, "delivery_plan" to plan),
+            humanDecisions = listOf(decision, sessionReceipt))
+        val section = briefs.contribute(BriefContext(run, "forge.delivery", "implementation-build", "ForgeDeveloper"))
+            .sections.single { it.startsWith("## Approved Forge delivery inputs") }
+        assertThat(section).contains("Packet commit: ${packet["commit"]}",
+            "Manifest SHA-256: ${packet["manifestSha256"]}", "title-policy", "member-1",
+            "The packet commit pins the six source documents")
+            .doesNotContain("interaction-1")
+        assertThat(briefs.contribute(BriefContext(run.copy(humanDecisions = listOf(sessionReceipt)),
+            "forge.delivery", "implementation-build", "ForgeDeveloper")).sections)
+            .noneMatch { it.startsWith("## Approved Forge delivery inputs") }
+        assertThat(briefs.contribute(BriefContext(run.copy(humanDecisions = emptyList()),
+            "forge.delivery", "implementation-build", "ForgeDeveloper")).sections)
+            .noneMatch { it.startsWith("## Approved Forge delivery inputs") }
+        val verifiedRun = run.copy(domainState = run.domainState +
+            ("build_report" to mapOf("work_commit" to "c".repeat(40))))
+        for ((step, agent) in listOf("implementation-verification" to "ForgeVerifier",
+            "implementation-review" to "Reviewer")) {
+            assertThat(briefs.contribute(BriefContext(verifiedRun, "forge.delivery", step, agent))
+                .sections.single { it.startsWith("## Approved Forge delivery inputs") })
+                .contains("Accepted build_report", "title-policy")
+        }
+    }
+
+    @Test
     fun `packet assembly cannot advance without trusted Git receipt`() {
         fun verdict(evidence: Map<String, Any?>) = validator.validate(StepValidationContext(
             run = run.copy(runType = "forge.delivery"), flowType = "forge.delivery",
-            stepId = "packet-assembly", agentName = "ProductEngineer", externalEvidence = evidence,
+            stepId = "packet-assembly", agentName = "ForgePacketAssembler", externalEvidence = evidence,
         ))
         assertThat((verdict(emptyMap()) as StepValidationVerdict.Rejected).reasonCode)
             .isEqualTo("PACKET_GIT_EVIDENCE_MISSING")
@@ -241,6 +278,16 @@ class ForgeStepRoleGuardTest {
 
         val accepted = verdict(applicabilityReport(decisions)) as StepValidationVerdict.Accepted
         assertThat(accepted.newDomainState?.get("applicability")).isEqualTo(decisions)
+        val withSources = verdict(businessReport(mapOf(
+            "applicability" to decisions,
+            "evidence_refs" to listOf("https://github.com/biznet-io/whoz/blob/abc/forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428/SPEC.md"),
+        ))) as StepValidationVerdict.Accepted
+        val brief = briefs.contribute(BriefContext(
+            run = run.copy(runType = "forge.delivery", domainState = withSources.newDomainState.orEmpty()),
+            flowType = "forge.delivery", stepId = "ux-design", agentName = "Designer",
+        ))
+        assertThat(brief.sections.joinToString("\n"))
+            .contains("Design applicability for ux_spec: false", "Pinned design sources:", "WZ-35428/SPEC.md")
         for (bad in listOf(
             decisions - "qa_spec",
             decisions + ("ux_spec" to mapOf("applicable" to false, "reason" to "")),

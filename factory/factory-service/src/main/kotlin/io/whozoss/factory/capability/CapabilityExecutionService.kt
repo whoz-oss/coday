@@ -63,6 +63,7 @@ import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
+import io.whozoss.factory.workflow.domain.WorkflowStatuses
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
@@ -285,8 +286,38 @@ class CapabilityExecutionService(
      */
     fun canResumeWaitingAgentStep(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): Boolean {
         val attempt = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
-        return attempt.status.terminal || attempt.status == AgentAttemptStatus.RUNNING ||
+        return (attempt.status.terminal && attempt.failureCode != WORKSPACE_RETRY_CODE) || attempt.status == AgentAttemptStatus.RUNNING ||
             (attempt.attemptNumber > 1 && attempt.status == AgentAttemptStatus.PENDING)
+    }
+
+    /** Recovery redrives opted-in pending attempts through the same dispatch and finalization path. */
+    internal fun redriveWithWorkspaceProof(scope: TenantScope, attempt: DurableAgentAttempt): CapabilityExecution? {
+        val instance = workflowRepository.findInstance(scope, attempt.namespaceId, attempt.workflowId)
+        val requiresWorkspace = requiresTrustedWorkspaceBaseline(instance, attempt.stepId, attempt.agentName)
+        if (!requiresWorkspace && !requiresDispatchEvidence(instance, attempt.stepId)) return null
+        if (attempt.brief.isNullOrBlank() || instance?.status != "active" ||
+            WorkflowStatuses.isTerminal(instance.instance["status"] as? String)
+        ) {
+            return CapabilityExecution(CapabilityOutcome.AgentDeferred(attempt.stepId, attempt.agentName, AGENT_ATTEMPT_CONFLICT))
+        }
+        val step = projectedSteps(scope, attempt.namespaceId, attempt.workflowId).firstOrNull { it.id == attempt.stepId }
+            ?: error("Cannot redrive workspace-governed attempt without its projected step")
+        return resolveAgentViaAdapter(scope, attempt.namespaceId, attempt.workflowId, step,
+            trustedWorkflowTicket(scope, attempt.namespaceId, attempt.workflowId), durableAgentAttemptService,
+            agentOsExecutionAdapter, onAgentObservation = {}, requiresProof = requiresWorkspace, recoveryAttemptId = attempt.attemptId)
+    }
+
+    private fun requiresTrustedWorkspaceBaseline(instance: WorkflowInstanceRecord?, stepId: String, agentName: String): Boolean {
+        val flowType = (instance?.instance?.get("workflowType") as? String).orEmpty()
+        return allStepResultValidators().any {
+            it.requiresTrustedWorkspaceBaseline(flowType = flowType, stepId = stepId, agentName = agentName)
+        }
+    }
+
+    private fun requiresDispatchEvidence(instance: WorkflowInstanceRecord?, stepId: String): Boolean {
+        val flowType = (instance?.instance?.get("workflowType") as? String).orEmpty()
+        return allStepResultValidators().any { it.requiresDispatchEvidence(flowType, stepId) } ||
+            allStepEvidenceObservers().any { it.requiresBeforeSideEffect(flowType, stepId) }
     }
 
     /** Recovery uses the same validators for every workflow, never a raw PASS shortcut. */
@@ -313,6 +344,7 @@ class CapabilityExecutionService(
             finalizeAgentAttempt(
                 scope, attempt.namespaceId, attempt.workflowId, step,
                 reservation, observation.verdict, runtimeProof = observation.runtimeProof,
+                workspaceDelta = missingRecoveredWorkspaceBaseline(),
                 externalObservation = externalObservation,
             )
         }
@@ -694,9 +726,45 @@ class CapabilityExecutionService(
     }
 
     private fun allStepEvidenceObservers(): List<FactoryStepEvidenceObserver> =
-        registeredStepEvidenceObservers + pluginManager?.let {
+        (registeredStepEvidenceObservers + pluginManager?.let {
             runCatching { it.getExtensions(FactoryStepEvidenceObserver::class.java) }.getOrDefault(emptyList())
-        }.orEmpty()
+        }.orEmpty()).distinctBy { it.javaClass.name }
+
+    internal data class SideEffectEvidence(
+        val instanceRevision: Int,
+        val rootCaseId: String?,
+        val run: RunView,
+        val verdict: StepEvidenceObservation,
+    )
+
+    /** Observe trusted external state before opening the transaction that authorizes its use. */
+    internal fun observeBeforeSideEffect(
+        scope: TenantScope, instance: WorkflowInstanceRecord, stepId: String, actor: String, identity: String,
+    ): SideEffectEvidence? {
+        val flowType = (instance.instance["workflowType"] as? String).orEmpty()
+        val observers = allStepEvidenceObservers().filter { it.requiresBeforeSideEffect(flowType, stepId) }
+        if (observers.isEmpty() && allStepResultValidators().none { it.requiresDispatchEvidence(flowType, stepId) }) return null
+        val run = resolveRunView(scope, instance.namespaceId, instance)
+        val root = instance.rootCaseId
+        val verdict = runCatching {
+            val reader = root?.let { remoteGitObjectReader(instance.namespaceId, it, scope, instance) }
+            when {
+                observers.size != 1 -> StepEvidenceObservation.Unavailable("EVIDENCE_OBSERVER_UNAVAILABLE", "Exactly one trusted evidence observer is required.")
+                reader == null -> StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "Trusted Case Git is unavailable.")
+                else -> observers.single().observeBeforeSideEffect(StepEvidenceObservationContext(
+                    run = run, flowType = flowType, stepId = stepId, agentName = actor,
+                    attemptId = identity, worktreePath = ".", report = emptyMap(), gitObjects = reader,
+                    workstreamId = scope.workstreamId,
+                ))
+            }
+        }.getOrElse { StepEvidenceObservation.Unavailable("EVIDENCE_OBSERVATION_UNAVAILABLE", "Trusted Case evidence could not be read.") }
+        return SideEffectEvidence(instance.revision, root, run, verdict)
+    }
+
+    /** Re-read persisted identity under the caller's transaction, without external I/O. */
+    internal fun sideEffectEvidenceIsCurrent(scope: TenantScope, instance: WorkflowInstanceRecord?, observed: SideEffectEvidence): Boolean =
+        instance != null && instance.status == "active" && instance.revision == observed.instanceRevision &&
+            instance.rootCaseId == observed.rootCaseId && resolveRunView(scope, instance.namespaceId, instance) == observed.run
 
     private fun observeStepEvidence(
         scope: TenantScope,
@@ -796,7 +864,7 @@ class CapabilityExecutionService(
         val association = runCatching { proxy.fetchNamespaceGit(namespaceId, userId) }.getOrNull() ?: return null
         if (association["associated"] != true) return null
         val url = association["repositoryUrl"] as? String ?: return null
-        val repository = url.substringAfterLast('/').substringAfterLast(':').removeSuffix(".git")
+        val repository = url.trimEnd('/').substringAfterLast('/').substringAfterLast(':').removeSuffix(".git")
             .takeIf { it.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")) } ?: return null
         return object : TrustedGitObjectReader {
             override fun sourceRepository(): String = repository
@@ -1377,10 +1445,12 @@ class CapabilityExecutionService(
         ticket: String?,
         onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): CapabilityExecution {
-        return if (agentOsAdapterProperties.enabled) {
-            resolveAgentViaAdapter(scope, namespaceId, workflowId, step, ticket, durableAgentAttemptService, agentOsExecutionAdapter, onAgentObservation)
+        val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
+        val requiresProof = requiresTrustedWorkspaceBaseline(instance, step.id, step.responsibility.name ?: "agent")
+        return if (agentOsAdapterProperties.enabled || requiresProof || requiresDispatchEvidence(instance, step.id)) {
+            resolveAgentViaAdapter(scope, namespaceId, workflowId, step, ticket, durableAgentAttemptService,
+                agentOsExecutionAdapter, onAgentObservation, requiresProof = requiresProof)
         } else {
-            val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
             if (parentRunIdOf(instance) != null) {
                 CapabilityExecution(
                     CapabilityOutcome.AgentDeferred(
@@ -1434,6 +1504,8 @@ class CapabilityExecutionService(
         attempts: DurableAgentAttemptService,
         adapter: AgentOsExecutionAdapter,
         onAgentObservation: (AgentObservationUpdate) -> Unit,
+        requiresProof: Boolean,
+        recoveryAttemptId: String? = null,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
         // Lot B durable case family: the run's root case (worktree) is anchored
@@ -1446,6 +1518,9 @@ class CapabilityExecutionService(
         // otherwise only the recovery scanner can drive N+1 while this path
         // remains anchored to the terminal predecessor.
         val latestAttempt = attempts.findLatestForStep(scope, namespaceId, workflowId, step.id)
+        if (recoveryAttemptId != null && latestAttempt?.attemptId != recoveryAttemptId) {
+            return CapabilityExecution(CapabilityOutcome.AgentDeferred(step.id, step.responsibility.name, AGENT_ATTEMPT_CONFLICT))
+        }
         val attemptId = latestAttempt?.attemptId ?: stableAttemptId(workflowId, step.id)
         val ownerToken = UUID.randomUUID().toString()
         // Lot D - replay integrity: an existing attempt replays its FROZEN context
@@ -1470,7 +1545,8 @@ class CapabilityExecutionService(
             FrozenContext(brief, envelope.toJson())
         }
         val context = if (latestAttempt == null || latestAttempt.contextEnvelope == null) {
-            val renderedBrief = renderSubmissionIdentifiers(contextTemplate.brief, attemptId)
+            val renderedBrief = if (recoveryAttemptId != null) checkNotNull(latestAttempt?.brief)
+                else renderSubmissionIdentifiers(contextTemplate.brief, attemptId)
             val renderedEnvelope = AttemptContextEnvelope.fromJson(contextTemplate.envelopeJson)
                 .copy(briefHash = CanonicalJsonHash.sha256(renderedBrief))
                 .toJson()
@@ -1485,10 +1561,13 @@ class CapabilityExecutionService(
         // transaction: the claim is itself a `REQUIRES_NEW` compare-and-set, so it
         // must not be nested in an outer transaction that holds the uncommitted
         // registration.
+        val guardDispatchHistory = requiresProof || recoveryAttemptId != null || requiresDispatchEvidence(
+            workflowRepository.findInstance(scope, namespaceId, workflowId), step.id,
+        )
         val reservation = withReservationLock("$workflowId#${step.id}") {
             reserveAgentAttempt(
                 attempts, scope, namespaceId, workflowId, step, attemptId, ownerToken, agentId, brief,
-                context.envelopeJson, entryAgentStepId,
+                context.envelopeJson, entryAgentStepId, guardDispatchHistory,
                 expectedAmendmentSeq = if (latestAttempt == null) {
                     AttemptContextEnvelope.fromJson(context.envelopeJson).expectedAmendmentSeq
                 } else {
@@ -1530,23 +1609,73 @@ class CapabilityExecutionService(
         val (_, watchedPaths) = resolveBriefContributions(scope, namespaceId, workflowInstance, step, fragmentInputs)
         val externalUserId = resolveExternalUserId(scope, workflowInstance)
         val workspaceCaseId = reservation.parentCaseId ?: reservation.caseId
-        val beforeSnapshot = workspaceDeltaCollector?.captureSnapshot(
-            caseId = workspaceCaseId,
-            watchedPaths = watchedPaths,
-            externalUserId = externalUserId,
-        )
+        var beforeSnapshot: WorkspaceTurnSnapshot? = null
+        var dispatchEvidence: SideEffectEvidence? = null
+        var dispatchPause: String? = null
         val observation = executeRemoteTurn(
             adapter, attempts, scope, namespaceId, workflowId, step, occupiedReservation, agentId, brief, externalUserId, onAgentObservation,
+            requireWorkspaceProof = requiresProof,
+            authorizeDispatch = {
+                val observed = dispatchEvidence
+                dispatchPause = when (val verdict = observed?.verdict) {
+                    null -> null
+                    is StepEvidenceObservation.Unavailable -> "${verdict.code}: ${verdict.message}"
+                    is StepEvidenceObservation.Invalid -> "${verdict.code}: ${verdict.message}"
+                    is StepEvidenceObservation.Observed -> {
+                        val current = workflowRepository.findInstance(scope, namespaceId, workflowId)
+                        if (current != null && sideEffectEvidenceIsCurrent(scope, current, observed) &&
+                            workflowRepository.updateInstance(scope, namespaceId, workflowId, current.revision,
+                                current.copy(revision = current.revision + 1,
+                                    instance = current.instance + ("revision" to current.revision + 1))) &&
+                            sideEffectEvidenceIsCurrent(scope, current.copy(revision = current.revision + 1),
+                                observed.copy(instanceRevision = current.revision + 1))
+                        ) null else "EXTERNAL_EVIDENCE_STALE: Workflow changed during Git observation."
+                    }
+                }
+                dispatchPause == null
+            },
+            onCasePrepared = { preparedCaseId ->
+                beforeSnapshot = workspaceDeltaCollector?.captureBeforeTurnWhenReady(
+                    caseId = workspaceCaseId,
+                    watchedPaths = watchedPaths,
+                    externalUserId = externalUserId,
+                    requireTrustedBaseline = requiresProof,
+                )
+                val ready = !requiresProof || (preparedCaseId == reservation.caseId &&
+                    workflowInstance?.rootCaseId == workspaceCaseId &&
+                    beforeSnapshot?.captureStatus == WorkspaceCaptureStatus.COMPLETE)
+                if (ready && workflowInstance != null) {
+                    dispatchEvidence = observeBeforeSideEffect(scope, workflowInstance, step.id, agentId, attemptId)
+                    val checked = dispatchEvidence
+                    if (checked?.verdict is StepEvidenceObservation.Observed &&
+                        brief != renderSubmissionIdentifiers(buildBrief(scope, namespaceId, workflowId, step, ticket), attemptId)
+                    ) {
+                        dispatchEvidence = checked.copy(verdict = StepEvidenceObservation.Invalid(
+                            "DISPATCH_BRIEF_STALE", "The frozen attempt brief no longer matches current workflow inputs.",
+                        ))
+                    }
+                }
+                ready
+            },
         )
+        if (observation == null) {
+            val retry = recordWorkspaceRetry(scope, namespaceId, workflowId, step, occupiedReservation, dispatchPause)
+            // Unlike an ambiguous start, this path proves no turn was sent.
+            occupiedReservation.occupancy?.let { worktreeExecutionOccupancyService?.releaseOwned(it) }
+            return retry
+        }
         val afterSnapshot = workspaceDeltaCollector?.captureSnapshot(
             caseId = workspaceCaseId,
             watchedPaths = watchedPaths,
             externalUserId = externalUserId,
+            requireTrustedBaseline = requiresProof,
         )
-        val workspaceDelta = if (workspaceDeltaCollector != null && beforeSnapshot != null && afterSnapshot != null) {
-            workspaceDeltaCollector.computeDelta(beforeSnapshot, afterSnapshot, watchedPaths)
-        } else {
-            WorkspaceDelta()
+        val capturedBefore = beforeSnapshot
+        val workspaceDelta = when {
+            occupiedReservation.turnStarted -> missingRecoveredWorkspaceBaseline()
+            workspaceDeltaCollector != null && capturedBefore != null && afterSnapshot != null ->
+                workspaceDeltaCollector.computeDelta(capturedBefore, afterSnapshot, watchedPaths)
+            else -> WorkspaceDelta()
         }
         val toolEvents = runCatching {
             adapter.persistedEvents(reservation.caseId)
@@ -1852,11 +1981,14 @@ class CapabilityExecutionService(
         brief: String,
         contextEnvelope: String,
         entryAgentStepId: String?,
+        guardDispatchHistory: Boolean,
         expectedAmendmentSeq: Long?,
     ): AgentReservation {
         val existing = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
         if (existing != null && existing.status.terminal) {
-            if (existing.status == AgentAttemptStatus.INDETERMINATE && existing.failureCode == "AGENT_NEEDS_RESEARCH" && step.decision == null) {
+            if (!guardDispatchHistory && existing.status == AgentAttemptStatus.INDETERMINATE &&
+                existing.failureCode == "AGENT_NEEDS_RESEARCH" && step.decision == null
+            ) {
                 val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, step.id, attemptId)
                 if (accepted != null && accepted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
                     val outcome = if (accepted.status == AgentStepResultStatus.PASS) {
@@ -1988,11 +2120,6 @@ class CapabilityExecutionService(
                 ),
             )
         }
-        val turnStarted = existing?.status in setOf(
-            AgentAttemptStatus.STARTING,
-            AgentAttemptStatus.RUNNING,
-            AgentAttemptStatus.WAITING_HUMAN,
-        )
         val persisted = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
             ?: error("Durable attempt '$attemptId' was not persisted before AgentOS case creation")
         val resolvedCaseId = persisted.caseId.takeIf { it.isNotBlank() } ?: stableCaseId(workflowId, step.id)
@@ -2010,6 +2137,12 @@ class CapabilityExecutionService(
         } catch (_: AttemptClaimConflictException) {
             false
         }
+        // A competing owner may have reached STARTING before our claim, including
+        // before a crash that left the current row reset to CLAIMING. Read the journal
+        // after claiming; current status alone cannot prove that no message was sent.
+        val turnStarted = existing?.status in DISPATCH_POSSIBLE_STATUSES ||
+            (guardDispatchHistory && claimed && !newAttempt && attempts.journal(scope, namespaceId, workflowId, step.id, attemptId)
+                .any { it.toStatus in DISPATCH_POSSIBLE_STATUSES })
         return AgentReservation(
             attemptId = attemptId,
             caseId = resolvedCaseId,
@@ -2040,7 +2173,10 @@ class CapabilityExecutionService(
         brief: String,
         externalUserId: String?,
         onAgentObservation: (AgentObservationUpdate) -> Unit,
-    ): AgentOsObservationResult {
+        requireWorkspaceProof: Boolean,
+        authorizeDispatch: () -> Boolean,
+        onCasePrepared: (String) -> Boolean,
+    ): AgentOsObservationResult? {
         val persistedAttempt = attempts.find(
             scope, namespaceId, workflowId, step.id, reservation.attemptId,
         ) ?: error("Durable attempt '${reservation.attemptId}' vanished before AgentOS execution")
@@ -2086,6 +2222,7 @@ class CapabilityExecutionService(
         val handle = try {
             adapter.createOrRecoverExecution(binding, workflowId, step.id)
         } catch (error: Exception) {
+            if (requireWorkspaceProof && !reservation.turnStarted) return null
             // The attempt already exists durably but no usable AgentOS execution
             // was obtained. Terminalize it now so the step-level recovery can
             // converge to FAILED instead of leaving a RUNNING projection forever.
@@ -2107,9 +2244,13 @@ class CapabilityExecutionService(
                     binding = binding.copy(caseId = caseId),
                 )
             }
-            newTransaction {
-                attempts.transition(scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken, AgentAttemptStatus.STARTING)
+            if (!onCasePrepared(caseId)) return null
+            val authorized = newTransaction {
+                authorizeDispatch().also { allowed ->
+                    if (allowed) attempts.transition(scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken, AgentAttemptStatus.STARTING)
+                }
             }
+            if (!authorized) return null
             try {
                 adapter.startTurn(binding.copy(caseId = caseId), agentId, brief)
             } catch (error: Exception) {
@@ -2120,8 +2261,8 @@ class CapabilityExecutionService(
             }
         } else {
             // Claiming rotates the owner and resets the durable aggregate. The prior
-            // STARTING/RUNNING/WAITING_HUMAN state proves the turn was already sent,
-            // so re-enter the legal lifecycle without dispatching a second message.
+            // STARTING is ambiguous: the message may already have been sent.
+            // Re-enter the observation lifecycle without dispatching another message.
             newTransaction {
                 attempts.transition(scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken, AgentAttemptStatus.STARTING)
             }
@@ -2298,6 +2439,72 @@ class CapabilityExecutionService(
         }
     }
 
+    private fun recordWorkspaceRetry(
+        scope: TenantScope, namespaceId: String, workflowId: String, step: WorkflowStepDefinition,
+        reservation: AgentReservation,
+        dispatchPause: String? = null,
+    ): CapabilityExecution = newTransaction {
+        val evidenceId = UUID.randomUUID().toString()
+        val message = "${dispatchPause ?: "No complete pre-turn workspace baseline."} No agent turn was sent."
+        durableAgentAttemptService.finalize(
+            scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
+            AgentAttemptStatus.FAILED, failureCode = WORKSPACE_RETRY_CODE, resultEvidenceId = evidenceId,
+        )
+        evidenceRepository.append(scope, namespaceId, workflowId, WorkflowEvidenceItem(
+            evidenceId = evidenceId, namespaceId = namespaceId, workflowId = workflowId, stepId = step.id,
+            kind = AGENT_RESULT_EVIDENCE_KIND, outcome = "technical_pause", source = mapOf("kind" to "factory-control-plane"),
+            facts = mapOf("attemptId" to reservation.attemptId, "code" to WORKSPACE_RETRY_CODE, "message" to message),
+            idempotencyKey = "workspace-retry:${reservation.attemptId}", createdAt = null,
+        ))
+        val interactionId = UUID.randomUUID().toString()
+        interactionRepository.insert(scope, HumanInteractionRecord(
+            interactionId = interactionId, namespaceId = namespaceId, workflowId = workflowId, stepId = step.id,
+            interactionType = "retry", status = "waiting", revision = 1,
+            payload = mapOf("stepId" to step.id, "prompt" to "$message Restore trusted Case evidence, then select Retry.",
+                "reasonCode" to WORKSPACE_RETRY_CODE, "attemptId" to reservation.attemptId,
+                "actions" to listOf(mapOf("id" to "approve", "label" to "Retry"))),
+        ))
+        interactionRepository.appendEvent(scope, namespaceId, workflowId, HumanInteractionEventRecord(
+            eventId = UUID.randomUUID().toString(), interactionId = interactionId,
+            eventType = "interaction_opened", actorId = "factory-capability-resolver",
+            payload = mapOf("revision" to 1, "evidenceId" to evidenceId),
+        ))
+        CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired(step.id, step.responsibility.name),
+            evidenceId = evidenceId, interactionId = interactionId, attemptId = reservation.attemptId)
+    }
+
+    /** Registers a fresh attempt of the same step and Case after the reply CAS, in the caller's transaction. */
+    internal fun registerWorkspaceRetry(scope: TenantScope, instance: WorkflowInstanceRecord, predecessor: DurableAgentAttempt): String {
+        val step = projectedSteps(scope, predecessor.namespaceId, predecessor.workflowId).single { it.id == predecessor.stepId }
+        val number = predecessor.attemptNumber + 1
+        val retryId = retryAttemptId(predecessor.workflowId, step.id, number)
+        val (template, envelope) = buildContextEnvelope(
+            scope, predecessor.namespaceId, predecessor.workflowId, step,
+            trustedWorkflowTicket(scope, predecessor.namespaceId, predecessor.workflowId), number,
+            predecessor.agentName, instance.amendmentSeq,
+        )
+        val brief = renderSubmissionIdentifiers(template, retryId)
+        val token = issueDurableCapability(
+            scope, predecessor.namespaceId, predecessor.workflowId, step, retryId, predecessor.caseId, predecessor.agentName, brief,
+        )
+        durableAgentAttemptService.registerRetry(scope, DurableAgentAttempt(
+            attemptId = retryId, caseId = predecessor.caseId, namespaceId = predecessor.namespaceId,
+            workflowId = predecessor.workflowId, stepId = step.id, attemptNumber = number,
+            agentName = predecessor.agentName, capabilityToken = token, brief = brief,
+            contextEnvelope = envelope.copy(briefHash = CanonicalJsonHash.sha256(brief)).toJson(),
+            expectedAmendmentSeq = instance.amendmentSeq, rootCaseId = predecessor.rootCaseId,
+            parentCaseId = predecessor.parentCaseId, environmentRef = predecessor.environmentRef,
+            expectedEnvironmentRevision = predecessor.expectedEnvironmentRevision,
+        ))
+        return retryId
+    }
+
+    // A current worktree snapshot cannot establish what changed during an already-started attempt.
+    private fun missingRecoveredWorkspaceBaseline(): WorkspaceDelta = WorkspaceDelta(
+        captureStatus = WorkspaceCaptureStatus.UNAVAILABLE,
+        degradedReason = "Original pre-turn workspace baseline unavailable; review recovery options without assuming a new attempt is safe.",
+    )
+
     /**
      * Phase 3 of the bridge: validates the verdict, persists the durable outputs as
      * `agent-result` evidence and finalizes the attempt (fenced on the owner token).
@@ -2317,7 +2524,7 @@ class CapabilityExecutionService(
         step: WorkflowStepDefinition,
         reservation: AgentReservation,
         verdict: AgentOsExecutionVerdict,
-        workspaceDelta: WorkspaceDelta = WorkspaceDelta(),
+        workspaceDelta: WorkspaceDelta,
         toolEvents: List<ToolEventView> = emptyList(),
         watchedPaths: List<String> = emptyList(),
         runtimeProof: VerdictDeriver.RuntimeCaseTerminationProof? = null,
@@ -2619,6 +2826,10 @@ class CapabilityExecutionService(
             .filter { it.kind == AGENT_RESULT_EVIDENCE_KIND }
         val evidence = results.lastOrNull { it.facts["attemptId"] == reservation.attemptId }
             ?: results.lastOrNull { it.facts["attemptId"] == null }
+        if (evidence?.outcome == "technical_pause" && evidence.facts["code"] == WORKSPACE_RETRY_CODE) {
+            return CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired(step.id, step.responsibility.name),
+                evidenceId = evidence.evidenceId, attemptId = reservation.attemptId)
+        }
         if (evidence?.outcome == "needs_research") {
             val accepted = acceptedStepResult(scope, namespaceId, workflowId, step.id, reservation.attemptId)
             if (accepted?.status == AgentStepResultStatus.NEEDS_RESEARCH) {
@@ -2872,6 +3083,9 @@ class CapabilityExecutionService(
     }
 
     companion object {
+        internal const val WORKSPACE_RETRY_CODE = "WORKSPACE_BASELINE_UNAVAILABLE"
+        private val DISPATCH_POSSIBLE_STATUSES = setOf(AgentAttemptStatus.STARTING, AgentAttemptStatus.RUNNING, AgentAttemptStatus.WAITING_HUMAN)
+
         /** Evidence kind carrying the durable, structured outputs of an agent step. */
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
         private const val RUN_BRIEF_KIND = "run-brief"

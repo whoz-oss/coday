@@ -290,6 +290,39 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
             return interactionId
         }
 
+        // An outage must not consume the decision. A fresh observation can accept the same presentation.
+        val outageWorkflow = "wf-packet-outage"
+        val outageId = open(outageWorkflow)
+        val capability = mockk<io.whozoss.factory.capability.CapabilityExecutionService>()
+        val outage = io.whozoss.factory.capability.CapabilityExecutionService.SideEffectEvidence(
+            3, null, io.whozoss.factory.sdk.spi.RunView(outageWorkflow, "sample.delivery"),
+            io.whozoss.factory.sdk.spi.StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "Git unavailable"),
+        )
+        every { capability.observeBeforeSideEffect(organizationScope, any(), "gate", "authenticated-member", outageId) } returnsMany
+            listOf(outage, outage.copy(verdict = io.whozoss.factory.sdk.spi.StepEvidenceObservation.Observed(packet)))
+        every { capability.sideEffectEvidenceIsCurrent(organizationScope, any(), any()) } returns true
+        val guarded = WorkflowService(repository, evidenceRepository, interactionRepository, sseHub,
+            transactionManager = transactionManager, pluginManager = plugins, workspaceRetryCapability = capability)
+        val paused = guarded.replyInteraction(organizationScope, namespace, outageWorkflow, outageId, 3, "approve", null, "authenticated-member")
+        assertThat(paused.status).isEqualTo(409)
+        val waiting = interactionRepository.find(organizationScope, namespace, outageWorkflow, outageId)!!
+        assertThat(waiting.status).isEqualTo("waiting")
+        assertThat(evidenceRepository.list(organizationScope, namespace, outageWorkflow, "gate"))
+            .noneMatch { it.kind == "human-decision" }
+        val retried = guarded.replyInteraction(organizationScope, namespace, outageWorkflow, outageId,
+            waiting.revision, "approve", null, "authenticated-member")
+        assertThat(retried.status).isEqualTo(200)
+
+        val racedWorkflow = "wf-packet-observation-race"
+        val racedId = open(racedWorkflow)
+        every { capability.observeBeforeSideEffect(organizationScope, any(), "gate", "authenticated-member", racedId) } returns
+            outage.copy(verdict = io.whozoss.factory.sdk.spi.StepEvidenceObservation.Observed(packet))
+        every { capability.sideEffectEvidenceIsCurrent(organizationScope, match { it?.workflowId == racedWorkflow }, any()) } returns false
+        assertThatThrownBy {
+            guarded.replyInteraction(organizationScope, namespace, racedWorkflow, racedId, 3, "approve", null, "authenticated-member")
+        }.isInstanceOf(WorkflowException::class.java).hasMessageContaining("changed during external evidence observation")
+        assertThat(interactionRepository.find(organizationScope, namespace, racedWorkflow, racedId)?.status).isEqualTo("waiting")
+
         val currentId = open("wf-packet-current")
         val approved = governed.replyInteraction(organizationScope, namespace, "wf-packet-current", currentId,
             3, "approve", null, "authenticated-member")

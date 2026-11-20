@@ -12,8 +12,8 @@ internal object ForgePacketManifest {
     private val sha256 = Regex("^[0-9a-f]{64}$")
     private val commitSha = Regex("^[0-9a-f]{40}$")
     private val required = setOf("source_spec", "implementation_plan", "verification_plan")
-    private val optional = setOf("detailed_spec", "technical_spec", "ux_spec", "qa_spec")
-    private val decidedKinds = required + optional
+    val optionalKinds = setOf("detailed_spec", "technical_spec", "ux_spec", "qa_spec")
+    private val decidedKinds = required + optionalKinds
     private val allowedKinds = decidedKinds + "other_plan"
 
     sealed interface Result {

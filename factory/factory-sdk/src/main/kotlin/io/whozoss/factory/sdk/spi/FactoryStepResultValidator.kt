@@ -91,6 +91,12 @@ sealed interface StepValidationVerdict {
 interface FactoryStepResultValidator : ExtensionPoint {
     fun supports(flowType: String, stepId: String, agentName: String): Boolean = false
 
+    /** Opt in to fail-closed capture before dispatch, not just validation after the turn. */
+    fun requiresTrustedWorkspaceBaseline(flowType: String, stepId: String, agentName: String): Boolean = false
+
+    /** A matching pre-dispatch observer is mandatory for this step. */
+    fun requiresDispatchEvidence(flowType: String, stepId: String): Boolean = false
+
     fun validate(context: StepValidationContext): StepValidationVerdict =
         StepValidationVerdict.Accepted()
 }

@@ -1,5 +1,6 @@
 package io.whozoss.factory.forge.bmad
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.sdk.spi.BriefContext
 import io.whozoss.factory.sdk.spi.BriefContribution
 import io.whozoss.factory.sdk.spi.FactoryBriefContributor
@@ -34,6 +35,67 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
 
         (domainState["run_brief"] as? String)?.let { brief ->
             sections += "## Durable Forge run brief\n$brief"
+        }
+
+        if (context.flowType == "forge.delivery") {
+            when (context.stepId) {
+                "implementation-planning" -> sections += "Write the implementation plan document as one JSON object equal to the submitted delivery_plan, with no surrounding Markdown."
+                "qa-design" -> sections += "Write the verification plan document with exactly the UTF-8 bytes of submitted verification_plan, including its final newline if present."
+                "packet-assembly" -> sections += "Copy the four accepted design applicability decisions into the manifest verbatim, including reasons. Do not rewrite either plan."
+            }
+            val decisionKey = when (context.stepId) {
+                "product-design" -> "detailed_spec"
+                "ux-design" -> "ux_spec"
+                "technical-design" -> "technical_spec"
+                "qa-design" -> "qa_spec"
+                else -> null
+            }
+            val decision = (domainState["applicability"] as? Map<*, *>)?.get(decisionKey) as? Map<*, *>
+            if (decisionKey != null && decision?.get("applicable") is Boolean) {
+                sections += "Design applicability for $decisionKey: ${decision["applicable"]}. Reason: ${decision["reason"]}"
+            }
+            val references = (domainState["designEvidenceRefs"] as? List<*>)?.filterIsInstance<String>().orEmpty()
+            if (references.isNotEmpty() && context.stepId in setOf(
+                    "product-design", "ux-design", "technical-design", "implementation-planning", "qa-design", "packet-assembly",
+                )) {
+                sections += "Pinned design sources:\n${references.joinToString("\n") { "- $it" }}"
+            }
+            if (context.stepId in setOf("implementation-build", "implementation-verification", "implementation-review")) {
+                val packet = domainState["approvedPacketCandidate"] as? Map<*, *>
+                val plan = domainState["delivery_plan"] as? Map<*, *>
+                val approval = context.run.humanDecisions.lastOrNull {
+                    val facts = it["facts"] as? Map<*, *>
+                    val source = it["source"] as? Map<*, *>
+                    it["stepId"] == "packet-approval" && it["outcome"] == "pass" &&
+                        facts?.get("gate") == "packet-approval" &&
+                        facts["repository"] == packet?.get("repository") &&
+                        facts["commit"] == packet?.get("commit") &&
+                        facts["manifestSha256"] == packet?.get("manifestSha256") &&
+                        facts["packetGeneration"] == packet?.get("packetGeneration") &&
+                        source?.get("kind") == "factory-human"
+                }
+                if (packet != null && plan != null && approval != null) {
+                    sections += buildString {
+                        appendLine("## Approved Forge delivery inputs")
+                        appendLine("Packet repository: ${packet["repository"]}")
+                        appendLine("Packet commit: ${packet["commit"]}")
+                        appendLine("Manifest SHA-256: ${packet["manifestSha256"]}")
+                        packet["packetGeneration"]?.let { appendLine("Packet generation: $it") }
+                        appendLine("The packet commit pins the six source documents. The manifest may be committed later because it names that source commit; verify its canonical digest against the approved digest, not its presence in the source commit.")
+                        appendLine("Packet approval: ${ObjectMapper().writeValueAsString(approval)}")
+                        appendLine("Accepted delivery_plan: ${ObjectMapper().writeValueAsString(plan)}")
+                        if (context.stepId == "implementation-build") {
+                            appendLine("Write authorization: the approved Build may edit only its selected Case Git worktree and the plan's file_paths. Use a local work branch; do not push.")
+                        }
+                        (domainState["build_report"] as? Map<*, *>)?.let {
+                            appendLine("Accepted build_report: ${ObjectMapper().writeValueAsString(it)}")
+                        }
+                        (domainState["verification_report"] as? Map<*, *>)?.let {
+                            appendLine("Accepted verification_report: ${ObjectMapper().writeValueAsString(it)}")
+                        }
+                    }.trimEnd()
+                }
+            }
         }
 
         when (context.flowType) {

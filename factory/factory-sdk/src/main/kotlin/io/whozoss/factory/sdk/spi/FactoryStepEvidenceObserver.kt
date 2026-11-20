@@ -38,4 +38,10 @@ sealed interface StepEvidenceObservation {
 interface FactoryStepEvidenceObserver : ExtensionPoint {
     fun supports(flowType: String, stepId: String, agentName: String): Boolean = false
     fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation
+
+    /** Opt in to an additional trusted observation before a human reply or agent dispatch. */
+    fun requiresBeforeSideEffect(flowType: String, stepId: String): Boolean = false
+
+    /** Called outside the write transaction; the host fences the observed state before accepting it. */
+    fun observeBeforeSideEffect(context: StepEvidenceObservationContext): StepEvidenceObservation = observe(context)
 }
