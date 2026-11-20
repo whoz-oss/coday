@@ -434,14 +434,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Whether the prompt cache of the conversation is kept warm while the case is idle. */
   protected readonly keepAlive = computed(() => this.activeCase()?.keepAlive ?? false)
 
+  /**
+   * Off while the case cannot take changes: ended, gone, or the caller may not write it (the WRITE permission
+   * of the endpoint, which the case's exchange capability reflects).
+   */
+  protected readonly keepAliveDisabled = computed(() => this.composerClosed() || !this.exchangeState.canWriteCase())
+
+  /** The refresh intervals; how long the server keeps refreshing is its own setting, so no duration is promised. */
   protected readonly keepAliveHint =
-    "Keeps this conversation's prompt cache warm while idle (refresh every 4:40, or 59:30 with a 1-hour cache), " +
-    'for up to 2 hours. Each refresh costs a cache read.'
+    "Keeps this conversation's prompt cache warm while idle (refreshed every 4:20, or every 58:00 with a 1-hour " +
+    'cache), for a limited time after the last reply. Each refresh costs a cache read.'
 
   /** Save the keep-alive checkbox; on failure the case state rolls the checkbox back. */
   protected onKeepAliveChange(event: Event): void {
     const checkbox = event.target as HTMLInputElement
-    if (!this.activeCase()) return
+    if (!this.activeCase() || this.keepAliveDisabled()) {
+      checkbox.checked = this.keepAlive()
+      return
+    }
     this.caseState
       .setKeepAlive(this.caseId, checkbox.checked)
       .pipe(takeUntilDestroyed(this.destroyRef))

@@ -322,6 +322,17 @@ class CaseSideQuestionServiceUnitSpec :
             tools.forEach { tool -> shouldThrow<IllegalStateException> { tool.call("{}") } }
         }
 
+        "from the agent's last request: sent with the prompt cache duration of the agent's request" {
+            val fixture = Fixture(stored = lastRequest().copy(promptCacheTtl = PromptCacheTtl.ONE_HOUR))
+            fixture.answering(text("ok"))
+
+            fixture.service.answer(case.id, "?", runUserId)
+
+            verify(exactly = 1) {
+                fixture.chatClientProvider.getChatClient(agentModel, agentProvider, case.id.toString(), any(), null, PromptCacheTtl.ONE_HOUR, false, null)
+            }
+        }
+
         "a rotated API key no longer matches the credential fingerprint: the transcript answers, never a 502" {
             val rotated = agentProvider.copy(apiKey = "rotated-key")
             val fixture =

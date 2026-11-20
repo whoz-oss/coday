@@ -74,6 +74,15 @@ export class CaseStateService {
   /** Last queued save per case. Different cases can still save independently. */
   private readonly pendingUpdates = new Map<string, { request: Observable<Case>; state: { confirmed: Case } }>()
 
+  /** Numbers the list loads, so that a response can tell whether it was requested before or after a save settled. */
+  private loadSeq = 0
+
+  /**
+   * The keep-alive of a case as last saved (or being saved). A list response requested before the save settled
+   * carries the value from before it: this one is applied instead, until a list requested afterwards comes back.
+   */
+  private readonly keepAliveOverrides = new Map<string, { keepAlive: boolean; settledAtLoad?: number }>()
+
   /**
    * Load (or reload) the cases of a namespace.
    *
@@ -130,6 +139,7 @@ export class CaseStateService {
 
   private startLoad(namespaceId: string): void {
     this.loadInFlight = true
+    const seq = ++this.loadSeq
     // The mode is read here, at each (re)start, so a live refresh always follows the mode in force.
     const source$ =
       this._listMode() === 'all'
@@ -142,7 +152,7 @@ export class CaseStateService {
       )
       .subscribe({
         next: (cases) => {
-          if (namespaceId === this.currentNamespaceId) this.cases.set(cases)
+          if (namespaceId === this.currentNamespaceId) this.cases.set(this.withKeepAliveOverrides(cases, seq))
         },
         error: (err) => {
           console.error(`[CaseState] Failed to load cases for namespace ${namespaceId}:`, err)
@@ -331,17 +341,33 @@ export class CaseStateService {
   private saveKeepAlive(caseId: string, keepAlive: boolean, state: { confirmed: Case }): Observable<Case> {
     return defer(() => {
       const previous = state.confirmed.keepAlive ?? false
+      this.keepAliveOverrides.set(caseId, { keepAlive })
       this.patchKeepAlive(caseId, keepAlive)
       return this.caseController.setKeepAliveCase(caseId, { keepAlive }).pipe(
         tap((updated) => {
-          state.confirmed = { ...state.confirmed, keepAlive: updated.keepAlive }
-          this.patchKeepAlive(caseId, updated.keepAlive ?? false)
+          const saved = updated.keepAlive ?? false
+          state.confirmed = { ...state.confirmed, keepAlive: saved }
+          this.keepAliveOverrides.set(caseId, { keepAlive: saved, settledAtLoad: this.loadSeq })
+          this.patchKeepAlive(caseId, saved)
         }),
         catchError((err) => {
+          this.keepAliveOverrides.set(caseId, { keepAlive: previous, settledAtLoad: this.loadSeq })
           this.patchKeepAlive(caseId, previous)
           return throwError(() => err)
         })
       )
+    })
+  }
+
+  /** [cases] from the list load [seq], with the keep-alive saved since it was requested. */
+  private withKeepAliveOverrides(cases: Case[], seq: number): Case[] {
+    if (this.keepAliveOverrides.size === 0) return cases
+    for (const [caseId, override] of this.keepAliveOverrides) {
+      if (override.settledAtLoad !== undefined && seq > override.settledAtLoad) this.keepAliveOverrides.delete(caseId)
+    }
+    return cases.map((c) => {
+      const override = c.id ? this.keepAliveOverrides.get(c.id) : undefined
+      return override ? { ...c, keepAlive: override.keepAlive } : c
     })
   }
 

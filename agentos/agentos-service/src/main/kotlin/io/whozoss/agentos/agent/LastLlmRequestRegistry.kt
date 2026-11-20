@@ -63,6 +63,11 @@ data class LastLlmRequest(
      * ([io.whozoss.agentos.chat.RequestyPromptCache]).
      */
     val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+    /**
+     * When the request was sent: the provider's cache lifetime of its prefix runs from then, not from the end of the
+     * answer ([capturedAt], which a long answer can make minutes later). Null when unknown.
+     */
+    val requestSentAt: Instant? = null,
     /** Set by [LastLlmRequestRegistry.put]. */
     val capturedAt: Instant = Instant.EPOCH,
     /** The generation of the case it was captured in ([LastLlmRequestRegistry.generation]), set by `put`. */
@@ -70,8 +75,12 @@ data class LastLlmRequest(
     /** The last time a request reusing this one refreshed the provider's cache ([LastLlmRequestRegistry.touch]). */
     val lastCacheTouchAt: Instant? = null,
 ) {
-    /** When the provider's cache last saw this prefix. */
-    val lastUsedAt: Instant get() = lastCacheTouchAt?.takeIf { it.isAfter(capturedAt) } ?: capturedAt
+    /** When the provider's cache last saw this prefix: when it was sent, or last re-sent ([lastCacheTouchAt]). */
+    val lastUsedAt: Instant
+        get() {
+            val sent = requestSentAt?.takeIf { !it.isAfter(capturedAt) } ?: capturedAt
+            return lastCacheTouchAt?.takeIf { it.isAfter(sent) } ?: sent
+        }
 
     /** The conversation of the case is still the one this request ended: nothing was said or done since. */
     fun isCurrentFor(events: List<CaseEvent>): Boolean {
@@ -190,17 +199,21 @@ class LastLlmRequestRegistry(
     }
 
     /**
-     * A request reusing the one captured at [capturedAt] for [caseId] refreshed the provider's cache now. Ignored
-     * when the case has another request since.
+     * A request reusing the one captured at [capturedAt] for [caseId] refreshed the provider's cache, sent at [sentAt]
+     * (now by default). Ignored when the case has another request since.
      */
     @Synchronized
     fun touch(
         caseId: UUID,
         capturedAt: Instant,
+        sentAt: Instant = clock.instant(),
     ) {
         val request = entries[caseId]?.takeIf { it.capturedAt == capturedAt } ?: return
-        entries[caseId] = request.copy(lastCacheTouchAt = clock.instant())
+        entries[caseId] = request.copy(lastCacheTouchAt = sentAt)
     }
+
+    /** The time of the registry's clock. */
+    fun now(): Instant = clock.instant()
 
     /**
      * [caseId] was deleted: its request and its generation are forgotten. A capture still in flight is dropped all

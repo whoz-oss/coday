@@ -88,6 +88,8 @@ open class Neo4jCaseRepository(
 
     override fun countAncestorDepth(caseId: UUID): Int = caseNodeNeo4jRepository.countAncestorDepth(caseId.toString())
 
+    override fun findKeepAliveIds(): List<UUID> = caseNodeNeo4jRepository.findKeepAliveIds().map(UUID::fromString)
+
     override fun linkParentToChild(
         parentCaseId: UUID,
         childCaseId: UUID,

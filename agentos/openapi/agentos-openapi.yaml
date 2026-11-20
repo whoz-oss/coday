@@ -1949,10 +1949,11 @@ paths:
     put:
       description: "PUT /api/cases/{id}/keep-alive — while the case is idle, keep\
         \ the provider's prompt cache of its conversation warm by re-sending the agent's\
-        \ last request with a 1-token answer before the cache expires (every 4:40,\
-        \ or 59:30 with a 1-hour cache), for up to the platform's maximum idle duration\
-        \ after the last agent turn. Each refresh is recorded as usage of the case.\
-        \ Returns the updated Case DTO."
+        \ last request with a 1-token answer before the cache expires (4:20 after\
+        \ its last use, or 58:00 when a 1-hour cache applies), for up to the platform's\
+        \ maximum idle duration after the last agent turn. Each refresh is recorded\
+        \ as usage of the case; no refresh is sent while usage tracking is off. 400\
+        \ when keepAlive is missing. Returns the updated Case DTO."
       operationId: setKeepAliveCase
       parameters:
       - in: path
@@ -4936,7 +4937,6 @@ components:
             \ be null for a sub-case."
       required:
       - favorite
-      - keepAlive
       - namespaceId
       - removed
       - status
@@ -4994,6 +4994,8 @@ components:
       properties:
         keepAlive:
           type: boolean
+          description: "True to keep the prompt cache warm while the case is idle,\
+            \ false to stop."
       required:
       - keepAlive
     CaseReasoningEffortRequest:

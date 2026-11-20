@@ -628,7 +628,7 @@
                 type="checkbox"
                 data-testid="keep-alive"
                 [checked]="keepAlive()"
-                [disabled]="isTerminal()"
+                [disabled]="keepAliveDisabled()"
                 (change)="onKeepAliveChange($event)"
               />
               Keep alive

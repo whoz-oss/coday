@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.prompt.Prompt
 import java.security.MessageDigest
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicReference
 
 /** One request sent to a provider, its messages exactly as sent, and the text of its response once it came. */
@@ -14,6 +15,8 @@ data class LlmExchange(
     val messages: List<Message>,
     /** Null until the whole response came (never set when the request failed or was cut short). */
     val responseText: String? = null,
+    /** When the request was sent: when the provider's prompt cache saw its prefix. */
+    val sentAt: Instant? = null,
 )
 
 /**
@@ -21,12 +24,14 @@ data class LlmExchange(
  * (see [ChatClientProvider.getChatClient] `exchangeRecorder`): an untracked model runs its tool rounds out of
  * sight, so it records nothing.
  */
-class LlmExchangeRecorder {
+class LlmExchangeRecorder(
+    private val now: () -> Instant = Instant::now,
+) {
     private val last = AtomicReference<LlmExchange?>(null)
 
     val lastExchange: LlmExchange? get() = last.get()
 
-    fun requestSent(prompt: Prompt) = last.set(LlmExchange(prompt.instructions.toList()))
+    fun requestSent(prompt: Prompt) = last.set(LlmExchange(prompt.instructions.toList(), sentAt = now()))
 
     fun responseReceived(text: String?) {
         last.updateAndGet { it?.copy(responseText = text.orEmpty()) }

@@ -78,32 +78,6 @@ class CaseServiceReasoningEffortSpec :
             }
         }
 
-        "setKeepAlive changes only the keep-alive and keeps a status changed since the caller's read" {
-            val fixture = ReasoningEffortFixture()
-            try {
-                val callerCopy = fixture.storedCase()
-                fixture.forceStatus(CaseStatus.RUNNING)
-
-                fixture.service.setKeepAlive(callerCopy.id, true).keepAlive shouldBe true
-                fixture.storedCase().status shouldBe CaseStatus.RUNNING
-                fixture.storedCase().keepAlive shouldBe true
-
-                fixture.service.setKeepAlive(callerCopy.id, false)
-                fixture.storedCase().keepAlive shouldBe false
-            } finally {
-                fixture.service.shutdown()
-            }
-        }
-
-        "setKeepAlive rejects an unknown case" {
-            val fixture = ReasoningEffortFixture()
-            try {
-                shouldThrow<ResourceNotFoundException> { fixture.service.setKeepAlive(UUID.randomUUID(), true) }
-            } finally {
-                fixture.service.shutdown()
-            }
-        }
-
         "setReasoningEffort rejects an unknown case" {
             val fixture = ReasoningEffortFixture()
             try {

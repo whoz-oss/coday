@@ -49,6 +49,7 @@ import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
 import org.springframework.ai.tool.definition.ToolDefinition
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -83,6 +84,8 @@ data class FinalLlmRequest(
     val coveredEventCount: Int,
     /** The answer of the turn, the last conversation event of the case. */
     val lastCoveredEventId: UUID,
+    /** When the request was sent, null when unknown. */
+    val sentAt: Instant? = null,
 )
 
 /**
@@ -349,6 +352,7 @@ class AgentSimple(
                     finalText = finalText,
                     coveredEventCount = turnEvents.count { it.isConversationEvent() },
                     lastCoveredEventId = answer.id,
+                    sentAt = exchange.sentAt,
                 ),
             )
         }.onFailure { logger.warn(it) { "[AgentSimple] agent=$name could not report the final request of case $caseId" } }

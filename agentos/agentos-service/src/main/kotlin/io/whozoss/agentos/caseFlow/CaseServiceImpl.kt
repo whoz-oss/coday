@@ -113,6 +113,8 @@ class CaseServiceImpl(
     coroutineContext: CoroutineContext = Dispatchers.IO,
     /** The last LLM request of each case's turns: forgotten when a run starts, or the case is killed or deleted. */
     private val lastLlmRequestRegistry: LastLlmRequestRegistry = LastLlmRequestRegistry(),
+    /** The cases with the prompt cache keep-alive on, kept up to date by [setKeepAlive]. */
+    private val keepAliveCaseIds: CaseKeepAliveIds? = null,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -270,7 +272,7 @@ class CaseServiceImpl(
     override fun setKeepAlive(
         caseId: UUID,
         keepAlive: Boolean,
-    ): Case = edit(caseId) { it.copy(keepAlive = keepAlive) }
+    ): Case = edit(caseId) { it.copy(keepAlive = keepAlive) }.also { keepAliveCaseIds?.set(caseId, it.keepAlive) }
 
     override fun edit(
         id: UUID,

@@ -86,6 +86,16 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             repo.findByIds(listOf(kept.id)).single().keepAlive.shouldBeFalse()
         }
 
+        "findKeepAliveIds lists the cases with keep-alive on, removed ones aside" {
+            val ns = namespaceRepo.save(namespace())
+            val on = repo.save(case(ns.id).copy(keepAlive = true))
+            val removed = repo.save(case(ns.id).copy(keepAlive = true))
+            repo.save(case(ns.id))
+            repo.delete(removed.id)
+
+            repo.findKeepAliveIds() shouldBe listOf(on.id)
+        }
+
         "save and findByIds round-trips summary and summaryMessageCount, absent by default" {
             val ns = namespaceRepo.save(namespace())
             val summarized = repo.save(case(ns.id).copy(summary = "Billing migration, in progress.", summaryMessageCount = 4))

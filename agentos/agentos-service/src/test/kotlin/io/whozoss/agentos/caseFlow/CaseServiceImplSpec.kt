@@ -271,6 +271,7 @@ class CaseServiceImplSpec :
             coroutineContext: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
             namespaceRunCostThreshold: Double? = null,
             lastLlmRequestRegistry: LastLlmRequestRegistry = LastLlmRequestRegistry(),
+            keepAliveCaseIds: CaseKeepAliveIds? = null,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -304,7 +305,48 @@ class CaseServiceImplSpec :
                 runCostService = runCostService,
                 coroutineContext = coroutineContext,
                 lastLlmRequestRegistry = lastLlmRequestRegistry,
+                keepAliveCaseIds = keepAliveCaseIds,
             )
+        }
+
+        // -------------------------------------------------------------------------
+        // Prompt cache keep-alive flag
+        // -------------------------------------------------------------------------
+
+        "setKeepAlive changes only the keep-alive, keeps a status changed since the caller's read, and updates the ids" {
+            val repository = InMemoryCaseRepository()
+            val ids = CaseKeepAliveIds(repository)
+            val service = buildService(caseRepository = repository, keepAliveCaseIds = ids)
+            val case = service.create(Case(namespaceId = namespaceId))
+            repository.save(repository.findByIds(listOf(case.id)).single().copy(status = CaseStatus.RUNNING))
+
+            service.setKeepAlive(case.id, true).keepAlive shouldBe true
+            val stored = repository.findByIds(listOf(case.id)).single()
+            stored.status shouldBe CaseStatus.RUNNING
+            stored.keepAlive shouldBe true
+            ids.current() shouldBe setOf(case.id)
+
+            service.setKeepAlive(case.id, false)
+            repository.findByIds(listOf(case.id)).single().keepAlive shouldBe false
+            ids.current() shouldBe emptySet()
+            service.shutdown()
+        }
+
+        "setKeepAlive rejects an unknown case" {
+            val service = buildService()
+            shouldThrow<ResourceNotFoundException> { service.setKeepAlive(UUID.randomUUID(), true) }
+            service.shutdown()
+        }
+
+        "the keep-alive ids are loaded from the store once, then kept up to date" {
+            val repository = InMemoryCaseRepository()
+            val on = repository.save(Case(namespaceId = namespaceId, keepAlive = true))
+            repository.save(Case(namespaceId = namespaceId))
+            val ids = CaseKeepAliveIds(repository)
+
+            ids.current() shouldBe setOf(on.id)
+            ids.set(on.id, false)
+            ids.current() shouldBe emptySet()
         }
 
         // -------------------------------------------------------------------------

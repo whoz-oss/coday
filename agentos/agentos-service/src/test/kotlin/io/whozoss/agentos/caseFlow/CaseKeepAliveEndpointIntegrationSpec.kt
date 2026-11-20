@@ -113,6 +113,17 @@ class CaseKeepAliveEndpointIntegrationSpec : StringSpec() {
             caseService.findById(case.id)!!.keepAlive shouldBe false
         }
 
+        "a body without the value, or with null, is a 400 and changes nothing" {
+            val case = newCase()
+            canWrite(case, granted = true)
+            caseService.setKeepAlive(case.id, true)
+
+            setKeepAlive(case, "{}").andExpect(status().isBadRequest)
+            setKeepAlive(case, """{ "keepAlive": null }""").andExpect(status().isBadRequest)
+
+            caseService.findById(case.id)!!.keepAlive shouldBe true
+        }
+
         "an unknown case is a 404" {
             val missing = Case(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = UUID.randomUUID())
             canWrite(missing, granted = true)

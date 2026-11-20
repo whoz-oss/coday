@@ -30,7 +30,8 @@ class LastLlmRequestCapture(
     /** The prompt cache duration the run's requests are sent with. */
     private val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
 ) {
-    val recorder = LlmExchangeRecorder()
+    /** Dates its requests with the clock of the registry. */
+    val recorder = LlmExchangeRecorder(registry::now)
 
     fun lastExchange(): LlmExchange? = recorder.lastExchange
 
@@ -51,6 +52,7 @@ class LastLlmRequestCapture(
                 coveredEventCount = request.coveredEventCount,
                 lastCoveredEventId = request.lastCoveredEventId,
                 promptCacheTtl = promptCacheTtl,
+                requestSentAt = request.sentAt,
             ),
             generation,
         )

@@ -87,6 +87,7 @@ data class CaseDto(
         description =
             "Whether the provider's prompt cache of the conversation is kept warm while the case is idle. " +
                 "Changed through PUT /api/cases/{id}/keep-alive only: ignored on create and update.",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
     )
     val keepAlive: Boolean = false,
     /**

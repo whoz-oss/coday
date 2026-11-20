@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
@@ -288,8 +289,10 @@ class CaseController(
         description =
             "PUT /api/cases/{id}/keep-alive — while the case is idle, keep the provider's prompt cache of its " +
                 "conversation warm by re-sending the agent's last request with a 1-token answer before the cache " +
-                "expires (every 4:40, or 59:30 with a 1-hour cache), for up to the platform's maximum idle duration " +
-                "after the last agent turn. Each refresh is recorded as usage of the case. Returns the updated Case DTO.",
+                "expires (4:20 after its last use, or 58:00 when a 1-hour cache applies), for up to the platform's " +
+                "maximum idle duration after the last agent turn. Each refresh is recorded as usage of the case; " +
+                "no refresh is sent while usage tracking is off. 400 when keepAlive is missing. " +
+                "Returns the updated Case DTO.",
     )
     @PutMapping("/{id}/keep-alive", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#id, 'Case', 'WRITE')")
@@ -297,8 +300,9 @@ class CaseController(
         @PathVariable id: UUID,
         @RequestBody request: CaseKeepAliveRequest,
     ): CaseDto {
-        val updated = caseService.setKeepAlive(id, request.keepAlive)
-        logger.info { "Case $id keep-alive set to ${request.keepAlive}" }
+        val keepAlive = request.keepAlive ?: throw BadRequestException("keepAlive is required")
+        val updated = caseService.setKeepAlive(id, keepAlive)
+        logger.info { "Case $id keep-alive set to $keepAlive" }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 

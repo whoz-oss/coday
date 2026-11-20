@@ -9,5 +9,8 @@
  */
 
 export interface CaseKeepAliveRequest {
+  /**
+   * True to keep the prompt cache warm while the case is idle, false to stop.
+   */
   keepAlive: boolean
 }

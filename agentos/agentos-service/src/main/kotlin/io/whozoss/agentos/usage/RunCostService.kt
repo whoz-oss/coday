@@ -154,11 +154,17 @@ class RunCostService(
      * Once registered, its spend counts toward the cost of the case and its ancestors like a run's: a running turn
      * may pause at its next gate because of it. Its own requests never wait for a confirmation (they only fail when
      * the case is stopped), and it never keeps a stopped session alive, so a later run does not inherit `stopped`.
+     *
+     * With [openSessions] false (spend made while nothing runs, such as a keep-alive ping), the checks are the same,
+     * but the registration only joins the sessions that are live already: none is opened for it, so no cost window
+     * opened for it can be adopted by the next run of the case (whose window starts at its own user message). Its
+     * spend, once persisted, counts toward the next window that covers it.
      */
     @Synchronized
     fun registerNonPausing(
         caseId: UUID,
         accumulator: UsageAccumulator,
+        openSessions: Boolean = true,
     ): NonPausingRegistration {
         requireEnabled()
         val lineage = ancestors(caseId)
@@ -183,8 +189,9 @@ class RunCostService(
                 }
             if (reason != null) return NonPausingRegistration.Refused(session.caseId, reason)
         }
-        publish(runSessions, accumulator, pausing = false)
-        val registration = Registration(accumulator, runSessions, pausing = false)
+        val joined = if (openSessions) runSessions else runSessions.filter { sessions[it.caseId] === it }
+        publish(joined, accumulator, pausing = false)
+        val registration = Registration(accumulator, joined, pausing = false)
         accumulator.beforeCall = registration::beforeCall
         return NonPausingRegistration.Registered(registration)
     }

@@ -1053,9 +1053,10 @@ describe('CaseChatComponent — submit with attachments', () => {
         const label = input.closest('label')!
         expect(label.textContent?.trim()).toBe('Keep alive')
         expect(label.getAttribute('title')).toBe(
-          "Keeps this conversation's prompt cache warm while idle (refresh every 4:40, or 59:30 with a 1-hour cache), " +
-            'for up to 2 hours. Each refresh costs a cache read.'
+          "Keeps this conversation's prompt cache warm while idle (refreshed every 4:20, or every 58:00 with a 1-hour " +
+            'cache), for a limited time after the last reply. Each refresh costs a cache read.'
         )
+        expect(input.disabled).toBe(false)
         expect(label.nextElementSibling?.classList.contains('case-chat__actions-hint')).toBe(true)
 
         TestBed.inject(CaseStateService).cases.set([
@@ -1065,6 +1066,29 @@ describe('CaseChatComponent — submit with attachments', () => {
         expect(checkbox()!.checked).toBe(false)
       } finally {
         ref.destroy()
+      }
+    })
+
+    it('is disabled on an ended case (KILLED or ERROR), on a case that is gone, and without write access', () => {
+      for (const block of [
+        (ref: ComponentRef<CaseChatComponent>) => ref.instance['_sseStatus'].set('KILLED'),
+        (ref: ComponentRef<CaseChatComponent>) => ref.instance['_sseStatus'].set('ERROR'),
+        (ref: ComponentRef<CaseChatComponent>) => ref.instance['caseGone'].set(true),
+        () => exchangeState.canWriteCase.set(false),
+      ]) {
+        exchangeState.canWriteCase.set(true)
+        loadCase()
+        const { ref, checkbox } = render()
+        try {
+          block(ref)
+          ref.changeDetectorRef.detectChanges()
+          expect(checkbox()!.disabled).toBe(true)
+          toggle(checkbox()!)
+          expect(TestBed.inject(CaseStateService).setKeepAlive).not.toHaveBeenCalled()
+          expect(checkbox()!.checked).toBe(false)
+        } finally {
+          ref.destroy()
+        }
       }
     })
 

@@ -123,6 +123,80 @@ class LastLlmRequestRegistryUnitSpec :
             registry.estimatedSize() shouldBe 0L
         }
 
+        "a refresh of the cache (touch) keeps the request alive for a time to live after it, at the time it was sent" {
+            val clock = MovingClock(start)
+            val registry = LastLlmRequestRegistry(clock)
+            val stored = request()
+            registry.putCurrent(stored)
+            val capturedAt = registry.get(stored.caseId)!!.capturedAt
+            val sentAt = start.plus(java.time.Duration.ofMinutes(58))
+
+            clock.now = sentAt.plusSeconds(3)
+            registry.touch(stored.caseId, capturedAt, sentAt)
+
+            registry.get(stored.caseId)!!.lastUsedAt shouldBe sentAt
+            clock.now = sentAt.plus(LastLlmRequestRegistry.TTL)
+            registry.get(stored.caseId).shouldNotBeNull()
+            clock.now = sentAt.plus(LastLlmRequestRegistry.TTL).plusSeconds(1)
+            registry.get(stored.caseId).shouldBeNull()
+        }
+
+        "the cache of a request was last used when it was sent, not when its answer ended" {
+            val clock = MovingClock(start.plusSeconds(90))
+            val registry = LastLlmRequestRegistry(clock)
+            registry.putCurrent(request().copy(requestSentAt = start))
+            val stored = registry.all().single()
+
+            stored.capturedAt shouldBe start.plusSeconds(90)
+            stored.lastUsedAt shouldBe start
+            // A send time after the capture cannot be: the capture time is used.
+            registry.putCurrent(request(stored.caseId).copy(requestSentAt = start.plusSeconds(120)))
+            registry.get(stored.caseId)!!.lastUsedAt shouldBe start.plusSeconds(90)
+        }
+
+        "a capture made through LastLlmRequestCapture records when its last request was sent, by the registry's clock" {
+            val clock = MovingClock(start)
+            val registry = LastLlmRequestRegistry(clock)
+            val caseId = UUID.randomUUID()
+            val model = AiModel(aiProviderId = UUID.randomUUID(), apiModelName = "model")
+            val provider = AiProvider(namespaceId = UUID.randomUUID(), name = "provider", apiType = AiApiType.OpenAI)
+            val capture =
+                LastLlmRequestCapture(
+                    registry,
+                    UUID.randomUUID(),
+                    null,
+                    model,
+                    provider,
+                    "agent",
+                    null,
+                    registry.invalidate(caseId),
+                    io.whozoss.agentos.sdk.api.user.PromptCacheTtl.ONE_HOUR,
+                )
+            capture.recorder.requestSent(org.springframework.ai.chat.prompt.Prompt(listOf(UserMessage("q"))))
+            // The answer streams for a minute and a half.
+            clock.now = start.plusSeconds(90)
+            capture.onFinalRequest(
+                FinalLlmRequest(caseId, listOf(UserMessage("q")), emptyList(), "a", 1, UUID.randomUUID(), capture.lastExchange()!!.sentAt),
+            )
+
+            val stored = registry.get(caseId)!!
+            stored.requestSentAt shouldBe start
+            stored.lastUsedAt shouldBe start
+            stored.promptCacheTtl shouldBe io.whozoss.agentos.sdk.api.user.PromptCacheTtl.ONE_HOUR
+        }
+
+        "all lists the live requests only" {
+            val clock = MovingClock(start)
+            val registry = LastLlmRequestRegistry(clock)
+            val old = request()
+            registry.putCurrent(old)
+            clock.now = start.plus(LastLlmRequestRegistry.TTL).plusSeconds(1)
+            val live = request()
+            registry.putCurrent(live)
+
+            registry.all().map { it.caseId } shouldBe listOf(live.caseId)
+        }
+
         "remove forgets the request of a case" {
             val registry = LastLlmRequestRegistry(MovingClock(start))
             val stored = request()

@@ -385,6 +385,43 @@ class RunCostServiceSpec :
             registered.registration.finish {}
         }
 
+        "a non-pausing registration that opens no session leaves no cost window for the next run to adopt" {
+            val (service, case, _) = fixture()
+            val ping = UsageAccumulator()
+            val registered =
+                service
+                    .registerNonPausing(case.id, ping, openSessions = false)
+                    .shouldBeInstanceOf<RunCostService.NonPausingRegistration.Registered>()
+
+            ping.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 3.0))
+            ping.beforeCall().isDone shouldBe true
+            // No live session holds it: the case's cost window is not open.
+            service.state(case.id).active shouldBe false
+            var persisted = false
+            registered.registration.finish { persisted = true }
+            persisted shouldBe true
+            service.state(case.id).active shouldBe false
+        }
+
+        "a non-pausing registration that opens no session joins the live one, and is refused like the others" {
+            val (service, case, _) = fixture()
+            val turn = UsageAccumulator()
+            val registration = service.register(case.id, turn)
+            val ping = UsageAccumulator()
+            val joined =
+                service
+                    .registerNonPausing(case.id, ping, openSessions = false)
+                    .shouldBeInstanceOf<RunCostService.NonPausingRegistration.Registered>()
+            ping.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 4.0))
+            service.state(case.id).cost shouldBe 4.0
+            joined.registration.finish {}
+
+            turn.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 10.0))
+            service.registerNonPausing(case.id, UsageAccumulator(), openSessions = false) shouldBe
+                RunCostService.NonPausingRegistration.Refused(case.id, RunCostService.NonPausingRegistration.Reason.OVER_THRESHOLD)
+            registration.finish {}
+        }
+
         "a non-pausing registration is refused, atomically and without pausing, over the threshold" {
             val (service, case, _) = fixture()
             val turn = UsageAccumulator()

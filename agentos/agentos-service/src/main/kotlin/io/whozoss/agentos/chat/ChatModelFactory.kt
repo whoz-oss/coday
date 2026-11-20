@@ -147,6 +147,22 @@ class ChatModelFactory internal constructor(
         }
     }
 
+    /**
+     * Whether a request built by [createChatModel] for these parameters gets a one-hour prompt cache: the user chose
+     * [PromptCacheTtl.ONE_HOUR], and the model is a Claude one ([RequestyPromptCacheProperties]) reached through
+     * Requesty with the OpenAI API type. Any other request keeps the provider's default 5-minute cache.
+     */
+    fun appliesOneHourCache(
+        apiType: AiApiType,
+        baseUrl: String?,
+        modelName: String,
+        promptCacheTtl: PromptCacheTtl,
+    ): Boolean =
+        promptCacheTtl == PromptCacheTtl.ONE_HOUR &&
+            apiType == AiApiType.OpenAI &&
+            isRequestyBaseUrl(baseUrl ?: OPENAI_DEFAULT_BASE_URL) &&
+            requestyPromptCache.matchesModel(modelName)
+
     private fun createOpenAiModel(
         baseUrl: String,
         apiKey: String,
@@ -159,9 +175,7 @@ class ChatModelFactory internal constructor(
         // Same defaults as OpenAiApi.Builder; request/response hooks are added only when needed.
         val restClientBuilder = RestClient.builder()
         val webClientBuilder = WebClient.builder()
-        val oneHourRequestyCache =
-            promptCacheTtl == PromptCacheTtl.ONE_HOUR && isRequestyBaseUrl(baseUrl) && requestyPromptCache.matchesModel(model)
-        if (oneHourRequestyCache) {
+        if (appliesOneHourCache(AiApiType.OpenAI, baseUrl, model, promptCacheTtl)) {
             restClientBuilder.requestInterceptor(RequestyPromptCache.interceptor())
             webClientBuilder.filter(RequestyPromptCache.filter())
         }
