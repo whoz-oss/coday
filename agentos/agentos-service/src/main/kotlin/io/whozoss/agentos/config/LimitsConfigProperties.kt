@@ -43,7 +43,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *   limits:
  *     case-max-iterations: 100
  *     agent-max-iterations: 20
- *     agent-loop-max-items: 50
+ *     agent-loop-max-items: 100
  *     run-cost-threshold: 10.0
  * ```
  */
