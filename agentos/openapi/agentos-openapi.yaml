@@ -6496,6 +6496,11 @@ components:
       required:
       - content
       - id
+    PromptCacheTtl:
+      type: string
+      enum:
+      - FIVE_MINUTES
+      - ONE_HOUR
     PromptEffectiveRequest:
       type: object
       properties:
@@ -7281,6 +7286,8 @@ components:
         preferredLanguage:
           type: string
           pattern: "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+        promptCacheTtl:
+          $ref: "#/components/schemas/PromptCacheTtl"
       required:
       - isAdmin
     UserGroupCreateRequest:

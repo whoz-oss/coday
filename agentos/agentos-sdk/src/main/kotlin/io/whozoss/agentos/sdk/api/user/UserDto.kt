@@ -38,4 +38,11 @@ data class UserDto(
         message = "preferredLanguage must be a valid BCP 47 language tag (e.g. \"en\", \"fr\", \"en-US\")",
     )
     val preferredLanguage: String? = null,
+    /**
+     * How long the user's conversation prompt stays cached between two LLM calls (Requesty Claude models only).
+     * Responses always carry the effective value ([PromptCacheTtl.FIVE_MINUTES] when never set). On create,
+     * null means [PromptCacheTtl.FIVE_MINUTES]; on update, null keeps the stored value, so clients that do not
+     * know this field cannot reset it.
+     */
+    val promptCacheTtl: PromptCacheTtl? = null,
 )

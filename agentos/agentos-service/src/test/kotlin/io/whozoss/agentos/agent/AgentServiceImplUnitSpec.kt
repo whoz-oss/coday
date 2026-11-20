@@ -58,6 +58,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -2762,6 +2763,51 @@ class AgentServiceImplUnitSpec : StringSpec() {
             stubAgentOnModel(config, modelFlag = true)
 
             (agentService.findAgentByName("advanced-with-support", context) is AgentAdvanced) shouldBe true
+        }
+
+        listOf(ExecutionMode.SIMPLE, ExecutionMode.ADVANCED).forEach { mode ->
+            "a $mode agent builds its chat client with the prompt cache duration of the user it runs for" {
+                PromptCacheTtl.entries.forEach { ttl ->
+                    val userId = UUID.randomUUID()
+                    val user = User(metadata = EntityMetadata(id = userId), externalId = "ext-ttl", promptCacheTtl = ttl)
+                    val config = agentConfig(name = "ttl-${mode.name.lowercase()}").copy(executionMode = mode)
+                    val model = modelConfig(alias = "sonnet", supportsAdvancedExecution = true)
+                    val provider = providerConfig()
+                    every {
+                        agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, config.name)
+                    } returns listOf(config)
+                    every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+                    every { aiProviderService.getById(aiProviderId) } returns provider
+                    every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns provider
+                    every { userService.findById(userId) } returns user
+                    every {
+                        chatClientProvider.getChatClient(any(), any(), any(), any(), any(), any())
+                    } returns mockk<ChatClient>(relaxed = true)
+
+                    agentService.findAgentByName(
+                        config.name,
+                        AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId),
+                    )
+
+                    verify(exactly = 1) {
+                        chatClientProvider.getChatClient(model, provider, caseId.toString(), any(), any(), ttl)
+                    }
+                }
+            }
+        }
+
+        "an agent run without a known user keeps the default prompt cache duration" {
+            val config = agentConfig(name = "ttl-anonymous").copy(executionMode = ExecutionMode.SIMPLE)
+            val model = stubAgentOnModel(config, modelFlag = false)
+            every {
+                chatClientProvider.getChatClient(any(), any(), any(), any(), any(), any())
+            } returns mockk<ChatClient>(relaxed = true)
+
+            agentService.findAgentByName(config.name, context)
+
+            verify(exactly = 1) {
+                chatClientProvider.getChatClient(model, any(), any(), any(), any(), PromptCacheTtl.FIVE_MINUTES)
+            }
         }
 
         "an ADVANCED agent on a model that does not support advanced execution fails, naming the agent, the model and the fix" {
