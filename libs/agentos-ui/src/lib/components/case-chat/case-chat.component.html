@@ -87,6 +87,19 @@
         <!-- Share case -->
         <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
 
+        <button
+          type="button"
+          class="case-chat__wizz-toggle"
+          [class.case-chat__wizz-toggle--active]="wizzEnabled()"
+          [attr.aria-pressed]="wizzEnabled()"
+          aria-label="Wizz response effect"
+          title="Wizz response effect"
+          (click)="toggleWizz()"
+        >
+          <span class="material-icons" aria-hidden="true">auto_awesome</span>
+          <span>Wizz</span>
+        </button>
+
         <!-- Separator -->
         <span class="case-chat__header-sep"></span>
 
@@ -138,6 +151,8 @@
 
     <div
       class="case-chat"
+      [class.case-chat--wizzing]="wizzAnimating()"
+      (animationend)="onWizzAnimationEnd($event)"
       (dragenter)="canStageFiles() && attachments.onDragEnter($event)"
       (dragover)="canStageFiles() && attachments.onDragOver($event)"
       (dragleave)="attachments.onDragLeave()"

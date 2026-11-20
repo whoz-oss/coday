@@ -31,6 +31,7 @@ import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-s
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { UserStateService } from '../../services/user-state.service'
+import { GlobalStreamService } from '../../services/global-stream.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
@@ -56,6 +57,7 @@ describe('CaseChatComponent — submit with attachments', () => {
   }
   let calls: string[]
   let showTechnical: ReturnType<typeof signal<boolean>>
+  let globalCaseEvents: Subject<import('@whoz-oss/agentos-api-client').CaseEvent>
 
   function makeComponent(): ComponentRef<CaseChatComponent> {
     const environmentInjector = TestBed.inject(EnvironmentInjector)
@@ -69,6 +71,7 @@ describe('CaseChatComponent — submit with attachments', () => {
   beforeEach(() => {
     calls = []
     showTechnical = signal(true)
+    globalCaseEvents = new Subject<import('@whoz-oss/agentos-api-client').CaseEvent>()
     http = {
       post: jest.fn().mockImplementation(() => {
         calls.push('post')
@@ -111,6 +114,7 @@ describe('CaseChatComponent — submit with attachments', () => {
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
         { provide: UserStateService, useValue: { currentUser: signal<User | null>(null) } },
+        { provide: GlobalStreamService, useValue: { caseEvents$: globalCaseEvents } },
         {
           provide: USER_PREFERENCES_PORT,
           useValue: {
@@ -125,6 +129,73 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   afterEach(() => TestBed.resetTestingModule())
+
+  describe('Wizz completion effect', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const agentMessage = (id: string): CaseMessageEvent =>
+      ({
+        id,
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '',
+        metadata,
+        actor: { id: 'agent-1', role: ActorRoleEnum.AGENT, displayName: 'Agent' },
+        content: [],
+      }) as CaseMessageEvent
+    const running = (): AgentRunningEvent =>
+      ({ id: 'run-1', type: 'AgentRunningEvent', caseId: 'c-1', namespaceId: 'ns-1', timestamp: '', metadata, agentId: 'agent-1', agentName: 'Agent' }) as AgentRunningEvent
+    const finished = (): AgentFinishedEvent =>
+      ({ id: 'finish-1', type: 'AgentFinishedEvent', caseId: 'c-1', namespaceId: 'ns-1', timestamp: '', metadata, agentId: 'agent-1', agentName: 'Agent' })
+
+    it('is disabled by default, resets on a case switch, and does not play a disabled completion later', () => {
+      const ref = makeComponent()
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() => Object.assign(new EventTarget(), { close: jest.fn() })) as unknown as typeof EventSource
+      try {
+        ref.instance.ngOnInit()
+        ref.instance['events'].set([running(), agentMessage('answer-1'), finished()])
+        globalCaseEvents.next(finished())
+        expect(ref.instance['wizzEnabled']()).toBe(false)
+        expect(ref.instance['wizzAnimating']()).toBe(false)
+
+        ref.instance['toggleWizz']()
+        expect(ref.instance['wizzEnabled']()).toBe(true)
+        expect(ref.instance['wizzAnimating']()).toBe(false)
+        ref.instance['reinitialise']()
+        expect(ref.instance['wizzEnabled']()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+      }
+    })
+
+    it('plays only for a live matching completion with a persisted agent answer', () => {
+      jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+        callback(0)
+        return 1
+      })
+      const ref = makeComponent()
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() => Object.assign(new EventTarget(), { close: jest.fn() })) as unknown as typeof EventSource
+      try {
+        ref.instance.ngOnInit()
+        ref.instance['toggleWizz']()
+        ref.instance['events'].set([running(), agentMessage('answer-1'), finished()])
+        globalCaseEvents.next(finished())
+        expect(ref.instance['wizzAnimating']()).toBe(true)
+
+        ref.instance['onWizzAnimationEnd']({ target: {}, currentTarget: {}, animationName: 'case-chat-wizz' } as AnimationEvent)
+        expect(ref.instance['wizzAnimating']()).toBe(true)
+        ref.instance['onWizzAnimationEnd']({ target: ref.instance, currentTarget: ref.instance, animationName: 'case-chat-wizz' } as AnimationEvent)
+        expect(ref.instance['wizzAnimating']()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        jest.restoreAllMocks()
+      }
+    })
+  })
 
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
