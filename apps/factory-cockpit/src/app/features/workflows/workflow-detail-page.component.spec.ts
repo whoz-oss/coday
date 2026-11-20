@@ -148,6 +148,65 @@ describe('WorkflowDetailPageComponent', () => {
     })
   })
 
+  it('adds a code step through the closed verifier select without a command field', async () => {
+    const api = createApi({
+      createWorkflowDefinition: jest.fn().mockReturnValue(
+        of({ workflowType: 'verification', version: '1.0.0', definitionHash: 'code-hash' })
+      ),
+    })
+    const route = createRoute('', '')
+    const { host, fixture } = await setup(api, {
+      ...route,
+      snapshot: { ...route.snapshot, data: { create: true } },
+    } as Partial<ActivatedRoute>)
+    edit(host, '[data-workflow-type]', 'verification')
+    edit(host, '[data-workflow-name]', 'Verification')
+    query<HTMLButtonElement>(host, '[data-add-code-step]').click()
+    fixture.detectChanges()
+    const verifier = query<HTMLSelectElement>(host, '[data-code-verifier]')
+    expect(Array.from(verifier.options).map((option) => option.value)).toEqual([
+      '',
+      'build',
+      'frontend-build',
+      'frontend-tests',
+    ])
+    expect(host.querySelector('input[type="text"][data-command], textarea[data-command]')).toBeNull()
+    expect(query<HTMLButtonElement>(host, '[data-save-contract]').disabled).toBe(true)
+    verifier.value = 'build'
+    verifier.dispatchEvent(new Event('change'))
+    fixture.detectChanges()
+    expect(host.textContent).toContain('factory/verification.json')
+    expect(query<HTMLButtonElement>(host, '[data-save-contract]').disabled).toBe(false)
+    query<HTMLButtonElement>(host, '[data-save-contract]').click()
+    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        steps: [expect.objectContaining({ responsibility: { kind: 'code', name: 'build' } })],
+      })
+    )
+    expect(JSON.stringify(api.createWorkflowDefinition.mock.calls[0][0])).not.toContain('command')
+  })
+
+  it('preserves an unknown existing code verifier without injecting it into the select', async () => {
+    const api = createApi({
+      getWorkflowDefinition: jest.fn().mockReturnValue(
+        of({
+          ...FULL_DEF,
+          version: '1.0.0',
+          steps: [{ id: 'legacy', name: 'Legacy', responsibility: { kind: 'code', name: 'private-check' }, dependsOn: [] }],
+        })
+      ),
+    })
+    const { host, fixture } = await setup(api)
+    query<HTMLButtonElement>(host, '[data-edit-workflow]').click()
+    fixture.detectChanges()
+    expect(host.querySelector('[data-code-verifier]')).toBeNull()
+    expect(host.querySelector('[data-unknown-code-verifier]')?.textContent).toContain('private-check')
+    expect(host.querySelector('[data-code-verification-info]')).not.toBeNull()
+    expect(host.querySelector('[data-legacy-contract]')).toBeNull()
+    expect(host.querySelector('[data-add-code-instructions]')).not.toBeNull()
+    expect(host.querySelector('[data-remove-block]')).toBeNull()
+  })
+
   it('composes human steps without discovery using styled controls and a multi-dependency dropdown', async () => {
     const api = createApi({
       createWorkflowDefinition: jest.fn().mockReturnValue(
@@ -699,7 +758,7 @@ describe('WorkflowDetailPageComponent', () => {
     confirm.mockRestore()
   })
 
-  it.each(['human', 'code'])('preserves read-only %s execution information', async (kind) => {
+  it('preserves read-only human execution information', async () => {
     const api = createApi({
       getWorkflowDefinition: jest.fn().mockReturnValue(
         of({
@@ -708,7 +767,7 @@ describe('WorkflowDetailPageComponent', () => {
             {
               id: 'check',
               name: 'Check',
-              responsibility: { kind, name: 'Verifier' },
+              responsibility: { kind: 'human', name: 'Verifier' },
               legacyContract: {
                 adoptable: false,
                 summary: 'This step uses the existing approval or verification implementation, not an agent prompt.',
@@ -720,13 +779,11 @@ describe('WorkflowDetailPageComponent', () => {
     })
     const { host, fixture } = await setup(api)
     expect(host.querySelector('[data-step-contract]')?.textContent).toContain('Verifier')
-    expect(
-      host.querySelector(kind === 'human' ? '[data-human-checkpoint]' : '[data-legacy-contract]')?.textContent
-    ).toContain('existing approval or verification')
+    expect(host.querySelector('[data-human-checkpoint]')?.textContent).toContain('existing approval or verification')
     query<HTMLButtonElement>(host, '[data-edit-workflow]').click()
     fixture.detectChanges()
-    expect(!!host.querySelector('[data-remove-block]')).toBe(kind === 'human')
-    expect(!!host.querySelector('[data-human-role]')).toBe(kind === 'human')
+    expect(host.querySelector('[data-remove-block]')).not.toBeNull()
+    expect(host.querySelector('[data-human-role]')).not.toBeNull()
     expect(host.querySelector('[data-block-agent]')).toBeNull()
     expect(host.querySelector('[data-adopt-contract]')).toBeNull()
   })

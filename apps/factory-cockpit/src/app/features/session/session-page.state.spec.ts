@@ -1,19 +1,20 @@
+import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { FactoryStore } from '../../core/factory.store'
 import { SessionPageState } from './session-page.state'
 
 describe('SessionPageState', () => {
-  const sessions = new Map<string, any>()
+  const sessions = signal(new Map<string, any>())
   const store = {
     runs: jest.fn(() => [{ id: 'run-1', namespaceId: 'namespace-1' }]),
-    session: jest.fn((id: string) => sessions.get(id)),
+    session: jest.fn((id: string) => sessions().get(id)),
     selectSession: jest.fn(),
     clearSessionSelection: jest.fn(),
   }
 
   beforeEach(() => {
     jest.clearAllMocks()
-    sessions.clear()
+    sessions.set(new Map())
     TestBed.configureTestingModule({
       providers: [SessionPageState, { provide: FactoryStore, useValue: store }],
     })
@@ -36,14 +37,16 @@ describe('SessionPageState', () => {
 
   it('keeps attempt detail and events scoped to the clicked retry', () => {
     const event = { id: 'event-1' }
-    sessions.set('run-1', {
+    sessions.update((current) =>
+      new Map(current).set('run-1', {
       phase: { stepId: 'current-step', name: 'Old agent phase' },
       phaseByAttemptId: new Map([['attempt-1', { stepId: 'step-1', name: 'Engineer attempt', caseId: 'case-1' }]]),
       events: [],
       eventsByAttemptId: new Map([['attempt-1', [event]]]),
       eventsByStepId: new Map(),
       attempts: [{ attemptId: 'attempt-1', caseId: 'case-1' }],
-    })
+      })
+    )
     const state = TestBed.inject(SessionPageState)
     state.selectSession('run-1')
     state.selectBlock({ label: 'Step', stepId: 'step-1', attemptId: 'attempt-1', caseId: 'case-1' } as any)
@@ -55,6 +58,37 @@ describe('SessionPageState', () => {
     expect(state.caseLink('case-1')).toContain('ns=namespace-1')
   })
 
+  it('keeps a projected non-agent execution scoped to its own evidence', () => {
+    const executionEvent = { id: 'execution-event' }
+    sessions.update((current) => new Map(current).set('run-1', {
+      phase: { stepId: 'current' }, events: [], attempts: [], lanes: [],
+      phaseByExecutionId: new Map([['execution-1', { stepId: 'build', name: 'Build execution' }]]),
+      eventsByExecutionId: new Map([['execution-1', [executionEvent]]]),
+    }))
+    const state = TestBed.inject(SessionPageState)
+    state.selectSession('run-1')
+    state.selectBlock({ label: 'Build execution', stepId: 'build', executionId: 'execution-1' } as any)
+    expect(state.selectedPhase()).toEqual({ stepId: 'build', name: 'Build execution' })
+    expect(state.selectedEvents()).toEqual([executionEvent])
+  })
+
+  it('does not preserve a vanished execution merely because its linked attempt remains', () => {
+    const session: any = {
+      phase: { stepId: 'build' }, events: [], attempts: [{ attemptId: 'attempt-1' }],
+      phaseByExecutionId: new Map([['execution-1', { stepId: 'build' }]]),
+      eventsByExecutionId: new Map([['execution-1', []]]),
+      lanes: [{ blocks: [{ label: 'Execution', stepId: 'build', executionId: 'execution-1', attemptId: 'attempt-1' }] }],
+    }
+    sessions.update((current) => new Map(current).set('run-1', session))
+    const state = TestBed.inject(SessionPageState)
+    state.selectSession('run-1')
+    state.selectBlock(session.lanes[0].blocks[0])
+    session.lanes[0].blocks = [{ label: 'Later attempt', stepId: 'build', attemptId: 'attempt-1' }]
+    sessions.update((current) => new Map(current).set('run-1', session))
+    state.reconcileSelection()
+    expect(state.selection()?.executionId).toBeUndefined()
+  })
+
   it('shows request detail without leaking the active agent phase or events', () => {
     const launchRequest = {
       name: 'Run title',
@@ -62,7 +96,8 @@ describe('SessionPageState', () => {
       owner: 'non renseigné',
       sections: [{ label: 'Commentaire initial', body: 'Aucun commentaire initial' }],
     }
-    sessions.set('run-1', {
+    sessions.update((current) =>
+      new Map(current).set('run-1', {
       phase: { stepId: 'agent', name: 'Architect analyses bug' },
       launchRequest,
       phaseByStepId: new Map([['code', { stepId: 'code', name: 'Code workspace' }]]),
@@ -73,7 +108,8 @@ describe('SessionPageState', () => {
       ]),
       attempts: [],
       lanes: [],
-    })
+      })
+    )
     const state = TestBed.inject(SessionPageState)
     state.selectSession('run-1')
 
@@ -88,17 +124,19 @@ describe('SessionPageState', () => {
   })
 
   it('retains an inactive routing step selection without inventing a timeline execution', () => {
-    sessions.set('run-1', {
+    sessions.update((current) =>
+      new Map(current).set('run-1', {
       phase: { stepId: 'architect' },
       lanes: [],
       events: [],
       routingSteps: [{ id: 'backend', status: 'skipped', activation: 'not_selected', executed: false }],
       phaseByStepId: new Map([['backend', { stepId: 'backend', stepStatus: 'skipped' }]]),
       eventsByStepId: new Map([['backend', []]]),
-    })
+      })
+    )
     const state = TestBed.inject(SessionPageState)
     state.selectSession('run-1')
-    state.selection.set({ stepId: 'backend' })
+    state.selectStep('backend')
     state.reconcileSelection()
     expect(state.selection()).toEqual({ stepId: 'backend' })
     expect(state.selectedPhase()?.stepStatus).toBe('skipped')
@@ -121,7 +159,7 @@ describe('SessionPageState', () => {
         { blocks: [{ label: 'Code', stepId: 'code' }] },
       ],
     }
-    sessions.set('run-1', session)
+    sessions.update((current) => new Map(current).set('run-1', session))
     const state = TestBed.inject(SessionPageState)
     state.selectSession('run-1')
     state.selectBlock({ label: 'Attempt 1', stepId: 'agent', attemptId: 'attempt-1' } as any)
@@ -131,6 +169,7 @@ describe('SessionPageState', () => {
     expect(state.selectedEvents()).toEqual([{ id: 'attempt-event' }])
 
     session.lanes[1].blocks = []
+    sessions.update((current) => new Map(current).set('run-1', session))
     state.reconcileSelection()
     expect(state.selection()).toEqual({ stepId: 'launch request', kind: 'launch_request' })
     expect(state.selectedPhase()).toEqual({ name: 'Run title', kind: 'demande lancement' })
@@ -138,5 +177,42 @@ describe('SessionPageState', () => {
 
     state.reconcileSelection()
     expect(state.selection()).toEqual({ stepId: 'launch request', kind: 'launch_request' })
+  })
+
+  it('follows the active step after a live projection update until the user selects a step', () => {
+    const initial = {
+      phase: { stepId: 'frontend' },
+      lanes: [{ blocks: [{ label: 'Frontend', stepId: 'frontend' }] }],
+      events: [],
+    }
+    sessions.update((current) => new Map(current).set('run-1', initial))
+    const state = TestBed.inject(SessionPageState)
+    state.selectSession('run-1')
+
+    state.selectDefaultStep()
+    const frontendSelection = state.selection()
+    expect(frontendSelection).toEqual({ stepId: 'frontend' })
+
+    // A fresh SSE projection for the same phase must retain the selection
+    // object, so selection-context consumers do not reset their local state.
+    sessions.update((current) => new Map(current).set('run-1', { ...initial }))
+    state.selectDefaultStep()
+    expect(state.selection()).toBe(frontendSelection)
+
+    const transitioned = {
+      ...initial,
+      phase: { stepId: 'build' },
+      lanes: [{ blocks: [{ label: 'Frontend', stepId: 'frontend' }, { label: 'Build', stepId: 'build' }] }],
+    }
+    // This signal update represents the fresh workflow projection received via SSE.
+    sessions.update((current) => new Map(current).set('run-1', transitioned))
+    state.selectDefaultStep()
+    expect(state.selection()).toEqual({ stepId: 'build' })
+    expect(state.selection()).not.toBe(frontendSelection)
+
+    state.selectStep('frontend')
+    sessions.update((current) => new Map(current).set('run-1', { ...transitioned, phase: { stepId: 'review' } }))
+    state.selectDefaultStep()
+    expect(state.selection()).toEqual({ stepId: 'frontend' })
   })
 })

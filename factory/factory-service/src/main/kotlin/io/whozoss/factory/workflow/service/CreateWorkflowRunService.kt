@@ -72,7 +72,7 @@ class CreateWorkflowRunService(
                 workflowType,
                 title,
                 ticket = ticket,
-                controllerRequest = initialRequest?.let {
+                controllerRequest = (initialRequest ?: "").let {
                     ControllerRequestInput(
                         text = it,
                         namespaceId = namespaceId,

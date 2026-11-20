@@ -1010,6 +1010,15 @@ class WorkflowService(
     ): HumanReplyOutcome {
         val interaction = interactionRepository.find(scope, namespaceId, workflowId, interactionId)
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_NOT_FOUND)
+        if (interaction.interactionType == "correction_exhausted") {
+            throw workflowException(WorkflowErrorCodes.ACTION_NOT_ALLOWED, "Correction budget exhausted; inspect evidence and create an explicitly authorized successor run. No automatic budget reset.")
+        }
+        val pinnedExecution = interaction.payload["executionId"]
+        val currentExecution = repository.findStepStates(scope, namespaceId, workflowId)
+            .firstOrNull { it.stepId == interaction.stepId }?.payload?.get("execution") as? Map<*, *>
+        if (currentExecution != null && pinnedExecution != currentExecution["executionId"]) {
+            throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "This approval belongs to a previous execution.")
+        }
         val actions = (interaction.payload["actions"] as? List<*>).orEmpty().mapNotNull { entry ->
             (entry as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
         }
@@ -1213,8 +1222,7 @@ class WorkflowService(
         if (interaction.interactionType != CHECKPOINT_INTERACTION_TYPE) return
         val runner = sessionRunService ?: return
         val instance = repository.findInstance(scope, namespaceId, workflowId)
-        val actorId = (instance?.instance?.get("controllerExecution") as? Map<*, *>)?.get("actorId") as? String
-            ?: (instance?.instance?.get("controllerRequest") as? Map<*, *>)?.get("actorId") as? String
+        val actorId = (instance?.instance?.get("controllerRequest") as? Map<*, *>)?.get("actorId") as? String
         val root = repoRoot ?: resolveRepoRoot(namespaceId, actorId)
         logger.debug { "Auto-resuming session $workflowId after checkpoint ${interaction.interactionId}" }
         runner.runSession(scope, namespaceId, workflowId, root)
@@ -1246,6 +1254,9 @@ class WorkflowService(
     ): WorkflowHttpResult {
         val instance = activeInstance(scope, namespaceId, workflowId)
         val snapshot = instance.toSnapshot()
+        if (instance.projection.containsKey("stepExecutions")) {
+            throw workflowException(WorkflowErrorCodes.ACTION_NOT_ALLOWED, "Outcome-managed executions cannot use legacy step retry; create an explicitly authorized successor run.")
+        }
         if (snapshot.stepStatus(stepId) != "blocked") {
             throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "Only a blocked step can be retried.")
         }
@@ -1684,7 +1695,7 @@ class WorkflowService(
                 interaction.stepId,
                 "Waiting for a human decision on step '${interaction.stepId}'.",
             )
-            if (canReply) {
+            if (canReply && interaction.interactionType != "correction_exhausted") {
                 actions.add(
                     AllowedActionDto(
                         type = WorkflowActionTypes.REPLY,
@@ -1832,7 +1843,12 @@ class WorkflowService(
                 )
             }
 
-        return WorkflowActionsResponseDto(allowedActions = actions, blockers = blockers)
+        // Legacy retry is refused for outcome-managed executions; never advertise a command
+        // that would bypass the execution ledger or the persisted correction budget.
+        val permittedActions = if (governedInstance?.projection?.containsKey("stepExecutions") == true) {
+            actions.filterNot { it.type == WorkflowActionTypes.RETRY }
+        } else actions
+        return WorkflowActionsResponseDto(allowedActions = permittedActions, blockers = blockers)
     }
 
     /**
@@ -2023,6 +2039,7 @@ fun WorkflowDefinitionRecord.toPolicyDefinition(): WorkflowPolicyDefinition {
             contract = WorkflowStepContract.fromJson(step),
             decision = WorkflowDecision.parse(step["decision"]),
             join = step["join"] as? String,
+            outcomeTransitions = io.whozoss.factory.workflow.domain.OutcomeTransitions.parse(step["outcomeTransitions"]),
         )
     }
     return WorkflowPolicyDefinition(workflowType = workflowType, version = version, definitionHash = definitionHash, steps = steps)

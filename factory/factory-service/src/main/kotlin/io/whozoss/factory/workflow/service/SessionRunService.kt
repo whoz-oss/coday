@@ -76,6 +76,7 @@ private class SessionProgress {
     val completedAt = HashMap<String, String>()
     val waitingQuestions = HashMap<String, Map<String, Any?>>()
     val routing = HashMap<String, Map<String, Any?>>()
+    val executions = HashMap<String, Map<String, Any?>>()
 
     /** Persisted payload of a step state: timings plus bounded intermediate question. */
     fun payload(stepId: String): Map<String, Any?> = buildMap {
@@ -83,6 +84,7 @@ private class SessionProgress {
         completedAt[stepId]?.let { put("completedAt", it) }
         waitingQuestions[stepId]?.let { put("waitingQuestion", it) }
         routing[stepId]?.let { putAll(it) }
+        executions[stepId]?.let { put("execution", it) }
     }
 
     companion object {
@@ -90,6 +92,9 @@ private class SessionProgress {
         fun fromStates(states: Map<String, WorkflowStepStateRecord>): SessionProgress {
             val progress = SessionProgress()
             for ((stepId, state) in states) {
+                (state.payload["execution"] as? Map<*, *>)?.let { execution ->
+                    progress.executions[stepId] = execution.entries.associate { it.key.toString() to it.value }
+                }
                 val route = state.payload.filterKeys { it in setOf("routeDecision", "executed", "activation") }
                 if (route.isNotEmpty()) progress.routing[stepId] = route
                 (state.payload["startedAt"] as? String)?.let { progress.startedAt[stepId] = it }
@@ -200,6 +205,8 @@ class SessionRunService(
     @param:Lazy
     @param:Autowired(required = false)
     private val runService: RunService? = null,
+    private val outboxDrainService: io.whozoss.factory.agentattempt.service.OutboxDrainService? = null,
+    private val outcomeTransitionService: OutcomeTransitionService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -214,7 +221,13 @@ class SessionRunService(
         return template.execute { block() }!!
     }
 
-    /** Runs (or resumes) the session DAG to a terminal state or to a human suspension. */
+    /**
+     * Runs (or resumes) the session DAG to a terminal state or to a human suspension.
+     * Call after caller transaction cleanup or from an independent execution context:
+     * NOT_SUPPORTED does not guarantee safe SDN resource restoration when invoked
+     * under an active caller transaction, including inline from afterCommit.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     fun runSession(
         scope: TenantScope,
         namespaceId: String,
@@ -222,7 +235,15 @@ class SessionRunService(
         repoRoot: Path,
         ticket: String? = null,
     ): SessionRunResult = withWorkflowLock(scope, namespaceId, workflowId) {
-        runSessionLocked(scope, namespaceId, workflowId, repoRoot, ticket)
+        try {
+            runSessionLocked(scope, namespaceId, workflowId, repoRoot, ticket)
+        } catch (transient: io.whozoss.factory.workspace.TransientWorkspaceAdoptionException) {
+            // Covers synchronous human resumptions after caller transaction cleanup,
+            // independent-context continuations after commit, and the worker.
+            // A claimed/pending continuation is left untouched; only its fenced owner defers it.
+            outboxDrainService?.adoptionDeferred(scope, namespaceId, workflowId, repoRoot, ticket)
+            throw transient
+        }
     }
 
     /**
@@ -288,6 +309,8 @@ class SessionRunService(
                 .mapNotNull { it.responsibility.name },
             requireGitWorkspace = requiresGitWorkspace,
         )
+        check(steps.none { it.outcomeTransitions != null } || outcomeTransitionService != null) { "OUTCOME_ROUTER_UNAVAILABLE" }
+        outcomeTransitionService?.initialize(scope, namespaceId, workflowId, steps)
         val statuses = loadProgress(scope, namespaceId, workflowId, steps)
         // RUNNING steps retain the terminal-only fence; waiting steps can also resume an answered turn/successor.
         for (step in steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }) {
@@ -303,10 +326,16 @@ class SessionRunService(
         // caller-provided root and is re-bound to the run's validated worktree
         // before the first code step (once the root case exists).
         var effectiveRepoRoot = repoRoot
-        val guard = steps.size * 4 + 8
+        val guard = steps.size * (if (steps.any { it.outcomeTransitions != null }) 48 else 4) + 8
         var iterations = 0
         run {
             while (iterations++ < guard) {
+                outcomeTransitionService?.advance(scope, namespaceId, workflowId, steps, effectiveRepoRoot.toString(), effectiveTicket)
+                val correction = repository.findInstance(scope, namespaceId, workflowId)?.projection?.get("correction") as? Map<*, *>
+                if (correction?.get("status") == "waiting_human") {
+                    suspended = true
+                    return@run
+                }
                 reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
                 if (statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
@@ -323,15 +352,64 @@ class SessionRunService(
                     }?.id
                     ?: return@run
                 val step = steps.first { it.id == readyId }
+                if (step.responsibility.kind == ResponsibilityKind.AGENT && steps.any { it.responsibility.kind == ResponsibilityKind.CODE }) {
+                    try {
+                        // Durable READY state remains replayable if the process dies here, before
+                        // claimStep. There is no RUNNING-without-attempt provisioning window.
+                        capabilityExecutionService.prepareAgentWorkspace(scope, namespaceId, workflowId, step)
+                    } catch (interrupted: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        throw interrupted
+                    } catch (transient: io.whozoss.factory.workspace.TransientWorkspaceAdoptionException) {
+                        // Leave READY; the outbox owns bounded durable resumption, not an agent retry.
+                        evidenceRepository.append(scope, namespaceId, workflowId, WorkflowEvidenceItem(
+                            evidenceId = UUID.randomUUID().toString(), namespaceId = namespaceId,
+                            workflowId = workflowId, stepId = step.id, kind = "workspace-adoption",
+                            outcome = "deferred", source = mapOf("kind" to "factory-session-sequencer"),
+                            facts = mapOf("code" to "WORKSPACE_ADOPTION_DEFERRED", "executed" to false,
+                                "message" to "Workspace adoption temporarily unavailable; intent retained for bounded durable continuation."),
+                            idempotencyKey = "workspace-adoption-deferred:$workflowId:${step.id}", createdAt = null,
+                        ))
+                        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+                        throw transient
+                    } catch (error: Exception) {
+                        if (claimStep(scope, namespaceId, workflowId, step.id, statuses)) {
+                            recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision(), statuses)
+                        }
+                        continue
+                    }
+                }
                 // Lot F: bind a `code` step's repoRoot to the run's worktree
-                // explicitly. Resolved once, right before the step executes
+                // explicitly. Resolved for each ready code step, right before it executes
                 // (after the entry agent step created the root case) and never
                 // inside a transaction; the waiter either proves the exact
                 // worktree or throws — it never silently uses another directory.
+                var workspaceFacts: Map<String, Any?> = emptyMap()
                 if (step.responsibility.kind == ResponsibilityKind.CODE) {
-                    val worktreeOwnerId = parentRunId(instance) ?: workflowId
                     val resolvedRoot = try {
-                        runWorktreeResolver?.resolve(scope, worktreeOwnerId, effectiveRepoRoot) ?: effectiveRepoRoot
+                        // The entry agent may have reserved rootCaseId since this session began.
+                        val currentInstance = activeInstance(scope, namespaceId, workflowId)
+                        val worktreeOwnerId = parentRunId(currentInstance) ?: workflowId
+                        val binding = runWorktreeResolver?.resolveBinding(
+                            scope, worktreeOwnerId, repoRoot,
+                            namespaceId = namespaceId,
+                            requireBranch = step.responsibility.name != io.whozoss.factory.capability.PREPARE_WORK_BRANCH,
+                            expectedCaseId = currentInstance.rootCaseId,
+                            branchExpectation = { environmentId ->
+                                // Only Factory control-plane preparation is an expectation, not
+                                // provisioning-time branch observations or agent result prose.
+                                // Owner/current fragment only: prior fragments are not searched.
+                                // Without such a proof the resolver requires an attached branch.
+                                (evidenceRepository.list(scope, namespaceId, worktreeOwnerId) +
+                                    if (worktreeOwnerId != workflowId) evidenceRepository.list(scope, namespaceId, workflowId) else emptyList())
+                                    .lastOrNull { it.kind == "branch-preparation" && it.outcome == "pass" &&
+                                        it.source?.get("kind") == "factory-control-plane" &&
+                                        environmentId != null && it.facts["environmentId"] == environmentId }
+                                    ?.facts?.get("branch") as? String
+                            },
+                        )
+                        workspaceFacts = binding?.facts().orEmpty()
+                        binding?.root ?: effectiveRepoRoot
                     } catch (error: Exception) {
                         // Root resolution is part of the code step, not runner infrastructure.
                         // Claim first so the failure has one authoritative owner, then persist the
@@ -357,6 +435,7 @@ class SessionRunService(
                     effectiveTicket,
                     expectedRevision(),
                     workflowType,
+                    workspaceFacts,
                 )?.let { terminal ->
                     if (terminal == WorkflowStatuses.WAITING_HUMAN) {
                         suspended = true
@@ -365,7 +444,8 @@ class SessionRunService(
                 }
             }
         }
-        val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else SessionSequencer.terminalStatus(steps, statuses.statuses)
+        val evaluatedStatus = SessionSequencer.terminalStatus(steps, statuses.statuses)
+        val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else evaluatedStatus
         val committedRevision = persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket)
         sseHub.publish(
             scope,
@@ -422,8 +502,6 @@ class SessionRunService(
 
     /** The authenticated actor identity persisted on the workflow instance. */
     private fun instanceActorId(instance: WorkflowInstanceRecord): String? {
-        val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
-        (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
         val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
         return (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }
     }
@@ -483,6 +561,7 @@ class SessionRunService(
         progress.completedAt.putAll(restored.completedAt)
         progress.waitingQuestions.putAll(restored.waitingQuestions)
         progress.routing.putAll(restored.routing)
+        progress.executions.putAll(restored.executions)
         return progress
     }
 
@@ -497,6 +576,14 @@ class SessionRunService(
         for (step in steps) {
             val state = durable[step.id] ?: continue
             progress.statuses[step.id] = state.status
+            val execution = (state.payload["execution"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
+            if (progress.executions[step.id]?.get("executionId") != execution?.get("executionId")) {
+                progress.startedAt.remove(step.id)
+                progress.completedAt.remove(step.id)
+                progress.routing.remove(step.id)
+                progress.waitingQuestions.remove(step.id)
+            }
+            if (execution != null) progress.executions[step.id] = execution
             val route = state.payload.filterKeys { it in setOf("routeDecision", "executed", "activation") }
             if (route.isNotEmpty()) progress.routing[step.id] = route
             (state.payload["startedAt"] as? String)?.let { progress.startedAt[step.id] = it }
@@ -589,6 +676,8 @@ class SessionRunService(
                 "session-step-blocked:$workflowId:$stepId:$rootStepId", null,
             ),
         )
+        outcomeTransitionService?.record(scope, namespaceId, workflowId, stepId,
+            progress.executions[stepId]?.get("executionId") as? String, WorkflowStatuses.BLOCKED)
         persistProgressProjection(scope, namespaceId, workflowId, progress)
         sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
     }
@@ -605,11 +694,15 @@ class SessionRunService(
         ticket: String?,
         expectedRevision: Int,
         workflowType: String?,
+        workspaceFacts: Map<String, Any?> = emptyMap(),
     ): String? {
         // Atomic claim: only the run that transitions the step `ready -> running`
         // owns its external execution. A concurrent or stale run gets `false` and
         // leaves the step alone. The claim is a short, isolated write.
         if (!claimStep(scope, namespaceId, workflowId, step.id, statuses)) return null
+        val executionId = statuses.executions[step.id]?.get("executionId") as? String
+        outcomeTransitionService?.record(scope, namespaceId, workflowId, step.id, executionId, WorkflowStatuses.RUNNING)
+        reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
         val execution = try {
             capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot, ticket) { update ->
                 projectAgentObservation(scope, namespaceId, workflowId, step.id, statuses, update)
@@ -647,6 +740,8 @@ class SessionRunService(
             transition(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, expectedRevision)
             val resultingStatus = if (reArmed) WorkflowStatuses.READY else WorkflowStatuses.NEEDS_RESEARCH
             setStatus(scope, namespaceId, workflowId, step.id, resultingStatus, statuses)
+            outcomeTransitionService?.record(scope, namespaceId, workflowId, step.id, executionId,
+                WorkflowStatuses.NEEDS_RESEARCH, execution.attemptId, execution.evidenceId)
             recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, execution, statuses)
             return resultingStatus
         }
@@ -675,9 +770,19 @@ class SessionRunService(
                 return WorkflowStatuses.FAILED
             }
         }
-        transition(scope, namespaceId, workflowId, step, terminal, expectedRevision, oracleEvidenceIds)
-        setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
-        recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution, statuses)
+        if (executionId != null) {
+            val durableExecution = repository.findStepStates(scope, namespaceId, workflowId).single { it.stepId == step.id }
+                .payload["execution"] as? Map<*, *>
+            check(durableExecution?.get("executionId") == executionId) { "EXECUTION_GENERATION_FENCED" }
+        }
+        val finalizeStep = {
+            setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
+            outcomeTransitionService?.record(scope, namespaceId, workflowId, step.id, executionId, terminal, execution.attemptId, execution.evidenceId)
+            transition(scope, namespaceId, workflowId, step, terminal, expectedRevision, oracleEvidenceIds)
+            recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution, statuses, workspaceFacts)
+        }
+        // Opted-in ledger + terminal state/evidence commit together. Preserve legacy transaction behavior.
+        if (executionId != null) newTransaction { finalizeStep() } else finalizeStep()
         return terminal
     }
 
@@ -707,6 +812,8 @@ class SessionRunService(
                 progress.statuses[route.target] = status
                 progress.routing[route.target] = mapOf("executed" to false, "activation" to if (active) "selected" else "not_selected")
                 repository.upsertStepState(scope, WorkflowStepStateRecord(namespaceId, workflowId, route.target, 1, status, progress.payload(route.target)))
+                if (!active) outcomeTransitionService?.record(scope, namespaceId, workflowId, route.target,
+                    progress.executions[route.target]?.get("executionId") as? String, WorkflowStatuses.SKIPPED)
             }
             progress.statuses[step.id] = WorkflowStatuses.COMPLETED
             progress.completedAt[step.id] = nowIso()
@@ -751,7 +858,9 @@ class SessionRunService(
                         stepId = stepId,
                         oracleId = definition.id,
                         namespaceId = namespaceId,
-                        idempotencyKey = "dag-oracle:$workflowId:$stepId:${definition.id}",
+                        idempotencyKey = "dag-oracle:$workflowId:$stepId:${definition.id}" +
+                            ((repository.findStepStates(scope, namespaceId, workflowId).firstOrNull { it.stepId == stepId }
+                                ?.payload?.get("execution") as? Map<*, *>)?.get("executionId")?.let { ":$it" } ?: ""),
                     ),
                 )
             }.getOrElse { error ->
@@ -830,7 +939,9 @@ class SessionRunService(
         var allResolved = true
         for (step in steps) {
             if (statuses.statuses[step.id] != WorkflowStatuses.WAITING_HUMAN) continue
-            val interaction = interactions.filter { it.stepId == step.id }.maxByOrNull { it.revision }
+            val executionId = statuses.executions[step.id]?.get("executionId")
+            val interaction = interactions.filter { it.stepId == step.id &&
+                (executionId == null || it.payload["executionId"] == executionId) }.maxByOrNull { it.revision }
             // A human answer resumes agent execution; it never approves the agent's result.
             if (step.responsibility.kind == ResponsibilityKind.AGENT) {
                 if (capabilityExecutionService.canResumeWaitingAgentStep(scope, namespaceId, workflowId, step.id)) {
@@ -853,6 +964,7 @@ class SessionRunService(
             transition(scope, namespaceId, workflowId, step, terminal, expectedRevision)
             setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
             recordHumanResolutionEvidence(scope, namespaceId, workflowId, step, terminal, interaction)
+            outcomeTransitionService?.record(scope, namespaceId, workflowId, step.id, executionId as? String, terminal)
         }
         return allResolved
     }
@@ -887,6 +999,14 @@ class SessionRunService(
                 progress.waitingQuestions.remove(stepId)
             }
         }
+        // Preserve ledger metadata written since the last in-memory projection (attempt binding,
+        // terminal evidence and timestamps); never overwrite it with a stale payload copy.
+        val durableExecution = repository.findStepStates(scope, namespaceId, workflowId)
+            .firstOrNull { it.stepId == stepId }?.payload?.get("execution") as? Map<*, *>
+        if (progress.executions.containsKey(stepId)) {
+            check(durableExecution?.get("executionId") == progress.executions[stepId]?.get("executionId")) { "EXECUTION_GENERATION_FENCED" }
+            progress.executions[stepId] = durableExecution!!.entries.associate { it.key.toString() to it.value }
+        }
         repository.upsertStepState(
             scope,
             WorkflowStepStateRecord(
@@ -898,11 +1018,13 @@ class SessionRunService(
                 payload = progress.payload(stepId),
             ),
         )
+        outcomeTransitionService?.record(scope, namespaceId, workflowId, stepId,
+            progress.executions[stepId]?.get("executionId") as? String, status)
         // Persist and announce every meaningful step transition. The cockpit
         // treats SSE as an invalidation hint and reloads this authoritative
         // projection; it never infers progress from elapsed time or silence.
         persistProgressProjection(scope, namespaceId, workflowId, progress)
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
     }
 
     /**
@@ -919,7 +1041,15 @@ class SessionRunService(
         progress: SessionProgress,
     ): Boolean {
         val startedAt = progress.startedAt[stepId] ?: nowIso()
-        val claimed = repository.claimStep(
+        val expectedExecution = progress.executions[stepId]?.get("executionId")
+        val current = if (expectedExecution != null) repository.findStepStates(scope, namespaceId, workflowId).single { it.stepId == stepId } else null
+        val claimPayload = progress.payload(stepId) + mapOf("startedAt" to startedAt) +
+            (if (progress.routing.containsKey(stepId)) mapOf("executed" to true) else emptyMap())
+        val claimed = if (current != null) {
+            check((current.payload["execution"] as? Map<*, *>)?.get("executionId") == expectedExecution) { "EXECUTION_GENERATION_FENCED" }
+            current.status in setOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING, WorkflowStatuses.NEEDS_RESEARCH) &&
+                repository.updateStepStatus(scope, namespaceId, workflowId, stepId, current.revision, WorkflowStatuses.RUNNING, claimPayload)
+        } else repository.claimStep(
             scope,
             namespaceId,
             workflowId,
@@ -954,6 +1084,13 @@ class SessionRunService(
         progress: SessionProgress,
         update: AgentObservationUpdate,
     ) {
+        val executionId = progress.executions[stepId]?.get("executionId") as? String
+        if (executionId != null) {
+            val durable = repository.findStepStates(scope, namespaceId, workflowId).single { it.stepId == stepId }
+                .payload["execution"] as? Map<*, *>
+            check(durable?.get("executionId") == executionId) { "EXECUTION_GENERATION_FENCED" }
+            progress.executions[stepId] = durable!!.entries.associate { it.key.toString() to it.value }
+        }
         when (update.status) {
             WorkflowStatuses.WAITING_HUMAN -> {
                 progress.statuses[stepId] = WorkflowStatuses.WAITING_HUMAN
@@ -976,6 +1113,7 @@ class SessionRunService(
             scope,
             WorkflowStepStateRecord(namespaceId, workflowId, stepId, 1, progress.statuses.getValue(stepId), progress.payload(stepId)),
         )
+        outcomeTransitionService?.record(scope, namespaceId, workflowId, stepId, executionId, update.status)
         persistProgressProjection(scope, namespaceId, workflowId, progress)
         sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
     }
@@ -1064,7 +1202,9 @@ class SessionRunService(
                 kind = "session-step",
                 outcome = WorkflowStatuses.RUNNING,
                 source = mapOf("kind" to "factory-session-sequencer", "clock" to "factory"),
-                facts = mapOf("stepId" to stepId, "status" to WorkflowStatuses.RUNNING, "startedAt" to startedAt),
+                facts = mapOf("stepId" to stepId, "status" to WorkflowStatuses.RUNNING, "startedAt" to startedAt) +
+                    ((repository.findStepStates(scope, namespaceId, workflowId).firstOrNull { it.stepId == stepId }
+                        ?.payload?.get("execution") as? Map<*, *>)?.get("executionId")?.let { mapOf("executionId" to it) } ?: emptyMap()),
                 idempotencyKey = "session-step-running:$workflowId:$stepId:$startedAt",
                 createdAt = null,
             ),
@@ -1079,6 +1219,7 @@ class SessionRunService(
         status: String,
         execution: CapabilityExecution,
         progress: SessionProgress,
+        workspaceFacts: Map<String, Any?> = emptyMap(),
     ) {
         val startedAt = progress.startedAt[step.id]
         val completedAt = progress.completedAt[step.id]
@@ -1101,12 +1242,14 @@ class SessionRunService(
                 facts = mapOf(
                     "stepId" to step.id,
                     "status" to status,
+                    "executionId" to progress.executions[step.id]?.get("executionId"),
                     "attemptId" to execution.attemptId,
                     "evidenceId" to execution.evidenceId,
                     "startedAt" to startedAt,
                     "completedAt" to completedAt,
                     "durationMs" to elapsedMs(startedAt, completedAt),
-                ).filterValues { it != null } + codeVerificationFacts(execution.outcome),
+                ).filterValues { it != null } + codeVerificationFacts(execution.outcome) +
+                    workspaceFacts.filterKeys { it != "observedHead" },
                 idempotencyKey = null,
                 createdAt = null,
             ),
@@ -1145,7 +1288,8 @@ class SessionRunService(
                             "executed" to false,
                             "code" to "CODE_WORKTREE_RESOLUTION_FAILED",
                             "message" to safeDiagnostic(error),
-                            "cwd" to "target-repository-root",
+                            "cwd" to repoRoot.toAbsolutePath().normalize().toString(),
+                            "workspaceProvenance" to "resolution-failed",
                         ),
                         idempotencyKey = null,
                         createdAt = null,
@@ -1220,7 +1364,8 @@ class SessionRunService(
                 kind = "human-decision",
                 outcome = if (status == WorkflowStatuses.COMPLETED) "pass" else "fail",
                 source = mapOf("kind" to "factory-human", "interactionId" to interaction.interactionId),
-                facts = mapOf("stepId" to step.id, "status" to status, "interactionId" to interaction.interactionId),
+                facts = mapOf("stepId" to step.id, "status" to status, "interactionId" to interaction.interactionId,
+                    "executionId" to interaction.payload["executionId"]),
                 idempotencyKey = "human:$workflowId:${interaction.interactionId}",
                 createdAt = null,
             ),
@@ -1241,15 +1386,19 @@ class SessionRunService(
             val stepId = step["id"] as? String ?: return@mapNotNull step
             val status = progress.statuses[stepId] ?: return@mapNotNull step
             step["status"] = status
+            progress.executions[stepId]?.get("executionId")?.let { step["executionId"] = it }
             progress.routing[stepId]?.let { step.putAll(it) }
-            progress.startedAt[stepId]?.let { step["startedAt"] = it }
-            progress.completedAt[stepId]?.let { step["completedAt"] = it }
-            elapsedMs(progress.startedAt[stepId], progress.completedAt[stepId])?.let { step["durationMs"] = it }
+            progress.startedAt[stepId]?.let { step["startedAt"] = it } ?: step.remove("startedAt")
+            progress.completedAt[stepId]?.let { step["completedAt"] = it } ?: step.remove("completedAt")
+            elapsedMs(progress.startedAt[stepId], progress.completedAt[stepId])?.let { step["durationMs"] = it } ?: step.remove("durationMs")
             progress.waitingQuestions[stepId]?.let { step["waitingQuestion"] = it } ?: step.remove("waitingQuestion")
             step
         } ?: return
         projection["steps"] = projectedSteps
         projection["status"] = when {
+            (projection["correction"] as? Map<*, *>)?.get("status") == "waiting_human" -> WorkflowStatuses.WAITING_HUMAN
+            // A configured failure is evaluated by the durable router before the run can be sealed.
+            progress.executions.isNotEmpty() && progress.statuses.values.any { it == WorkflowStatuses.FAILED } -> WorkflowStatuses.RUNNING
             progress.statuses.values.any { it == WorkflowStatuses.NEEDS_RESEARCH } &&
                 progress.statuses.values.none {
                     it == WorkflowStatuses.FAILED || it == WorkflowStatuses.CANCELLED ||
@@ -1314,6 +1463,11 @@ class SessionRunService(
         nextInstance["updatedAt"] = nowIso()
         val projection = instance.projection.toMutableMap()
         projection["status"] = sessionStatus
+        if (sessionStatus == WorkflowStatuses.COMPLETED) {
+            (projection["correction"] as? Map<*, *>)?.let { correction ->
+                projection["correction"] = correction.entries.associate { it.key.toString() to it.value } + ("status" to "completed")
+            }
+        }
         // Persist the ticket so a later resume (which only carries the workflowId)
         // and the branch-naming context keep reaching it.
         if (ticket != null) {
@@ -1338,6 +1492,7 @@ class SessionRunService(
                 "completedAt" to completedAt,
                 "durationMs" to elapsedMs(startedAt, completedAt),
                 "waitingQuestion" to progress.waitingQuestions[step.id],
+                "executionId" to progress.executions[step.id]?.get("executionId"),
             ).apply {
                 step.contract?.let { putAll(it.toJson()) }
                 putAll(step.routingJson())

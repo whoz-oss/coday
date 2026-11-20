@@ -24,8 +24,12 @@ data class WorkspaceSnapshot(
     val status: WorkspaceStatus,
     val worktreePath: String? = null,
     val repoRoot: String? = null,
+    /** WorkEnvironment.parentCaseId: the owning case-family root, not an agent sub-case. */
     val caseId: String? = null,
     val failureReason: String? = null,
+    val environmentId: String? = null,
+    val baseCommit: String? = null,
+    val namespaceId: String? = null,
 )
 
 /** Facts returned once a run's workspace is proven usable. */
@@ -33,6 +37,9 @@ data class WorkspaceReadyFacts(
     val worktreePath: String,
     val repoRoot: String? = null,
     val caseId: String? = null,
+    val environmentId: String? = null,
+    val baseCommit: String? = null,
+    val namespaceId: String? = null,
 )
 
 /** Outcome of a successful read-only pre-check. */
@@ -88,12 +95,12 @@ fun interface WorkspaceContextPort {
  * Read-only source of a run's workspace status.
  *
  * The Factory-owned [io.whozoss.factory.environment.domain.WorkEnvironment] is
- * authoritative for the run's worktree path: AgentOS' `CaseResourceBinding`
- * carries neither the path nor a read endpoint, so it cannot be polled by the
- * Factory (documented gap — see [WorkspaceStateWaiter]).
+ * authoritative for code-step binding. Parent runs adopt their root case's path
+ * through AgentOS workspace/changes; these reads do not infer or discover a root.
+ * Absence is reported as null and refused by [RunWorktreeResolver] in enabled mode.
  */
 interface WorkspaceStatePort {
 
-    /** The latest workspace snapshot of [workflowId], or `null` when none was requested. */
+    /** Latest persisted environment of [workflowId], or null when absent (not permission to fall back). */
     fun latestForWorkflow(scope: TenantScope, workflowId: String): WorkspaceSnapshot?
 }
