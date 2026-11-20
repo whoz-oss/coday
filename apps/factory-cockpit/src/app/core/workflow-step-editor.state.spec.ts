@@ -9,6 +9,7 @@ import {
   validateStructure,
 } from './workflow-step-editor.state'
 import { layoutDefinition } from '../features/workflows/workflow-definition-diagram.component'
+import { CODE_VERIFICATION_PRESETS, isCodeVerificationPreset } from './code-verification-presets'
 
 describe('workflow block composition', () => {
   function setup() {
@@ -25,6 +26,142 @@ describe('workflow block composition', () => {
     state.startNew()
     return { state, api, response }
   }
+
+  it('exposes only the closed code-verifier authoring presets', () => {
+    expect(CODE_VERIFICATION_PRESETS.map((preset) => preset.id)).toEqual(['build', 'frontend-build', 'frontend-tests'])
+    expect(isCodeVerificationPreset('build')).toBe(true)
+    expect(CODE_VERIFICATION_PRESETS.find((preset) => preset.id === 'frontend-build')?.hint).toContain(
+      'buildHosts (default: aphrodite, admin, agentic-studio, copilot-chat)'
+    )
+    expect(CODE_VERIFICATION_PRESETS.find((preset) => preset.id === 'frontend-tests')?.hint).toContain(
+      'claims.modifiedFiles'
+    )
+    expect(isCodeVerificationPreset('lint')).toBe(false)
+    expect(isCodeVerificationPreset('from-inputs')).toBe(false)
+  })
+
+  it('adds a code step only with a chosen preset and serializes no shell command', () => {
+    const { state, api } = setup()
+    state.metadata('workflowType', 'verification')
+    state.metadata('title', 'Verification')
+    state.addBlock('code')
+    expect(state.validation()).toContain('select a code verifier')
+    state.setCodeVerification('lint')
+    expect(state.selected()?.responsibility?.name).toBe('')
+    state.setCodeVerification('build')
+    expect(state.validation()).toBeNull()
+    state.save()
+    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        steps: [
+          expect.objectContaining({
+            responsibility: { kind: 'code', name: 'build' },
+            dependsOn: [],
+          }),
+        ],
+      })
+    )
+    expect(JSON.stringify(api.createWorkflowDefinition.mock.calls[0][0])).not.toContain('command')
+  })
+
+  it('preserves existing unknown code responsibilities while rejecting an unknown newly-authored value', () => {
+    const { state } = setup()
+    state.definition.set({
+      workflowType: 'existing',
+      title: 'Existing',
+      version: '1.0.0',
+      steps: [
+        { id: 'legacy', name: 'Legacy', responsibility: { kind: 'code', name: 'prepare-work-branch' }, dependsOn: [] },
+        { id: 'neighbour', name: 'Neighbour', responsibility: { kind: 'human', name: 'Reviewer' }, dependsOn: ['legacy'] },
+      ],
+    })
+    state.select('legacy')
+    state.edit()
+    state.updateBlock({ id: 'legacy-preserved' })
+    expect(state.selected()?.responsibility).toEqual({ kind: 'code', name: 'prepare-work-branch' })
+    expect(state.definition()?.steps?.[1]?.dependsOn).toEqual(['legacy-preserved'])
+    expect(state.canRemoveSelected()).toBe(false)
+    expect(state.validation()).toBeNull()
+    state.select('neighbour')
+    state.removeBlock()
+    expect(state.definition()?.steps).toEqual([
+      expect.objectContaining({
+        id: 'legacy-preserved',
+        responsibility: { kind: 'code', name: 'prepare-work-branch' },
+      }),
+    ])
+    state.addBlock('code')
+    state.updateBlock({ responsibility: { kind: 'code', name: 'custom-verifier' } })
+    expect(state.validation()).toContain('supported code verifier')
+  })
+
+  it('serializes an existing unknown code verifier unchanged in a new immutable version', () => {
+    const { state, api } = setup()
+    state.definition.set({
+      workflowType: 'existing',
+      title: 'Existing',
+      version: '1.0.0',
+      steps: [{ id: 'legacy', name: 'Legacy', responsibility: { kind: 'code', name: 'custom-verifier' }, dependsOn: [] }],
+    })
+    state.select('legacy')
+    state.edit()
+    state.updateBlock({ name: 'Legacy verification' })
+    state.targetVersion.set('1.0.1')
+    state.save()
+    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        version: '1.0.1',
+        steps: [expect.objectContaining({ responsibility: { kind: 'code', name: 'custom-verifier' } })],
+      })
+    )
+  })
+
+  it('removes a known code step and cleans only its direct routing references', () => {
+    const { state } = setup()
+    state.definition.set({
+      workflowType: 'cleanup',
+      title: 'Cleanup',
+      version: '1.0.0',
+      steps: [
+        { id: 'verify', name: 'Verify', responsibility: { kind: 'code', name: 'build' }, dependsOn: [] },
+        {
+          id: 'route',
+          name: 'Route',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          dependsOn: ['verify'],
+          decision: { mode: 'single', routes: [{ name: 'checked', target: 'verify' }] },
+        },
+        { id: 'join', name: 'Join', responsibility: { kind: 'agent', name: 'Dev' }, dependsOn: ['verify'], join: 'route' },
+      ],
+    })
+    state.select('verify')
+    state.edit()
+    state.removeBlock()
+    expect(state.definition()?.steps?.map((step) => step.id)).toEqual(['route', 'join'])
+    expect(state.definition()?.steps?.[0].dependsOn).toEqual([])
+    expect(state.definition()?.steps?.[0].decision?.routes).toEqual([])
+    expect(state.definition()?.steps?.[1].join).toBe('route')
+    expect(state.validation()).toContain('Configure 2–16')
+  })
+
+  it('does not add code steps at the 500-step limit or while saving', () => {
+    const { state } = setup()
+    state.definition.set({
+      ...state.definition(),
+      steps: Array.from({ length: 500 }, (_, index) => ({
+        id: `step-${index + 1}`,
+        name: `Step ${index + 1}`,
+        responsibility: { kind: 'human', name: 'Reviewer' },
+        dependsOn: [],
+      })),
+    })
+    state.addBlock('code')
+    expect(state.definition()?.steps).toHaveLength(500)
+    state.definition.set({ ...state.definition(), steps: [] })
+    state.saving.set(true)
+    state.addBlock('code')
+    expect(state.definition()?.steps).toEqual([])
+  })
 
   it('edits and serializes named routes mode targets and join without losing them on selection or rename', () => {
     const { state, api } = setup()
@@ -97,6 +234,14 @@ describe('workflow block composition', () => {
       'explicit join'
     )
     expect(validateStructure({ ...base, steps: [...base.steps, step('escape', ['f'])] })).toContain('only and directly')
+    expect(
+      validateStructure({
+        ...base,
+        steps: base.steps.map((candidate) =>
+          candidate.id === 'a' ? { ...candidate, decision: { ...decision, routes: [decision.routes[0]] } } : candidate
+        ),
+      })
+    ).toContain('Configure 2–16')
     expect(
       validateStructure({
         ...base,

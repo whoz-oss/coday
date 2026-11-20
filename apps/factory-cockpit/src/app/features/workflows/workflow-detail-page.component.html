@@ -129,8 +129,8 @@
       <h2>Workflow steps</h2>
       @if (state.editing()) {
         <p class="sf-muted">
-          Add agent or human steps, then select a step to edit its properties and optional dependencies. Arrows show
-          dependencies. Human steps wait for approval; code steps retain their existing execution.
+          Add agent, human or code steps, then select a step to edit its properties and optional dependencies. Arrows
+          show dependencies. Code steps use a closed verifier list; no shell command can be entered here.
         </p>
         <div class="composer-actions">
           <button
@@ -142,6 +142,16 @@
             data-add-block
           >
             <mat-icon>smart_toy</mat-icon> Add agent step
+          </button>
+          <button
+            mat-stroked-button
+            class="sf-secondary composer-action"
+            type="button"
+            (click)="state.addBlock('code')"
+            [disabled]="state.saving() || (def.steps?.length ?? 0) >= 500"
+            data-add-code-step
+          >
+            <mat-icon>code</mat-icon> Add code step
           </button>
           <button
             mat-stroked-button
@@ -241,8 +251,25 @@
               <p class="sf-muted">
                 Waits for human approval. The role is not an AgentOS agent; no discovery is required.
               </p>
-            } @else {
-              <p>Existing code responsibility is preserved and cannot be changed or removed here.</p>
+            } @else if (step.responsibility?.kind === 'code') {
+              @if (state.isNewCodeStep(step.id) || codeVerificationPreset(step.responsibility?.name)) {
+                <label
+                  >Code verifier
+                  <select
+                    [ngModel]="step.responsibility?.name ?? ''"
+                    (ngModelChange)="state.setCodeVerification($event)"
+                    data-code-verifier
+                  >
+                    <option value="" disabled>Select a verifier</option>
+                    @for (preset of state.codeVerificationPresets; track preset.id) {
+                      <option [value]="preset.id">{{ preset.label }}</option>
+                    }
+                  </select>
+                </label>
+                <p class="sf-muted">{{ codeVerificationPreset(step.responsibility?.name)?.hint }}</p>
+              } @else {
+                <p class="sf-muted">This existing code responsibility is read-only.</p>
+              }
             }
             <fieldset aria-label="Conditional routing">
               <legend>Conditional routing</legend>
@@ -352,7 +379,7 @@
                 }
               </div>
             </div>
-            @if (step.responsibility?.kind === 'agent' || step.responsibility?.kind === 'human') {
+            @if (state.canRemoveSelected()) {
               <button
                 mat-stroked-button
                 class="sf-secondary composer-action"
@@ -495,6 +522,34 @@
               </button>
             </fieldset>
           }
+        } @else if (step.responsibility?.kind === 'code') {
+          <section aria-label="Code verification" data-code-verification-info>
+            <h3>Code verification</h3>
+            <p>
+              This code step selects a Factory verifier. It does not execute authored shell commands, and its entry,
+              mission and exit text is intent-only documentation.
+            </p>
+            @if (codeVerificationPreset(step.responsibility?.name); as preset) {
+              <p class="sf-muted">{{ preset.hint }}</p>
+            } @else {
+              <p role="note" data-unknown-code-verifier>
+                Existing code responsibility “{{ step.responsibility?.name || 'unnamed' }}” is preserved read-only.
+                It is outside this editor's closed verifier list and may not be a verification step.
+              </p>
+            }
+            @if (state.editing() && !state.isNewCodeStep(step.id)) {
+              <button
+                mat-stroked-button
+                class="sf-secondary composer-action"
+                type="button"
+                (click)="state.addExistingCodeInstructions()"
+                [disabled]="state.saving()"
+                data-add-code-instructions
+              >
+                <mat-icon>notes</mat-icon> Add optional instructions
+              </button>
+            }
+          </section>
         } @else if (step.responsibility?.kind === 'human') {
           <p role="note" data-human-checkpoint>
             This human step uses the existing approval or verification implementation, not an agent prompt.
