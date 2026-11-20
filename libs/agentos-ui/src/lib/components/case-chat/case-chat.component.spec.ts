@@ -664,7 +664,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       TestBed.overrideProvider(SideQuestionApiService, { useValue: sideApi })
     })
 
-    it('asks aside, posts nothing to the case, does not set the case running, and clears the composer once answered', async () => {
+    it('asks aside, posts nothing to the case and does not set the case running', async () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('/btw what is the plan?')
 
@@ -674,32 +674,47 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(http.post).not.toHaveBeenCalled()
       expect(ref.instance['isRunning']()).toBe(false)
       expect(ref.instance['sideQuestions'].pending()).toBe(true)
-      // The draft stays until the answer is there.
+      expect(ref.instance['events']()).toEqual([])
+    })
+
+    it('keeps the draft in the composer while the side question is pending', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+
+      await ref.instance['submit']()
+
       expect(ref.instance['inputValue']()).toBe('/btw what is the plan?')
+    })
+
+    it('clears the composer once the side question is answered', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
 
       answer.next({ answer: 'The plan is X.' })
+
       expect(ref.instance['sideQuestions'].answer()).toBe('The plan is X.')
       expect(ref.instance['inputValue']()).toBe('')
-      expect(ref.instance['events']()).toEqual([])
     })
 
     it('keeps the draft in the composer when the side question fails', async () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('/btw what is the plan?')
-
       await ref.instance['submit']()
+
       answer.error(new HttpErrorResponse({ status: 502 }))
 
       expect(ref.instance['sideQuestions'].error()).toContain('could not answer')
+      expect(ref.instance['sideQuestions'].error()).toContain('still in the composer')
       expect(ref.instance['inputValue']()).toBe('/btw what is the plan?')
     })
 
     it('does not clear a composer edited while the side question was pending', async () => {
       const ref = makeComponent()
       ref.instance['inputValue'].set('/btw what is the plan?')
-
       await ref.instance['submit']()
       ref.instance['inputValue'].set('a new message being typed')
+
       answer.next({ answer: 'The plan is X.' })
 
       expect(ref.instance['inputValue']()).toBe('a new message being typed')
@@ -718,6 +733,55 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(ref.instance['inputValue']()).toBe(draft)
     })
 
+    it('Enter again on the same pending /btw asks nothing more', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledTimes(1)
+      expect(ref.instance['sideQuestions'].pending()).toBe(true)
+    })
+
+    it('a different /btw while one is pending replaces it, and only its answer clears the composer', async () => {
+      const second = new Subject<{ answer: string }>()
+      sideApi.ask.mockReturnValueOnce(answer).mockReturnValueOnce(second)
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw first?')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('/btw second?')
+      await ref.instance['submit']()
+
+      answer.next({ answer: 'stale' })
+
+      expect(answer.observed).toBe(false)
+      expect(ref.instance['sideQuestions'].question()).toBe('second?')
+      expect(ref.instance['inputValue']()).toBe('/btw second?')
+    })
+
+    it('dismissing a pending /btw cancels it and leaves the draft in the composer', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+
+      ref.instance['sideQuestions'].dismiss()
+
+      expect(answer.observed).toBe(false)
+      expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      expect(ref.instance['inputValue']()).toBe('/btw what is the plan?')
+    })
+
+    it('destroying the chat cancels a pending /btw', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+
+      ref.destroy()
+
+      expect(answer.observed).toBe(false)
+    })
+
     it('works while the agent runs: the case stays running and nothing is posted or interrupted', async () => {
       const ref = makeComponent()
       ref.instance['isRunning'].set(true)
@@ -728,8 +792,6 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'how long will it take?')
       expect(http.post).not.toHaveBeenCalled()
       expect(ref.instance['isRunning']()).toBe(true)
-      answer.next({ answer: 'A few minutes.' })
-      expect(ref.instance['inputValue']()).toBe('')
     })
 
     it('while the agent runs, any other text is not sent and stays in the composer', async () => {

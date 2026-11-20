@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicReference
  * accounting. It is the switch of the calls that must not change anything (the side questions); Spring AI's
  * `internalToolExecutionEnabled` flag is not enough, since this class executes the tools itself.
  *
- * [onRequest] sees the prompt of every request sent to the provider, tool rounds included, before it is sent.
+ * [exchangeRecorder] sees every request sent to the provider, tool rounds included, and the text of its response.
  */
 class UsageTrackingChatModel(
     private val delegate: ChatModel,
@@ -55,7 +55,7 @@ class UsageTrackingChatModel(
     private val toolManager: ToolCallingManager = DefaultToolCallingManager.builder().build(),
     private val maxToolRounds: Int = LimitsConfigProperties().agentMaxIterations,
     private val runTools: Boolean = true,
-    private val onRequest: ((Prompt) -> Unit)? = null,
+    private val exchangeRecorder: LlmExchangeRecorder? = null,
 ) : ChatModel by delegate {
     /**
      * Kotlin `by delegate` does not forward Java interface default methods: without this override,
@@ -118,8 +118,11 @@ class UsageTrackingChatModel(
 
     private fun trackedCall(prompt: Prompt): ChatResponse {
         awaitPermission()
-        onRequest?.invoke(prompt)
-        return delegate.call(prompt).also { accumulator.record(CostCalculator.extract(it, apiType, model)) }
+        exchangeRecorder?.requestSent(prompt)
+        return delegate.call(prompt).also {
+            accumulator.record(CostCalculator.extract(it, apiType, model))
+            exchangeRecorder?.responseReceived(it.result?.output?.text)
+        }
     }
 
     /** Keeps the provider's metadata (usage, id, model) and its generation unless the text must be completed. */
@@ -127,6 +130,7 @@ class UsageTrackingChatModel(
         val summary = trackedCall(summaryPrompt(prompt))
         val text = summary.result?.output?.text.orEmpty()
         val completed = completeSummary(text, droppedCall = summary.hasToolCalls())
+        exchangeRecorder?.responseReceived(completed)
         val generations =
             if (completed == text) {
                 summary.results
@@ -168,7 +172,11 @@ class UsageTrackingChatModel(
     ): Flux<ChatResponse> =
         Flux.defer {
             val aggregated = AtomicReference<ChatResponse?>(null)
-            MessageAggregator().aggregate(trackedStream(prompt), aggregated::set).concatWith(
+            val roundCompleted: (ChatResponse) -> Unit = { response ->
+                aggregated.set(response)
+                exchangeRecorder?.responseReceived(response.result?.output?.text)
+            }
+            MessageAggregator().aggregate(trackedStream(prompt), roundCompleted).concatWith(
                 Flux.defer {
                     val response = aggregated.get()
                     when {
@@ -207,7 +215,7 @@ class UsageTrackingChatModel(
             .fromFuture(accumulator.beforeCall())
             .thenMany(
                 Flux.defer {
-                    onRequest?.invoke(prompt)
+                    exchangeRecorder?.requestSent(prompt)
                     delegate.stream(prompt)
                 },
             )
@@ -229,6 +237,7 @@ class UsageTrackingChatModel(
                     val summary = aggregated.get()
                     val streamed = summary?.result?.output?.text.orEmpty()
                     val completed = completeSummary(streamed, droppedCall = summary?.hasToolCalls() == true)
+                    exchangeRecorder?.responseReceived(completed)
                     Flux.just(limitReached(completed.removePrefix(streamed)))
                 },
             )

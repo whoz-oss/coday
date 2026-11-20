@@ -6,7 +6,6 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import org.springframework.ai.chat.client.ChatClient
-import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
 
 /**
@@ -31,9 +30,9 @@ import org.springframework.stereotype.Service
  * through [UsageTrackingChatModel], which returns a response asking for tools as it is (and turns Spring AI's
  * internal tool execution off). Without an accumulator to record into (usage disabled), its usage is discarded.
  *
- * `onRequest` sees the prompt of every request sent to the provider, tool rounds included. It is only called
- * through [UsageTrackingChatModel] (usage tracked, or `runTools` false): an untracked model runs its tool rounds
- * out of sight.
+ * `exchangeRecorder` keeps the last request sent to the provider, tool rounds included, and the text of its
+ * response. It is only fed through [UsageTrackingChatModel] (usage tracked, or `runTools` false): an untracked
+ * model runs its tool rounds out of sight.
  */
 @Service
 class ChatClientProvider(
@@ -48,7 +47,7 @@ class ChatClientProvider(
         accumulator: UsageAccumulator? = null,
         maxToolRounds: Int? = null,
         runTools: Boolean = true,
-        onRequest: ((Prompt) -> Unit)? = null,
+        exchangeRecorder: LlmExchangeRecorder? = null,
     ): ChatClient {
         val chatModel =
             chatModelFactory.createChatModel(
@@ -71,7 +70,7 @@ class ChatClientProvider(
                     modelConfig,
                     maxToolRounds = maxToolRounds ?: limits.agentMaxIterations,
                     runTools = runTools,
-                    onRequest = onRequest,
+                    exchangeRecorder = exchangeRecorder,
                 )
             } else {
                 chatModel

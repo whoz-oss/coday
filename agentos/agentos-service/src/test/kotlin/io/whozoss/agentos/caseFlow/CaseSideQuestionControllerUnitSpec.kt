@@ -7,8 +7,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import org.springframework.security.access.prepost.PreAuthorize
 import java.util.UUID
 
 /** The controller checks the question and hands it over: the answering is [CaseSideQuestionService]'s own spec. */
@@ -26,6 +28,14 @@ class CaseSideQuestionControllerUnitSpec :
                 CaseSideQuestionController(service, userService).askSideQuestion(caseId, SideQuestionRequest("  What is the plan?  "))
 
             response shouldBe SideQuestionResponse(answer = "The plan is X.")
+        }
+
+        "needs WRITE on the case, as posting a message does: the question spends its budget" {
+            val method = CaseSideQuestionController::class.java.methods.single { it.name == "askSideQuestion" }
+
+            method.getAnnotation(PreAuthorize::class.java).value shouldBe "hasPermission(#caseId, 'Case', 'WRITE')"
+            // A reader without WRITE is told so (403), as for a message, rather than that the case does not exist.
+            method.getAnnotation(HideOnAccessDenied::class.java) shouldBe null
         }
 
         "refuses a blank question with a 400, without calling the service" {

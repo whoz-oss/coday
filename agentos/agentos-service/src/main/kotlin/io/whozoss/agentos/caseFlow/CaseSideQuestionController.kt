@@ -3,7 +3,6 @@ package io.whozoss.agentos.caseFlow
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.exception.BadRequestException
-import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.http.MediaType
@@ -34,7 +33,7 @@ data class SideQuestionResponse(
 
 /**
  * REST entry point of the side questions (`/btw`): a quick question about a case, answered from its
- * conversation, that is neither saved in the case nor broadcast and never interrupts its run.
+ * conversation, that is neither added to its conversation nor broadcast and never interrupts its run.
  * The work is done by [CaseSideQuestionService]; this class declares the route, checks the access and the
  * question.
  *
@@ -42,8 +41,9 @@ data class SideQuestionResponse(
  * that external consumers implement would break them at startup (same reasoning as
  * [io.whozoss.agentos.transcription.VoiceMessageController]).
  *
- * READ on the case is enough: nothing is written. As on the other reads of a case, a caller who cannot read
- * it is answered 404, which does not tell that it exists.
+ * WRITE on the case is needed, as to post a message: the question spends the budget of the case (its usage is
+ * recorded on it), even though nothing is added to its conversation. As for posting a message, a caller without
+ * it is answered 403.
  */
 @RestController
 class CaseSideQuestionController(
@@ -54,18 +54,18 @@ class CaseSideQuestionController(
         summary = "Ask a side question about a case",
         description =
             "POST /api/cases/{caseId}/side-questions: answers a quick question from the conversation of the case, " +
-                "without running any tool. Nothing is added to the case or broadcast, and a running turn is not " +
-                "interrupted; its LLM usage is recorded on the case and counts toward its run cost. " +
-                "400 for a blank or too long question, 409 when the namespace has no default AI model or the case " +
-                "has reached its run cost limit, 502 when the model fails to answer.",
+                "without running any tool. Nothing is added to the conversation of the case or broadcast, and a " +
+                "running turn is not interrupted; its LLM usage is recorded on the case and counts toward its run " +
+                "cost, so it needs WRITE on the case. 400 for a blank or too long question, 409 when the namespace " +
+                "has no default AI model or the case is stopped, waiting for a cost confirmation or at its run cost " +
+                "limit, 502 when the model fails to answer.",
     )
     @PostMapping(
         "/api/cases/{caseId}/side-questions",
         consumes = [MediaType.APPLICATION_JSON_VALUE],
         produces = [MediaType.APPLICATION_JSON_VALUE],
     )
-    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
-    @HideOnAccessDenied
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     fun askSideQuestion(
         @PathVariable caseId: UUID,
         @RequestBody request: SideQuestionRequest,

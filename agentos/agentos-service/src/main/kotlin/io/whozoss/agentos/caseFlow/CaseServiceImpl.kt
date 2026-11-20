@@ -4,6 +4,7 @@ import io.whozoss.agentos.agent.AdvancedExecutionNotSupportedException
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agent.LastLlmRequestRegistry
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -110,6 +111,8 @@ class CaseServiceImpl(
      */
     private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
     coroutineContext: CoroutineContext = Dispatchers.IO,
+    /** The last LLM request of each case's turns: forgotten when a run starts, or the case is killed or deleted. */
+    private val lastLlmRequestRegistry: LastLlmRequestRegistry = LastLlmRequestRegistry(),
 ) : CaseService,
     SubCaseManager {
     /**
@@ -310,11 +313,15 @@ class CaseServiceImpl(
         if (activeRuntimes.containsKey(id)) {
             killSingleCase(id)
         }
+        lastLlmRequestRegistry.remove(id)
         return caseRepository.delete(id)
     }
 
     override fun deleteByParent(parentId: UUID): Int {
-        findByParent(parentId).forEach { killSingleCase(it.id) }
+        findByParent(parentId).forEach {
+            killSingleCase(it.id)
+            lastLlmRequestRegistry.remove(it.id)
+        }
         return caseRepository.deleteByParent(parentId)
     }
 
@@ -757,6 +764,8 @@ class CaseServiceImpl(
         }
 
         logger.info { "Running agent: $agentName for case $caseId" }
+        // The conversation moves on: the last request of the previous turn no longer ends it (a redirect, too).
+        lastLlmRequestRegistry.remove(caseId)
         val usageAccumulator = if (usageConfig.enabled) UsageAccumulator() else null
         val context =
             AgentExecutionContext(
@@ -1045,6 +1054,7 @@ class CaseServiceImpl(
 
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
+        lastLlmRequestRegistry.remove(caseId)
         val runtime = activeRuntimes[caseId]
         if (gatedRuns != null) gatedRuns.kill(caseId, runtime) else runtime?.requestKill()
         if (usageConfig.enabled) runCostService?.stop(caseId)

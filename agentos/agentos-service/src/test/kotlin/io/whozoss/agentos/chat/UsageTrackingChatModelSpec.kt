@@ -540,7 +540,7 @@ class UsageTrackingChatModelSpec :
                 accumulator.failed shouldBe false
             }
 
-            "onRequest sees every ${if (streaming) "streamed" else "synchronous"} request, tool rounds included, as sent" {
+            "the exchange recorder keeps the last ${if (streaming) "streamed" else "synchronous"} request as sent, tool rounds included, and its answer" {
                 val callback = toolCallback { "tool output" }
                 val options = ToolCallingChatOptions.builder().toolCallbacks(callback).build()
                 val sent = CopyOnWriteArrayList<Prompt>()
@@ -549,21 +549,24 @@ class UsageTrackingChatModelSpec :
                 every { raw.defaultOptions } returns options
                 every { raw.call(any<Prompt>()) } answers {
                     sent.add(firstArg())
-                    response(tool = requests.getAndIncrement() == 0)
+                    response(tool = requests.getAndIncrement() == 0, text = "Round ${requests.get()}")
                 }
                 every { raw.stream(any<Prompt>()) } answers {
                     sent.add(firstArg())
-                    Flux.just(response(tool = requests.getAndIncrement() == 0))
+                    Flux.just(response(tool = requests.getAndIncrement() == 0, text = "Round ${requests.get()}"))
                 }
-                val observed = CopyOnWriteArrayList<Prompt>()
-                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, onRequest = { observed.add(it) })
+                val recorder = LlmExchangeRecorder()
+                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, exchangeRecorder = recorder)
                 val prompt = Prompt(listOf(UserMessage("Hello")), options)
 
                 if (streaming) tracked.stream(prompt).blockLast(Duration.ofSeconds(2)) else tracked.call(prompt)
 
-                observed.size shouldBe 2
-                observed.map { it.instructions } shouldBe sent.map { it.instructions }
-                observed.last().instructions.map { it.messageType.name } shouldBe listOf("USER", "ASSISTANT", "TOOL")
+                sent.size shouldBe 2
+                val exchange = recorder.lastExchange!!
+                exchange.messages shouldBe sent.last().instructions
+                exchange.messages.map { it.messageType.name } shouldBe listOf("USER", "ASSISTANT", "TOOL")
+                // Only the answer to the last request, not the text of the tool round.
+                exchange.responseText shouldBe "Round 2"
             }
         }
     })

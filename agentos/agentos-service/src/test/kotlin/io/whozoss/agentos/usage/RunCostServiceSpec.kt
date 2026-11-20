@@ -3,6 +3,7 @@ package io.whozoss.agentos.usage
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.Called
 import io.mockk.every
 import io.mockk.mockk
@@ -318,5 +319,106 @@ class RunCostServiceSpec :
             usage.total.estimatedCostUsd shouldBe 2.0
             shouldThrow<CompletionException> { usage.beforeCall().join() }
             registration.finish {}
+        }
+
+        fun RunCostService.nonPausing(
+            caseId: UUID,
+            usage: UsageAccumulator,
+        ) = registerNonPausing(caseId, usage)
+
+        "a non-pausing registration counts toward the cost but never waits for a confirmation" {
+            val (service, case, _) = fixture()
+            val side = UsageAccumulator()
+            val registered = service.nonPausing(case.id, side).shouldBeInstanceOf<RunCostService.NonPausingRegistration.Registered>()
+
+            side.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 12.0))
+
+            side.beforeCall().isDone shouldBe true
+            service.state(case.id).cost shouldBe 12.0
+            service.isPaused(case.id) shouldBe false
+            // A running turn, on the other hand, pauses at its next gate.
+            val turn = UsageAccumulator()
+            service.register(case.id, turn)
+            turn.beforeCall().isDone shouldBe false
+            service.isPaused(case.id) shouldBe true
+            registered.registration.finish {}
+        }
+
+        "a non-pausing registration is refused, atomically and without pausing, over the threshold" {
+            val (service, case, _) = fixture()
+            val turn = UsageAccumulator()
+            val registration = service.register(case.id, turn)
+            turn.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 10.0))
+
+            val refused = service.nonPausing(case.id, UsageAccumulator())
+
+            refused shouldBe RunCostService.NonPausingRegistration.Refused(case.id, RunCostService.NonPausingRegistration.Reason.OVER_THRESHOLD)
+            service.isPaused(case.id) shouldBe false
+            registration.finish {}
+        }
+
+        "a non-pausing registration is refused while the case waits for a confirmation, or is stopped" {
+            val (service, case, _) = fixture()
+            val turn = UsageAccumulator()
+            val registration = service.register(case.id, turn)
+            turn.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 12.0))
+            turn.beforeCall()
+
+            (service.nonPausing(case.id, UsageAccumulator()) as RunCostService.NonPausingRegistration.Refused).reason shouldBe
+                RunCostService.NonPausingRegistration.Reason.PAUSED
+
+            service.stop(case.id)
+
+            (service.nonPausing(case.id, UsageAccumulator()) as RunCostService.NonPausingRegistration.Refused).reason shouldBe
+                RunCostService.NonPausingRegistration.Reason.STOPPED
+            registration.finish {}
+        }
+
+        "a non-pausing registration is refused when an ancestor is over its threshold" {
+            val (service, parent, saved) = fixture(5.0)
+            val child = Case(namespaceId = parent.namespaceId, parentCaseId = parent.id, runCostThreshold = 100.0)
+            saved[child.id] = child
+            val turn = UsageAccumulator()
+            val registration = service.register(parent.id, turn)
+            turn.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 6.0))
+
+            service.nonPausing(child.id, UsageAccumulator()) shouldBe
+                RunCostService.NonPausingRegistration.Refused(parent.id, RunCostService.NonPausingRegistration.Reason.OVER_THRESHOLD)
+            registration.finish {}
+        }
+
+        "a non-pausing registration in flight does not keep a stopped session: the next turn starts clean" {
+            val (service, case, _) = fixture()
+            val turn = UsageAccumulator()
+            val turnRegistration = service.register(case.id, turn)
+            val side = UsageAccumulator()
+            val sideRegistration =
+                (service.nonPausing(case.id, side) as RunCostService.NonPausingRegistration.Registered).registration
+
+            service.stop(case.id)
+            turnRegistration.finish {}
+
+            val next = UsageAccumulator()
+            val nextRegistration = service.register(case.id, next)
+            nextRegistration.isStopped() shouldBe false
+            next.beforeCall().isDone shouldBe true
+            // The side question still finishes cleanly, and does not touch the new session.
+            shouldThrow<CompletionException> { side.beforeCall().join() }
+            sideRegistration.finish {}
+            nextRegistration.isStopped() shouldBe false
+            nextRegistration.finish {}
+        }
+
+        "a stop with only a non-pausing registration left ends the session at once" {
+            val (service, case, _) = fixture()
+            val side = UsageAccumulator()
+            val sideRegistration =
+                (service.nonPausing(case.id, side) as RunCostService.NonPausingRegistration.Registered).registration
+
+            service.stop(case.id)
+
+            val next = UsageAccumulator()
+            service.register(case.id, next).isStopped() shouldBe false
+            sideRegistration.finish {}
         }
     })

@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.chat.LlmExchangeRecorder
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.chat.UsageTrackingChatModel
 import io.whozoss.agentos.sdk.actor.Actor
@@ -19,10 +20,10 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
-import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
@@ -33,8 +34,8 @@ import org.springframework.ai.tool.definition.ToolDefinition
 import reactor.core.publisher.Flux
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 
 /** [AgentSimple.onFinalRequest] reports the last request of a turn exactly as the provider received it. */
 class AgentSimpleFinalRequestSpec :
@@ -80,7 +81,7 @@ class AgentSimpleFinalRequestSpec :
                 content = listOf(MessageContent.Text("What is the status?")),
             )
 
-        /** What the provider received, and what the agent reported. */
+        /** What the provider received, what the agent reported, and the events of the turn. */
         class Run(
             val sent: List<Prompt>,
             val reported: List<FinalLlmRequest>,
@@ -90,6 +91,7 @@ class AgentSimpleFinalRequestSpec :
         suspend fun run(
             tracked: Boolean,
             shouldContinue: () -> Boolean = { true },
+            onEvent: (CaseEvent) -> Unit = {},
             reply: (Int) -> ChatResponse,
         ): Run {
             val sent = CopyOnWriteArrayList<Prompt>()
@@ -100,7 +102,7 @@ class AgentSimpleFinalRequestSpec :
                 sent.add(firstArg())
                 Flux.just(reply(requests.getAndIncrement()))
             }
-            val lastSent = AtomicReference<List<Message>?>(null)
+            val recorder = LlmExchangeRecorder()
             val model =
                 if (tracked) {
                     UsageTrackingChatModel(
@@ -108,7 +110,7 @@ class AgentSimpleFinalRequestSpec :
                         UsageAccumulator(),
                         AiApiType.OpenAI,
                         AiModel(aiProviderId = UUID.randomUUID(), apiModelName = "test"),
-                        onRequest = { lastSent.set(it.instructions.toList()) },
+                        exchangeRecorder = recorder,
                     )
                 } else {
                     raw
@@ -123,14 +125,14 @@ class AgentSimpleFinalRequestSpec :
                     instructions = "Be helpful.",
                     llmProvider = "test",
                     llmModel = "test",
-                    lastSentMessages = lastSent::get,
+                    lastExchange = { recorder.lastExchange },
                     onFinalRequest = { reported.add(it) },
                 )
-            val events = agent.run(listOf(input), shouldContinue).toList()
+            val events = agent.run(listOf(input), shouldContinue).onEach(onEvent).toList()
             return Run(sent, reported, events)
         }
 
-        "reports the exact messages and tool definitions of the last request, tool rounds included, and the answer" {
+        "reports the exact messages and tool definitions of the last request, tool rounds included, and its answer" {
             val result = run(tracked = true) { request -> if (request == 0) toolCall() else answer("All green.") }
 
             result.sent.size shouldBe 2
@@ -141,26 +143,40 @@ class AgentSimpleFinalRequestSpec :
             val sentDefinitions = (result.sent.last().options as ToolCallingChatOptions).toolCallbacks.map { it.toolDefinition }
             reported.toolDefinitions shouldBe sentDefinitions
             reported.toolDefinitions.map(ToolDefinition::name) shouldBe listOf("lookup", "search")
-            // The answer as recorded in the case: what the model said over the whole turn.
-            val recorded = result.events.filterIsInstance<MessageEvent>().single().content.single() as MessageContent.Text
-            reported.finalText shouldBe recorded.content
-            reported.finalText shouldBe "Let me look.All green."
+            // The answer to the last request only: "Let me look." is already in its messages.
+            reported.finalText shouldBe "All green."
             reported.caseId shouldBe input.caseId
-            reported.coveredEventCount shouldBe 1
-            reported.lastCoveredEventId shouldBe input.id
+        }
+
+        "covers the conversation up to the recorded answer, the events of the turn included" {
+            val result = run(tracked = true) { request -> if (request == 0) toolCall() else answer("All green.") }
+
+            val recordedAnswer = result.events.filterIsInstance<MessageEvent>().single()
+            val reported = result.reported.single()
+            reported.lastCoveredEventId shouldBe recordedAnswer.id
+            // The question, the tool request and response, the answer.
+            reported.coveredEventCount shouldBe (listOf(input) + result.events).count { it.isConversationEvent() }
+            reported.coveredEventCount shouldBe 4
             result.events.last().shouldBeInstanceOf<AgentFinishedEvent>()
         }
 
-        "without a tracked model, reports the messages of the last call, which is the request when no tool ran" {
+        "reports nothing when the exact request is unknown (an untracked model)" {
             val result = run(tracked = false) { answer("All green.") }
 
             result.sent.size shouldBe 1
-            result.reported.single().messages shouldBe result.sent.single().instructions
+            result.reported.shouldBeEmpty()
         }
 
-        "reports nothing when the turn was stopped" {
-            val result = run(tracked = true, shouldContinue = { false }) { answer("All green.") }
+        "reports nothing when the turn was stopped once its stream ended" {
+            // Stopped right as the answer is recorded: emit returns once the event is collected.
+            val stopped = AtomicBoolean(false)
+            val result =
+                run(tracked = true, shouldContinue = { !stopped.get() }, onEvent = { if (it is MessageEvent) stopped.set(true) }) {
+                    answer("All green.")
+                }
 
+            // The turn went as far as recording its answer, but was stopped meanwhile.
+            result.events.filterIsInstance<MessageEvent>().single()
             result.reported.shouldBeEmpty()
         }
 
@@ -168,13 +184,23 @@ class AgentSimpleFinalRequestSpec :
             val raw = mockk<ChatModel>()
             every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } returns Flux.just(answer("All green."))
+            val recorder = LlmExchangeRecorder()
+            val tracked =
+                UsageTrackingChatModel(
+                    raw,
+                    UsageAccumulator(),
+                    AiApiType.OpenAI,
+                    AiModel(aiProviderId = UUID.randomUUID(), apiModelName = "test"),
+                    exchangeRecorder = recorder,
+                )
             val agent =
                 AgentSimple(
                     name = "test",
-                    chatClient = ChatClient.builder(raw).build(),
+                    chatClient = ChatClient.builder(tracked).build(),
                     tools = tools,
                     llmProvider = "test",
                     llmModel = "test",
+                    lastExchange = { recorder.lastExchange },
                     onFinalRequest = { throw IllegalStateException("registry down") },
                 )
 

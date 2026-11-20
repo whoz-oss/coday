@@ -6,8 +6,11 @@ import { SideQuestionApiService } from './side-question-api.service'
 /** The longest question the server accepts, once trimmed (`CaseSideQuestionController.MAX_QUESTION_LENGTH`). */
 export const SIDE_QUESTION_MAX_LENGTH = 4000
 
-/** How much of a question too long to be asked the aside shows. */
+/** How much of a question too long to be asked the aside shows, in characters (code points). */
 const TOO_LONG_PREVIEW_LENGTH = 280
+
+/** Added to every error: the composer keeps the question until it is answered. */
+export const QUESTION_KEPT = 'Your question is still in the composer.'
 
 /** What the user is told when a side question fails, by HTTP status. The server's own message is never shown. */
 export function sideQuestionErrorMessage(err: unknown): string {
@@ -16,10 +19,14 @@ export function sideQuestionErrorMessage(err: unknown): string {
     case 400:
       return 'This question cannot be asked: it is empty or too long.'
     case 403:
+      return 'You can read this case but not ask side questions on it: they spend its budget.'
     case 404:
       return 'This case is no longer available.'
     case 409:
-      return 'This question cannot be answered now: no AI model is available, or this case has reached its run cost limit.'
+      return (
+        'This question cannot be answered now: no AI model is available, ' +
+        'or this case is stopped, waiting for a cost confirmation or at its run cost limit.'
+      )
     case 502:
       return 'The model could not answer. Try again.'
     default:
@@ -53,21 +60,23 @@ export class SideQuestionStateService implements OnDestroy {
 
   /**
    * Asks [question] about the case [caseId], replacing the aside that was shown. A blank question is ignored; one
-   * longer than [SIDE_QUESTION_MAX_LENGTH] is not sent, the aside says why. [onAnswered] is called when the answer
-   * arrives, and never on a failure or once the aside was replaced or dismissed.
+   * longer than [SIDE_QUESTION_MAX_LENGTH] is not sent, the aside says why. The same question asked again while it
+   * is pending is ignored: no second request. [onAnswered] is called when the answer arrives, and never on a failure
+   * or once the aside was replaced or dismissed.
    */
   ask(caseId: string, question: string, onAnswered?: () => void): void {
     const text = question.trim()
     if (!text) return
+    if (this.pending() && this.question() === text) return
     this.cancelRequest()
     const generation = ++this.generation
     this.answer.set(null)
     if (text.length > SIDE_QUESTION_MAX_LENGTH) {
-      this.question.set(text.length > TOO_LONG_PREVIEW_LENGTH ? `${text.slice(0, TOO_LONG_PREVIEW_LENGTH)}…` : text)
+      this.question.set(preview(text))
       this.pending.set(false)
       this.error.set(
         `This question is too long (${text.length} characters): a side question has at most ` +
-          `${SIDE_QUESTION_MAX_LENGTH} characters. Shorten it and ask again.`
+          `${SIDE_QUESTION_MAX_LENGTH} characters. ${QUESTION_KEPT} Shorten it there and ask again.`
       )
       return
     }
@@ -83,7 +92,7 @@ export class SideQuestionStateService implements OnDestroy {
       },
       error: (err: unknown) => {
         if (generation !== this.generation) return
-        this.error.set(sideQuestionErrorMessage(err))
+        this.error.set(`${sideQuestionErrorMessage(err)} ${QUESTION_KEPT}`)
         this.pending.set(false)
       },
     })
@@ -108,4 +117,12 @@ export class SideQuestionStateService implements OnDestroy {
     this.subscription?.unsubscribe()
     this.subscription = null
   }
+}
+
+/** The start of a question too long to be shown whole, never cutting a character (code point) in two. */
+function preview(text: string): string {
+  const characters = Array.from(text)
+  return characters.length > TOO_LONG_PREVIEW_LENGTH
+    ? `${characters.slice(0, TOO_LONG_PREVIEW_LENGTH).join('')}…`
+    : text
 }

@@ -38,7 +38,7 @@ class RunCostService(
 ) {
     private val sessions = mutableMapOf<UUID, Session>()
 
-    private data class Session(
+    internal data class Session(
         val caseId: UUID,
         val since: Instant,
         val ancestorIds: Set<UUID>,
@@ -46,24 +46,28 @@ class RunCostService(
         var unknown: Long,
         var threshold: Double?,
         val live: MutableSet<UsageAccumulator> = mutableSetOf(),
+        /** The live accumulators of [live] that never pause ([registerNonPausing]): they do not keep a stopped session. */
+        val nonPausing: MutableSet<UsageAccumulator> = mutableSetOf(),
         var confirmation: CompletableFuture<Void>? = null,
         var stopped: Boolean = false,
         val cancellation: CompletableFuture<Void> = CompletableFuture(),
         val historyUnavailable: Boolean = false,
     )
 
+    /** The live usage of one invocation in the sessions of its case and their ancestors ([runSessions]). */
     inner class Registration internal constructor(
         private val accumulator: UsageAccumulator,
-        private val caseIds: List<UUID>,
+        private val runSessions: List<Session>,
+        /** False for [registerNonPausing]: over the threshold, its requests go on instead of asking a confirmation. */
+        private val pausing: Boolean = true,
     ) {
         fun beforeCall(): CompletableFuture<Void> =
             synchronized(this@RunCostService) {
                 val waits =
-                    caseIds.map { id ->
-                        val session = sessions.getValue(id)
+                    runSessions.map { session ->
                         if (session.stopped) return@synchronized CompletableFuture.failedFuture(CostRunStopped())
                         val threshold = session.threshold
-                        if (threshold != null && snapshot(session).cost >= threshold) {
+                        if (pausing && threshold != null && snapshot(session).cost >= threshold) {
                             session.confirmation ?: CompletableFuture<Void>().also { session.confirmation = it }
                         } else {
                             CompletableFuture.completedFuture(null)
@@ -72,13 +76,13 @@ class RunCostService(
                 CompletableFuture
                     .anyOf(
                         CompletableFuture.allOf(*waits.toTypedArray()),
-                        *caseIds.map { sessions.getValue(it).cancellation }.toTypedArray(),
+                        *runSessions.map { it.cancellation }.toTypedArray(),
                     ).thenApply { null }
             }
 
         /** Read before finish removes this registration; a graceful stop is not a failure. */
         fun isStopped(): Boolean = synchronized(this@RunCostService) {
-            caseIds.any { sessions[it]?.stopped == true }
+            runSessions.any { it.stopped }
         }
 
         /** Keep the transfer from live usage to persisted usage atomic for readers. */
@@ -88,14 +92,13 @@ class RunCostService(
                     persist()
                 } finally {
                     val usage = accumulator.snapshot()
-                    caseIds.forEach { id ->
-                        sessions[id]?.let { session ->
-                            if (session.live.remove(accumulator)) {
-                                session.cost += usage.knownCost
-                                session.unknown += usage.unknownCalls
-                            }
-                            if (session.live.isEmpty()) sessions.remove(id)
+                    runSessions.forEach { session ->
+                        session.nonPausing.remove(accumulator)
+                        if (session.live.remove(accumulator)) {
+                            session.cost += usage.knownCost
+                            session.unknown += usage.unknownCalls
                         }
+                        removeIfOver(session)
                     }
                 }
             }
@@ -107,6 +110,60 @@ class RunCostService(
         accumulator: UsageAccumulator,
     ): Registration {
         requireEnabled()
+        val runSessions = prepareSessions(caseId)
+        publish(runSessions, accumulator, pausing = true)
+        return Registration(accumulator, runSessions).also { accumulator.beforeCall = it::beforeCall }
+    }
+
+    /** What [registerNonPausing] decided. */
+    sealed interface NonPausingRegistration {
+        class Registered(
+            val registration: Registration,
+        ) : NonPausingRegistration
+
+        /** Nothing was registered: [caseId] (the case or one of its ancestors) is [reason]. */
+        data class Refused(
+            val caseId: UUID,
+            val reason: Reason,
+        ) : NonPausingRegistration
+
+        enum class Reason { OVER_THRESHOLD, PAUSED, STOPPED }
+    }
+
+    /**
+     * Registers spend that must never pause its case (a side question), in one atomic step: refused when the case or
+     * one of its ancestors is stopped, waiting for a cost confirmation, or at or over its threshold.
+     *
+     * Once registered, its spend counts toward the cost of the case and its ancestors like a run's: a running turn
+     * may pause at its next gate because of it. Its own requests never wait for a confirmation (they only fail when
+     * the case is stopped), and it never keeps a stopped session alive, so a later run does not inherit `stopped`.
+     */
+    @Synchronized
+    fun registerNonPausing(
+        caseId: UUID,
+        accumulator: UsageAccumulator,
+    ): NonPausingRegistration {
+        requireEnabled()
+        val runSessions = prepareSessions(caseId)
+        runSessions.forEach { session ->
+            val threshold = session.threshold
+            val reason =
+                when {
+                    session.stopped -> NonPausingRegistration.Reason.STOPPED
+                    session.confirmation != null -> NonPausingRegistration.Reason.PAUSED
+                    threshold != null && snapshot(session).cost >= threshold -> NonPausingRegistration.Reason.OVER_THRESHOLD
+                    else -> null
+                }
+            if (reason != null) return NonPausingRegistration.Refused(session.caseId, reason)
+        }
+        publish(runSessions, accumulator, pausing = false)
+        val registration = Registration(accumulator, runSessions, pausing = false)
+        accumulator.beforeCall = registration::beforeCall
+        return NonPausingRegistration.Registered(registration)
+    }
+
+    /** The sessions of the lineage of [caseId], existing or new (not published): a later read can fail. */
+    private fun prepareSessions(caseId: UUID): List<Session> {
         val lineage = ancestors(caseId)
         val thresholds = lineage.associate { case ->
             val existing = sessions[case.id]
@@ -117,15 +174,27 @@ class RunCostService(
         if (!allowHistoryFailure) {
             lineage.forEach { case -> sessions[case.id]?.let(::requireHistory) }
         }
-        // Prepare the entire lineage before publishing any registration: a later read can fail.
-        val runSessions = lineage.map { case ->
+        return lineage.map { case ->
             sessions[case.id] ?: newSession(case, thresholds.getValue(case.id), allowHistoryFailure)
         }
+    }
+
+    private fun publish(
+        runSessions: List<Session>,
+        accumulator: UsageAccumulator,
+        pausing: Boolean,
+    ) {
         runSessions.forEach { session ->
             sessions[session.caseId] = session
             session.live.add(accumulator)
+            if (!pausing) session.nonPausing.add(accumulator)
         }
-        return Registration(accumulator, lineage.map { it.id }).also { accumulator.beforeCall = it::beforeCall }
+    }
+
+    /** A session ends with its last registration; a stopped one as soon as only non-pausing ones remain. */
+    private fun removeIfOver(session: Session) {
+        val over = session.live.isEmpty() || (session.stopped && session.live.all { it in session.nonPausing })
+        if (over && sessions[session.caseId] === session) sessions.remove(session.caseId)
     }
 
     @Synchronized
@@ -184,6 +253,8 @@ class RunCostService(
             session.confirmation?.completeExceptionally(CostRunStopped())
             session.confirmation = null
         }
+        // Copied: a session left with only non-pausing registrations ends at once.
+        sessions.values.toList().forEach(::removeIfOver)
     }
 
     /** Waiting on a descendant's human confirmation also pauses a delegation's budget. */

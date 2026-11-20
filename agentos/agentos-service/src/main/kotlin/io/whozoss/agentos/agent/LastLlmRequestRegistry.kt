@@ -1,9 +1,17 @@
 package io.whozoss.agentos.agent
 
-import io.whozoss.agentos.sdk.aiProvider.AiModel
-import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.chat.LlmRequestOptions
+import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import org.springframework.ai.chat.messages.Message
+import org.springframework.ai.chat.messages.ToolResponseMessage
 import org.springframework.ai.tool.definition.ToolDefinition
+import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Clock
 import java.time.Duration
@@ -14,78 +22,159 @@ import java.util.UUID
  * The last request an agent sent to its LLM at the end of a turn of a case, exactly as sent, and its answer.
  *
  * A request that appends to [messages] (after an [org.springframework.ai.chat.messages.AssistantMessage] of
- * [finalText]), with the same [model], [provider] and [toolDefinitions] in the same order, has the same prefix:
- * the provider's prompt cache can serve it.
+ * [finalText]), with the same [requestOptions] and [toolDefinitions] in the same order, has the same prefix: the
+ * provider's prompt cache can serve it.
+ *
+ * Neither the model nor the provider is kept (a provider holds an API key): only their ids, to resolve them again
+ * when the request is reused, and the [requestOptions] they produced, to check that they still produce the same.
+ *
+ * When the turn hit its tool round limit, the request is the one asking the model to summarize without calling any
+ * tool: a request reusing it inherits that instruction, which is harmless for a call that has no tool to run.
  */
 data class LastLlmRequest(
     val caseId: UUID,
+    val namespaceId: UUID,
+    /** The user the turn ran for: the provider was resolved with their own overlay, possibly their own API key. */
+    val userId: UUID?,
     /** The messages of the request, the system message first, exactly as sent. */
     val messages: List<Message>,
     /** The tools declared by the request, in their order. */
     val toolDefinitions: List<ToolDefinition>,
-    /** The model of the request, with its inference options (temperature, reasoning effort...). */
-    val model: AiModel,
-    /** The provider of the request, with its headers. */
-    val provider: AiProvider,
-    /** The answer of the turn, as recorded in the case (the text of all its rounds). */
+    /** The model of the request (its reasoning effort may have been the case's instead of its own). */
+    val modelId: UUID,
+    /** The provider of the model, before the overlay of [userId]. */
+    val providerId: UUID,
+    val requestOptions: LlmRequestOptions,
+    /** The text the model answered to the request. */
     val finalText: String,
     val agentName: String,
     val agentConfigId: UUID?,
-    /** How many events of the case the turn was run with. */
+    /** How many conversation events ([isConversationEvent]) the case has once the answer is in. */
     val coveredEventCount: Int,
-    /** The last event of the case the turn was run with: later ones are not in [messages]. */
-    val lastCoveredEventId: UUID?,
-    val capturedAt: Instant = Instant.now(),
+    /** The last conversation event of the case once the answer is in: the answer itself. */
+    val lastCoveredEventId: UUID,
+    /** Set by [LastLlmRequestRegistry.put]. */
+    val capturedAt: Instant = Instant.EPOCH,
+    /** The last time a request reusing this one refreshed the provider's cache ([LastLlmRequestRegistry.touch]). */
+    val lastCacheTouchAt: Instant? = null,
+) {
+    /** When the provider's cache last saw this prefix. */
+    val lastUsedAt: Instant get() = lastCacheTouchAt?.takeIf { it.isAfter(capturedAt) } ?: capturedAt
+
+    /** The conversation of the case is still the one this request ended: nothing was said or done since. */
+    fun isCurrentFor(events: List<CaseEvent>): Boolean {
+        val conversation = events.filter { it.isConversationEvent() }
+        return conversation.size == coveredEventCount && conversation.lastOrNull()?.id == lastCoveredEventId
+    }
+
+    /** An approximation of the memory the request holds, in characters. */
+    internal fun estimatedSize(): Long =
+        messages.sumOf { message ->
+            val text = message.text?.length ?: 0
+            val responses = (message as? ToolResponseMessage)?.responses?.sumOf { it.responseData().length } ?: 0
+            val media =
+                (message as? org.springframework.ai.content.MediaContent)?.media?.sumOf { media ->
+                    when (val data = media.data) {
+                        is ByteArray -> data.size
+                        is String -> data.length
+                        else -> 0
+                    }
+                } ?: 0
+            (text + responses + media).toLong()
+        } + toolDefinitions.sumOf { (it.description().length + it.inputSchema().length).toLong() } + finalText.length
+}
+
+/** The events a turn's messages are built from: what was said, asked, answered, and the tool calls. */
+fun CaseEvent.isConversationEvent(): Boolean =
+    this is MessageEvent || this is ToolRequestEvent || this is ToolResponseEvent || this is QuestionEvent ||
+        this is AnswerEvent
+
+@ConfigurationProperties(prefix = "agentos.llm-request-registry")
+data class LlmRequestRegistryProperties(
+    /** Approximate memory budget of the registry, in characters of the requests it holds (oldest evicted first). */
+    val maxSize: Long = 200L * 1024 * 1024,
 )
 
 /**
  * In-memory registry of the [LastLlmRequest] of each case, for the calls that reuse the prompt cache of a
  * conversation (side questions, cache keep-alive). Only the agents that make the request themselves
- * ([AgentSimple]) record one.
+ * ([AgentSimple]) record one, and only when the exact request is known (a tracked chat model).
  *
- * Bounded: an entry expires [TTL] after its capture (a bit more than the longest prompt cache lifetime), and
- * past [MAX_ENTRIES] cases the oldest capture is evicted. Nothing survives a restart, which is fine: the
- * provider's cache would be cold anyway after such a delay. Thread-safe.
+ * Bounded: an entry expires [TTL] after its capture, a hard upper bound well beyond the default 5-minute prompt
+ * cache lifetime (callers decide how old a request they still reuse); past [MAX_ENTRIES] cases, or past
+ * [LlmRequestRegistryProperties.maxSize], the oldest capture is evicted. Expired entries are also purged every
+ * minute. Nothing survives a restart, which is fine: the provider's cache would be cold anyway. Thread-safe.
  */
 @Component
 class LastLlmRequestRegistry(
     private val clock: Clock = Clock.systemUTC(),
+    private val properties: LlmRequestRegistryProperties = LlmRequestRegistryProperties(),
 ) {
     /** In capture order, the oldest first. */
     private val entries = LinkedHashMap<UUID, LastLlmRequest>()
+    private var size = 0L
 
     /** The last request of [caseId], or null when there is none or it expired. */
     @Synchronized
     fun get(caseId: UUID): LastLlmRequest? {
         val request = entries[caseId] ?: return null
         if (isExpired(request)) {
-            entries.remove(caseId)
+            removeEntry(caseId)
             return null
         }
         return request
     }
 
-    /** Records [request] as the last one of its case, replacing the previous one. */
+    /** Records [request] as the last one of its case, replacing the previous one; captured now. */
     @Synchronized
     fun put(request: LastLlmRequest) {
-        entries.remove(request.caseId)
-        entries[request.caseId] = request
-        entries.values.removeIf(::isExpired)
-        while (entries.size > MAX_ENTRIES) {
-            entries.remove(entries.keys.first())
+        removeEntry(request.caseId)
+        val captured = request.copy(capturedAt = clock.instant(), lastCacheTouchAt = null)
+        entries[captured.caseId] = captured
+        size += captured.estimatedSize()
+        purgeExpired()
+        while (entries.isNotEmpty() && (entries.size > MAX_ENTRIES || size > properties.maxSize)) {
+            removeEntry(entries.keys.first())
         }
+    }
+
+    /**
+     * A request reusing the one captured at [capturedAt] for [caseId] refreshed the provider's cache now. Ignored
+     * when the case has another request since.
+     */
+    @Synchronized
+    fun touch(
+        caseId: UUID,
+        capturedAt: Instant,
+    ) {
+        val request = entries[caseId]?.takeIf { it.capturedAt == capturedAt } ?: return
+        entries[caseId] = request.copy(lastCacheTouchAt = clock.instant())
     }
 
     @Synchronized
     fun remove(caseId: UUID) {
-        entries.remove(caseId)
+        removeEntry(caseId)
+    }
+
+    @Scheduled(fixedDelay = PURGE_INTERVAL_MS, initialDelay = PURGE_INTERVAL_MS)
+    @Synchronized
+    fun purgeExpired() {
+        entries.values.filter(::isExpired).map { it.caseId }.forEach(::removeEntry)
+    }
+
+    @Synchronized
+    internal fun estimatedSize(): Long = size
+
+    private fun removeEntry(caseId: UUID) {
+        entries.remove(caseId)?.let { size -= it.estimatedSize() }
     }
 
     private fun isExpired(request: LastLlmRequest): Boolean = request.capturedAt.plus(TTL).isBefore(clock.instant())
 
     companion object {
-        /** A bit more than the 1-hour prompt cache lifetime of the providers. */
+        /** Hard upper bound of an entry's life, whatever its use. */
         val TTL: Duration = Duration.ofMinutes(65)
         const val MAX_ENTRIES = 500
+        private const val PURGE_INTERVAL_MS = 60_000L
     }
 }
