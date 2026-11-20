@@ -5,6 +5,7 @@ import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 
@@ -38,6 +39,8 @@ class ChatClientProvider(
         caseId: String? = null,
         accumulator: UsageAccumulator? = null,
         maxToolRounds: Int? = null,
+        /** The prompt cache duration chosen by the user the agent runs for; utility calls keep the default. */
+        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
     ): ChatClient {
         val chatModel =
             chatModelFactory.createChatModel(
@@ -49,6 +52,7 @@ class ChatClientProvider(
                 maxCompletionTokens = modelConfig.maxCompletionTokens,
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
                 reasoningEffort = modelConfig.reasoningEffort,
+                promptCacheTtl = promptCacheTtl,
             )
         val trackedModel =
             if (usageConfig.enabled && accumulator != null) {

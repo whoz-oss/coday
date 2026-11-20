@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms'
 import { DisclosureComponent, DS_PAGE_KIT, SegmentedComponent } from '@whoz-oss/design-system'
+import { PromptCacheTtl } from '@whoz-oss/agentos-api-client'
 import { combineLatest, map } from 'rxjs'
 import { AiProviderConfigStateService } from '../../services/ai-provider-config-state.service'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
@@ -37,7 +38,7 @@ interface UserGlobalRecap {
  *
  * Two modes in one component, toggled by isEditing():
  *   - Read mode: displays all user fields (email, externalId read-only + firstname, lastname, bio)
- *   - Edit mode: reactive form for firstname, lastname, bio
+ *   - Edit mode: reactive form for firstname, lastname, bio, language and prompt cache duration
  *
  * Story 6.6 also adds a "My global user configurations" section that recaps the user's
  * user-global overrides (`namespaceId IS NULL`) for Integrations and AI Providers.
@@ -131,11 +132,27 @@ export class UserProfileComponent implements OnInit {
     { value: 'zh', label: 'Chinese' },
   ]
 
+  /**
+   * How long Claude models behind Requesty keep the conversation cached between two calls. One hour costs more per
+   * cache write (2x the input price instead of 1.25x) but survives longer pauses.
+   */
+  protected readonly promptCacheTtlOptions: ReadonlyArray<{ value: PromptCacheTtl; label: string }> = [
+    { value: PromptCacheTtl.FIVE_MINUTES, label: '5 minutes (default)' },
+    { value: PromptCacheTtl.ONE_HOUR, label: '1 hour' },
+  ]
+
   protected readonly form = new FormGroup({
     firstname: new FormControl<string>('', { nonNullable: true }),
     lastname: new FormControl<string>('', { nonNullable: true }),
     bio: new FormControl<string>('', { nonNullable: true }),
     preferredLanguage: new FormControl<string>('', { nonNullable: true }),
+    promptCacheTtl: new FormControl<PromptCacheTtl>(PromptCacheTtl.FIVE_MINUTES, { nonNullable: true }),
+  })
+
+  /** Label of the current user's prompt cache duration, for the read mode. */
+  protected readonly promptCacheTtlLabel = computed(() => {
+    const value = this.currentUser()?.promptCacheTtl ?? PromptCacheTtl.FIVE_MINUTES
+    return this.promptCacheTtlOptions.find((option) => option.value === value)?.label ?? value
   })
 
   /**
@@ -261,6 +278,7 @@ export class UserProfileComponent implements OnInit {
         lastname: this.form.controls.lastname.value.trim() || undefined,
         bio: this.form.controls.bio.value.trim() || undefined,
         preferredLanguage: lang || undefined,
+        promptCacheTtl: this.form.controls.promptCacheTtl.value,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -332,6 +350,7 @@ export class UserProfileComponent implements OnInit {
       lastname: user.lastname ?? '',
       bio: user.bio ?? '',
       preferredLanguage: user.preferredLanguage ?? '',
+      promptCacheTtl: user.promptCacheTtl ?? PromptCacheTtl.FIVE_MINUTES,
     })
   }
 }

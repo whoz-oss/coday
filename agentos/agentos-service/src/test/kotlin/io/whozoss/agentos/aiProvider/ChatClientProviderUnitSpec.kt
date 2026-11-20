@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
@@ -76,6 +77,7 @@ class ChatClientProviderUnitSpec :
                     modelName = "claude-sonnet-4-5",
                     temperature = 0.3,
                     maxCompletionTokens = 8192,
+                    promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
                 )
             } returns chatModel
 
@@ -144,6 +146,31 @@ class ChatClientProviderUnitSpec :
             }
         }
 
+        "getChatClient forwards the user's prompt cache duration to ChatModelFactory" {
+            val m = model(apiName = "anthropic/claude-sonnet-4-5", temperature = null)
+            val p = provider(apiType = AiApiType.OpenAI, baseUrl = "https://router.eu.requesty.ai")
+            val chatModel = mockk<ChatModel>(relaxed = true)
+
+            every {
+                chatModelFactory.createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            } returns chatModel
+
+            chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.ONE_HOUR).shouldNotBeNull()
+            verify(exactly = 1) {
+                chatModelFactory.createChatModel(
+                    apiType = AiApiType.OpenAI,
+                    baseUrl = "https://router.eu.requesty.ai",
+                    apiKey = "sk-test",
+                    modelName = "anthropic/claude-sonnet-4-5",
+                    temperature = null,
+                    maxCompletionTokens = null,
+                    headers = any(),
+                    reasoningEffort = null,
+                    promptCacheTtl = PromptCacheTtl.ONE_HOUR,
+                )
+            }
+        }
+
         // The tool-round cap: the namespace's value when given, else the platform's. A model that answers
         // with a tool call forever lets the number of executed tools show which cap applied. Reaching the cap
         // does not fail the run: the model is asked to summarize, and the response carries the cap it reached.
@@ -178,7 +205,7 @@ class ChatClientProviderUnitSpec :
             every { nativeModel.call(any<Prompt>()) } returns ChatResponse(listOf(Generation(toolCall)))
             val factory =
                 mockk<ChatModelFactory> {
-                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
                 }
             val client =
                 ChatClientProvider(factory, limits, UsageConfigProperties(enabled = true))
@@ -213,7 +240,7 @@ class ChatClientProviderUnitSpec :
                 ChatResponse(listOf(Generation(AssistantMessage("Done"))))
             }
             val factory = mockk<ChatModelFactory> {
-                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
             }
             val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
             val client = clientProvider.getChatClient(model(), provider())
