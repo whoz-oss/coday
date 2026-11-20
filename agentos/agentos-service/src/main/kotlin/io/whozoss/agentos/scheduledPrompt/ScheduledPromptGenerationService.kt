@@ -86,9 +86,9 @@ import java.util.UUID
  * - `search.params` are the base parameters, which the generated ones keep as they are (see
  *   [LoopConfigGenerationService]): the LLM only adds what the description asks for, typically criteria;
  * - `act.agentName` is the target agent, `act.prompt` the prompt;
- * - `search.params`, when not empty, are also shown as is to the planner: when they say who each case is opened with,
- *   the prompt is written in that recipient's voice. They are read by the LLM only: their keys are the search tool's,
- *   unknown to this service. Without them, the prompt is written to read right for any recipient.
+ * - `search.params.resolveTargets`, when a list of strings (a convention of the Whoz search tools), is given to the
+ *   planner as the recipient of each case (e.g. MANAGER), so that the prompt is written in that recipient's voice.
+ *   Without it, the prompt is written to read right for any recipient.
  *
  * A part of the wrong type is a 400, as is a target agent that is not available.
  *
@@ -279,7 +279,22 @@ class ScheduledPromptGenerationService(
         val prompt: String?,
         val searchToolName: String?,
         val baseParams: JsonNode?,
-    )
+    ) {
+        /**
+         * Who each case is opened with, when the base flow configuration says it: the `resolveTargets` of its search
+         * params (a convention of the Whoz search tools, e.g. `["MANAGER"]`), read as a hint only. Null when absent,
+         * empty, or not a list of strings.
+         */
+        val recipients: List<String>?
+            get() =
+                baseParams
+                    ?.get(RESOLVE_TARGETS_PARAM)
+                    ?.takeIf { it.isArray && it.all { item -> item.isTextual } }
+                    ?.map { it.asText() }
+                    ?.filter { it.isNotBlank() }
+                    ?.distinct()
+                    ?.takeIf { it.isNotEmpty() }
+    }
 
     /** The parts of a base flow configuration. */
     private data class ParsedBase(
@@ -521,10 +536,9 @@ class ScheduledPromptGenerationService(
             appendLine()
             appendLine("Target agent candidates (the agent started for each search result):")
             candidates.targets.forEach { appendLine("- ${it.name}: ${it.description.orEmpty()}") }
-            inputs.baseParams?.takeIf { it.size() > 0 }?.let { params ->
+            inputs.recipients?.let { recipients ->
                 appendLine()
-                appendLine("Base search parameters (they may say who each case is opened with):")
-                appendLine(objectMapper.writeValueAsString(params))
+                appendLine("Recipient of each case (its relation to the entity of the case): ${recipients.joinToString(", ")}")
             }
             if (fixed.isNotEmpty()) {
                 appendLine()
@@ -1039,6 +1053,9 @@ class ScheduledPromptGenerationService(
 
         private const val ONLY_CANDIDATE_RATIONALE = "only LOOP agent of the namespace"
 
+        /** Search param naming who each case is opened with, by the convention of the Whoz search tools. */
+        private const val RESOLVE_TARGETS_PARAM = "resolveTargets"
+
         /** Keys of the planning answer's `rationale` object, per field. The preset is chosen by its own call, so it has none. */
         private val RATIONALE_KEYS =
             mapOf(
@@ -1087,11 +1104,10 @@ class ScheduledPromptGenerationService(
               analyze, suggest, review, or ask the recipient ("suggest them to me", "ask me to estimate...").
             - The prompt is about the single entity of the case: refer to it as "this <entity>" or "the provided
               <entity>". It must not mention ids, the search, or other entities.
-            - When the "Base search parameters" clearly say who each case is opened with, as a single relation to the
-              entity (e.g. its owner, its manager), the prompt may state it in the recipient's voice ("As the manager
-              of this <entity>, I..."). Otherwise (no base search parameters, nothing about the recipient, or several
-              relations), do not state how the recipient relates to the entity ("I own", "my <entity>"): the prompt
-              must read right for any recipient.
+            - When a "Recipient of each case" is given with a single relation (e.g. MANAGER, OWNER), the prompt may state
+              it in the recipient's voice ("As the manager of this <entity>, I...", "As the owner of this <entity>,
+              I..."). Otherwise (no recipient given, or several relations), do not state how the recipient relates to
+              the entity ("I own", "my <entity>"): the prompt must read right for any recipient.
             - The prompt must not mention the schedule or the recurrence ("every day", "each Monday"): they are
               configured separately.
             - Example. Description: "Every day, for each task due next week, contact its owner and ask them to confirm
