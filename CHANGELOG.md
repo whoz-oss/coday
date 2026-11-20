@@ -1,3 +1,20 @@
+## 3.50.0 (2026-11-20)
+
+### 🚀 Features
+
+- #WZ-36230 write scheduled prompt in the recipient's voice, using resolveTargets as a hint ([c3089a01a](https://github.com/whoz-oss/coday/commit/c3089a01a))
+- wz-36256 - unit test fix ([c832ae1c1](https://github.com/whoz-oss/coday/commit/c832ae1c1))
+- #WZ-36256 write scheduled prompt in the recipient's voice, using resolveTargets as a hint ([#1703](https://github.com/whoz-oss/coday/pull/1703))
+
+### 🩹 Fixes
+
+- #WZ-36230 restore resolveTargets as the recipient hint, keeping the neutral examples ([f618ae774](https://github.com/whoz-oss/coday/commit/f618ae774))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.49.0 (2026-11-19)
 
 ### 🚀 Features
