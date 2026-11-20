@@ -63,6 +63,7 @@ import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
 import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
+import { IdeLinkService } from '../../services/ide-link.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
 import { AgentActivity, describeAgentActivity } from '../agent-activity/agent-activity.models'
@@ -279,6 +280,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef)
   private readonly injector = inject(Injector)
   private readonly markdown = inject(MarkdownRendererService)
+  private readonly ideLinks = inject(IdeLinkService)
   private readonly exchangeState = inject(ExchangeStateService)
 
   private readonly config = inject(Configuration)
@@ -639,6 +641,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Listener cleanup function registered on the messages container. */
   private scrollListenerCleanup: (() => void) | null = null
+  /** Removes the file-link click listener registered on the messages container. */
+  private messagesClickCleanup: (() => void) | null = null
 
   constructor() {
     this.autocomplete.init(this.namespaceId)
@@ -703,6 +707,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // Register DOM-dependent behaviour after the first render.
     afterNextRender(() => {
       this.attachScrollListener()
+      this.attachMessagesClickListener()
       this.resizeComposer()
     })
   }
@@ -1142,6 +1147,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
+    this.messagesClickCleanup?.()
   }
 
   protected toggleWizz(): void {
@@ -1242,6 +1248,34 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     el.addEventListener('scroll', onScroll, { passive: true })
     this.scrollListenerCleanup = () => el.removeEventListener('scroll', onScroll)
+  }
+
+  /**
+   * Delegated click listener on the messages container, for the file references rendered as links in a message.
+   * A native listener (not a template handler): the links are injected HTML, and the template a11y lint wants a key
+   * handler on a clickable div. Enter on a focused link fires its click, which reaches this listener too.
+   */
+  private attachMessagesClickListener(): void {
+    const el = this.messagesContainer()?.nativeElement
+    if (!el) return
+
+    const onClick = (event: MouseEvent): void => this.onMessagesClick(event)
+
+    el.addEventListener('click', onClick)
+    this.messagesClickCleanup = () => el.removeEventListener('click', onClick)
+  }
+
+  /** A file reference rendered in a message opens in the IDE; any other click in the messages is left alone. */
+  private onMessagesClick(event: MouseEvent): void {
+    const link = event.target instanceof Element ? event.target.closest('a.agentos-file-link') : null
+    if (!link) return
+    event.preventDefault()
+    const url = this.ideLinks.resolveIdeUrl({
+      path: link.getAttribute('data-file') ?? '',
+      line: Number(link.getAttribute('data-line')) || undefined,
+      column: Number(link.getAttribute('data-column')) || undefined,
+    })
+    if (url) window.location.assign(url)
   }
 
   /** Programmatically scroll the messages container to the very bottom. */

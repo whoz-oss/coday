@@ -31,6 +31,7 @@ import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { IdeLinkService } from '../../services/ide-link.service'
 import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
@@ -137,6 +138,8 @@ describe('CaseChatComponent — submit with attachments', () => {
             composerHint: () => 'hint',
             showTechnical,
             enterKeyBehavior: signal('send'),
+            ideProjectRoot: signal(''),
+            ideUrlTemplate: signal('idea://open?file={file}&line={line}'),
           },
         },
       ],
@@ -1673,6 +1676,56 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
 
       expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['question'])
+    })
+  })
+
+  describe('file links in messages', () => {
+    /** The code element of a file link, as the sanitized markdown renders it. */
+    const linkCode = (attributes: string): Element => {
+      const host = document.createElement('div')
+      host.innerHTML = `<a class="agentos-file-link" href="#" ${attributes}><code>src/a.ts</code></a>`
+      return host.querySelector('code') as Element
+    }
+
+    /** Dispatches a click on the target and hands it to the messages click handler. */
+    const click = (ref: ComponentRef<CaseChatComponent>, target: Element): MouseEvent => {
+      const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+      ref.instance['onMessagesClick'](event)
+      return event
+    }
+
+    it('opens a file link at its data-file, line and column, and keeps the browser from following the href', () => {
+      const ref = makeComponent()
+      const resolve = jest
+        .spyOn(TestBed.inject(IdeLinkService), 'resolveIdeUrl')
+        // A same-page URL, so jsdom does not try to navigate.
+        .mockReturnValue('#opened-in-ide')
+
+      const event = click(ref, linkCode('data-file="/abs/x.kt" data-line="10" data-column="5"'))
+
+      expect(resolve).toHaveBeenCalledWith({ path: '/abs/x.kt', line: 10, column: 5 })
+      expect(event.defaultPrevented).toBe(true)
+    })
+
+    it('reads a link without position as a file at its first line', () => {
+      const ref = makeComponent()
+      const resolve = jest.spyOn(TestBed.inject(IdeLinkService), 'resolveIdeUrl').mockReturnValue(null)
+
+      click(ref, linkCode('data-file="src/a.ts"'))
+
+      expect(resolve).toHaveBeenCalledWith({ path: 'src/a.ts', line: undefined, column: undefined })
+    })
+
+    it('leaves a click outside a file link alone', () => {
+      const ref = makeComponent()
+      const resolve = jest.spyOn(TestBed.inject(IdeLinkService), 'resolveIdeUrl')
+      const paragraph = document.createElement('p')
+
+      const event = click(ref, paragraph)
+
+      expect(resolve).not.toHaveBeenCalled()
+      expect(event.defaultPrevented).toBe(false)
     })
   })
 

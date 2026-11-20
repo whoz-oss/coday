@@ -2,6 +2,7 @@ import { inject, Injectable } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
+import { escapeHtml, parseFileReference, renderFileCodespan } from './file-link'
 
 /** Single sanitized Markdown pipeline shared by chat messages and delegation outcomes. */
 @Injectable({ providedIn: 'root' })
@@ -25,7 +26,13 @@ export class MarkdownRendererService {
     const link = renderer.link.bind(renderer)
     const code = renderer.code.bind(renderer)
     const table = renderer.table.bind(renderer)
+    const codespan = renderer.codespan.bind(renderer)
     renderer.code = (token): string => code(token).replace('<pre>', '<pre class="agentos-chat-code-block">')
+    // marked passes the raw code text: it is escaped here, as the default codespan renderer would do.
+    renderer.codespan = (token): string => {
+      const ref = parseFileReference(token.text)
+      return ref ? renderFileCodespan(escapeHtml(token.text), ref) : codespan(token)
+    }
     // The wrapper scrolls a wide table sideways instead of squeezing its columns or clipping it (styled by .ds-md-table).
     renderer.table = (token): string => `<div class="ds-md-table">${table(token)}</div>`
     renderer.link = (token): string => {

@@ -78,6 +78,43 @@ describe('AgentosUserPreferencesService', () => {
     })
   })
 
+  describe('IDE file links', () => {
+    const ROOT_KEY = 'agentos.ide.project-root'
+    const TEMPLATE_KEY = 'agentos.ide.url-template'
+    const DEFAULT_TEMPLATE = 'idea://open?file={file}&line={line}'
+
+    it('has no project root and the IntelliJ template when nothing is stored', () => {
+      const service = new AgentosUserPreferencesService()
+      expect(service.ideProjectRoot()).toBe('')
+      expect(service.ideUrlTemplate()).toBe(DEFAULT_TEMPLATE)
+    })
+
+    it('reads the stored project root and template on init', () => {
+      localStorage.setItem(ROOT_KEY, '/Users/ali/proj')
+      localStorage.setItem(TEMPLATE_KEY, 'idea://open?file={file}')
+      const service = new AgentosUserPreferencesService()
+      expect(service.ideProjectRoot()).toBe('/Users/ali/proj')
+      expect(service.ideUrlTemplate()).toBe('idea://open?file={file}')
+    })
+
+    it('persists the trimmed project root and reflects it on the signal', () => {
+      const service = new AgentosUserPreferencesService()
+      service.setIdeProjectRoot('  /Users/ali/proj  ')
+      expect(service.ideProjectRoot()).toBe('/Users/ali/proj')
+      expect(localStorage.getItem(ROOT_KEY)).toBe('/Users/ali/proj')
+    })
+
+    it('persists the template and resets a blank one to the default', () => {
+      const service = new AgentosUserPreferencesService()
+      service.setIdeUrlTemplate('idea://open?file={file}&line={line}&column={column}')
+      expect(localStorage.getItem(TEMPLATE_KEY)).toBe('idea://open?file={file}&line={line}&column={column}')
+
+      service.setIdeUrlTemplate('   ')
+      expect(service.ideUrlTemplate()).toBe(DEFAULT_TEMPLATE)
+      expect(localStorage.getItem(TEMPLATE_KEY)).toBe(DEFAULT_TEMPLATE)
+    })
+  })
+
   describe('shouldSend — only a real ENTER press', () => {
     it('never sends for a non-Enter key', () => {
       expect(new AgentosUserPreferencesService().shouldSend(keydown({ key: 'a' }))).toBe(false)
