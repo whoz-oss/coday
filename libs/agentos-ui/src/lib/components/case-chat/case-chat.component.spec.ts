@@ -31,6 +31,7 @@ import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-s
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { UserStateService } from '../../services/user-state.service'
+import { GlobalStreamService } from '../../services/global-stream.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
@@ -111,6 +112,7 @@ describe('CaseChatComponent — submit with attachments', () => {
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
         { provide: UserStateService, useValue: { currentUser: signal<User | null>(null) } },
+        { provide: GlobalStreamService, useValue: { caseEvents$: new Subject(), connected$: new Subject() } },
         {
           provide: USER_PREFERENCES_PORT,
           useValue: {

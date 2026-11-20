@@ -107,6 +107,7 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { WizzStateService } from './wizz-state.service'
 
 export interface ToolCall {
   requestId: string
@@ -227,7 +228,7 @@ function hasActiveSelection(): boolean {
     CostPipe,
     TokenCountPipe,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService, WizzStateService],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -246,6 +247,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly caseState = inject(CaseStateService)
   private readonly oauthService = inject(OAuthAgentosService)
   private readonly userState = inject(UserStateService)
+  protected readonly wizz = inject(WizzStateService)
+  private readonly messagesRegion = viewChild<ElementRef<HTMLDivElement>>('messagesRegion')
+  private wizzAnimation: Animation | null = null
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -981,6 +985,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.voiceCapability.load()
+    this.wizz.setContext(this.caseId, this.namespaceId)
+    this.wizz.completed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.playWizz())
     this.connectSse()
 
     // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
@@ -999,6 +1005,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
     }
+    this.cancelWizz()
+    this.wizz.reset()
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
   }
@@ -1051,6 +1059,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.dropCaseProbe()
     this.streamUnavailable.set(false)
     this.caseGone.set(false)
+    this.wizz.discardPending()
+    this.cancelWizz()
     this.eventSource?.close()
     this.connectSse()
   }
@@ -1125,6 +1135,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
+          this.wizz.acceptTimeline(this.events())
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1295,6 +1306,39 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  protected toggleWizz(): void {
+    this.wizz.toggle()
+    if (!this.wizz.enabled()) this.cancelWizz()
+  }
+
+  private playWizz(): void {
+    const target = this.messagesRegion()?.nativeElement
+    if (!target || typeof target.animate !== 'function') return
+    this.cancelWizz()
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    this.wizzAnimation = target.animate(
+      reducedMotion
+        ? [
+            { boxShadow: 'inset 0 0 0 0 var(--color-accent)' },
+            { boxShadow: 'inset 0 0 0 3px var(--color-accent)' },
+            { boxShadow: 'inset 0 0 0 0 var(--color-accent)' },
+          ]
+        : [
+            { transform: 'translateX(0)' },
+            { transform: 'translateX(-4px)' },
+            { transform: 'translateX(4px)' },
+            { transform: 'translateX(0)' },
+          ],
+      { duration: 300, easing: 'ease-out' }
+    )
+    this.wizzAnimation.onfinish = () => (this.wizzAnimation = null)
+  }
+
+  private cancelWizz(): void {
+    this.wizzAnimation?.cancel()
+    this.wizzAnimation = null
+  }
+
   /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
   private anyToolResponseThisTurn = false
 
@@ -1414,6 +1458,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
     }
+    this.cancelWizz()
+    this.wizz.setContext(this.caseId, this.namespaceId)
     this.eventSource?.close()
     this.eventSource = null
     this.dropCaseProbe()
