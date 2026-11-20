@@ -150,9 +150,9 @@ describe('WorkflowDetailPageComponent', () => {
 
   it('adds a code step through the closed verifier select without a command field', async () => {
     const api = createApi({
-      createWorkflowDefinition: jest.fn().mockReturnValue(
-        of({ workflowType: 'verification', version: '1.0.0', definitionHash: 'code-hash' })
-      ),
+      createWorkflowDefinition: jest
+        .fn()
+        .mockReturnValue(of({ workflowType: 'verification', version: '1.0.0', definitionHash: 'code-hash' })),
     })
     const route = createRoute('', '')
     const { host, fixture } = await setup(api, {
@@ -192,7 +192,9 @@ describe('WorkflowDetailPageComponent', () => {
         of({
           ...FULL_DEF,
           version: '1.0.0',
-          steps: [{ id: 'legacy', name: 'Legacy', responsibility: { kind: 'code', name: 'private-check' }, dependsOn: [] }],
+          steps: [
+            { id: 'legacy', name: 'Legacy', responsibility: { kind: 'code', name: 'private-check' }, dependsOn: [] },
+          ],
         })
       ),
     })

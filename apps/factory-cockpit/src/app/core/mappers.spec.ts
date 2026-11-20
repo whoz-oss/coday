@@ -2005,27 +2005,77 @@ describe('mappers', () => {
         workflowId: 'correction-run',
         projection: {
           status: 'running',
-          correction: { cycleId: 'cycle-1', cycleNumber: 1, maxCycles: 2, status: 'active', triggeringStepId: 'review', returnTargetStepId: 'implement' },
+          correction: {
+            cycleId: 'cycle-1',
+            cycleNumber: 1,
+            maxCycles: 2,
+            status: 'active',
+            triggeringStepId: 'review',
+            returnTargetStepId: 'implement',
+          },
           stepExecutions: [
-            { executionId: 'exec-implement-1', stepId: 'implement', executionNumber: 1, status: 'completed', startedAt, completedAt: isoOffset(10) },
-            { executionId: 'exec-implement-2', stepId: 'implement', executionNumber: 2, cycleNumber: 1, status: 'running', startedAt: isoOffset(20), triggeringExecutionId: 'exec-review-1' },
+            {
+              executionId: 'exec-implement-1',
+              stepId: 'implement',
+              executionNumber: 1,
+              status: 'completed',
+              startedAt,
+              completedAt: isoOffset(10),
+            },
+            {
+              executionId: 'exec-implement-2',
+              stepId: 'implement',
+              executionNumber: 2,
+              cycleNumber: 1,
+              status: 'running',
+              startedAt: isoOffset(20),
+              triggeringExecutionId: 'exec-review-1',
+            },
           ],
-          steps: [{ id: 'implement', name: 'Implement', status: 'running', responsibility: { kind: 'code', name: 'check' } }],
+          steps: [
+            { id: 'implement', name: 'Implement', status: 'running', responsibility: { kind: 'code', name: 'check' } },
+          ],
         },
       }
-      const evidence = { items: [
-        { evidenceId: 'e-1', executionId: 'exec-implement-1', kind: 'log', facts: { text: 'old execution' }, createdAt: startedAt },
-        { evidenceId: 'e-2', executionId: 'exec-implement-2', kind: 'log', facts: { text: 'new execution' }, createdAt: isoOffset(20) },
-      ] }
+      const evidence = {
+        items: [
+          {
+            evidenceId: 'e-1',
+            executionId: 'exec-implement-1',
+            kind: 'log',
+            facts: { text: 'old execution' },
+            createdAt: startedAt,
+          },
+          {
+            evidenceId: 'e-2',
+            executionId: 'exec-implement-2',
+            kind: 'log',
+            facts: { text: 'new execution' },
+            createdAt: isoOffset(20),
+          },
+        ],
+      }
       const session = mapProjectionToSessionDetail(workflow, undefined, evidence)
       expect(session.correction).toMatchObject({ cycleNumber: 1, maxCycles: 2, returnTargetStepId: 'implement' })
-      expect(session.lanes.flatMap((lane) => lane.blocks)).toEqual(expect.arrayContaining([
-        expect.objectContaining({ executionId: 'exec-implement-1', executionNumber: 1 }),
-        expect.objectContaining({ executionId: 'exec-implement-2', cycleNumber: 1, triggeringExecutionId: 'exec-review-1' }),
-      ]))
-      expect(session.eventsByExecutionId?.get('exec-implement-1')?.map((event) => event.text)).toEqual(['old execution'])
-      expect(session.eventsByExecutionId?.get('exec-implement-2')?.map((event) => event.text)).toEqual(['new execution'])
-      expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(2)
+      expect(session.lanes.flatMap((lane) => lane.blocks)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ executionId: 'exec-implement-1', executionNumber: 1 }),
+          expect.objectContaining({
+            executionId: 'exec-implement-2',
+            cycleNumber: 1,
+            triggeringExecutionId: 'exec-review-1',
+          }),
+        ])
+      )
+      expect(session.eventsByExecutionId?.get('exec-implement-1')?.map((event) => event.text)).toEqual([
+        'old execution',
+      ])
+      expect(session.eventsByExecutionId?.get('exec-implement-2')?.map((event) => event.text)).toEqual([
+        'new execution',
+      ])
+      expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(
+        2
+      )
     })
   })
 
@@ -2036,26 +2086,80 @@ describe('mappers', () => {
         projection: {
           status: 'running',
           stepExecutions: [
-            { executionId: 'exec-1', stepId: 'implement', executionNumber: 1, cycleNumber: 0, status: 'completed', startedAt, completedAt: isoOffset(5), resultEvidenceId: 'e-1' },
-            { executionId: 'exec-2', stepId: 'implement', executionNumber: 2, cycleNumber: 1, status: 'running', startedAt: isoOffset(10), triggeringExecutionId: 'review-1', resultEvidenceId: 'e-2' },
+            {
+              executionId: 'exec-1',
+              stepId: 'implement',
+              executionNumber: 1,
+              cycleNumber: 0,
+              status: 'completed',
+              startedAt,
+              completedAt: isoOffset(5),
+              resultEvidenceId: 'e-1',
+            },
+            {
+              executionId: 'exec-2',
+              stepId: 'implement',
+              executionNumber: 2,
+              cycleNumber: 1,
+              status: 'running',
+              startedAt: isoOffset(10),
+              triggeringExecutionId: 'review-1',
+              resultEvidenceId: 'e-2',
+            },
           ],
-          correction: { cycleId: 'cycle-1', cycleNumber: 1, maxCycles: 2, status: 'active', triggeringStepId: 'review', triggeringExecutionId: 'review-1', returnTargetStepId: 'implement' },
-          steps: [{ id: 'implement', name: 'Implement', status: 'running', responsibility: { kind: 'code', name: 'build' } }],
+          correction: {
+            cycleId: 'cycle-1',
+            cycleNumber: 1,
+            maxCycles: 2,
+            status: 'active',
+            triggeringStepId: 'review',
+            triggeringExecutionId: 'review-1',
+            returnTargetStepId: 'implement',
+          },
+          steps: [
+            { id: 'implement', name: 'Implement', status: 'running', responsibility: { kind: 'code', name: 'build' } },
+          ],
         },
       }
-      const session = mapProjectionToSessionDetail(workflow, undefined, { items: [
-        { evidenceId: 'e-1', stepId: 'implement', kind: 'session-step', facts: { executionId: 'exec-1', text: 'first proof' } },
-        { evidenceId: 'e-2', stepId: 'implement', kind: 'session-step', facts: { executionId: 'exec-2', text: 'second proof' } },
-      ] })
+      const session = mapProjectionToSessionDetail(workflow, undefined, {
+        items: [
+          {
+            evidenceId: 'e-1',
+            stepId: 'implement',
+            kind: 'session-step',
+            facts: { executionId: 'exec-1', text: 'first proof' },
+          },
+          {
+            evidenceId: 'e-2',
+            stepId: 'implement',
+            kind: 'session-step',
+            facts: { executionId: 'exec-2', text: 'second proof' },
+          },
+        ],
+      })
       expect(session.correction).toMatchObject({ cycleNumber: 1, maxCycles: 2, status: 'active' })
-      expect(session.lanes.flatMap((lane) => lane.blocks)).toEqual(expect.arrayContaining([
-        expect.objectContaining({ executionId: 'exec-1', executionNumber: 1, cycleNumber: 0 }),
-        expect.objectContaining({ executionId: 'exec-2', executionNumber: 2, cycleNumber: 1, triggeringExecutionId: 'review-1' }),
-      ]))
+      expect(session.lanes.flatMap((lane) => lane.blocks)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ executionId: 'exec-1', executionNumber: 1, cycleNumber: 0 }),
+          expect.objectContaining({
+            executionId: 'exec-2',
+            executionNumber: 2,
+            cycleNumber: 1,
+            triggeringExecutionId: 'review-1',
+          }),
+        ])
+      )
       expect(session.eventsByExecutionId?.get('exec-1')?.map((event) => event.text)).toEqual(['first proof'])
       expect(session.eventsByExecutionId?.get('exec-2')?.map((event) => event.text)).toEqual(['second proof'])
-      expect(session.phaseByExecutionId?.get('exec-1')?.sections.find((section) => section.label === 'Sorties')?.items?.map((item) => item.subtitle)).toEqual(['first proof'])
-      expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(2)
+      expect(
+        session.phaseByExecutionId
+          ?.get('exec-1')
+          ?.sections.find((section) => section.label === 'Sorties')
+          ?.items?.map((item) => item.subtitle)
+      ).toEqual(['first proof'])
+      expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(
+        2
+      )
     })
   })
 

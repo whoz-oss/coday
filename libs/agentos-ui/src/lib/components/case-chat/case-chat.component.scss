@@ -1038,17 +1038,13 @@
     align-items: center;
     gap: 10px;
     padding: 6px 10px 10px;
-  }
 
-  &__effort {
-    flex-shrink: 0;
-    padding: 2px 6px;
-    border: 1px solid var(--color-divider);
-    border-radius: var(--radius-pill, 0);
-    color: var(--color-neutral-700);
-    font-family: var(--font-body);
-    font-size: 11px;
-    white-space: nowrap;
+    // Many controls: wrap rather than cover the textarea; mic and send stay on the right.
+    @media (max-width: 600px) {
+      flex-wrap: wrap;
+      min-width: 0;
+      gap: 6px;
+    }
   }
 
   &__actions-hint {
@@ -1060,6 +1056,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     padding-left: 6px;
+
+    // The hint is hidden but keeps its flex:1 so that mic and send stay pushed to the right.
+    @media (max-width: 600px) {
+      visibility: hidden;
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 0;
+    }
   }
 
   // ── Notice bar (case ended, or its event stream was refused) ───────────────

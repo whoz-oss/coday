@@ -3,7 +3,16 @@
  * Orchestrates all sub-modules to produce SessionDetail and FactoryRun.
  */
 
-import { AgentQuestion, CorrectionCycle, FactoryRun, RunStatus, SandboxStatus, SessionDetail, SessionStep, StepExecution } from '../models'
+import {
+  AgentQuestion,
+  CorrectionCycle,
+  FactoryRun,
+  RunStatus,
+  SandboxStatus,
+  SessionDetail,
+  SessionStep,
+  StepExecution,
+} from '../models'
 import { asArray, asObject, getString, getNumber } from './utils'
 import { classifyActorKind, resolveStepState, stepDurationSec, toneForActor } from './step-classification'
 import {
@@ -257,8 +266,12 @@ export function mapProjectionToSessionDetail(
   const phaseByExecutionId = new Map<string, import('../models').PhaseDetail>()
   for (const execution of stepExecutions) {
     const executionEvidence = evidenceForExecution(evidenceItems, execution)
-    const executionInteractions = mappedInteractions.filter((interaction) => interaction.executionId === execution.executionId)
-    const executionAttempt = execution.attemptId ? mappedAttempts.filter((attempt) => attempt.attemptId === execution.attemptId) : []
+    const executionInteractions = mappedInteractions.filter(
+      (interaction) => interaction.executionId === execution.executionId
+    )
+    const executionAttempt = execution.attemptId
+      ? mappedAttempts.filter((attempt) => attempt.attemptId === execution.attemptId)
+      : []
     const executionScopedSteps = steps.map((raw) => {
       const step = asObject(raw)
       return getString(step, 'id') === execution.stepId
@@ -303,11 +316,13 @@ export function mapProjectionToSessionDetail(
     )
   }
   for (const execution of stepExecutions) {
-    const executionInteractions = mappedInteractions.filter((interaction) => interaction.executionId === execution.executionId)
-    eventsByExecutionId.set(
-      execution.executionId,
-      [...mapEvidenceToEvents(evidenceForExecution(evidenceItems, execution), []), ...mapInteractionsToEvents(executionInteractions)]
+    const executionInteractions = mappedInteractions.filter(
+      (interaction) => interaction.executionId === execution.executionId
     )
+    eventsByExecutionId.set(execution.executionId, [
+      ...mapEvidenceToEvents(evidenceForExecution(evidenceItems, execution), []),
+      ...mapInteractionsToEvents(executionInteractions),
+    ])
   }
 
   const relations =
@@ -375,10 +390,13 @@ function evidenceForExecution(evidenceItems: unknown[], execution: StepExecution
     const obj = asObject(raw)
     const facts = asObject(obj?.['facts'])
     const evidenceId = getString(obj, 'evidenceId') ?? getString(obj, 'id')
-    return getString(obj, 'executionId') === execution.executionId ||
+    return (
+      getString(obj, 'executionId') === execution.executionId ||
       getString(facts, 'executionId') === execution.executionId ||
       (execution.resultEvidenceId !== undefined && evidenceId === execution.resultEvidenceId) ||
-      (execution.attemptId !== undefined && (getString(obj, 'attemptId') === execution.attemptId || getString(facts, 'attemptId') === execution.attemptId))
+      (execution.attemptId !== undefined &&
+        (getString(obj, 'attemptId') === execution.attemptId || getString(facts, 'attemptId') === execution.attemptId))
+    )
   })
 }
 
@@ -396,15 +414,20 @@ function extractStepExecutions(value: unknown): StepExecution[] {
     const attemptId = getString(obj, 'attemptId')
     const resultEvidenceId = getString(obj, 'resultEvidenceId')
     const triggeringExecutionId = getString(obj, 'triggeringExecutionId')
-    return [{
-      executionId, stepId, executionNumber, status,
-      ...(cycleNumber !== undefined ? { cycleNumber } : {}),
-      ...(startedAt ? { startedAt } : {}),
-      ...(completedAt ? { completedAt } : {}),
-      ...(attemptId ? { attemptId } : {}),
-      ...(resultEvidenceId ? { resultEvidenceId } : {}),
-      ...(triggeringExecutionId ? { triggeringExecutionId } : {}),
-    }]
+    return [
+      {
+        executionId,
+        stepId,
+        executionNumber,
+        status,
+        ...(cycleNumber !== undefined ? { cycleNumber } : {}),
+        ...(startedAt ? { startedAt } : {}),
+        ...(completedAt ? { completedAt } : {}),
+        ...(attemptId ? { attemptId } : {}),
+        ...(resultEvidenceId ? { resultEvidenceId } : {}),
+        ...(triggeringExecutionId ? { triggeringExecutionId } : {}),
+      },
+    ]
   })
 }
 
@@ -416,11 +439,25 @@ function extractCorrection(value: unknown): CorrectionCycle | undefined {
   const status = getString(obj, 'status')
   const triggeringStepId = getString(obj, 'triggeringStepId')
   const returnTargetStepId = getString(obj, 'returnTargetStepId')
-  if (!obj || !cycleId || cycleNumber === undefined || maxCycles === undefined || !status || !triggeringStepId || !returnTargetStepId) return undefined
+  if (
+    !obj ||
+    !cycleId ||
+    cycleNumber === undefined ||
+    maxCycles === undefined ||
+    !status ||
+    !triggeringStepId ||
+    !returnTargetStepId
+  )
+    return undefined
   const triggeringAttemptId = getString(obj, 'triggeringAttemptId')
   const triggeringExecutionId = getString(obj, 'triggeringExecutionId')
   return {
-    cycleId, cycleNumber, maxCycles, status, triggeringStepId, returnTargetStepId,
+    cycleId,
+    cycleNumber,
+    maxCycles,
+    status,
+    triggeringStepId,
+    returnTargetStepId,
     ...(triggeringAttemptId ? { triggeringAttemptId } : {}),
     ...(triggeringExecutionId ? { triggeringExecutionId } : {}),
   }

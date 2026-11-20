@@ -123,4 +123,17 @@ interface CaseApi : EntityCrudApi<CaseDto> {
         id: UUID,
         request: CaseReasoningEffortRequest,
     ): CaseDto
+
+    @Operation(
+        summary = "Set the AI model of a case",
+        description =
+            "PUT /api/cases/{id}/model — set the case-level override of the AI model (an alias or an API model " +
+                "name) of the agents running in the case, or remove it with a null value so each agent uses its own " +
+                "model again. An unknown name is refused with 400. Read at the start of each agent run. Replaces the " +
+                "model of every agent of the case; sub-cases do not inherit it. Returns the updated Case DTO.",
+    )
+    fun setModel(
+        id: UUID,
+        request: CaseModelRequest,
+    ): CaseDto
 }
