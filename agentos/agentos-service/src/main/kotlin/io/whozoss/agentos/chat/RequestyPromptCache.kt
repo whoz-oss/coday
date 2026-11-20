@@ -22,7 +22,6 @@ import org.springframework.web.reactive.function.client.ExchangeFilterFunction
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.net.URI
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * One-hour prompt caching for Claude models via Requesty (OpenAI-compatible API).
@@ -226,33 +225,33 @@ internal object RequestyPromptCache : KLogging() {
      * Collects what the original body inserter writes, rewrites it with [rewriteChatCompletionsBody], fixes
      * `Content-Length` (the JDK connector sizes the body from it) and writes the result to [delegate].
      *
-     * Buffers are collected one by one. As soon as their running size exceeds [MAX_REWRITE_BYTES], collecting
-     * stops: the buffers already received and the rest of the stream are written as they are, with the original
-     * `Content-Length`. Buffers still held when the write is cancelled or fails are released.
+     * The whole body is collected before deciding, as references to the encoder's buffers (nothing is copied at
+     * this stage): Spring AI hands over one buffer that Jackson already encoded in full, so collecting adds no
+     * memory. [MAX_REWRITE_BYTES] therefore bounds the parsing and re-serialisation, not the collection: above
+     * it, the original buffers are written unchanged, with the original `Content-Length`.
+     *
+     * Deciding only once the body is complete is also what the JDK connector needs: its `writeWith` completes
+     * before it subscribes to the body, so the body handed to it must be a complete, replayable sequence of
+     * buffers, never a live view of the source. Buffers still held when the write is cancelled or fails are
+     * released.
      */
     private class RewritingClientHttpRequest(
         delegate: ClientHttpRequest,
         private val path: String,
     ) : ClientHttpRequestDecorator(delegate) {
-        override fun writeWith(body: Publisher<out DataBuffer>): Mono<Void> {
-            val received = AtomicLong()
-            return Flux
+        override fun writeWith(body: Publisher<out DataBuffer>): Mono<Void> =
+            Flux
                 .from<DataBuffer>(body)
-                // One chunk holding the whole body when it stays within the cap; otherwise a first chunk closed by
-                // the buffer that crosses the cap, then one chunk per later buffer.
-                .bufferUntil { buffer -> received.addAndGet(buffer.readableByteCount().toLong()) > MAX_REWRITE_BYTES }
-                .switchOnFirst { first, chunks ->
-                    val buffers = chunks.concatMapIterable { it }
-                    if (first.hasValue() && received.get() > MAX_REWRITE_BYTES) {
-                        logger.debug { "Requesty 1h cache: body of $path is above $MAX_REWRITE_BYTES bytes, sent unchanged" }
-                        delegate.writeWith(buffers)
+                .collectList()
+                .flatMap { buffers ->
+                    val size = buffers.sumOf { it.readableByteCount().toLong() }
+                    if (size > MAX_REWRITE_BYTES) {
+                        logger.debug { "Requesty 1h cache: body of $path is $size bytes, above $MAX_REWRITE_BYTES, sent unchanged" }
+                        delegate.writeWith(Flux.fromIterable(buffers))
                     } else {
-                        buffers.collectList().flatMap { writeRewritten(it) }
+                        writeRewritten(buffers)
                     }
                 }.doOnDiscard(DataBuffer::class.java) { DataBufferUtils.release(it) }
-                .doOnDiscard(List::class.java) { chunk -> chunk.forEach { (it as? DataBuffer)?.let(DataBufferUtils::release) } }
-                .then()
-        }
 
         /** Flushing boundaries do not matter for a JSON request body: it goes through the same rewrite. */
         override fun writeAndFlushWith(body: Publisher<out Publisher<out DataBuffer>>): Mono<Void> =

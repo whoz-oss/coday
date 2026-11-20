@@ -27,6 +27,10 @@ import org.springframework.ai.openai.api.OpenAiApi
 import org.springframework.ai.retry.RetryUtils
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.ToolDefinition
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
+import org.springframework.http.client.reactive.JdkClientHttpConnector
+import org.springframework.web.reactive.function.client.WebClient
 import java.time.Duration
 import java.util.UUID
 
@@ -164,14 +168,29 @@ class RequestyPromptCacheWireSpec :
             val framing: Map<String, String> get() = headers - "host"
         }
 
+        /** The single chat completions request the stub received, its framing and authentication checked. */
+        fun received(): Sent {
+            val bodies = stub.requestBodies(ProviderStubServer.OPENAI_PATH)
+            withClue("expected exactly one POST ${ProviderStubServer.OPENAI_PATH} to reach the stub") { bodies shouldHaveSize 1 }
+            val sent = Sent(bodies.single(), stub.requestHeaders(ProviderStubServer.OPENAI_PATH).single())
+            withClue("headers sent were: ${sent.headers}") {
+                sent.headers["authorization"] shouldBe "Bearer sk-test"
+                // A Content-Length, when sent, must match the body actually sent; otherwise the body is chunked.
+                sent.headers["content-length"]?.let { it shouldBe sent.body.toByteArray(Charsets.UTF_8).size.toString() }
+                    ?: (sent.headers["transfer-encoding"] shouldBe "chunked")
+            }
+            return sent
+        }
+
         /** Sends the prompt blocking or streaming and returns what the stub received. */
         fun send(
             client: ChatClient,
             streaming: Boolean,
+            prompt: Prompt = prompt(),
         ): Sent {
             stub.reset()
             stub.streaming = streaming
-            val request = client.prompt(prompt()).toolCallbacks(weatherTool)
+            val request = client.prompt(prompt).toolCallbacks(weatherTool)
             val answer =
                 if (streaming) {
                     request
@@ -185,16 +204,7 @@ class RequestyPromptCacheWireSpec :
                     request.call().content()
                 }
             answer shouldBe "Done"
-            val bodies = stub.requestBodies(ProviderStubServer.OPENAI_PATH)
-            withClue("expected exactly one POST ${ProviderStubServer.OPENAI_PATH} to reach the stub") { bodies shouldHaveSize 1 }
-            val sent = Sent(bodies.single(), stub.requestHeaders(ProviderStubServer.OPENAI_PATH).single())
-            withClue("headers sent were: ${sent.headers}") {
-                sent.headers["authorization"] shouldBe "Bearer sk-test"
-                // A Content-Length, when sent, must match the body actually sent; otherwise the body is chunked.
-                sent.headers["content-length"]?.let { it shouldBe sent.body.toByteArray(Charsets.UTF_8).size.toString() }
-                    ?: (sent.headers["transfer-encoding"] shouldBe "chunked")
-            }
-            return sent
+            return received()
         }
 
         fun JsonNode.message(role: String): JsonNode = get("messages").single { it.get("role").asText() == role }
@@ -292,5 +302,66 @@ class RequestyPromptCacheWireSpec :
                 otherModel.framing shouldBe baseline.framing
                 otherModel.body.contains("cache_control") shouldBe false
             }
+
+            "$mode, Requesty with 1h and a body above the rewrite cap: the body is byte-for-byte the one sent before" {
+                val huge = Prompt(listOf(SystemMessage("System"), UserMessage("a".repeat(RequestyPromptCache.MAX_REWRITE_BYTES.toInt()))))
+                val baseline = send(originalChatClient(), streaming, huge)
+                val oneHour = send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true, usageTracking = false), streaming, huge)
+
+                (oneHour.body == baseline.body) shouldBe true
+                // Streaming keeps the encoder's Content-Length; blocking calls with the hook are buffered, so they
+                // carry a Content-Length where the original is chunked (its exactness is checked in send).
+                if (streaming) oneHour.framing shouldBe baseline.framing
+                oneHour.body.contains("cache_control") shouldBe false
+            }
+        }
+
+        // ---------------------------------------------------------------------------------------------
+        // The WebClient hook on the JDK connector (the one Spring AI's streaming calls use here), directly
+        // ---------------------------------------------------------------------------------------------
+
+        /** POSTs [body], JSON-encoded by WebClient's Jackson encoder as for Spring AI, through the hook. */
+        fun postThroughJdkConnector(body: Map<String, Any>): Sent {
+            stub.reset()
+            WebClient
+                .builder()
+                .clientConnector(JdkClientHttpConnector())
+                .baseUrl(stub.baseUrl)
+                .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer sk-test")
+                .filter(RequestyPromptCache.filter())
+                .build()
+                .post()
+                .uri(ProviderStubServer.OPENAI_PATH)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(body)
+                .retrieve()
+                .bodyToMono(String::class.java)
+                .block(Duration.ofSeconds(30))
+            return received()
+        }
+
+        fun chatBody(userText: String): Map<String, Any> =
+            linkedMapOf("model" to claude, "messages" to listOf(linkedMapOf("role" to "user", "content" to userText)))
+
+        "JDK connector, body above the rewrite cap: the original body arrives byte for byte with its Content-Length" {
+            val body = chatBody("a".repeat(RequestyPromptCache.MAX_REWRITE_BYTES.toInt()))
+            val expected = mapper.writeValueAsString(body)
+
+            val sent = postThroughJdkConnector(body)
+
+            (sent.body == expected) shouldBe true
+            sent.headers["content-length"] shouldBe expected.toByteArray(Charsets.UTF_8).size.toString()
+        }
+
+        "JDK connector, body within the rewrite cap: the body arrives rewritten with its new Content-Length" {
+            val body = chatBody("Hello")
+
+            val sent = postThroughJdkConnector(body)
+
+            val request = mapper.readTree(sent.body)
+            request.get("requesty").get("auto_cache").asBoolean() shouldBe false
+            (request.get("messages").get(0).get("content").get(0).get("cache_control") ==
+                mapper.readTree("""{"type":"ephemeral","ttl":"1h"}""")) shouldBe true
+            sent.headers["content-length"] shouldBe sent.body.toByteArray(Charsets.UTF_8).size.toString()
         }
     })

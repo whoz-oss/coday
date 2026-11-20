@@ -2766,9 +2766,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
             (agentService.findAgentByName("advanced-with-support", context) is AgentAdvanced) shouldBe true
         }
 
+        // One test per mode and duration, ONE_HOUR included: the resolved user's choice reaches getChatClient.
         listOf(ExecutionMode.SIMPLE, ExecutionMode.ADVANCED).forEach { mode ->
-            "a $mode agent builds its chat client with the prompt cache duration of the user it runs for" {
-                PromptCacheTtl.entries.forEach { ttl ->
+            PromptCacheTtl.entries.forEach { ttl ->
+                "a $mode agent run for a user who chose $ttl builds its chat client with promptCacheTtl = $ttl" {
                     val userId = UUID.randomUUID()
                     val user = User(metadata = EntityMetadata(id = userId), externalId = "ext-ttl", promptCacheTtl = ttl)
                     val config = agentConfig(name = "ttl-${mode.name.lowercase()}").copy(executionMode = mode)
@@ -2785,13 +2786,22 @@ class AgentServiceImplUnitSpec : StringSpec() {
                         chatClientProvider.getChatClient(any(), any(), any(), any(), any(), any())
                     } returns mockk<ChatClient>(relaxed = true)
 
-                    agentService.findAgentByName(
-                        config.name,
-                        AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId),
-                    )
+                    val agent =
+                        agentService.findAgentByName(
+                            config.name,
+                            AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId),
+                        )
 
+                    (agent is AgentAdvanced) shouldBe (mode == ExecutionMode.ADVANCED)
                     verify(exactly = 1) {
-                        chatClientProvider.getChatClient(model, provider, caseId.toString(), any(), any(), ttl)
+                        chatClientProvider.getChatClient(
+                            model,
+                            provider,
+                            caseId.toString(),
+                            any(),
+                            any(),
+                            promptCacheTtl = ttl,
+                        )
                     }
                 }
             }
