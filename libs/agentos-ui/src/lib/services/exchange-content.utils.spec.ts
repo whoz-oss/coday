@@ -3,7 +3,11 @@ import {
   canViewFile,
   detectFormat,
   ensureImageBlob,
+  ensurePdfBlob,
+  ensureTypedBlob,
+  isBlobPreviewFile,
   isImageFile,
+  isPdfFile,
   exchangeMutationScope,
   formatSize,
   getFileIcon,
@@ -28,10 +32,38 @@ describe('exchange-content.utils', () => {
       expect(detectFormat(`A.${ext.toUpperCase()}`)).toBe('image')
       expect(isImageFile(`dir/a.${ext}`)).toBe(true)
     })
-    it('does not treat pdf, zip or text as image', () => {
+    it('does not treat zip or text as image', () => {
       expect(isImageFile('a.pdf')).toBe(false)
       expect(isImageFile('a.zip')).toBe(false)
-      expect(detectFormat('a.pdf')).toBe('text')
+    })
+    it('detects pdf, whatever the case', () => {
+      expect(detectFormat('a.pdf')).toBe('pdf')
+      expect(detectFormat('dir/A.PDF')).toBe('pdf')
+      expect(isPdfFile('a.pdf')).toBe(true)
+      expect(isPdfFile('A.PDF')).toBe(true)
+      expect(isPdfFile('a.pdf.txt')).toBe(false)
+      expect(isPdfFile('a.png')).toBe(false)
+      expect(isBlobPreviewFile('a.pdf')).toBe(true)
+      expect(isBlobPreviewFile('a.png')).toBe(true)
+      expect(isBlobPreviewFile('a.html')).toBe(false)
+      expect(isBlobPreviewFile('a.zip')).toBe(false)
+    })
+  })
+
+  describe('ensurePdfBlob / ensureTypedBlob', () => {
+    it('re-wraps a generic or untyped blob as application/pdf, so the browser renders it', () => {
+      expect(ensurePdfBlob(new Blob(['%PDF'], { type: 'application/octet-stream' })).type).toBe('application/pdf')
+      expect(ensurePdfBlob(new Blob(['%PDF'])).type).toBe('application/pdf')
+    })
+    it('keeps a blob that is already a pdf', () => {
+      const blob = new Blob(['%PDF'], { type: 'application/pdf' })
+      expect(ensurePdfBlob(blob)).toBe(blob)
+    })
+    it('types by extension: pdf as pdf, images as images', () => {
+      expect(ensureTypedBlob(new Blob(['x']), 'a.pdf').type).toBe('application/pdf')
+      expect(ensureTypedBlob(new Blob(['x']), 'a.svg').type).toBe('image/svg+xml')
+      const png = new Blob(['x'], { type: 'image/png' })
+      expect(ensureTypedBlob(png, 'a.png')).toBe(png)
     })
   })
 
@@ -77,7 +109,10 @@ describe('exchange-content.utils', () => {
       expect(canViewFile({ filename: 'a.png', size: 100 })).toBe(true)
       expect(canViewFile({ name: 'a.svg', size: 100 })).toBe(true)
       expect(canViewFile({ filename: 'a.png', size: MAX_VIEWABLE_SIZE + 1 })).toBe(false)
-      expect(canViewFile({ filename: 'a.pdf', size: 100 })).toBe(false)
+      expect(canViewFile({ filename: 'a.pdf', size: 100 })).toBe(true)
+      expect(canViewFile({ name: 'a.pdf', size: MAX_VIEWABLE_SIZE })).toBe(true)
+      expect(canViewFile({ filename: 'a.pdf', size: MAX_VIEWABLE_SIZE + 1 })).toBe(false)
+      expect(canViewFile({ filename: 'a.pdf' })).toBe(false)
       expect(canViewFile({ filename: 'a.zip', size: 100 })).toBe(false)
       expect(canViewFile({ filename: 'a.md', size: MAX_VIEWABLE_SIZE + 1 })).toBe(false)
     })

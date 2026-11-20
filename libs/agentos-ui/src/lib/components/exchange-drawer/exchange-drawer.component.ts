@@ -101,7 +101,8 @@ export class ExchangeDrawerComponent {
   // ── Current selection / viewer ────────────────────────────────────────────────
   readonly activeFile = input<ExchangeFileRef | null>(null)
   readonly selectedContent = input<string | null>(null)
-  readonly imageUrl = input<string | null>(null)
+  readonly blobUrl = input<string | null>(null)
+  readonly blob = input<Blob | null>(null)
   readonly selectable = input<boolean>(false)
   readonly referenced = input<ExchangeFileRef[]>([])
   readonly contentStatus = input<'loading' | 'ready' | 'error'>('loading')
@@ -132,21 +133,37 @@ export class ExchangeDrawerComponent {
   protected readonly caseQuery = signal('')
   protected readonly namespaceQuery = signal('')
   /** Keep an active query accessible even if the current directory becomes empty. */
-  protected readonly showNamespaceFilter: Signal<boolean> = computed(() =>
-    !!this.namespaceInput() || !!this.namespaceQuery() || this.namespaceFiles().length > 0 ||
-    this.namespaceFolders().length > 0 || this.namespaceBreadcrumb().length > 0
+  protected readonly showNamespaceFilter: Signal<boolean> = computed(
+    () =>
+      !!this.namespaceInput() ||
+      !!this.namespaceQuery() ||
+      this.namespaceFiles().length > 0 ||
+      this.namespaceFolders().length > 0 ||
+      this.namespaceBreadcrumb().length > 0
   )
   protected readonly maxFilterMatches = MAX_FILTER_MATCHES
   protected readonly caseTree = computed(() => this.tree(this.caseManifest(), this.caseQuery(), true))
   protected readonly namespaceTree = computed(() => this.tree(this.namespaceManifest(), this.namespaceQuery(), false))
   private readonly caseReturnedToList: WritableSignal<boolean> = signal(false)
   private readonly namespaceReturnedToList: WritableSignal<boolean> = signal(false)
-  protected readonly caseAnnouncement: Signal<string> = computed(() => this.announcement({
-    scope: 'Case', query: this.caseQuery(), status: this.caseManifestStatus(), tree: this.caseTree(), returned: this.caseReturnedToList(),
-  }))
-  protected readonly namespaceAnnouncement: Signal<string> = computed(() => this.announcement({
-    scope: 'Namespace', query: this.namespaceQuery(), status: this.namespaceManifestStatus(), tree: this.namespaceTree(), returned: this.namespaceReturnedToList(),
-  }))
+  protected readonly caseAnnouncement: Signal<string> = computed(() =>
+    this.announcement({
+      scope: 'Case',
+      query: this.caseQuery(),
+      status: this.caseManifestStatus(),
+      tree: this.caseTree(),
+      returned: this.caseReturnedToList(),
+    })
+  )
+  protected readonly namespaceAnnouncement: Signal<string> = computed(() =>
+    this.announcement({
+      scope: 'Namespace',
+      query: this.namespaceQuery(),
+      status: this.namespaceManifestStatus(),
+      tree: this.namespaceTree(),
+      returned: this.namespaceReturnedToList(),
+    })
+  )
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.timers.forEach((timer) => clearTimeout(timer)))
@@ -182,8 +199,18 @@ export class ExchangeDrawerComponent {
   }
 
   /** Describes results without counting ancestor folders. */
-  private announcement({ scope, query, status, tree, returned }: {
-    scope: string; query: string; status: ExchangeManifestStatus; tree: FilteredFileTree; returned: boolean
+  private announcement({
+    scope,
+    query,
+    status,
+    tree,
+    returned,
+  }: {
+    scope: string
+    query: string
+    status: ExchangeManifestStatus
+    tree: FilteredFileTree
+    returned: boolean
   }): string {
     if (!query) return returned ? `${scope} files: back to file list.` : ''
     if (status === 'error') return '' // The visible error is already an alert.
@@ -202,7 +229,10 @@ export class ExchangeDrawerComponent {
       this.clearFilter(scope)
       return
     }
-    this.timers.set(scope, setTimeout(() => this.applyFilter(scope, value), 150))
+    this.timers.set(
+      scope,
+      setTimeout(() => this.applyFilter(scope, value), 150)
+    )
   }
 
   protected onFilterKeydown(scope: ExchangeScope, event: KeyboardEvent): void {
@@ -246,9 +276,12 @@ export class ExchangeDrawerComponent {
   /** Restore focus to the filter, or the section heading if it is not currently rendered. */
   private focusScope(scope: ExchangeScope): void {
     const section = this.host.nativeElement.querySelector<HTMLElement>(
-      scope === this.CASE ? '[data-track="ExchangeDrawer-caseSection"]' : '[data-track="ExchangeDrawer-namespaceSection"]'
+      scope === this.CASE
+        ? '[data-track="ExchangeDrawer-caseSection"]'
+        : '[data-track="ExchangeDrawer-namespaceSection"]'
     )
-    const target = section?.querySelector<HTMLElement>('input[type="search"]') ?? section?.querySelector<HTMLElement>('h3')
+    const target =
+      section?.querySelector<HTMLElement>('input[type="search"]') ?? section?.querySelector<HTMLElement>('h3')
     target?.focus()
   }
 
@@ -315,7 +348,11 @@ export class ExchangeDrawerComponent {
   }
 
   private referencedPathsOf(scope: ExchangeScope): ReadonlySet<string> {
-    return new Set(this.referenced().filter((ref) => ref.scope === scope).map((ref) => ref.path))
+    return new Set(
+      this.referenced()
+        .filter((ref) => ref.scope === scope)
+        .map((ref) => ref.path)
+    )
   }
 
   /** Scope and path of the row that opened the viewer, for focus restoration. */
@@ -332,17 +369,23 @@ export class ExchangeDrawerComponent {
     const ref = this.lastSelectedFile
     if (!ref) return
     // Restore focus only to the same scope and path once the list is re-rendered.
-    afterNextRender(() => {
-      if (this.activeFile() || this.lastSelectedFile !== ref) return
-      const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('[data-exchange-path][data-exchange-scope]')
-      for (const el of Array.from(rows)) {
-        if (el.getAttribute('data-exchange-path') === ref.path && el.getAttribute('data-exchange-scope') === ref.scope) {
-          el.focus()
-          return
+    afterNextRender(
+      () => {
+        if (this.activeFile() || this.lastSelectedFile !== ref) return
+        const rows = this.host.nativeElement.querySelectorAll<HTMLElement>('[data-exchange-path][data-exchange-scope]')
+        for (const el of Array.from(rows)) {
+          if (
+            el.getAttribute('data-exchange-path') === ref.path &&
+            el.getAttribute('data-exchange-scope') === ref.scope
+          ) {
+            el.focus()
+            return
+          }
         }
-      }
-      this.focusScope(ref.scope)
-    }, { injector: this.injector })
+        this.focusScope(ref.scope)
+      },
+      { injector: this.injector }
+    )
   }
 
   /** Scope of the section whose upload button was last clicked (one hidden input is shared). */
