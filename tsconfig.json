@@ -1,8 +1,8 @@
 {
-  "extends": "./tsconfig.base.json",
-  "include": ["libs/**/*", "apps/**/*"],
-  "exclude": ["node_modules", "dist", "tmp"],
   "compilerOptions": {
     "ignoreDeprecations": "6.0"
-  }
+  },
+  "exclude": ["node_modules", "dist", "tmp"],
+  "extends": "./tsconfig.base.json",
+  "include": ["libs/**/*", "apps/**/*"]
 }
