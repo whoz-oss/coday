@@ -34,6 +34,9 @@ import java.util.UUID
  * @param reasoningEffort The case-level override of the reasoning effort ([io.whozoss.agentos.caseFlow.Case.reasoningEffort]),
  *   read at the start of the run. Null means each agent uses the effort of its model. Replaces the effort of
  *   the model whatever it has configured.
+ * @param llmRequestGeneration The generation of the case returned by [LastLlmRequestRegistry.invalidate] when the
+ *   run started: a SIMPLE agent's last request is only recorded if the case is still at it when the turn ends.
+ *   Null outside a case run: nothing is recorded.
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
@@ -44,6 +47,7 @@ data class AgentExecutionContext(
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
     val usageAccumulator: UsageAccumulator? = null,
     val reasoningEffort: ReasoningEffort? = null,
+    val llmRequestGeneration: Long? = null,
 ) {
     fun toToolContext(
         userExternalId: String?,

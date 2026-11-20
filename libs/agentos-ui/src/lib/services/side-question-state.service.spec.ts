@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing'
 import { Subject, throwError } from 'rxjs'
 import { SideQuestionApiService } from './side-question-api.service'
 import {
+  QUESTION_KEPT,
   SIDE_QUESTION_MAX_LENGTH,
   SideQuestionStateService,
   sideQuestionErrorMessage,
@@ -58,24 +59,49 @@ describe('SideQuestionStateService', () => {
 
     expect(service.pending()).toBe(false)
     expect(service.answer()).toBeNull()
-    expect(service.error()).toBe('The model could not answer. Try again.')
+    expect(service.error()).toBe(`The model could not answer. Try again. ${QUESTION_KEPT}`)
     expect(service.question()).toBe('q')
   })
 
-  it('calls back on the answer only, never on a failure', () => {
+  it('calls back once the answer arrives', () => {
     const answered = jest.fn()
     const response = new Subject<{ answer: string }>()
     api.ask.mockReturnValue(response)
     service.ask('c-1', 'q', answered)
-    expect(answered).not.toHaveBeenCalled()
 
     response.next({ answer: 'a' })
-    expect(answered).toHaveBeenCalledTimes(1)
 
-    const failing = jest.fn()
+    expect(answered).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not call back while the answer is pending', () => {
+    const answered = jest.fn()
+    api.ask.mockReturnValue(new Subject())
+
+    service.ask('c-1', 'q', answered)
+
+    expect(answered).not.toHaveBeenCalled()
+  })
+
+  it('does not call back on a failure', () => {
+    const answered = jest.fn()
     api.ask.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 502 })))
-    service.ask('c-1', 'q2', failing)
-    expect(failing).not.toHaveBeenCalled()
+
+    service.ask('c-1', 'q', answered)
+
+    expect(answered).not.toHaveBeenCalled()
+  })
+
+  it('asks nothing again for the same question while it is pending', () => {
+    const response = new Subject<{ answer: string }>()
+    api.ask.mockReturnValue(response)
+    service.ask('c-1', 'what is the plan?')
+
+    service.ask('c-1', '  what is the plan?  ')
+
+    expect(api.ask).toHaveBeenCalledTimes(1)
+    expect(response.observed).toBe(true)
+    expect(service.pending()).toBe(true)
   })
 
   it('does not call back a replaced question', () => {
@@ -110,7 +136,19 @@ describe('SideQuestionStateService', () => {
     expect(service.pending()).toBe(false)
     expect(service.error()).toContain('too long')
     expect(service.error()).toContain(`${SIDE_QUESTION_MAX_LENGTH}`)
+    expect(service.error()).toContain(QUESTION_KEPT)
     expect(service.question()!.length).toBeLessThan(SIDE_QUESTION_MAX_LENGTH)
+  })
+
+  it('previews a question too long without cutting a character in two', () => {
+    const emoji = '\u{1F600}'
+
+    service.ask('c-1', emoji.repeat(SIDE_QUESTION_MAX_LENGTH))
+
+    const shown = Array.from(service.question()!)
+    expect(shown).toHaveLength(281)
+    expect(shown.slice(0, 280).every((character) => character === emoji)).toBe(true)
+    expect(shown[280]).toBe('…')
   })
 
   it('ignores a blank question', () => {
@@ -211,7 +249,7 @@ describe('sideQuestionErrorMessage()', () => {
 
   it('tells each status in plain words', () => {
     expect(message(400)).toContain('empty or too long')
-    expect(message(403)).toContain('no longer available')
+    expect(message(403)).toContain('not ask side questions')
     expect(message(404)).toContain('no longer available')
     expect(message(409)).toContain('no AI model is available')
     expect(message(409)).toContain('run cost limit')

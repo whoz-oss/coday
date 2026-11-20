@@ -97,7 +97,7 @@ class CaseKeepAliveScheduler(
                     state.failures < MAX_CONSECUTIVE_FAILURES &&
                         request.caseId !in inFlight &&
                         Duration.between(request.capturedAt, now) <= properties.maxIdle &&
-                        !now.isBefore(request.lastCacheUseAt.plus(refreshInterval(request.promptCacheTtl)))
+                        !now.isBefore(request.lastUsedAt.plus(refreshInterval(request.promptCacheTtl)))
                 }
         if (due.isEmpty()) return emptyList()
         val cases = caseService.findByIds(due.map { it.first.caseId }, withRemoved = false).associateBy { it.id }
@@ -124,13 +124,14 @@ class CaseKeepAliveScheduler(
         state: Tracking,
     ): Boolean {
         if (!case.keepAlive || case.status != CaseStatus.IDLE) return false
-        val effort = request.model.reasoningEffort?.sentTo(request.provider.apiType)
+        val options = request.requestOptions
+        val effort = options.reasoningEffort?.sentTo(options.apiType)
         if (effort != null && effort != ReasoningEffort.NONE) {
-            logSkipOnce(request, state) { "model ${request.model.apiModelName} runs with reasoning effort $effort: a 1-token answer is invalid" }
+            logSkipOnce(request, state) { "model ${options.apiModelName} runs with reasoning effort $effort: a 1-token answer is invalid" }
             return false
         }
-        if (!CaseKeepAlivePinger.supports(request.provider.apiType)) {
-            logSkipOnce(request, state) { "provider API type ${request.provider.apiType} is not supported" }
+        if (!CaseKeepAlivePinger.supports(options.apiType)) {
+            logSkipOnce(request, state) { "provider API type ${options.apiType} is not supported" }
             return false
         }
         return !isCostBlocked(case.id)
@@ -180,7 +181,7 @@ class CaseKeepAliveScheduler(
         try {
             pinger.ping(case, request)
             state.failures = 0
-            registry.touch(request.caseId, request.capturedAt, now)
+            registry.touch(request.caseId, request.capturedAt)
             logger.debug { "[KeepAlive] refreshed the prompt cache of case ${case.id}" }
         } catch (e: Exception) {
             state.failures++

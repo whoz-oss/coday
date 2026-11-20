@@ -112,6 +112,13 @@ agentos:
     # The Kotlin default of UsageConfigProperties stays false, so that classes built by hand are inert;
     # this file is what makes it true for the running service.
     enabled: ${AGENTOS_USAGE_ENABLED:true}
+  side-question:
+    # A /btw side question reuses the agent's last request (and the provider's prompt cache) only while that
+    # request was used less than this long ago: the provider's cache lifetime (5 minutes by default).
+    snapshot-max-age: ${AGENTOS_SIDE_QUESTION_SNAPSHOT_MAX_AGE:PT5M}
+  llm-request-registry:
+    # Approximate memory budget, in characters, of the last LLM requests kept per case for prompt cache reuse.
+    max-size: ${AGENTOS_LLM_REQUEST_REGISTRY_MAX_SIZE:209715200}
   git:
     worker:
       enabled: ${AGENTOS_GIT_WORKER_ENABLED:true}

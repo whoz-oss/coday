@@ -81,6 +81,25 @@ import io.whozoss.agentos.util.IdCompressorService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.springframework.ai.chat.client.ChatClient
+import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseSideQuestionService
+import io.whozoss.agentos.chat.LlmExchangeRecorder
+import io.whozoss.agentos.chat.UsageAccumulator
+import io.whozoss.agentos.chat.UsageTrackingChatModel
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import kotlinx.coroutines.flow.toList
+import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.messages.SystemMessage
+import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
+import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.model.tool.ToolCallingChatOptions
+import reactor.core.publisher.Flux
+import java.time.Clock
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -131,6 +150,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
     // Strict on purpose: a relaxed mock would return a non-null ExchangeGrant and silently grant the
     // exchange in every unrelated test. The defaults stubbed in init deny both scopes.
     private val exchangeToolGrantService: ExchangeToolGrantService = mockk()
+    private val lastLlmRequestRegistry = LastLlmRequestRegistry()
     private val agentService =
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
@@ -162,6 +182,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             limitsConfig = LimitsConfigProperties(),
             exchangeRootResolver = exchangeRootResolver,
             loopWorkflowRunnerService = mockk(relaxed = true),
+            lastLlmRequestRegistry = lastLlmRequestRegistry,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -199,6 +220,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             limitsConfig = LimitsConfigProperties(),
             exchangeRootResolver = exchangeRootResolver,
             loopWorkflowRunnerService = mockk(relaxed = true),
+            lastLlmRequestRegistry = lastLlmRequestRegistry,
         )
     private val aiProviderId: UUID = UUID.randomUUID()
     private val caseId: UUID = UUID.randomUUID()
@@ -403,6 +425,110 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = agentService.findAgentByName("my-agent", context)
 
             agent.name shouldBe "my-agent"
+        }
+
+        "a SIMPLE run records its last request, and the side question service reuses it as its exact prefix" {
+            val userId = UUID.randomUUID()
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "wired-agent") } returns
+                listOf(agentConfig(name = "wired-agent", instructions = "Be helpful.", modelName = "sonnet"))
+            every { userService.findById(userId) } returns null
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiModelService.findById(model.id, any()) } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderService.resolveProvider(namespaceId, userId, provider.name) } returns provider
+            val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.stream(any<Prompt>()) } returns Flux.just(ChatResponse(listOf(Generation(AssistantMessage("All green.")))))
+            val recorders = mutableListOf<LlmExchangeRecorder?>()
+            every {
+                chatClientProvider.getChatClient(model, provider, any(), any(), any(), any(), any(), captureNullable(recorders))
+            } answers {
+                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), provider.apiType, model, exchangeRecorder = recorders.last())
+                ChatClient.builder(tracked).build()
+            }
+            val question =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user", "User", ActorRole.USER),
+                    content = listOf(MessageContent.Text("What is the status?")),
+                )
+            val runContext =
+                context.copy(
+                    userId = userId,
+                    usageAccumulator = UsageAccumulator(),
+                    llmRequestGeneration = lastLlmRequestRegistry.invalidate(caseId),
+                )
+            val agent = agentService.findAgentByName("wired-agent", runContext)
+            val persisted = listOf(question) + agent.run(listOf(question)) { true }.toList()
+
+            val stored = lastLlmRequestRegistry.get(caseId)!!
+            stored.finalText shouldBe "All green."
+            stored.modelId shouldBe model.id
+            stored.providerId shouldBe aiProviderId
+
+            val prompts = mutableListOf<Prompt>()
+            val sideClients = mockk<ChatClientProvider>()
+            every { sideClients.getChatClient(model, provider, caseId.toString(), null, null, PromptCacheTtl.FIVE_MINUTES, false, null) } answers {
+                val reqSpec = mockk<ChatClient.ChatClientRequestSpec>()
+                val callSpec = mockk<ChatClient.CallResponseSpec>()
+                every { callSpec.chatResponse() } returns ChatResponse(listOf(Generation(AssistantMessage("It is green."))))
+                every { reqSpec.call() } returns callSpec
+                mockk<ChatClient> { every { prompt(capture(prompts)) } returns reqSpec }
+            }
+            val sideQuestions =
+                CaseSideQuestionService(
+                    mockk { every { findById(caseId, false) } returns Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId) },
+                    mockk { every { findByParent(caseId) } returns persisted },
+                    aiModelService,
+                    aiProviderService,
+                    sideClients,
+                    lastLlmRequestRegistry,
+                    mockk(),
+                    mockk(),
+                    Clock.systemUTC(),
+                )
+
+            sideQuestions.answer(caseId, "Is it green?", userId) shouldBe "It is green."
+
+            prompts.single().instructions.take(stored.messages.size) shouldBe stored.messages
+            (prompts.single().instructions.first() as SystemMessage).text!! shouldContain "Be helpful."
+        }
+
+        "a SIMPLE run keeps the generation its run started with: an invalidation during its resolution drops its capture" {
+            every { agentConfigService.findByName(namespaceId, "late-agent") } returns agentConfig(name = "late-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.stream(any<Prompt>()) } returns Flux.just(ChatResponse(listOf(Generation(AssistantMessage("All green.")))))
+            val recorders = mutableListOf<LlmExchangeRecorder?>()
+            every {
+                chatClientProvider.getChatClient(model, provider, any(), any(), any(), any(), any(), captureNullable(recorders))
+            } answers {
+                // The case is killed while the agent is being resolved.
+                lastLlmRequestRegistry.invalidate(caseId)
+                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), provider.apiType, model, exchangeRecorder = recorders.last())
+                ChatClient.builder(tracked).build()
+            }
+            val question =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user", "User", ActorRole.USER),
+                    content = listOf(MessageContent.Text("What is the status?")),
+                )
+            val runContext =
+                context.copy(usageAccumulator = UsageAccumulator(), llmRequestGeneration = lastLlmRequestRegistry.invalidate(caseId))
+
+            val agent = agentService.findAgentByName("late-agent", runContext)
+            agent.run(listOf(question)) { true }.toList()
+
+            lastLlmRequestRegistry.get(caseId) shouldBe null
         }
 
         // -------------------------------------------------------------------------
@@ -866,6 +992,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     limitsConfig = LimitsConfigProperties(),
                     exchangeRootResolver = exchangeRootResolver,
                     loopWorkflowRunnerService = mockk(relaxed = true),
+                    lastLlmRequestRegistry = lastLlmRequestRegistry,
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -1163,6 +1290,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     limitsConfig = LimitsConfigProperties(agentMaxIterations = 7),
                     exchangeRootResolver = exchangeRootResolver,
                     loopWorkflowRunnerService = mockk(relaxed = true),
+                    lastLlmRequestRegistry = lastLlmRequestRegistry,
                 )
             every { agentConfigService.findByName(namespaceId, "rounds-fallback") } returns
                 agentConfig(name = "rounds-fallback", modelName = "sonnet").copy(advancedExecution = true)
@@ -1447,6 +1575,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     limitsConfig = LimitsConfigProperties(),
                     exchangeRootResolver = exchangeRootResolver,
                     loopWorkflowRunnerService = mockk(relaxed = true),
+                    lastLlmRequestRegistry = lastLlmRequestRegistry,
                 )
             val configs =
                 listOf(
@@ -2820,8 +2949,20 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { userService.findById(userId) } returns user
             every { chatClientProvider.getChatClient(any(), any(), any(), any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
 
-            val agent =
-                agentService.findAgentByName(config.name, AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId))
+            val registry =
+                AgentServiceImpl::class.java
+                    .getDeclaredField("lastLlmRequestRegistry")
+                    .apply { isAccessible = true }
+                    .get(agentService) as LastLlmRequestRegistry
+            val context =
+                AgentExecutionContext(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    userId = userId,
+                    usageAccumulator = UsageAccumulator(),
+                    llmRequestGeneration = registry.invalidate(caseId),
+                )
+            val agent = agentService.findAgentByName(config.name, context)
             // The hook AgentSimple calls at the end of a turn that answered.
             @Suppress("UNCHECKED_CAST")
             val onFinalRequest =
@@ -2831,16 +2972,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     .get(agent) as (FinalLlmRequest) -> Unit
             onFinalRequest(FinalLlmRequest(caseId, emptyList(), emptyList(), "Done", 1, UUID.randomUUID()))
 
-            val registry =
-                AgentServiceImpl::class.java
-                    .getDeclaredField("lastLlmRequestRegistry")
-                    .apply { isAccessible = true }
-                    .get(agentService) as LastLlmRequestRegistry
             val recorded = registry.get(caseId)!!
             recorded.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
             recorded.userId shouldBe userId
-            recorded.model shouldBe model
-            recorded.provider shouldBe provider
+            recorded.modelId shouldBe model.id
+            recorded.providerId shouldBe model.aiProviderId
         }
 
         "an agent run without a known user keeps the default prompt cache duration" {
