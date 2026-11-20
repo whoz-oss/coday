@@ -262,7 +262,7 @@ export class SseService extends BaseService {
 
   /**
    * Stream notifiable events across all of my active cases via SSE
-   * Server-Sent Events stream fanning in PendingConfirmationEvent, ConfirmationResolvedEvent, QuestionEvent, AnswerEvent, AgentFinishedEvent and ErrorEvent across every case the current user is directly related to and that is currently active. Use the browser EventSource API to consume this endpoint, not a regular HTTP client.
+   * Server-Sent Events stream fanning in PendingConfirmationEvent, ConfirmationResolvedEvent, QuestionEvent, AnswerEvent, AgentFinishedEvent and ErrorEvent across every case the current user is directly related to and that is currently active. It also carries a \&#39;namespace-case-list-updated\&#39; event, payload \&#39;{\&quot;namespaceId\&quot;:\&quot;...\&quot;}\&#39;, for every namespace the user can read: reload GET /api/cases/by-parentId/{namespaceId}/mine when it arrives, instead of opening a stream per namespace. Use the browser EventSource API to consume this endpoint, not a regular HTTP client.
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */

@@ -7,6 +7,7 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { PromptCacheTtl } from './prompt-cache-ttl'
 
 export interface User {
   bio?: string
@@ -17,4 +18,5 @@ export interface User {
   isAdmin: boolean
   lastname?: string
   preferredLanguage?: string
+  promptCacheTtl?: PromptCacheTtl | null
 }

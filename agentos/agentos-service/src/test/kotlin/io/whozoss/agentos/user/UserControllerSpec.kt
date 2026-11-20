@@ -9,6 +9,7 @@ import io.mockk.verify
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.api.user.UserDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.userGroup.UserGroupService
@@ -59,6 +60,7 @@ class UserControllerSpec : StringSpec({
         bio: String? = null,
         isAdmin: Boolean = false,
         preferredLanguage: String? = null,
+        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
     ) = User(
         metadata = EntityMetadata(id = id),
         externalId = externalId,
@@ -68,6 +70,7 @@ class UserControllerSpec : StringSpec({
         bio = bio,
         isAdmin = isAdmin,
         preferredLanguage = preferredLanguage,
+        promptCacheTtl = promptCacheTtl,
     )
 
     fun resource(
@@ -78,6 +81,7 @@ class UserControllerSpec : StringSpec({
         bio: String? = null,
         isAdmin: Boolean = false,
         preferredLanguage: String? = null,
+        promptCacheTtl: PromptCacheTtl? = null,
     ) = UserDto(
         id = id,
         email = email,
@@ -86,6 +90,7 @@ class UserControllerSpec : StringSpec({
         bio = bio,
         isAdmin = isAdmin,
         preferredLanguage = preferredLanguage,
+        promptCacheTtl = promptCacheTtl,
     )
 
     // -------------------------------------------------------------------------
@@ -96,7 +101,11 @@ class UserControllerSpec : StringSpec({
         val id = UUID.randomUUID()
         val u = user(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev")
         val result = toDto(u)
-        result shouldBe UserDto(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false, preferredLanguage = null)
+        result shouldBe UserDto(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false, preferredLanguage = null, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
+    }
+
+    "toDto maps promptCacheTtl from User to UserDto" {
+        toDto(user(promptCacheTtl = PromptCacheTtl.ONE_HOUR)).promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
     }
 
     "toDto maps preferredLanguage from User to UserDto" {
@@ -335,6 +344,81 @@ class UserControllerSpec : StringSpec({
 
         captured.captured.isAdmin shouldBe false  // PRESERVED
         result.isAdmin shouldBe false
+    }
+
+    // -------------------------------------------------------------------------
+    // promptCacheTtl — create / update / me round-trip
+    // -------------------------------------------------------------------------
+
+    "create persists the requested promptCacheTtl and returns it" {
+        val captured = slot<User>()
+        every { userService.create(capture(captured)) } answers { firstArg() }
+
+        val result = controller.create(resource(id = null, promptCacheTtl = PromptCacheTtl.ONE_HOUR))
+
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        result.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+    }
+
+    "create without promptCacheTtl defaults to FIVE_MINUTES" {
+        val captured = slot<User>()
+        every { userService.create(capture(captured)) } answers { firstArg() }
+
+        val result = controller.create(resource(id = null, promptCacheTtl = null))
+
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
+        result.promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
+    }
+
+    "update self sets promptCacheTtl, and getMe returns it" {
+        val selfId = UUID.randomUUID()
+        val self = user(id = selfId)
+        val auth = mockk<Authentication> { every { name } returns selfId.toString() }
+        val captured = slot<User>()
+        every { userService.findByIds(listOf(selfId), false) } returns listOf(self)
+        every { userService.update(capture(captured)) } answers { firstArg() }
+
+        val result =
+            withAuthContext(auth) {
+                controller.update(selfId, resource(id = selfId, email = self.email, promptCacheTtl = PromptCacheTtl.ONE_HOUR))
+            }
+
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        result.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        every { userService.getCurrentUser() } returns captured.captured
+        controller.getMe().promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+    }
+
+    "update self can switch promptCacheTtl back to FIVE_MINUTES" {
+        val selfId = UUID.randomUUID()
+        val self = user(id = selfId, promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+        val auth = mockk<Authentication> { every { name } returns selfId.toString() }
+        val captured = slot<User>()
+        every { userService.findByIds(listOf(selfId), false) } returns listOf(self)
+        every { userService.update(capture(captured)) } answers { firstArg() }
+
+        withAuthContext(auth) {
+            controller.update(selfId, resource(id = selfId, email = self.email, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES))
+        }
+
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
+    }
+
+    "update without promptCacheTtl keeps the stored value" {
+        val selfId = UUID.randomUUID()
+        val self = user(id = selfId, promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+        val auth = mockk<Authentication> { every { name } returns selfId.toString() }
+        val captured = slot<User>()
+        every { userService.findByIds(listOf(selfId), false) } returns listOf(self)
+        every { userService.update(capture(captured)) } answers { firstArg() }
+
+        val result =
+            withAuthContext(auth) {
+                controller.update(selfId, resource(id = selfId, email = self.email, firstname = "Renamed", promptCacheTtl = null))
+            }
+
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        result.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
     }
 
     // -------------------------------------------------------------------------

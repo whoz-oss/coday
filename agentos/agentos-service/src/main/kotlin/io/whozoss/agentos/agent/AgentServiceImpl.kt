@@ -39,6 +39,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.credential.Credential
@@ -683,6 +684,8 @@ class AgentServiceImpl(
         logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
+        // Anonymous and system runs keep the default.
+        val promptCacheTtl = resolvedUser?.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES
 
         return when (executionMode) {
             ExecutionMode.LOOP -> {
@@ -705,6 +708,7 @@ class AgentServiceImpl(
                         context.caseId?.toString(),
                         context.usageAccumulator,
                         maxToolRounds,
+                        promptCacheTtl,
                     )
                 val advancedContext =
                     AgentAdvancedContext(
@@ -744,6 +748,7 @@ class AgentServiceImpl(
                         context.caseId?.toString(),
                         context.usageAccumulator,
                         maxToolRounds,
+                        promptCacheTtl,
                     )
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
