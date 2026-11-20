@@ -21,6 +21,7 @@ import { WorkflowDefinitionsStateService } from '../../core/workflow-definitions
 import { ConfirmDialogComponent, ConfirmDialogData } from '../admin/confirm-dialog.component'
 import { ShellState } from '../../core/shell-state'
 import { WorkflowStepEditorState, legacyAdoption } from '../../core/workflow-step-editor.state'
+import { codeVerificationPreset } from '../../core/code-verification-presets'
 import { WorkflowDefinitionDiagramComponent } from './workflow-definition-diagram.component'
 
 export function formatJson(value: unknown): string {
@@ -110,6 +111,7 @@ export class WorkflowDetailPageComponent {
   protected readonly backLink = ['/workflows']
   protected readonly formatJson = formatJson
   protected readonly legacyAdoption = legacyAdoption
+  protected readonly codeVerificationPreset = codeVerificationPreset
   protected readonly workflowType: string
   protected readonly version: string
 
