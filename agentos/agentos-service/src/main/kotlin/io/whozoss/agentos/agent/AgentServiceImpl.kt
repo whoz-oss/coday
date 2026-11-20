@@ -740,9 +740,12 @@ class AgentServiceImpl(
 
             ExecutionMode.SIMPLE -> {
                 // The exact last request of each turn, for the calls reusing its prompt cache. Only a tracked model (one
-                // with an accumulator) reports what it sends: without one, nothing is captured.
+                // with an accumulator) reports what it sends: without one, nothing is captured. Its generation is the
+                // one returned when the run started, never read again here: an invalidation during the resolution of
+                // the agent (a kill, a deletion) must drop the capture, not be adopted by it.
+                val generation = context.llmRequestGeneration
                 val capture =
-                    context.usageAccumulator?.let {
+                    if (context.usageAccumulator != null && generation != null) {
                         LastLlmRequestCapture(
                             registry = lastLlmRequestRegistry,
                             namespaceId = context.namespaceId,
@@ -751,10 +754,10 @@ class AgentServiceImpl(
                             provider = providerConfig,
                             agentName = agentName,
                             agentConfigId = agentId,
-                            // Read as the run starts (its case was invalidated just before): a kill, a deletion or
-                            // another run meanwhile drops the capture.
-                            generation = context.caseId?.let(lastLlmRequestRegistry::generation) ?: 0L,
+                            generation = generation,
                         )
+                    } else {
+                        null
                     }
                 val chatClient =
                     chatClientProvider.getChatClient(

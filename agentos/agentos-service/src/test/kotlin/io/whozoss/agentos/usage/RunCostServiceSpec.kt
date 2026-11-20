@@ -14,6 +14,7 @@ import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
@@ -423,6 +424,46 @@ class RunCostServiceSpec :
 
             service.state(case.id).cost shouldBe 3.0
             nextRegistration.finish {}
+        }
+
+        "after a stop, no side question is admitted until a new run starts, even once the stopped session is gone" {
+            val (service, case, _) = fixture()
+            val turn = UsageAccumulator()
+            val registration = service.register(case.id, turn)
+            service.stop(case.id)
+            registration.finish {}
+
+            val refused = service.nonPausing(case.id, UsageAccumulator())
+
+            refused shouldBe RunCostService.NonPausingRegistration.Refused(case.id, RunCostService.NonPausingRegistration.Reason.STOPPED)
+            // No fresh session was made for it.
+            service.state(case.id).active shouldBe false
+        }
+
+        "a new run admits side questions again after a stop" {
+            val (service, case, _) = fixture()
+            service.stop(case.id)
+            val next = service.register(case.id, UsageAccumulator())
+
+            val admitted = service.nonPausing(case.id, UsageAccumulator())
+
+            admitted.shouldBeInstanceOf<RunCostService.NonPausingRegistration.Registered>().registration.finish {}
+            next.finish {}
+        }
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { status ->
+            "a side question on a case that has ended ($status) is refused, its parent's too" {
+                val (service, parent, saved) = fixture()
+                saved[parent.id] = parent.copy(status = status)
+                val child = Case(namespaceId = parent.namespaceId, parentCaseId = parent.id)
+                saved[child.id] = child
+
+                service.nonPausing(parent.id, UsageAccumulator()) shouldBe
+                    RunCostService.NonPausingRegistration.Refused(parent.id, RunCostService.NonPausingRegistration.Reason.ENDED)
+                service.nonPausing(child.id, UsageAccumulator()) shouldBe
+                    RunCostService.NonPausingRegistration.Refused(parent.id, RunCostService.NonPausingRegistration.Reason.ENDED)
+                service.state(parent.id).active shouldBe false
+            }
         }
 
         "a stop with only a non-pausing registration left ends the session at once" {

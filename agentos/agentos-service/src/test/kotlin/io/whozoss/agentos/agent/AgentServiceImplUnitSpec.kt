@@ -454,8 +454,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     actor = Actor("user", "User", ActorRole.USER),
                     content = listOf(MessageContent.Text("What is the status?")),
                 )
-            val agent =
-                agentService.findAgentByName("wired-agent", context.copy(userId = userId, usageAccumulator = UsageAccumulator()))
+            val runContext =
+                context.copy(
+                    userId = userId,
+                    usageAccumulator = UsageAccumulator(),
+                    llmRequestGeneration = lastLlmRequestRegistry.invalidate(caseId),
+                )
+            val agent = agentService.findAgentByName("wired-agent", runContext)
             val persisted = listOf(question) + agent.run(listOf(question)) { true }.toList()
 
             val stored = lastLlmRequestRegistry.get(caseId)!!
@@ -489,6 +494,40 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             prompts.single().instructions.take(stored.messages.size) shouldBe stored.messages
             (prompts.single().instructions.first() as SystemMessage).text!! shouldContain "Be helpful."
+        }
+
+        "a SIMPLE run keeps the generation its run started with: an invalidation during its resolution drops its capture" {
+            every { agentConfigService.findByName(namespaceId, "late-agent") } returns agentConfig(name = "late-agent", modelName = "sonnet")
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.stream(any<Prompt>()) } returns Flux.just(ChatResponse(listOf(Generation(AssistantMessage("All green.")))))
+            val recorders = mutableListOf<LlmExchangeRecorder?>()
+            every {
+                chatClientProvider.getChatClient(model, provider, any(), any(), any(), any(), captureNullable(recorders))
+            } answers {
+                // The case is killed while the agent is being resolved.
+                lastLlmRequestRegistry.invalidate(caseId)
+                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), provider.apiType, model, exchangeRecorder = recorders.last())
+                ChatClient.builder(tracked).build()
+            }
+            val question =
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor = Actor("user", "User", ActorRole.USER),
+                    content = listOf(MessageContent.Text("What is the status?")),
+                )
+            val runContext =
+                context.copy(usageAccumulator = UsageAccumulator(), llmRequestGeneration = lastLlmRequestRegistry.invalidate(caseId))
+
+            val agent = agentService.findAgentByName("late-agent", runContext)
+            agent.run(listOf(question)) { true }.toList()
+
+            lastLlmRequestRegistry.get(caseId) shouldBe null
         }
 
         // -------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.usageRecord.PausedCostDto
 import io.whozoss.agentos.sdk.api.usageRecord.RunCostDto
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -37,6 +38,12 @@ class RunCostService(
     private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) {
     private val sessions = mutableMapOf<UUID, Session>()
+
+    /**
+     * Cases stopped by the user ([stop]) since their last run started: no side question is admitted for them, even
+     * once their stopped session is gone, until a new run registers ([register]).
+     */
+    private val stoppedCases = mutableSetOf<UUID>()
 
     internal data class Session(
         val caseId: UUID,
@@ -114,7 +121,9 @@ class RunCostService(
         accumulator: UsageAccumulator,
     ): Registration {
         requireEnabled()
-        val runSessions = prepareSessions(caseId)
+        val runSessions = prepareSessions(ancestors(caseId))
+        // A new run starts: side questions are admitted again.
+        stoppedCases.remove(caseId)
         publish(runSessions, accumulator, pausing = true)
         return Registration(accumulator, runSessions).also { accumulator.beforeCall = it::beforeCall }
     }
@@ -131,12 +140,14 @@ class RunCostService(
             val reason: Reason,
         ) : NonPausingRegistration
 
-        enum class Reason { OVER_THRESHOLD, PAUSED, STOPPED }
+        enum class Reason { OVER_THRESHOLD, PAUSED, STOPPED, ENDED }
     }
 
     /**
      * Registers spend that must never pause its case (a side question), in one atomic step: refused when the case or
-     * one of its ancestors is stopped, waiting for a cost confirmation, or at or over its threshold.
+     * one of its ancestors has ended (killed, in error), was stopped since its last run started (even once its
+     * session is gone: no fresh session is made for a side question then), is waiting for a cost confirmation, or is
+     * at or over its threshold.
      *
      * Once registered, its spend counts toward the cost of the case and its ancestors like a run's: a running turn
      * may pause at its next gate because of it. Its own requests never wait for a confirmation (they only fail when
@@ -148,7 +159,17 @@ class RunCostService(
         accumulator: UsageAccumulator,
     ): NonPausingRegistration {
         requireEnabled()
-        val runSessions = prepareSessions(caseId)
+        val lineage = ancestors(caseId)
+        lineage.forEach { case ->
+            val reason =
+                when {
+                    case.status == CaseStatus.KILLED || case.status == CaseStatus.ERROR -> NonPausingRegistration.Reason.ENDED
+                    case.id in stoppedCases -> NonPausingRegistration.Reason.STOPPED
+                    else -> null
+                }
+            if (reason != null) return NonPausingRegistration.Refused(case.id, reason)
+        }
+        val runSessions = prepareSessions(lineage)
         runSessions.forEach { session ->
             val threshold = session.threshold
             val reason =
@@ -166,9 +187,8 @@ class RunCostService(
         return NonPausingRegistration.Registered(registration)
     }
 
-    /** The sessions of the lineage of [caseId], existing or new (not published): a later read can fail. */
-    private fun prepareSessions(caseId: UUID): List<Session> {
-        val lineage = ancestors(caseId)
+    /** The sessions of [lineage] (a case and its ancestors), existing or new (not published): a later read can fail. */
+    private fun prepareSessions(lineage: List<Case>): List<Session> {
         val thresholds = lineage.associate { case ->
             val existing = sessions[case.id]
             // A running session keeps its snapshot, including an unlimited (null) threshold.
@@ -251,7 +271,9 @@ class RunCostService(
     @Synchronized
     fun stop(caseId: UUID) {
         if (!usageConfig.enabled) return
+        stoppedCases += caseId
         sessions.values.filter { caseId in it.ancestorIds }.forEach { session ->
+            stoppedCases += session.caseId
             session.stopped = true
             session.cancellation.completeExceptionally(CostRunStopped())
             session.confirmation?.completeExceptionally(CostRunStopped())

@@ -592,6 +592,38 @@ class CaseSideQuestionServiceUnitSpec :
             fixture.records.shouldBeEmpty()
         }
 
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { status ->
+            listOf(true, false).forEach { usageEnabled ->
+                "a case that has ended ($status) gets a 409 and no LLM call (usage tracked: $usageEnabled)" {
+                    val ended = case.copy(status = status)
+                    val fixture =
+                        Fixture(storedCase = ended, stored = lastRequest(), usageEnabled = usageEnabled, runCostService = runCostService(ended))
+                    fixture.answering(text("ok"))
+
+                    val error = shouldThrow<ConflictException> { fixture.service.answer(case.id, "?", runUserId) }
+
+                    error.message!! shouldContain "ended"
+                    fixture.prompts.shouldBeEmpty()
+                    fixture.records.shouldBeEmpty()
+                }
+            }
+        }
+
+        "a case stopped since its last run started gets a 409 and no LLM call, even once its session is gone" {
+            val runCost = runCostService(case)
+            val turn = runCost.register(case.id, UsageAccumulator())
+            runCost.stop(case.id)
+            turn.finish {}
+            val fixture = Fixture(stored = lastRequest(), runCostService = runCost)
+            fixture.answering(text("ok"))
+
+            val error = shouldThrow<ConflictException> { fixture.service.answer(case.id, "?", runUserId) }
+
+            error.message!! shouldContain "stopped"
+            fixture.prompts.shouldBeEmpty()
+            runCost.state(case.id).active shouldBe false
+        }
+
         "the transcript path is refused the same way over the threshold" {
             val limited = case.copy(runCostThreshold = 1.0)
             val fixture = Fixture(runCostService = runCostService(limited, pastCost = { 1.5 }))

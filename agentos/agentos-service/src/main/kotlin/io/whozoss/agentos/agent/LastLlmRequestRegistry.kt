@@ -122,8 +122,14 @@ class LastLlmRequestRegistry(
     private val entries = LinkedHashMap<UUID, LastLlmRequest>()
     private var size = 0L
 
-    /** Bumped for a case by [invalidate]: a capture or a use started before is outdated. Never reset. */
+    /**
+     * Bumped for a case by [invalidate]: a capture or a use started before is outdated. Never reset while the case
+     * exists; removed when it is deleted ([forget]). One entry per case that ran or was killed since the start of the
+     * service, deleted ones aside: a few dozen bytes each, bounded by the cases of the instance.
+     */
     private val generations = HashMap<UUID, Long>()
+
+    /** Generations are drawn from one counter, so a returned generation is never 0 (the generation of no entry). */
     private var lastGeneration = 0L
 
     /**
@@ -186,6 +192,16 @@ class LastLlmRequestRegistry(
     ) {
         val request = entries[caseId]?.takeIf { it.capturedAt == capturedAt } ?: return
         entries[caseId] = request.copy(lastCacheTouchAt = clock.instant())
+    }
+
+    /**
+     * [caseId] was deleted: its request and its generation are forgotten. A capture still in flight is dropped all
+     * the same, its generation (never 0) no longer matching.
+     */
+    @Synchronized
+    fun forget(caseId: UUID) {
+        removeEntry(caseId)
+        generations.remove(caseId)
     }
 
     /** Forgets the request of [caseId], without outdating anything else (see [invalidate]). */

@@ -227,6 +227,19 @@ class LastLlmRequestRegistryUnitSpec :
             registry.get(caseId).shouldBeNull()
         }
 
+        "forget (a deletion) drops the request and the generation of a case, and a capture still in flight" {
+            val registry = LastLlmRequestRegistry(MovingClock(start))
+            val stored = request()
+            val atRunStart = registry.invalidate(stored.caseId)
+            registry.put(stored, atRunStart) shouldBe true
+
+            registry.forget(stored.caseId)
+
+            registry.get(stored.caseId).shouldBeNull()
+            registry.generation(stored.caseId) shouldBe 0L
+            registry.put(stored, atRunStart) shouldBe false
+        }
+
         "the size estimate counts media bytes and tool call arguments, not only text" {
             val withMedia =
                 request().copy(

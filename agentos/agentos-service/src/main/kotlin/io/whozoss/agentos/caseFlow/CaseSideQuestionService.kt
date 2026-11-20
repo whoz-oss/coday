@@ -15,6 +15,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.usage.RunCostService
 import io.whozoss.agentos.usage.RunCostService.NonPausingRegistration
 import io.whozoss.agentos.usage.UsageOutcome
@@ -52,15 +53,19 @@ import java.util.UUID
  *   more than the transcript), and when its model and provider, resolved again (never kept: a provider holds an API
  *   key), still produce the same [LlmRequestOptions] (credentials and headers compared by digest). Right before it
  *   is sent, it is checked again that no run started and the case was not killed or deleted since
- *   ([LastLlmRequestRegistry.generation]), and that the conversation still ends on its answer.
+ *   ([LastLlmRequestRegistry.generation]), and that the conversation still ends on its answer. A run may still
+ *   start in the short window between that check and the dispatch (closing it would take a lock shared with every
+ *   mutation of the case): that is benign. The aside then answers from a slightly older but consistent state (the
+ *   turn as it ended, exactly as the agent saw it), it persists nothing, and its cost admission is atomic on its own
+ *   ([RunCostService.registerNonPausing]).
  * - **A transcript** of the persisted history ([SideQuestionTranscript]) under a system message of its own, with
  *   the default model of the namespace and its provider resolved for the caller, used as configured. The agent of
  *   the case is deliberately not resolved: that would resolve its tools too, which can start MCP processes or ask
  *   for OAuth. Also the retry of a request that only answered with tool calls.
  *
  * Every request is recorded as usage of the case ([UsageRecord], agent name [SIDE_QUESTION_AGENT_NAME]) and counts
- * toward its run cost. A case (or an ancestor) stopped, waiting for a cost confirmation, or at its threshold gets a
- * 409 instead of an answer: a side question never pauses anything itself, though a running turn may pause at its
+ * toward its run cost. A case that has ended (killed, in error) spends nothing more: 409. So does a case (or an
+ * ancestor) stopped since its last run started, waiting for a cost confirmation, or at its threshold: a side question never pauses anything itself, though a running turn may pause at its
  * next gate because the side question's spend crossed the threshold.
  */
 @Service
@@ -101,8 +106,8 @@ class CaseSideQuestionService(
      * The answer to [question] about the case [caseId], asked by the user [userId].
      *
      * @throws ResourceNotFoundException when the case does not exist or was removed
-     * @throws ConflictException (409) when the namespace has no usable default model, or the case is stopped,
-     *   waiting for a cost confirmation, or at its run cost threshold
+     * @throws ConflictException (409) when the namespace has no usable default model, or the case has ended, was
+     *   stopped since its last run started, is waiting for a cost confirmation, or is at its run cost threshold
      * @throws ResponseStatusException (502) when the provider fails or answers nothing; its message never
      *   carries the provider's own error, which may hold request details (the full one is in the logs)
      */
@@ -114,6 +119,10 @@ class CaseSideQuestionService(
         val case =
             caseService.findById(caseId, withRemoved = false)
                 ?: throw ResourceNotFoundException("Case not found: $caseId")
+        // Usage tracked or not: an ended case spends nothing more.
+        if (case.status == CaseStatus.KILLED || case.status == CaseStatus.ERROR) {
+            throw ConflictException("This case has ended: a side question cannot be answered")
+        }
         var events = caseEventService.findByParent(caseId)
         val lastRequest = lastLlmRequestRegistry.get(caseId)
         val fromLastRequest = lastRequest?.let { fromLastRequest(case, events, it, question, userId) }
@@ -300,7 +309,8 @@ class CaseSideQuestionService(
                     when (result.reason) {
                         NonPausingRegistration.Reason.OVER_THRESHOLD -> "has reached its run cost limit"
                         NonPausingRegistration.Reason.PAUSED -> "is waiting for a run cost confirmation"
-                        NonPausingRegistration.Reason.STOPPED -> "is being stopped"
+                        NonPausingRegistration.Reason.STOPPED -> "was stopped (send a message to resume it)"
+                        NonPausingRegistration.Reason.ENDED -> "has ended"
                     }
                 val whose = if (result.caseId == caseId) "This case" else "A parent of this case"
                 throw ConflictException("$whose $why: a side question cannot be answered now")
