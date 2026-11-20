@@ -763,6 +763,35 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(ref.instance['canSend']).toBe(false)
   })
 
+  describe('Wizz reply cue', () => {
+    it('is opt-in, cancels an active cue when disabled, and never changes the messages scroll itself', () => {
+      jest.useFakeTimers()
+      const original = globalThis.EventSource
+      const streams: Array<EventTarget & { close: jest.Mock }> = []
+      globalThis.EventSource = jest.fn(() => {
+        const source = Object.assign(new EventTarget(), { close: jest.fn() })
+        streams.push(source)
+        return source
+      }) as unknown as typeof EventSource
+      const ref = makeComponent()
+      try {
+        expect(ref.instance['wizzEnabled']()).toBe(false)
+        ref.instance['toggleWizz']()
+        expect(ref.instance['wizzEnabled']()).toBe(true)
+        // The main chat transport is not opened by toggling: only the component state side channel is.
+        expect(streams).toHaveLength(1)
+        ref.instance['wizzActive'].set(true)
+        ref.instance['toggleWizz']()
+        expect(ref.instance['wizzEnabled']()).toBe(false)
+        expect(ref.instance['wizzActive']()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        jest.useRealTimers()
+      }
+    })
+  })
+
   describe('case header overflow menu', () => {
     it('offers labelled danger items for stop and delete', () => {
       const ref = makeComponent()

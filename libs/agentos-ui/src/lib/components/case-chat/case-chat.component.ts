@@ -107,6 +107,7 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { CaseChatWizzStateService } from './case-chat-wizz-state.service'
 
 export interface ToolCall {
   requestId: string
@@ -227,7 +228,7 @@ function hasActiveSelection(): boolean {
     CostPipe,
     TokenCountPipe,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService, CaseChatWizzStateService],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -246,6 +247,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly caseState = inject(CaseStateService)
   private readonly oauthService = inject(OAuthAgentosService)
   private readonly userState = inject(UserStateService)
+  private readonly wizz = inject(CaseChatWizzStateService)
+
+  protected readonly wizzEnabled = this.wizz.enabled
+  protected readonly wizzActive = signal(false)
+  private wizzQueue = 0
+  private wizzTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -572,6 +579,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           this.scrollToBottom()
         })
       }
+    })
+
+    // The visual effect is intentionally outside timeline/scroll state. A sequence lets
+    // consecutive finishes play separately without moving the messages scroller.
+    effect(() => {
+      if (this.wizz.cueSequence() > 0) this.enqueueWizzCue()
     })
 
     // Register DOM-dependent behaviour after the first render.
@@ -1000,6 +1013,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.terminalCloseTimer = null
     }
     this.eventSource?.close()
+    this.wizz.dispose()
+    this.cancelWizzCue()
     this.scrollListenerCleanup?.()
   }
 
@@ -1052,6 +1067,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.streamUnavailable.set(false)
     this.caseGone.set(false)
     this.eventSource?.close()
+    this.wizz.retry(this.caseId)
+    this.cancelWizzCue()
     this.connectSse()
   }
 
@@ -1082,6 +1099,39 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private dropCaseProbe(): void {
     this.caseProbe?.unsubscribe()
     this.caseProbe = null
+  }
+
+  protected toggleWizz(): void {
+    this.wizz.toggle(this.caseId)
+    // The normal stream may already have rendered an answer when Wizz is switched on.
+    // It remains harmless until the separate live-only stream supplies the same finish ID.
+    this.wizz.reconcile(this.events())
+    if (!this.wizzEnabled()) this.cancelWizzCue()
+  }
+
+  private enqueueWizzCue(): void {
+    if (!this.wizzEnabled()) return
+    this.wizzQueue++
+    if (this.wizzTimer !== null || this.wizzActive()) return
+    this.playNextWizzCue()
+  }
+
+  private playNextWizzCue(): void {
+    if (!this.wizzEnabled() || this.wizzQueue === 0) return
+    this.wizzQueue--
+    this.wizzActive.set(true)
+    this.wizzTimer = setTimeout(() => {
+      this.wizzTimer = null
+      this.wizzActive.set(false)
+      this.playNextWizzCue()
+    }, 300)
+  }
+
+  private cancelWizzCue(): void {
+    this.wizzQueue = 0
+    if (this.wizzTimer !== null) clearTimeout(this.wizzTimer)
+    this.wizzTimer = null
+    this.wizzActive.set(false)
   }
 
   private connectSse(): void {
@@ -1125,6 +1175,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
+          this.wizz.reconcile(this.events())
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1185,6 +1236,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
                   this.isRunning.set(false)
                   this.eventSource?.close()
                   this.eventSource = null
+                  this.wizz.dispose()
+                  this.cancelWizzCue()
                 }
               }, TERMINAL_CLOSE_DEBOUNCE_MS)
             }
@@ -1416,6 +1469,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.eventSource = null
+    this.wizz.reset()
+    this.cancelWizzCue()
     this.dropCaseProbe()
     this.streamUnavailable.set(false)
     this.caseGone.set(false)
