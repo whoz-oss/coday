@@ -13,6 +13,7 @@ import {
   ConfigOperationViewDto,
   ConfigSecretInputDto,
 } from '@whoz-oss/agentos-api-client'
+import { diffLines, DiffRow } from './field-diff'
 
 /** Label shown instead of the actions when the plan can no longer be applied. */
 const STATE_LABELS: Record<string, string> = {
@@ -77,8 +78,9 @@ interface PendingSecret {
  * user typed to the server, which applies the frozen plan with that user's rights and answers
  * the agent. Every status shown comes from the server, re-read with the viewer's own rights.
  *
- * Each step is one line whose fields unfold on demand; the secrets to type are gathered next to
- * Apply, which says why it is disabled.
+ * Each step is open by default and can be collapsed; an update reads as a line diff of each field
+ * (before, then after), a creation as the list of its fields. The secrets to type are gathered
+ * next to Apply, which says why it is disabled.
  */
 @Component({
   selector: 'agentos-config-change-card',
@@ -284,11 +286,28 @@ export class ConfigChangeCardComponent implements OnInit {
 
   /** The proposed value of a change; an agent's integration entry reads as the tools it grants. */
   protected proposedValue(change: ConfigFieldChangeDto): string {
-    const after: unknown = change.after
-    if (!change.path.startsWith(INTEGRATIONS_PATH_PREFIX)) return this.display(after)
-    if (after === undefined || after === null) return 'all tools'
-    if (Array.isArray(after)) return after.length === 0 ? 'no tools' : `only ${after.join(', ')}`
-    return this.display(after)
+    return this.valueText(change.path, change.after)
+  }
+
+  /** A field value as text, the same way before and after a change: an integration entry reads as the tools it grants. */
+  protected valueText(path: string, value: unknown): string {
+    if (!path.startsWith(INTEGRATIONS_PATH_PREFIX)) return this.display(value)
+    if (value === undefined || value === null) return 'all tools'
+    if (Array.isArray(value)) return value.length === 0 ? 'no tools' : `only ${value.join(', ')}`
+    return this.display(value)
+  }
+
+  /**
+   * The lines of a change: its before and after as a diff. An absent before (null or undefined) is a creation,
+   * a removal has no after. A change with neither keeps the plain '—'.
+   */
+  protected diffRows(change: ConfigFieldChangeDto): DiffRow[] {
+    const before: unknown = change.before
+    const beforeText = before === undefined || before === null ? null : this.valueText(change.path, before)
+    const afterText = change.remove ? null : this.proposedValue(change)
+    // No pair to compare: the plain '—'.
+    if (beforeText === null && afterText === null) return [{ kind: 'context', text: this.display(null) }]
+    return diffLines(beforeText, afterText)
   }
 
   /** A value as the user reads it: plain text, `{"$op": ref}` as the step it refers to, JSON otherwise. */
