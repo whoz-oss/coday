@@ -9,6 +9,14 @@ import java.nio.file.Path
 
 class ForgeDeliveryDraftDefinitionTest {
     @Test
+    fun pluginPublishesTheSingleDeliveryWorkflow() {
+        val flows = ForgeBmadCatalogContributor().flows().map {
+            ObjectMapper().readValue(it, object : TypeReference<Map<String, Any?>>() {})
+        }
+        assertThat(flows.count { it["workflowType"] == "forge.delivery" }).isEqualTo(1)
+    }
+
+    @Test
     fun deliveryDraftUsesStandardReviewerAndJoinsBothHumanDecisions() {
         val path = Path.of("..", "docs", "WZ-36147-delivery-workflow.draft.json")
         val raw = Files.newInputStream(path).use {
@@ -20,6 +28,7 @@ class ForgeDeliveryDraftDefinitionTest {
         fun agent(id: String) = (step(id)["responsibility"] as Map<*, *>)["name"]
 
         assertThat(agent("delivery-preflight")).isEqualTo("ProductEngineer")
+        assertThat(agent("packet-assembly")).isEqualTo("ForgePacketAssembler")
         assertThat(agent("implementation-build")).isEqualTo("ForgeDeveloper")
         assertThat(agent("implementation-review")).isEqualTo("Reviewer")
         assertThat(step("technical-validation")["dependsOn"] as List<*>)

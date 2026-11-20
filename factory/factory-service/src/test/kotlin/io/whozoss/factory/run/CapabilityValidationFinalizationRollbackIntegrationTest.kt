@@ -38,6 +38,7 @@ import io.whozoss.factory.sdk.spi.FindingStatus
 import io.whozoss.factory.sdk.spi.StepValidationContext
 import io.whozoss.factory.sdk.spi.StepValidationVerdict
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
+import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
@@ -73,6 +74,192 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
     private val runId = "run-finalization-rollback"
     private val workflowId = "fragment-finalization-rollback"
     private val step = WorkflowStepDefinition("write", "Write", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Writer"), emptyList())
+
+    @Test
+    fun `missing baseline pauses first dispatch and recovery and retry starts one fresh turn`() {
+        assertPreflightRetry(packetFailure = null)
+    }
+
+    @Test
+    fun `unavailable or mismatched Case Git prevents initial and recovery Build sends until a fresh retry`() {
+        assertPreflightRetry(packetFailure = "GIT_COMMIT_UNAVAILABLE")
+        assertPreflightRetry(packetFailure = "CONTENT_MISMATCH")
+    }
+
+    private fun assertPreflightRetry(packetFailure: String?) {
+        val step = if (packetFailure == null) this.step else WorkflowStepDefinition(
+            "implementation-build", "Build", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "ForgeDeveloper"), emptyList(),
+        )
+        val persona = requireNotNull(step.responsibility.name)
+        val actor = if (packetFailure == null) null else "operator"
+        val pinned = "a".repeat(40)
+        val planPath = "plans/implementation.json"
+        val approvedBytes = """{"steps":[{"id":"approved"}]}""".toByteArray()
+        val receipt = mapOf("commit" to pinned, "planSha256" to WorkspaceDeltaCollector.sha256Hex(approvedBytes))
+        for (recover in listOf(false, true)) {
+            //given
+            val workflow = "strict-dispatch-${packetFailure ?: "baseline"}-$recover"
+            val flow = "test.strict-workspace"
+            val rootCase = CapabilityExecutionService.stableCaseId(workflow, step.id)
+            val originalId = CapabilityExecutionService.stableAttemptId(workflow, step.id)
+            val rawStep = mapOf("id" to step.id, "name" to step.name,
+                "responsibility" to mapOf("kind" to "agent", "name" to persona), "status" to "ready")
+            workflowRepository.saveDefinition(scope, io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord(
+                workflowType = flow, version = "1", definitionHash = "strict-fixture",
+                definition = mapOf("steps" to listOf(rawStep)),
+            ))
+            workflowRepository.insertInstance(scope, WorkflowInstanceRecord(
+                namespaceId = namespace, workflowId = workflow, revision = 1, status = "active",
+                creationCommandHash = workflow, rootCaseId = rootCase,
+                instance = mapOf("workflowId" to workflow, "workflowType" to flow, "definitionVersion" to "1",
+                    "definitionHash" to "strict-fixture", "steps" to listOf(rawStep),
+                    "controllerRequest" to mapOf("actorId" to actor)),
+                projection = mapOf("steps" to listOf(rawStep)),
+            ))
+            if (packetFailure != null) {
+                evidenceRepository.append(scope, namespace, workflow, WorkflowEvidenceItem(
+                    evidenceId = "approval-$workflow", namespaceId = namespace, workflowId = workflow,
+                    stepId = "packet-approval", kind = "human-decision", outcome = "pass",
+                    source = mapOf("kind" to "factory-human", "actorId" to actor), facts = receipt,
+                    idempotencyKey = null, createdAt = null,
+                ))
+            }
+            val attempts = DurableAgentAttemptService(realAttemptRepository)
+            val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+            val proxy = mockk<AgentOsProxyClient>()
+            val events = mutableListOf<String>()
+            var ready = false
+            every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+                events += "prepare"
+                val binding = firstArg<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>()
+                CaseHandle(binding.caseId, binding.namespaceId, false)
+            }
+            every { proxy.fetchWorkspaceChanges(rootCase, actor) } answers {
+                events += "baseline"
+                mapOf("equipped" to true, "status" to "READY", "path" to worktreeRoot.toString()) +
+                    if (ready || packetFailure != null) mapOf("changes" to mapOf("base" to pinned, "files" to emptyList<Any>())) else emptyMap()
+            }
+            every { adapter.startTurn(any<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>(), any(), any()) } answers {
+                events += "start"
+                val binding = firstArg<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>()
+                io.whozoss.factory.adapter.agentos.TurnToken.unbaselined(binding.caseId, binding.attemptId)
+            }
+            every { adapter.observeTurnResult(any(), any(), any(), any()) } returns
+                io.whozoss.factory.adapter.agentos.AgentOsObservationResult(AgentOsExecutionVerdict.Succeeded(emptyMap()), null)
+            val validator = object : FactoryStepResultValidator {
+                override fun supports(flowType: String, stepId: String, agentName: String) = flowType == flow
+                override fun requiresTrustedWorkspaceBaseline(flowType: String, stepId: String, agentName: String) =
+                    packetFailure == null && supports(flowType, stepId, agentName)
+            }
+            val observers = if (actor == null) emptyList() else {
+                every { proxy.fetchNamespaceGit(namespace, actor) } returns mapOf(
+                    "associated" to true, "repositoryUrl" to "https://github.com/biznet-io/whoz.git",
+                )
+                every { proxy.pinnedGitCommitAvailable(rootCase, pinned, actor) } answers {
+                    events += "git"
+                    assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse()
+                    ready || packetFailure != "GIT_COMMIT_UNAVAILABLE"
+                }
+                every { proxy.readPinnedGitBlob(rootCase, pinned, planPath, actor) } answers {
+                    if (ready) approvedBytes else "different committed plan".toByteArray()
+                }
+                listOf(object : FactoryStepEvidenceObserver {
+                    override fun requiresBeforeSideEffect(flowType: String, stepId: String) =
+                        flowType == flow && stepId == "implementation-build"
+
+                    override fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation {
+                        val git = requireNotNull(context.gitObjects)
+                        val accepted = context.run.humanDecisions.single()["facts"] as Map<*, *>
+                        val commit = accepted["commit"] as String
+                        return when {
+                            !git.commitExists(commit) -> StepEvidenceObservation.Unavailable("GIT_COMMIT_UNAVAILABLE", "Pinned commit unavailable")
+                            git.readBlob(commit, planPath, 1024)?.let { WorkspaceDeltaCollector.sha256Hex(it) } != accepted["planSha256"] ->
+                                StepEvidenceObservation.Invalid("CONTENT_MISMATCH", "Committed plan differs from receipt")
+                            else -> StepEvidenceObservation.Observed(receipt)
+                        }
+                    }
+                })
+            }
+            val capability = CapabilityExecutionService(
+                CapabilityResolver(), workflowRepository, evidenceRepository, interactionRepository, attemptRepository,
+                attempts, adapter, transactionManager = transactionManager, workspaceDeltaCollector = WorkspaceDeltaCollector(proxy),
+                registeredStepResultValidators = listOf(validator), registeredStepEvidenceObservers = observers,
+                agentOsProxyClient = proxy,
+            )
+            val hub = mockk<io.whozoss.factory.workflow.sse.WorkflowSseHub>(relaxed = true)
+            val runner = io.whozoss.factory.workflow.service.SessionRunService(
+                workflowRepository, evidenceRepository, interactionRepository, capability, hub,
+                transactionManager = transactionManager,
+            )
+            val submitter = mockk<io.whozoss.factory.workflow.service.SessionRunSubmissionService>()
+            every { submitter.submit(scope, namespace, workflow, any(), any(), null) } returns
+                io.whozoss.factory.workflow.service.SessionRunSubmissionService.SubmissionResult("queued", true, false, "pending")
+            val service = io.whozoss.factory.workflow.service.WorkflowService(
+                workflowRepository, evidenceRepository, interactionRepository, hub, sessionRunService = runner,
+                transactionManager = transactionManager, durableAgentAttemptService = attempts, sessionRunSubmissionService = submitter,
+                workspaceRetryCapability = capability,
+            )
+
+            //when
+            if (recover) {
+                attempts.register(scope, io.whozoss.factory.agentattempt.domain.DurableAgentAttempt(
+                    attemptId = originalId, caseId = rootCase, namespaceId = namespace, workflowId = workflow,
+                    stepId = step.id, attemptNumber = 1, agentName = persona, rootCaseId = rootCase, brief = "work",
+                ))
+                val recovery = io.whozoss.factory.agentattempt.service.BridgeRecoveryWorker(
+                    attempts, adapter, workflowRepository = workflowRepository, capabilityExecutionService = capability,
+                )
+                assertThat(recovery.recover().redriven).isZero()
+            }
+            val paused = runner.runSession(scope, namespace, workflow, worktreeRoot)
+            assertThat(runner.runSession(scope, namespace, workflow, worktreeRoot).status).isEqualTo("waiting_human")
+
+            //then
+            assertThat(paused.status).isEqualTo("waiting_human")
+            val preflight = listOf("prepare", "baseline") + if (packetFailure == null) emptyList() else listOf("git")
+            assertThat(events).containsExactlyElementsOf(preflight)
+            val retry = interactionRepository.list(scope, namespace, workflow, openOnly = true).single()
+            assertThat(retry.interactionType).isEqualTo("retry")
+            assertThat(retry.payload["prompt"] as String).contains(packetFailure ?: "workspace", "Retry")
+            assertThat(service.workflowActions(scope, namespace, workflow, canReply = true).allowedActions)
+                .anyMatch { it.type == "reply" && it.interactionId == retry.interactionId }
+            val predecessor = attempts.findLatestForStep(scope, namespace, workflow, step.id)!!
+            assertThat(predecessor.attemptId).isEqualTo(originalId)
+            assertThat(predecessor.failureCode).isEqualTo("WORKSPACE_BASELINE_UNAVAILABLE")
+            assertThat(attempts.journal(scope, namespace, workflow, step.id, originalId).map { it.toStatus })
+                .doesNotContain(AgentAttemptStatus.STARTING)
+            verify(exactly = 0) { adapter.startTurn(any<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>(), any(), any()) }
+
+            //when
+            ready = true
+            service.replyInteraction(scope, namespace, workflow, retry.interactionId, retry.revision,
+                "approve", null, "operator", worktreeRoot)
+            assertThatThrownBy {
+                service.replyInteraction(scope, namespace, workflow, retry.interactionId, retry.revision,
+                    "approve", null, "operator", worktreeRoot)
+            }.hasMessageContaining("no longer current")
+            if (recover) {
+                val recovery = io.whozoss.factory.agentattempt.service.BridgeRecoveryWorker(
+                    attempts, adapter, workflowRepository = workflowRepository, capabilityExecutionService = capability,
+                )
+                assertThat(recovery.recover().redriven).isEqualTo(1)
+                assertThat(recovery.recover().redriven).isZero()
+            }
+            val completed = runner.runSession(scope, namespace, workflow, worktreeRoot)
+            runner.runSession(scope, namespace, workflow, worktreeRoot)
+
+            //then
+            assertThat(completed.status).isEqualTo("completed")
+            assertThat(events).containsExactlyElementsOf(preflight + preflight + listOf("start", "baseline"))
+            val successorId = CapabilityExecutionService.retryAttemptId(workflow, step.id, 2)
+            assertThat(attempts.findLatestForStep(scope, namespace, workflow, step.id)!!.attemptId).isEqualTo(successorId)
+            verify(exactly = 1) { adapter.startTurn(match<io.whozoss.factory.adapter.agentos.TrustedCaseBinding> {
+                it.attemptId == successorId && it.caseId == rootCase
+            }, any(), any()) }
+            verify(exactly = 1) { submitter.submit(scope, namespace, workflow, any(), "workspace-retry:$successorId", null) }
+            verify(exactly = 1) { adapter.observeTurnResult(any(), any(), any(), any()) }
+        }
+    }
 
     @Test
     fun `direct workflow observes its root Case worktree without a parent Run environment`() {
@@ -214,7 +401,7 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
     }
 
     @Test
-    fun `direct workflow reads pinned Git objects through AgentOS when worktree is remote`() {
+    fun `direct workflow reads pinned Git objects through AgentOS and deduplicates registered observer`() {
         val directWorkflowId = "direct-remote-git-success"
         val nextStep = WorkflowStepDefinition("read-after-restart", "Read state",
             WorkflowStepResponsibility(ResponsibilityKind.AGENT, "Writer"), listOf(step.id))
@@ -255,7 +442,7 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
             "changes" to mapOf("files" to emptyList<Any>()),
         )
         every { proxy.fetchNamespaceGit(namespace, actor) } returns mapOf(
-            "associated" to true, "repositoryUrl" to "git@github.com:biznet-io/whoz.git",
+            "associated" to true, "repositoryUrl" to "https://github.com/biznet-io/whoz/",
         )
         every { proxy.pinnedGitCommitAvailable(rootCaseId, pinned, actor) } returns true
         every { proxy.readPinnedGitBlob(rootCaseId, pinned, "specs/SPEC.md", actor) } returns
@@ -287,7 +474,7 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
             evidenceRepository = evidenceRepository, interactionRepository = interactionRepository,
             attemptRepository = attemptRepository, durableAgentAttemptService = DurableAgentAttemptService(realAttemptRepository),
             agentOsExecutionAdapter = adapter, transactionManager = transactionManager,
-            registeredStepEvidenceObservers = listOf(observer),
+            registeredStepEvidenceObservers = listOf(observer, observer),
             registeredStepResultValidators = listOf(validator),
             workspaceDeltaCollector = WorkspaceDeltaCollector(proxy), agentOsProxyClient = proxy,
         )
@@ -302,7 +489,7 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
     }
 
     @Test
-    fun `Git outage defers advancement then recovery reobserves after rollback and commits once`() {
+    fun `recovery rejects missing workspace baseline even after pinned Git becomes readable`() {
         Files.createDirectories(worktreeRoot)
         val rootCaseId = "root-finalization-rollback"
         val initialRun = runRepository.insert(scope, RunRecord(namespaceId = namespace, runId = runId, runType = "test", selectorVersion = "1", title = runId, domainState = mapOf("before" to true), domainRevision = 3, rootCaseId = rootCaseId))
@@ -435,8 +622,17 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
         assertThat(attempts.find(scope, namespace, workflowId, step.id, attemptId)!!.status).isEqualTo(AgentAttemptStatus.RUNNING)
         assertThat(evidenceRepository.list(scope, namespace, workflowId).single().outcome).isEqualTo("technical_pause")
 
-        assertThatThrownBy { capability.resolveAndRecord(scope, namespace, workflowId, step, Path.of(".")) }
-            .isInstanceOf(InjectedFinalizationFailure::class.java)
+        val pausedAttempt = attempts.find(scope, namespace, workflowId, step.id, attemptId)!!
+        val recoveryOwner = "recovery-test-owner"
+        attempts.claim(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, leaseTtlMs = 0L)
+        attempts.transition(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, AgentAttemptStatus.STARTING)
+        attempts.transition(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, AgentAttemptStatus.RUNNING)
+        val recoveredResult = io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
+            AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "ok")), runtimeProof,
+        )
+        assertThatThrownBy {
+            capability.finalizeRecoveredAttempt(scope, pausedAttempt, recoveryOwner, recoveredResult)
+        }.isInstanceOf(InjectedFinalizationFailure::class.java)
 
         val rolledBackRun = runRepository.find(scope, namespace, runId)!!
         assertThat(rolledBackRun.revision).isEqualTo(pausedRun.revision)
@@ -449,24 +645,20 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
         assertThat(attempts.journal(scope, namespace, workflowId, step.id, attemptId).map { it.toStatus })
             .doesNotContain(AgentAttemptStatus.SUCCEEDED)
 
-        val recoveryOwner = "recovery-test-owner"
-        attempts.claim(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, leaseTtlMs = 0L)
-        attempts.transition(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, AgentAttemptStatus.STARTING)
-        attempts.transition(scope, namespace, workflowId, step.id, attemptId, recoveryOwner, AgentAttemptStatus.RUNNING)
-        assertThat(capability.finalizeRecoveredAttempt(scope, rolledBackAttempt, recoveryOwner,
-            io.whozoss.factory.adapter.agentos.AgentOsObservationResult(
-                AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "ok")), runtimeProof,
-            ))).isTrue()
+        assertThat(capability.finalizeRecoveredAttempt(scope, rolledBackAttempt, recoveryOwner, recoveredResult)).isTrue()
         assertThat(observations.get()).isEqualTo(3)
         val committedRun = runRepository.find(scope, namespace, runId)!!
-        assertThat(committedRun.domainState).containsExactlyEntriesOf(mapOf("after" to true))
-        assertThat(committedRun.domainRevision).isEqualTo(initialRun.domainRevision + 1)
-        assertThat(committedRun.appliedValidationUpdates).hasSize(2)
-        assertThat(committedRun.findings.single().status).isEqualTo(FindingStatus.RESOLVED)
-        val agentEvidence = evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "agent-result" && it.outcome == "pass" }
-        assertThat(agentEvidence).hasSize(1)
-        assertThat(agentEvidence.single().facts["externalEvidence"]).isEqualTo(mapOf("verifiedCommit" to "a".repeat(40)))
-        assertThat(agentEvidence.single().facts["runtimeCaseTerminationProof"]).isEqualTo(
+        assertThat(committedRun.domainState).isEqualTo(initialRun.domainState)
+        assertThat(committedRun.domainRevision).isEqualTo(initialRun.domainRevision)
+        assertThat(committedRun.findings.map { it.code }).contains("WORKSPACE_EVIDENCE_UNAVAILABLE")
+        val agentEvidence = evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "agent-result" }
+        assertThat(agentEvidence.map { it.outcome }).containsExactlyInAnyOrder("technical_pause", "fail")
+        val rejected = agentEvidence.single { it.outcome == "fail" }
+        assertThat(rejected.facts["code"]).isEqualTo("WORKSPACE_EVIDENCE_UNAVAILABLE")
+        assertThat(rejected.facts["message"] as String)
+            .contains("Original pre-turn workspace baseline unavailable", "review recovery options")
+            .doesNotContain("retry with a fresh attempt")
+        assertThat(rejected.facts["runtimeCaseTerminationProof"]).isEqualTo(
             mapOf(
                 "caseId" to runtimeProof.caseId,
                 "attemptId" to runtimeProof.attemptId,
@@ -474,14 +666,18 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
                 "status" to runtimeProof.status,
             ),
         )
-        assertThat(attempts.find(scope, namespace, workflowId, step.id, attemptId)!!.status).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+        val failedAttempt = attempts.find(scope, namespace, workflowId, step.id, attemptId)!!
+        assertThat(failedAttempt.status).isEqualTo(AgentAttemptStatus.FAILED)
+        assertThat(failedAttempt.failureCode).isEqualTo("WORKSPACE_EVIDENCE_UNAVAILABLE")
 
         val replayed = capability.resolveAndRecord(scope, namespace, workflowId, step, Path.of("."))
         assertThat(replayed.attemptId).isEqualTo(attemptId)
+        assertThat(replayed.outcome).isInstanceOf(CapabilityOutcome.AgentFailed::class.java)
         val afterReplay = runRepository.find(scope, namespace, runId)!!
         assertThat(afterReplay.revision).isEqualTo(committedRun.revision)
         assertThat(afterReplay.domainRevision).isEqualTo(committedRun.domainRevision)
-        assertThat(evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "agent-result" && it.outcome == "pass" }).hasSize(1)
+        assertThat(evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "agent-result" }).hasSize(2)
+        verify(exactly = 1) { adapter.startTurn(any<io.whozoss.factory.adapter.agentos.TrustedCaseBinding>(), any(), any()) }
     }
 
     @Test

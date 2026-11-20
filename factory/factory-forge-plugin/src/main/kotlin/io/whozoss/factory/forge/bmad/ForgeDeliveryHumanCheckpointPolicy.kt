@@ -13,6 +13,9 @@ class ForgeDeliveryHumanCheckpointPolicy : FactoryHumanCheckpointPolicy {
     override fun supports(flowType: String, stepId: String): Boolean =
         flowType == "forge.delivery" && stepId in setOf("packet-approval", "technical-validation", "functional-validation")
 
+    override fun requiresExternalEvidence(flowType: String, stepId: String): Boolean =
+        flowType == "forge.delivery" && stepId == "packet-approval"
+
     override fun present(context: HumanCheckpointContext): HumanCheckpointVerdict =
         when (context.stepId) {
             "packet-approval" -> packet(context)?.let { HumanCheckpointVerdict.Allowed(it, packetPrompt(context, it)) }
@@ -65,7 +68,8 @@ class ForgeDeliveryHumanCheckpointPolicy : FactoryHumanCheckpointPolicy {
         val commit = raw["commit"] as? String
         val digest = raw["manifestSha256"] as? String
         if (repository.isNullOrBlank() || commit?.matches(COMMIT) != true || digest?.matches(SHA256) != true) return null
-        return mapOf("repository" to repository, "commit" to commit, "manifestSha256" to digest)
+        return mapOf("repository" to repository, "commit" to commit, "manifestSha256" to digest) +
+            (raw["packetGeneration"] as? String)?.let { mapOf("packetGeneration" to it) }.orEmpty()
     }
 
     private fun packetPrompt(context: HumanCheckpointContext, identity: Map<String, Any?>): String {

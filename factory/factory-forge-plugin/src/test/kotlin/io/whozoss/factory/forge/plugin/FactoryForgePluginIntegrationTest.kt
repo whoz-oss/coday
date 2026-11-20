@@ -77,7 +77,7 @@ class FactoryForgePluginIntegrationTest {
             "factory-forge-plugin",
         )
         assertThat(catalogContributors).hasSize(1)
-        assertThat(catalogContributors.single().flows()).hasSize(10)
+        assertThat(catalogContributors.single().flows()).hasSize(1)
 
         val selectors = pluginManager.getExtensions(
             FactoryFlowSelector::class.java,

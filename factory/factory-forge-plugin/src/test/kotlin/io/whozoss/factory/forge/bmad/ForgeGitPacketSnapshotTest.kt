@@ -110,7 +110,7 @@ class ForgeGitPacketSnapshotTest {
     @Test
     fun `observer reads a committed packet through the configured Git source`() {
         initRepo()
-        git("remote", "add", "origin", "https://github.com/biznet-io/whoz.git")
+        git("remote", "add", "origin", "https://github.com/biznet-io/whoz/")
         val documents = documents()
         writeDocuments(documents)
         git("add", ".")
@@ -213,6 +213,55 @@ class ForgeGitPacketSnapshotTest {
 
         assertThat(ForgeBuildPacketEvidenceObserver().observe(context))
             .isEqualTo(StepEvidenceObservation.Observed(packet.filterKeys { it != "canonicalManifest" }))
+    }
+
+    @Test
+    fun `checkpoint Git check binds both committed plans and manifest applicability to accepted state`() {
+        //given
+        val deliveryPlan = mapOf("steps" to listOf(mapOf("id" to "implement")))
+        val docs = documents() + ("plans/implementation.md" to mapper.writeValueAsBytes(deliveryPlan))
+        val pinned = "a".repeat(40)
+        val raw = manifest(pinned, docs)
+        val checked = ForgePacketManifest.validate(raw, docs) as ForgePacketManifest.Result.Valid
+        val packet = mapOf("repository" to "whoz", "commit" to pinned, "manifestSha256" to checked.sha256,
+            "canonicalManifest" to checked.canonicalBytes.toString(Charsets.UTF_8), "packetGeneration" to "assembly-2")
+        val decisions = listOf("detailed_spec", "ux_spec", "technical_spec", "qa_spec").associateWith { decision(false) }
+        var available = false
+        val reader = object : TrustedGitObjectReader {
+            override fun sourceRepository() = "whoz"
+            override fun commitExists(commit: String) = available && commit == pinned
+            override fun readBlob(commit: String, path: String, maxBytes: Int) = docs[path]
+        }
+        val state = mapOf("approvedPacketCandidate" to packet, "delivery_plan" to deliveryPlan,
+            "verification_plan" to "1. Verify", "applicability" to decisions)
+        val context = observationContext(raw).copy(stepId = "packet-approval", gitObjects = reader,
+            run = RunView("run-1", "forge.delivery", domainState = state))
+        val observer = ForgeBuildPacketEvidenceObserver()
+
+        //when / then
+        assertThat(observer.observeBeforeSideEffect(context)).isInstanceOf(StepEvidenceObservation.Unavailable::class.java)
+        available = true
+        assertThat(observer.observeBeforeSideEffect(context)).isInstanceOf(StepEvidenceObservation.Observed::class.java)
+        val receipt = (observer.observeBeforeSideEffect(context) as StepEvidenceObservation.Observed).facts
+        val approval = mapOf("stepId" to "packet-approval", "outcome" to "pass",
+            "source" to mapOf("kind" to "factory-human", "actorId" to "operator"),
+            "facts" to receipt + mapOf("gate" to "packet-approval", "decidedAt" to "2026-11-19T00:00:00Z", "trustedCheckpointEvidence" to receipt))
+        val build = context.copy(stepId = "implementation-build", run = context.run.copy(humanDecisions = listOf(approval)))
+        assertThat(observer.observeBeforeSideEffect(build)).isInstanceOf(StepEvidenceObservation.Observed::class.java)
+        available = false
+        assertThat(observer.observeBeforeSideEffect(build)).isInstanceOf(StepEvidenceObservation.Unavailable::class.java)
+        available = true
+        assertThat(observer.observeBeforeSideEffect(build.copy(run = build.run.copy(domainState = state +
+            ("approvedPacketCandidate" to (packet + ("packetGeneration" to "assembly-3")))))))
+            .isInstanceOf(StepEvidenceObservation.Invalid::class.java)
+        for (replacement in listOf(
+            "delivery_plan" to mapOf("steps" to listOf(mapOf("id" to "other"))),
+            "verification_plan" to "1. Skip",
+            "applicability" to (decisions + ("qa_spec" to decision(true))),
+        )) {
+            assertThat(observer.observeBeforeSideEffect(context.copy(run = context.run.copy(domainState = state + replacement))))
+                .isInstanceOf(StepEvidenceObservation.Invalid::class.java)
+        }
     }
 
     private fun observationContext(rawManifest: ByteArray) = StepEvidenceObservationContext(

@@ -1290,8 +1290,102 @@ describe('FactoryStore', () => {
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
+    expect(store.retryConflict()).toEqual({ workflowId: 'wf-1', namespaceId: 'ns-1' })
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+    http.expectNone((r) => r.url.endsWith('/wf-1/retries'))
     flushRunEnrichment('wf-1', false)
+    expect(store.retryConflict()).toBeNull()
     flushInitialWorkflows([])
+  })
+
+  it('reports retry rejection and fences duplicate submissions', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+    const payload = { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' }
+
+    store.retry('wf-1', payload)
+    store.retry('wf-1', payload)
+    const requests = http.match((r) => r.url.endsWith('/wf-1/retries'))
+    expect(requests).toHaveLength(1)
+    expect(store.retrying()).toEqual({ workflowId: 'wf-1', stepId: 'build' })
+    requests[0]!.flush(
+      { error: { code: 'UNSUPPORTED_ACTION', message: 'Retry is not supported' } },
+      { status: 400, statusText: 'Bad Request' }
+    )
+
+    expect(store.retrying()).toBeNull()
+    expect(store.retryFeedback()).toEqual(
+      expect.objectContaining({
+        workflowId: 'wf-1',
+        stepId: 'build',
+        code: 'UNSUPPORTED_ACTION',
+        message: 'Retry is not supported',
+      })
+    )
+    http.expectNone((r) => r.url.endsWith('/wf-1/actions'))
+  })
+
+  it('refreshes actions on retry revision conflict and retains server failure', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/retries'))
+      .flush(
+        { error: { code: 'WORKFLOW_REVISION_CONFLICT', message: 'Revision changed' } },
+        { status: 409, statusText: 'Conflict' }
+      )
+
+    expect(store.retryFeedback()).toEqual(
+      expect.objectContaining({
+        workflowId: 'wf-1',
+        stepId: 'build',
+        code: 'WORKFLOW_REVISION_CONFLICT',
+        message: 'Revision changed',
+      })
+    )
+    expect(store.retryConflict()).toEqual({ workflowId: 'wf-1', namespaceId: 'ns-1' })
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http.expectNone((r) => r.url.endsWith('/wf-1/retries'))
+    flushRunEnrichment('wf-1', false)
+    expect(store.retryConflict()).toBeNull()
+    flushInitialWorkflows([])
+  })
+
+  it('keeps retries fenced if action refresh fails after a conflict', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/retries'))
+      .flush(
+        { error: { code: 'WORKFLOW_REVISION_CONFLICT', message: 'Revision changed' } },
+        { status: 409, statusText: 'Conflict' }
+      )
+    const actions = http.expectOne((r) => r.url.endsWith('/wf-1/actions'))
+    actions.flush(
+      { error: { code: 'UNAVAILABLE', message: 'Actions unavailable' } },
+      { status: 503, statusText: 'Unavailable' }
+    )
+    http.match((r) => r.url.includes('/wf-1/')).forEach((request) => request.flush({ data: [] }))
+    flushInitialWorkflows([snapshot])
+    expect(store.retryConflict()).toEqual({ workflowId: 'wf-1', namespaceId: 'ns-1' })
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http.expectNone((r) => r.url.endsWith('/wf-1/retries'))
+
+    store.refresh()
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([snapshot])
+    expect(store.retryConflict()).toBeNull()
+  })
+
+  it('reports an ambiguous retry transport failure without claiming it failed on the server', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+    store.retry('wf-1', { stepId: 'build' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/retries')).error(new ProgressEvent('error'))
+    expect(store.retrying()).toBeNull()
+    expect(store.retryFeedback()).toEqual(expect.objectContaining({ workflowId: 'wf-1', stepId: 'build', status: 0 }))
   })
 
   it('resumes research with a stable key after an ambiguous transport failure', () => {

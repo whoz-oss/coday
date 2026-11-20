@@ -42,6 +42,12 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
     override fun supports(flowType: String, stepId: String, agentName: String): Boolean =
         flowType.startsWith("forge.")
 
+    override fun requiresTrustedWorkspaceBaseline(flowType: String, stepId: String, agentName: String): Boolean =
+        flowType == "forge.delivery"
+
+    override fun requiresDispatchEvidence(flowType: String, stepId: String): Boolean =
+        flowType == "forge.delivery" && stepId == "implementation-build"
+
     override fun validate(context: StepValidationContext): StepValidationVerdict {
         val businessOutput = ForgeBusinessOutputArtifact.read(context.report)
         if (businessOutput is ForgeBusinessOutputArtifact.ReadResult.Invalid) {
@@ -435,6 +441,10 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         }
         val nextState = LinkedHashMap(context.run.domainState)
         nextState["applicability"] = decisions
+        val references = outputs.get("evidence_refs") as? List<*>
+        if (references != null && references.size <= 8 && references.all { it is String && it.isNotBlank() && it.length <= 1_000 }) {
+            nextState["designEvidenceRefs"] = references
+        }
         return StepValidationVerdict.Accepted(newDomainState = nextState)
     }
 
@@ -492,7 +502,7 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
             "commit" to commit,
             "manifestSha256" to manifestSha,
             "canonicalManifest" to canonicalManifest,
-        )
+        ) + (evidence["packetGeneration"] as? String)?.let { mapOf("packetGeneration" to it) }.orEmpty()
         val clearedTechnicalPauses = context.run.findings
             .filter { it.id.startsWith("technical-pause:") && it.stepId == context.stepId && it.status == FindingStatus.OPEN }
             .associate { it.id to FindingResolution(FindingStatus.RESOLVED, "Pinned Git packet observed again") }
@@ -517,7 +527,8 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
             return StepValidationVerdict.Rejected("APPROVED_PACKET_GIT_UNAVAILABLE")
         }
         val approvals = context.run.humanDecisions.filter {
-            it["stepId"] == "packet-approval" && it["outcome"] == "pass"
+            it["stepId"] == "packet-approval" && it["outcome"] == "pass" &&
+                (it["facts"] as? Map<*, *>)?.get("gate") == "packet-approval"
         }
         val approvalFacts = approvals.singleOrNull()?.get("facts") as? Map<*, *>
         val approvalSource = approvals.singleOrNull()?.get("source") as? Map<*, *>

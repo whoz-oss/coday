@@ -22,6 +22,9 @@ sealed interface HumanCheckpointVerdict {
 interface FactoryHumanCheckpointPolicy : ExtensionPoint {
     fun supports(flowType: String, stepId: String): Boolean = false
 
+    /** A required receipt must come from a trusted pre-reply observer, never from reply input. */
+    fun requiresExternalEvidence(flowType: String, stepId: String): Boolean = false
+
     fun present(context: HumanCheckpointContext): HumanCheckpointVerdict =
         HumanCheckpointVerdict.Denied("HUMAN_CHECKPOINT_UNSUPPORTED")
 

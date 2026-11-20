@@ -38,7 +38,10 @@
     },
     {
       "dependsOn": ["design-assessment"],
-      "entry": ["Read the pinned source and detailed-product applicability decision."],
+      "entry": [
+        "Read the pinned source and detailed-product applicability decision.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
       "exit": [
         "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
       ],
@@ -52,7 +55,10 @@
     },
     {
       "dependsOn": ["product-design"],
-      "entry": ["Read the pinned source, product design evidence and UX applicability decision."],
+      "entry": [
+        "Read the pinned source, product design evidence and UX applicability decision.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
       "exit": [
         "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
       ],
@@ -66,7 +72,10 @@
     },
     {
       "dependsOn": ["ux-design"],
-      "entry": ["Read the pinned source, design evidence and technical applicability decision."],
+      "entry": [
+        "Read the pinned source, design evidence and technical applicability decision.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
       "exit": [
         "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
       ],
@@ -80,7 +89,10 @@
     },
     {
       "dependsOn": ["technical-design"],
-      "entry": ["Read every applicable design, its pinned revision and all not-applicable decisions."],
+      "entry": [
+        "Read every applicable design, its pinned revision and all not-applicable decisions.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
       "exit": [
         "Return a forge.business-outputs.v1 artifact with nonempty delivery_plan.steps. Every ordered item needs a distinct id, title, stack (frontend or backend), safe relative file_paths, verification command and depends_on (null or the id of an earlier item), including for a trivial change. Also return the plan document path, locator, revision and content digest."
       ],
@@ -95,7 +107,8 @@
     {
       "dependsOn": ["implementation-planning"],
       "entry": [
-        "Read the pinned source, applicable specifications, implementation plan and QA applicability decision."
+        "Read the pinned source, applicable specifications, implementation plan and QA applicability decision.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
       ],
       "exit": [
         "Return the QA specification path, locator, revision and digest when applicable, or its not-applicable reason. Always return a forge.business-outputs.v1 artifact with nonempty verification_plan Markdown and the plan document path, locator, revision and digest."
@@ -111,7 +124,8 @@
     {
       "dependsOn": ["qa-design"],
       "entry": [
-        "Read the pinned source specification, every produced design and plan, and all applicability decisions."
+        "Read the pinned source specification, every produced design and plan, and all applicability decisions.",
+        "Use the Case Git worktree to write the canonical packet manifest beside the design documents. Verify the actual document bytes, then commit the complete packet with GIT tools and report that real commit. Do not claim a revision from report text alone."
       ],
       "exit": [
         "Commit the complete packet to the source Git repository. Return the canonical manifest bytes and SHA-256, pinned repository and commit, and verified paths and document digests; stop if Git or any committed object is unavailable or mismatched."
@@ -121,7 +135,7 @@
       "name": "Assemble complete design packet",
       "responsibility": {
         "kind": "agent",
-        "name": "ProductEngineer"
+        "name": "ForgePacketAssembler"
       }
     },
     {
@@ -216,6 +230,6 @@
     }
   ],
   "title": "Forge delivery — ready to merge draft",
-  "version": "0.7.0",
+  "version": "0.7.2",
   "workflowType": "forge.delivery"
 }

@@ -253,7 +253,7 @@ class SessionRunService(
      * [io.whozoss.factory.lease.persistence.Neo4jLeaseRepository] for the embedded,
      * single-process engine.
      */
-    private inline fun <T> withWorkflowLock(
+    internal fun <T> withWorkflowLock(
         scope: TenantScope,
         namespaceId: String,
         workflowId: String,

@@ -28,6 +28,7 @@ import java.nio.file.Path
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.capability.CapabilityExecutionService
+import io.whozoss.factory.capability.CapabilityOutcome
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.workflow.service.SessionRunSubmissionService
 import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
@@ -218,6 +219,17 @@ class BridgeRecoveryWorker(
             }
             return Outcome.SKIPPED
         }
+        if (attempt.status == AgentAttemptStatus.PENDING || attempt.status == AgentAttemptStatus.CLAIMING) {
+            // Pending retries may reuse a Case with old messages. Do not derive a
+            // verdict from that history before this attempt has a dispatch baseline.
+            capabilityExecutionService?.redriveWithWorkspaceProof(candidate.scope, attempt)?.let { execution ->
+                if (execution.outcome is CapabilityOutcome.AgentDeferred) return Outcome.SKIPPED
+                enqueueContinuationBestEffort(candidate)
+                return if (attempts.find(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId,
+                        attempt.attemptId)?.failureCode == CapabilityExecutionService.WORKSPACE_RETRY_CODE
+                ) Outcome.WAITING else Outcome.REDRIVEN
+            }
+        }
         val snapshot = runCatching { adapter.reconcileResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId)) }.getOrNull() ?: return Outcome.SKIPPED
         // A durable business result remains authoritative even if runtime reconciliation
         // reports failure or a stale human wait instead of an indeterminate observation.
@@ -407,6 +419,7 @@ class BridgeRecoveryWorker(
         return Outcome.RESUMED
     }
 
+    /** Legacy sender for workflows without plugin governance; opted-in sends use the shared dispatcher. */
     private fun redrive(candidate: ScopedDurableAgentAttempt): Outcome {
         val attempt = candidate.attempt
         val brief = attempt.brief ?: return Outcome.SKIPPED
@@ -419,6 +432,12 @@ class BridgeRecoveryWorker(
             // Recovery cannot prove that an unknown workflow is autonomous; never create or redrive.
             return Outcome.SKIPPED
         }
+        val executionPlugin = (instance.instance["execution"] as? Map<*, *>)?.get("plugin") as? String
+        if (!executionPlugin.isNullOrBlank()) {
+            // An opted-in plugin already took the shared path above. A missing or
+            // non-matching extension must not authorize the legacy sender.
+            return Outcome.SKIPPED
+        }
         val externalUserId = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef)
         val parentRun = (instance.instance["runId"] as? String)
             ?: ((instance.instance["relations"] as? Map<*, *>)?.get("runId") as? String)
@@ -429,6 +448,9 @@ class BridgeRecoveryWorker(
             return Outcome.SKIPPED
         }
         val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
+        if (attempts.journal(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)
+                .any { it.toStatus in STARTED_STATUSES }
+        ) return Outcome.SKIPPED // Stale PENDING scan: sending is no longer safe.
         acquireRecoveryOccupancy(candidate)
         val boundAttempt = attempts.find(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)
             ?: error("Recovery attempt disappeared after occupancy binding")

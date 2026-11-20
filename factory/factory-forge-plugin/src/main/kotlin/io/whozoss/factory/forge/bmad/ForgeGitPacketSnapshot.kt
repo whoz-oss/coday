@@ -1,6 +1,8 @@
 package io.whozoss.factory.forge.bmad
 
 import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.nio.file.Path
 import java.util.concurrent.Executors
@@ -21,9 +23,13 @@ internal class ForgeGitPacketSnapshot(
     }
 
     private val mapper = ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+        .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
 
     /** [expectedRepository] and [worktree] must come from trusted Run/workstream state. */
-    fun verify(rawManifest: ByteArray, expectedRepository: String, worktree: Path): Result {
+    fun verify(
+        rawManifest: ByteArray, expectedRepository: String, worktree: Path,
+        acceptedDesign: Map<String, Any?>? = null,
+    ): Result {
         if (rawManifest.size > MAX_MANIFEST_BYTES || expectedRepository.isBlank()) return Result.Invalid("INVALID_PACKET_SOURCE")
         val root = try { mapper.readTree(rawManifest) } catch (_: Exception) { return Result.Invalid("INVALID_MANIFEST_JSON") }
         val source = root?.path("source") ?: return Result.Invalid("INVALID_PACKET_SOURCE")
@@ -60,11 +66,36 @@ internal class ForgeGitPacketSnapshot(
             }
             when (val checked = ForgePacketManifest.validate(rawManifest, bytes)) {
                 is ForgePacketManifest.Result.Invalid -> Result.Invalid(checked.code)
-                is ForgePacketManifest.Result.Valid -> Result.Valid(repository, commit, checked.canonicalBytes, checked.sha256)
+                is ForgePacketManifest.Result.Valid -> {
+                    val mismatch = acceptedDesign?.let { checkDesign(root, bytes, it) }
+                    if (mismatch == null) Result.Valid(repository, commit, checked.canonicalBytes, checked.sha256)
+                    else Result.Invalid(mismatch)
+                }
             }
         } catch (_: Exception) {
             Result.Invalid("GIT_SNAPSHOT_UNAVAILABLE")
         }
+    }
+
+    private fun checkDesign(
+        manifest: JsonNode, documents: Map<String, ByteArray>, state: Map<String, Any?>,
+    ): String? {
+        val applicability = state["applicability"] as? Map<*, *>
+        if (applicability?.keys != ForgePacketManifest.optionalKinds || ForgePacketManifest.optionalKinds.any { kind ->
+                manifest.path("applicability").path(kind) != mapper.valueToTree<JsonNode>(applicability?.get(kind))
+            }
+        ) return "PACKET_APPLICABILITY_MISMATCH"
+        fun document(kind: String): ByteArray = documents.getValue(manifest.path("entries").single {
+            it.path("kind").asText() == kind
+        }.path("path").asText())
+        val acceptedPlan = mapper.valueToTree<JsonNode>(state["delivery_plan"])
+        val committedPlan = runCatching { mapper.readTree(document("implementation_plan")) }.getOrNull()
+        if (!acceptedPlan.path("steps").isArray || acceptedPlan.path("steps").isEmpty || committedPlan != acceptedPlan) {
+            return "PACKET_IMPLEMENTATION_PLAN_MISMATCH"
+        }
+        val verification = state["verification_plan"] as? String
+        return if (verification.isNullOrBlank() || !document("verification_plan").contentEquals(verification.toByteArray(Charsets.UTF_8)))
+            "PACKET_VERIFICATION_PLAN_MISMATCH" else null
     }
 
     private fun safePath(path: String): Boolean = path.isNotBlank() && !path.startsWith('/') &&
@@ -86,7 +117,7 @@ internal class ProcessGitObjects : ForgeGitPacketSnapshot.GitObjects {
     fun sourceRepository(worktree: Path): String? =
         runGit(worktree, listOf("remote", "get-url", "origin"), 1024)
             ?.toString(Charsets.UTF_8)?.trim()
-            ?.removeSuffix(".git")?.substringAfterLast('/')?.substringAfterLast(':')
+            ?.trimEnd('/')?.removeSuffix(".git")?.substringAfterLast('/')?.substringAfterLast(':')
             ?.takeIf { Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$").matches(it) }
 
     override fun commitExists(worktree: Path, commit: String): Boolean =

@@ -50,11 +50,12 @@ class ForgeBmadFlowAndValidatorTest {
     )
 
     @Test
-    fun `catalog contributes explicit Factory contracts`() {
+    fun `catalog publishes only delivery while legacy Factory contracts remain valid`() {
         val flows = catalog.flows()
-        assertThat(flows).hasSize(10)
+        assertThat(flows).hasSize(1)
+        assertThat(mapper.readValue(flows.single(), Map::class.java)["workflowType"]).isEqualTo("forge.delivery")
 
-        val parsed = flows.map { mapper.readValue(it, Map::class.java) }
+        val parsed = ForgeBmadCatalogContributor.ALL_FLOW_JSONS.map { mapper.readValue(it, Map::class.java) }
         val current = parsed.filter { it["version"] == "1.2.0" }
         assertThat(current).hasSize(10)
         val flowTypes = current.map { it["workflowType"] as String }

@@ -110,6 +110,18 @@ export class FactoryStore implements OnDestroy {
   readonly questionFeedback = signal<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(
     null
   )
+  readonly retrying = signal<{ workflowId: string; stepId: string } | null>(null)
+  readonly retryFeedback = signal<{
+    workflowId: string
+    namespaceId: string | undefined
+    stepId: string
+    code: string
+    message: string
+    status: number
+  } | null>(null)
+  /** Fence retry until a post-command allowed-actions read succeeds for this workflow. */
+  readonly retryConflict = signal<{ workflowId: string; namespaceId: string } | null>(null)
+  private retryConflictGeneration = 0
   readonly resumingResearchStepId = signal<string | null>(null)
   readonly researchResumptionFeedback = signal<{
     stepId: string
@@ -704,6 +716,7 @@ export class FactoryStore implements OnDestroy {
     const selectedNamespaceId = this.selectedNamespaceId()
     if (!namespaceId || (selectedNamespaceId !== null && namespaceId !== selectedNamespaceId)) return of(undefined)
     const generation = this.namespaceGeneration
+    const retryConflictGeneration = this.retryConflictGeneration
     // The snapshot may be refreshed while the requests are in flight (an SSE
     // reload lands before they complete): always merge onto the latest one so
     // an obsolete snapshot can never overwrite a newer card/detail state.
@@ -772,6 +785,16 @@ export class FactoryStore implements OnDestroy {
           Object.entries(result).filter(([, value]) => value !== undefined)
         ) as Parameters<typeof merge>[0]
         merge(partial)
+        const conflict = this.retryConflict()
+        if (
+          result.actions !== undefined &&
+          generation === this.namespaceGeneration &&
+          retryConflictGeneration === this.retryConflictGeneration &&
+          conflict?.workflowId === id &&
+          conflict.namespaceId === namespaceId
+        ) {
+          this.retryConflict.set(null)
+        }
       }),
       switchMap(() => of(undefined))
     )
@@ -907,11 +930,45 @@ export class FactoryStore implements OnDestroy {
     payload: { stepId: string; expectedRevision?: number; reasonCode?: string },
     namespaceId?: string
   ): void {
-    const ns = namespaceId ?? this.namespaceFor(workflowId)
-    if (!ns) return
-    this.api
-      .openRetry(workflowId, payload, ns)
-      .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
+    if (this.retrying() || this.retryConflict()) return
+    const ns = (namespaceId ?? this.namespaceFor(workflowId))?.trim()
+    this.retryFeedback.set(null)
+    if (!ns) {
+      this.retryFeedback.set({
+        workflowId,
+        namespaceId: undefined,
+        stepId: payload.stepId,
+        code: 'NAMESPACE_UNAVAILABLE',
+        message: 'Cannot submit retry without a workflow namespace. Reload the workflow and check access.',
+        status: 0,
+      })
+      return
+    }
+    this.retrying.set({ workflowId, stepId: payload.stepId })
+    this.api.openRetry(workflowId, payload, ns).subscribe({
+      next: () => {
+        this.retrying.set(null)
+        this.retryConflictGeneration += 1
+        this.retryConflict.set({ workflowId, namespaceId: ns })
+        this.refreshAfterAction(workflowId)
+      },
+      error: (error: FactoryApiError) => {
+        this.retrying.set(null)
+        this.retryFeedback.set({
+          workflowId,
+          namespaceId: ns,
+          stepId: payload.stepId,
+          code: error.code,
+          message: error.message,
+          status: error.status,
+        })
+        if (error.status === 409) {
+          this.retryConflictGeneration += 1
+          this.retryConflict.set({ workflowId, namespaceId: ns })
+          this.refreshAfterAction(workflowId)
+        }
+      },
+    })
   }
 
   /**

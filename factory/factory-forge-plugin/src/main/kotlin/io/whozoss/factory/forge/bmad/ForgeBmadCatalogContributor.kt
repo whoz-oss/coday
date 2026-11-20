@@ -5,17 +5,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.factory.sdk.spi.FactoryFlowCatalogContributor
 import org.pf4j.Extension
 
-/**
- * PF4J extension contributing the 10 static BMAD flow fragments of
- * `forge-bmad` runs.
- *
- * Notice that implementation and correction use the unified `ForgeDeveloper` and
- * `ForgeVerifier` agents (D8), keeping the catalog minimal and 100% static.
- */
+/** PF4J catalog for the current Forge delivery workflow. */
 @Extension
 class ForgeBmadCatalogContributor : FactoryFlowCatalogContributor {
 
-    override fun flows(): List<String> = ALL_FLOW_JSONS
+    override fun flows(): List<String> = listOf(
+        requireNotNull(javaClass.getResourceAsStream("/sessions/forge-delivery.json")) {
+            "Missing Forge delivery workflow definition"
+        }.bufferedReader().use { it.readText() },
+    )
 
     companion object {
         const val FLOW_PRODUCT_SPEC = "forge.product-spec"
