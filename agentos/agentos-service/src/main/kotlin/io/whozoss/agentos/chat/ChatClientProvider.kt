@@ -21,8 +21,9 @@ import org.springframework.stereotype.Service
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
  *
  * When usage is enabled, tracking is applied to the model so every call/stream terminal and internal tool
- * round goes through accounting and the cost gate. Clients outside agent execution
- * (no accumulator) retain their existing behaviour.
+ * round goes through accounting and the cost gate. A cost reported by the provider (e.g. Requesty
+ * `usage.cost`) replaces the estimate computed from [AiModel.pricing] for that request. Clients outside
+ * agent execution (no accumulator) retain their existing behaviour.
  *
  * The cap on tool rounds is the caller's [getChatClient] `maxToolRounds` (the namespace's override)
  * when given, else the platform's `agentos.limits.agent-max-iterations`.
@@ -45,6 +46,8 @@ class ChatClientProvider(
         maxToolRounds: Int? = null,
         promptCacheTtl: PromptCacheTtl,
     ): ChatClient {
+        val trackedAccumulator = accumulator?.takeIf { usageConfig.enabled }
+        val providerCost = trackedAccumulator?.let { ProviderReportedCost() }
         val chatModel =
             chatModelFactory.createChatModel(
                 apiType = providerConfig.apiType,
@@ -56,19 +59,19 @@ class ChatClientProvider(
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
                 reasoningEffort = modelConfig.reasoningEffort,
                 promptCacheTtl = promptCacheTtl,
+                providerCost = providerCost,
             )
         val trackedModel =
-            if (usageConfig.enabled && accumulator != null) {
+            trackedAccumulator?.let {
                 UsageTrackingChatModel(
                     chatModel,
-                    accumulator,
+                    it,
                     providerConfig.apiType,
                     modelConfig,
                     maxToolRounds = maxToolRounds ?: limits.agentMaxIterations,
+                    providerCost = providerCost,
                 )
-            } else {
-                chatModel
-            }
+            } ?: chatModel
         return ChatClient.builder(trackedModel).build()
     }
 

@@ -152,7 +152,7 @@ class ChatClientProviderUnitSpec :
             val chatModel = mockk<ChatModel>(relaxed = true)
 
             every {
-                chatModelFactory.createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any())
+                chatModelFactory.createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
             } returns chatModel
 
             chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.ONE_HOUR).shouldNotBeNull()
@@ -205,7 +205,7 @@ class ChatClientProviderUnitSpec :
             every { nativeModel.call(any<Prompt>()) } returns ChatResponse(listOf(Generation(toolCall)))
             val factory =
                 mockk<ChatModelFactory> {
-                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
                 }
             val client =
                 ChatClientProvider(factory, limits, UsageConfigProperties(enabled = true))
@@ -241,7 +241,7 @@ class ChatClientProviderUnitSpec :
                 ChatResponse(listOf(Generation(AssistantMessage("Done"))))
             }
             val factory = mockk<ChatModelFactory> {
-                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
             }
             val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
             val client = clientProvider.getChatClient(model(), provider(), promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
