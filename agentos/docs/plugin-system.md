@@ -33,10 +33,34 @@ The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlug
 | `agentos-mcp-plugin` | `MCP_STDIO`, `MCP_HTTP` | Tools of a local (stdio) or remote (HTTP) MCP server |
 | `agentos-http-plugin` | `HTTP_API` | Operations of an OpenAPI-described HTTP API (see [http-api-integration.md](http-api-integration.md)) |
 | `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
+| `agentos-ktlint-plugin` | `KTLINT` | `ktlint_check` / `ktlint_format` on Kotlin files under `projectDirectory` (see below) |
 
 `./gradlew deployPlugins` must be re-run after changing any plugin (it cleans, rebuilds and
 copies every plugin JAR into `plugins/`). For a one-shot local run, `./gradlew bootRunWithPlugins`
 deploys the plugins and then boots `agentos-service`.
+
+## Ktlint Plugin
+
+`agentos-ktlint-plugin` runs the ktlint engine (standard ruleset) inside the service: nothing has to be
+installed on the machine, and the ktlint version is pinned by `gradle/libs.versions.toml`. The rule engine,
+the standard ruleset and `kotlin-compiler-embeddable` are bundled into the plugin JAR; the Kotlin stdlib,
+coroutines, Jackson and the SDK come from the service.
+
+```yaml
+name: KTLINT
+integrationType: KTLINT
+parameters:
+  projectDirectory: "{{NAMESPACE_CONFIG_PATH}}"   # absolute; {{CASE_EXCHANGE}} also accepted
+```
+
+- `ktlint_check` reports the violations of the given `.kt` / `.kts` files (`file:line:column message (rule-id)`,
+  flagged `[auto-correctable]`). It never modifies files.
+- `ktlint_format` autocorrects the files in place, then lists the modified files and the violations left to fix
+  by hand.
+
+Both tools take files only (directories are refused), every path must stay under `projectDirectory`, and
+`timeoutSeconds` (1 to 300) is mandatory. The `.editorconfig` of the target project applies. A missing,
+relative or nonexistent `projectDirectory` registers no tool and logs an error.
 
 ## Filesystem Plugin
 

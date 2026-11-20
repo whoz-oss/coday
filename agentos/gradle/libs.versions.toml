@@ -68,6 +68,10 @@ pdfbox = "3.0.8"
 # Bundled fat-jar style in agentos-file-plugin (not on the service classpath).
 poi = "5.5.1"
 
+# ktlint — embedded rule engine and standard ruleset for the ktlint_check / ktlint_format tools.
+# Bundled fat-jar style in agentos-ktlint-plugin (not on the service classpath).
+ktlint = "1.8.0"
+
 # AgentOS modules versions
 agentosSdk = "3.40.1"
 agentosService = "3.40.1"
@@ -186,6 +190,10 @@ pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 
 # Apache POI — PPTX slide rendering (agentos-file-plugin readAsImage)
 poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
+
+# ktlint — embedded engine and standard ruleset (agentos-ktlint-plugin). Bundled in the plugin jar, not provided by the service.
+ktlint-rule-engine = { module = "com.pinterest.ktlint:ktlint-rule-engine", version.ref = "ktlint" }
+ktlint-ruleset-standard = { module = "com.pinterest.ktlint:ktlint-ruleset-standard", version.ref = "ktlint" }
 
 # Testing
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }

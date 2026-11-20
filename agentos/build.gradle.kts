@@ -31,6 +31,7 @@ val pluginBuilds =
         "agentos-datetime-plugin",
         "agentos-tmux-plugin",
         "agentos-bash-plugin",
+        "agentos-ktlint-plugin",
         "agentos-file-plugin",
         "agentos-mcp-plugin",
         "agentos-http-plugin",

@@ -1,0 +1,9 @@
+# KTLINT integration (agentos-ktlint-plugin): exposes ktlint_check and ktlint_format, run with the
+# embedded ktlint engine (standard ruleset) on Kotlin files inside the configured project.
+#
+# {{NAMESPACE_CONFIG_PATH}} resolves to the namespace configPath (the repository root),
+# so this file stays portable across developer machines.
+name: "KTLINT"
+integrationType: "KTLINT"
+parameters:
+  projectDirectory: "{{NAMESPACE_CONFIG_PATH}}"
