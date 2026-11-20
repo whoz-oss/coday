@@ -12,6 +12,7 @@ import org.springframework.data.neo4j.core.convert.Neo4jConversions
 import org.springframework.data.neo4j.core.mapping.Neo4jMappingContext
 import org.springframework.data.neo4j.core.transaction.Neo4jTransactionManager
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
+import org.springframework.transaction.support.AbstractPlatformTransactionManager
 
 /**
  * Enables the Spring Data Neo4j repositories backing the migrated aggregates and
@@ -100,13 +101,6 @@ class Neo4jPersistenceConfiguration {
      */
     @Bean
     @Primary
-    fun transactionManager(driver: Driver): Neo4jTransactionManager =
-        Neo4jTransactionManager(driver, DatabaseSelectionProvider.getDefaultSelectionProvider()).apply {
-            // NOT_SUPPORTED must mean no native transaction either. With ALWAYS (Spring's
-            // default), Neo4jClient creates a synchronized native transaction even though
-            // isActualTransactionActive() is false, retaining it across external execution.
-            setTransactionSynchronization(org.springframework.transaction.support.AbstractPlatformTransactionManager.SYNCHRONIZATION_ON_ACTUAL_TRANSACTION)
-        }
     fun transactionManager(
         driver: Driver,
         databaseSelectionProvider: ObjectProvider<DatabaseSelectionProvider>,
@@ -115,6 +109,11 @@ class Neo4jPersistenceConfiguration {
             .with(driver)
             .withDatabaseSelectionProvider(resolve(databaseSelectionProvider))
             .build()
+            .apply {
+                // Keep the same database selection as Neo4jClient, without retaining a
+                // synchronized native transaction across NOT_SUPPORTED external execution.
+                setTransactionSynchronization(AbstractPlatformTransactionManager.SYNCHRONIZATION_ON_ACTUAL_TRANSACTION)
+            }
 
     /** Spring Boot's provider (`spring.data.neo4j.database`), or the default database when absent. */
     private fun resolve(provider: ObjectProvider<DatabaseSelectionProvider>): DatabaseSelectionProvider =
