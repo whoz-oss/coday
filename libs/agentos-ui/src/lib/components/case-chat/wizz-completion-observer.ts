@@ -69,8 +69,13 @@ export class WizzCompletionObserver {
     } catch {
       return
     }
-    if (!event.id || event.caseId !== expectedCaseId || this.seenIds.has(event.id)) return
-    this.seenIds.add(event.id)
+    if (!event || typeof event !== 'object' || event.caseId !== expectedCaseId || !event.id) return
+
+    // Only the two events that can form a completion pair need durable replay protection. Chunks
+    // and tools may be numerous in a long-running live session and cannot cause a cue themselves.
+    const isCompletionEvent = event.type === 'MessageEvent' || event.type === 'AgentFinishedEvent'
+    if (isCompletionEvent && this.seenIds.has(event.id)) return
+    if (isCompletionEvent) this.seenIds.add(event.id)
 
     switch (event.type) {
       case 'AgentRunningEvent':

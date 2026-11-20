@@ -333,9 +333,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly wizzEnabled = signal(false)
   private readonly wizzObserver = new WizzCompletionObserver()
   private wizzAnimation: Animation | null = null
-  private wizzPreferenceListener: ((event: MediaQueryListEvent) => void) | null = null
-  private wizzMediaQuery: MediaQueryList | null = null
-  private wizzRenderTimer: ReturnType<typeof setTimeout> | null = null
+  /** Disposes only the currently playing cue; it is never retained for the enabled session. */
+  private wizzPlaybackCleanup: (() => void) | null = null
+  private readonly wizzRenderTimers = new Set<ReturnType<typeof setTimeout>>()
 
   /**
    * Pre-computed markdown HTML per event id.
@@ -1020,55 +1020,75 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       return
     }
     this.wizzEnabled.set(true)
-    this.wizzObserver.start(this.config.basePath, this.caseId, () => this.onWizzAnswerCompleted())
+    // The live observer filters its frames without entering Angular; only a completion schedules DOM work.
+    this.zone.runOutsideAngular(() =>
+      this.wizzObserver.start(this.config.basePath, this.caseId, () => this.onWizzAnswerCompleted())
+    )
   }
 
   private onWizzAnswerCompleted(): void {
     if (!this.wizzEnabled()) return
-    if (this.wizzRenderTimer !== null) clearTimeout(this.wizzRenderTimer)
-    this.wizzRenderTimer = setTimeout(() => {
-      this.wizzRenderTimer = null
+    // One queued callback per eligible answer: lifecycle stop clears all of them, but two answers in
+    // the same turn of the event loop must not be silently collapsed into one cue.
+    const timer = setTimeout(() => {
+      this.wizzRenderTimers.delete(timer)
       if (this.wizzEnabled()) this.playWizzEffect()
     })
+    this.wizzRenderTimers.add(timer)
   }
 
-  private playWizzEffect(): void {
+  private playWizzEffect(forceReducedMotion?: boolean): void {
     const panel = this.conversationPanel()?.nativeElement
     if (!panel?.animate) return
-    this.wizzAnimation?.cancel()
-    this.wizzMediaQuery?.removeEventListener('change', this.wizzPreferenceListener!)
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-    const play = (reduced: boolean) => {
-      this.wizzAnimation?.cancel()
-      this.wizzAnimation = panel.animate(
-        reduced
-          ? [{ boxShadow: 'inset 0 0 0 2px var(--color-accent)' }, { boxShadow: 'inset 0 0 0 0 transparent' }]
-          : [
-              { transform: 'translateX(0)' },
-              { transform: 'translateX(-4px)' },
-              { transform: 'translateX(4px)' },
-              { transform: 'translateX(0)' },
-            ],
-        { duration: reduced ? 500 : 400, easing: 'ease-out' }
-      )
+    this.disposeWizzPlayback()
+
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    const reducedMotion = forceReducedMotion ?? media?.matches === true
+    const animation = panel.animate(
+      reducedMotion
+        ? [{ boxShadow: 'inset 0 0 0 2px var(--color-accent)' }, { boxShadow: 'inset 0 0 0 0 transparent' }]
+        : [
+            { transform: 'translateX(0)' },
+            { transform: 'translateX(-4px)' },
+            { transform: 'translateX(4px)' },
+            { transform: 'translateX(0)' },
+          ],
+      { duration: reducedMotion ? 500 : 400, easing: 'ease-out' }
+    )
+    let cleanup: (() => void) | null = null
+    const onPreferenceChange = (event: MediaQueryListEvent): void => {
+      // A currently playing shake may be replaced by a highlight. A highlight never turns back
+      // into motion: this callback belongs to one completion cue, not the enabled session.
+      if (!reducedMotion && event.matches && this.wizzPlaybackCleanup === cleanup) this.playWizzEffect(true)
     }
-    this.wizzMediaQuery = reducedMotion ?? null
-    this.wizzPreferenceListener = (event) => play(event.matches)
-    reducedMotion?.addEventListener('change', this.wizzPreferenceListener)
-    play(!!reducedMotion?.matches)
+    cleanup = () => {
+      if (this.wizzPlaybackCleanup !== cleanup) return
+      animation.onfinish = null
+      animation.oncancel = null
+      if (!reducedMotion) media?.removeEventListener('change', onPreferenceChange)
+      this.wizzPlaybackCleanup = null
+      this.wizzAnimation = null
+    }
+    this.wizzPlaybackCleanup = cleanup
+    this.wizzAnimation = animation
+    animation.onfinish = cleanup
+    animation.oncancel = cleanup
+    if (!reducedMotion) media?.addEventListener('change', onPreferenceChange)
+  }
+
+  private disposeWizzPlayback(): void {
+    const cleanup = this.wizzPlaybackCleanup
+    const animation = this.wizzAnimation
+    if (!cleanup) return
+    cleanup()
+    animation?.cancel()
   }
 
   private stopWizz(): void {
     this.wizzObserver.stop()
-    this.wizzAnimation?.cancel()
-    this.wizzAnimation = null
-    if (this.wizzRenderTimer !== null) clearTimeout(this.wizzRenderTimer)
-    this.wizzRenderTimer = null
-    if (this.wizzMediaQuery && this.wizzPreferenceListener) {
-      this.wizzMediaQuery.removeEventListener('change', this.wizzPreferenceListener)
-    }
-    this.wizzMediaQuery = null
-    this.wizzPreferenceListener = null
+    for (const timer of this.wizzRenderTimers) clearTimeout(timer)
+    this.wizzRenderTimers.clear()
+    this.disposeWizzPlayback()
   }
 
   // ---------------------------------------------------------------------------

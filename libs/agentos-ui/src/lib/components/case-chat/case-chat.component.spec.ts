@@ -152,6 +152,130 @@ describe('CaseChatComponent — submit with attachments', () => {
     }
   })
 
+  describe('Wizz animation lifecycle', () => {
+    interface FakeAnimation {
+      cancel: jest.Mock
+      onfinish: (() => void) | null
+      oncancel: (() => void) | null
+    }
+
+    const installPanel = (
+      ref: ComponentRef<CaseChatComponent>,
+      animations: FakeAnimation[],
+      keyframes: Keyframe[][]
+    ): void => {
+      const panel = {
+        animate: jest.fn((frames: Keyframe[]) => {
+          keyframes.push(frames)
+          const animation: FakeAnimation = { cancel: jest.fn(), onfinish: null, oncancel: null }
+          animations.push(animation)
+          return animation
+        }),
+      }
+      ;(ref.instance as unknown as { conversationPanel: () => { nativeElement: typeof panel } }).conversationPanel = () => ({
+        nativeElement: panel,
+      })
+    }
+
+    it('plays the selected cue once and removes its preference listener when it finishes or is cancelled', () => {
+      const originalMatchMedia = window.matchMedia
+      const listeners = new Set<(event: MediaQueryListEvent) => void>()
+      let reduced = false
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: jest.fn(() => ({
+          get matches() {
+            return reduced
+          },
+          addEventListener: jest.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener)),
+          removeEventListener: jest.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener)),
+        })),
+      })
+      const ref = makeComponent()
+      const animations: FakeAnimation[] = []
+      const keyframes: Keyframe[][] = []
+      installPanel(ref, animations, keyframes)
+      try {
+        ref.instance['playWizzEffect']()
+        expect(animations).toHaveLength(1)
+        expect(keyframes[0]?.every((frame) => 'transform' in frame)).toBe(true)
+        expect(listeners.size).toBe(1)
+        animations[0]!.onfinish!()
+        expect(listeners.size).toBe(0)
+
+        // Regression: a preference change after a completed cue must not create a second cue.
+        reduced = true
+        for (const listener of listeners) listener({ matches: true } as MediaQueryListEvent)
+        expect(animations).toHaveLength(1)
+
+        ref.instance['playWizzEffect']()
+        expect(animations).toHaveLength(2)
+        expect(keyframes[1]?.every((frame) => 'boxShadow' in frame && !('transform' in frame))).toBe(true)
+        expect(listeners.size).toBe(0)
+        animations[1]!.oncancel!()
+        expect(listeners.size).toBe(0)
+      } finally {
+        ref.destroy()
+        Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+      }
+    })
+
+    it('replaces a shake with a highlight when reduced motion changes during the cue', () => {
+      const originalMatchMedia = window.matchMedia
+      let listener: ((event: MediaQueryListEvent) => void) | undefined
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: jest.fn(() => ({
+          matches: false,
+          addEventListener: jest.fn((_type: string, value: (event: MediaQueryListEvent) => void) => (listener = value)),
+          removeEventListener: jest.fn(),
+        })),
+      })
+      const ref = makeComponent()
+      const animations: FakeAnimation[] = []
+      installPanel(ref, animations, [])
+      try {
+        ref.instance['playWizzEffect']()
+        listener!({ matches: true } as MediaQueryListEvent)
+        expect(animations).toHaveLength(2)
+        expect(animations[0]!.cancel).toHaveBeenCalledTimes(1)
+        // A stale callback from the replaced shake cannot clear the highlight owner.
+        animations[0]!.onfinish?.()
+        expect(ref.instance['wizzAnimation']).toBe(animations[1])
+      } finally {
+        ref.destroy()
+        Object.defineProperty(window, 'matchMedia', { configurable: true, value: originalMatchMedia })
+      }
+    })
+
+    it('cancels scheduled or active cues when disabled or reinitialised', () => {
+      jest.useFakeTimers()
+      const original = globalThis.EventSource
+      const source = Object.assign(new EventTarget(), { close: jest.fn(), onerror: null })
+      globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+      const ref = makeComponent()
+      const animations: FakeAnimation[] = []
+      installPanel(ref, animations, [])
+      try {
+        ref.instance['wizzEnabled'].set(true)
+        ref.instance['onWizzAnswerCompleted']()
+        ref.instance['stopWizz']()
+        jest.runOnlyPendingTimers()
+        expect(animations).toHaveLength(0)
+
+        ref.instance['wizzEnabled'].set(true)
+        ref.instance['playWizzEffect']()
+        ref.instance['reinitialise']()
+        expect(animations[0]?.cancel).toHaveBeenCalledTimes(1)
+        expect(ref.instance['wizzEnabled']()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        jest.useRealTimers()
+      }
+    })
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })
