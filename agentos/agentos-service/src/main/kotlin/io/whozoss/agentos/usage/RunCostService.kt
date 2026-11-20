@@ -95,8 +95,12 @@ class RunCostService(
                     runSessions.forEach { session ->
                         session.nonPausing.remove(accumulator)
                         if (session.live.remove(accumulator)) {
-                            session.cost += usage.knownCost
-                            session.unknown += usage.unknownCalls
+                            // A stopped session may have ended while a non-pausing registration was in flight, and
+                            // a new one started for the case: it summed the persisted usage before this one was
+                            // written, so this usage goes to it.
+                            val current = sessions[session.caseId] ?: session
+                            current.cost += usage.knownCost
+                            current.unknown += usage.unknownCalls
                         }
                         removeIfOver(session)
                     }

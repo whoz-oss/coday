@@ -15,6 +15,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.LastLlmRequest
 import io.whozoss.agentos.agent.LastLlmRequestRegistry
+import io.whozoss.agentos.agent.putCurrent
 import io.whozoss.agentos.agent.MovingClock
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
@@ -212,7 +213,7 @@ class CaseSideQuestionServiceUnitSpec :
                         resolveFor(secondArg(), base)
                     }
                 }
-            val registry = LastLlmRequestRegistry(clock).also { registry -> stored?.let(registry::put) }
+            val registry = LastLlmRequestRegistry(clock).also { registry -> stored?.let(registry::putCurrent) }
 
             /** The accumulators the chat clients were made with. */
             val accumulators = mutableListOf<UsageAccumulator?>()
@@ -320,16 +321,66 @@ class CaseSideQuestionServiceUnitSpec :
             tools.forEach { tool -> shouldThrow<IllegalStateException> { tool.call("{}") } }
         }
 
-        "from the agent's last request: a rotated API key is picked up, the request is still reused" {
+        "a rotated API key no longer matches the credential fingerprint: the transcript answers, never a 502" {
             val rotated = agentProvider.copy(apiKey = "rotated-key")
             val fixture =
                 Fixture(stored = lastRequest(), providerLookup = { id -> if (id == agentProvider.id) rotated else provider })
             fixture.answering(text("ok"))
 
+            fixture.service.answer(case.id, "?", runUserId) shouldBe "ok"
+
+            fixture.usedTranscript() shouldBe true
+        }
+
+        "changed provider headers no longer match the header digest: the transcript answers" {
+            val reheadered = agentProvider.copy(headers = mapOf("X-Team" to "b"))
+            val fixture =
+                Fixture(stored = lastRequest(), providerLookup = { id -> if (id == agentProvider.id) reheadered else provider })
+            fixture.answering(text("ok"))
+
             fixture.service.answer(case.id, "?", runUserId)
 
-            fixture.usedTranscript() shouldBe false
-            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(agentModel, rotated, any(), any(), any(), false, any()) }
+            fixture.usedTranscript() shouldBe true
+        }
+
+        "the last request keeps no API key nor verbatim header, only their digests" {
+            val options = lastRequest().requestOptions
+
+            options.toString() shouldNotContain "namespace-key"
+            options.toString() shouldNotContain "X-Team"
+            options.credentialFingerprint!!.length shouldBe 64
+        }
+
+        "a run starting between the read and the dispatch outdates the last request: the transcript answers" {
+            val fixture = Fixture(stored = lastRequest())
+            fixture.answering(text("ok"))
+            var reads = 0
+            every { fixture.caseEventService.findByParent(any()) } answers {
+                // The second read is the check right before dispatch: a run started just before it.
+                if (++reads == 2) fixture.registry.invalidate(case.id)
+                turnEvents
+            }
+
+            fixture.service.answer(case.id, "?", runUserId) shouldBe "ok"
+
+            fixture.prompts shouldHaveSize 1
+            fixture.usedTranscript() shouldBe true
+            fixture.records.single().outcome shouldBe UsageOutcome.COMPLETED
+        }
+
+        "a message posted between the read and the dispatch outdates the last request: the transcript answers with it" {
+            val fixture = Fixture(stored = lastRequest())
+            fixture.answering(text("ok"))
+            var reads = 0
+            every { fixture.caseEventService.findByParent(any()) } answers {
+                if (++reads >= 2) turnEvents + message("Also migrate invoicing") else turnEvents
+            }
+
+            fixture.service.answer(case.id, "?", runUserId)
+
+            fixture.prompts shouldHaveSize 1
+            fixture.usedTranscript() shouldBe true
+            fixture.prompts.single().instructions[1].text!! shouldContain "Also migrate invoicing"
         }
 
         "a successful side question from the agent's last request records that it refreshed the cache" {
@@ -445,13 +496,16 @@ class CaseSideQuestionServiceUnitSpec :
             verify(exactly = 0) { fixture.chatClientProvider.getChatClient(any(), runUsersOwn, any(), any(), any(), any(), any()) }
         }
 
-        "another user is answered from the last request when the provider resolves the same for both" {
-            val fixture = Fixture(stored = lastRequest())
-            fixture.answering(text("ok"))
+        "another user is never answered from the last request, even when the provider resolves the same for both" {
+            listOf(otherUserId, null).forEach { caller ->
+                val fixture = Fixture(stored = lastRequest())
+                fixture.answering(text("ok"))
 
-            fixture.service.answer(case.id, "?", otherUserId)
+                fixture.service.answer(case.id, "?", caller)
 
-            fixture.usedTranscript() shouldBe false
+                // The system message of the turn may carry what the agent knows of the user it ran for.
+                fixture.usedTranscript() shouldBe true
+            }
         }
 
         "request options that changed since (the case's reasoning effort) fall back to the transcript" {
@@ -717,7 +771,7 @@ class CaseSideQuestionServiceUnitSpec :
 
                 // CaseService and CaseEventService are strict mocks that only stub the two reads: any write
                 // (addMessage, create, emit...) would have failed the call above.
-                verify(exactly = 1) { fixture.caseEventService.findByParent(case.id) }
+                verify(atLeast = 1) { fixture.caseEventService.findByParent(case.id) }
                 verify(exactly = 0) { fixture.caseService.addMessage(any(), any(), any(), any(), any()) }
             }
         }

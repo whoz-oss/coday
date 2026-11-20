@@ -427,13 +427,16 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         "a SIMPLE run records its last request, and the side question service reuses it as its exact prefix" {
-            every { agentConfigService.findByName(namespaceId, "wired-agent") } returns
-                agentConfig(name = "wired-agent", instructions = "Be helpful.", modelName = "sonnet")
+            val userId = UUID.randomUUID()
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "wired-agent") } returns
+                listOf(agentConfig(name = "wired-agent", instructions = "Be helpful.", modelName = "sonnet"))
+            every { userService.findById(userId) } returns null
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiModelService.findById(model.id, any()) } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderService.resolveProvider(namespaceId, userId, provider.name) } returns provider
             val raw = mockk<ChatModel>()
             every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
             every { raw.stream(any<Prompt>()) } returns Flux.just(ChatResponse(listOf(Generation(AssistantMessage("All green.")))))
@@ -451,7 +454,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     actor = Actor("user", "User", ActorRole.USER),
                     content = listOf(MessageContent.Text("What is the status?")),
                 )
-            val agent = agentService.findAgentByName("wired-agent", context.copy(usageAccumulator = UsageAccumulator()))
+            val agent =
+                agentService.findAgentByName("wired-agent", context.copy(userId = userId, usageAccumulator = UsageAccumulator()))
             val persisted = listOf(question) + agent.run(listOf(question)) { true }.toList()
 
             val stored = lastLlmRequestRegistry.get(caseId)!!
@@ -481,7 +485,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     Clock.systemUTC(),
                 )
 
-            sideQuestions.answer(caseId, "Is it green?") shouldBe "It is green."
+            sideQuestions.answer(caseId, "Is it green?", userId) shouldBe "It is green."
 
             prompts.single().instructions.take(stored.messages.size) shouldBe stored.messages
             (prompts.single().instructions.first() as SystemMessage).text!! shouldContain "Be helpful."

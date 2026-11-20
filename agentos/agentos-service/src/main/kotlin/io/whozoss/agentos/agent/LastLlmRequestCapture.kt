@@ -12,6 +12,9 @@ import java.util.UUID
  * ([io.whozoss.agentos.chat.ChatClientProvider.getChatClient] `exchangeRecorder`), [lastExchange] and
  * [onFinalRequest] to the agent. Only for a tracked chat model: an untracked one records no exchange, and without
  * the exact request nothing is registered.
+ *
+ * Made when the run starts: the generation of the case it reads then must still be current when the turn ends, or
+ * the capture is dropped (the case was killed, deleted, or another run started meanwhile).
  */
 class LastLlmRequestCapture(
     private val registry: LastLlmRequestRegistry,
@@ -21,6 +24,8 @@ class LastLlmRequestCapture(
     private val provider: AiProvider,
     private val agentName: String,
     private val agentConfigId: UUID?,
+    /** The generation of the case when the run started ([LastLlmRequestRegistry.generation]). */
+    private val generation: Long,
 ) {
     val recorder = LlmExchangeRecorder()
 
@@ -43,6 +48,7 @@ class LastLlmRequestCapture(
                 coveredEventCount = request.coveredEventCount,
                 lastCoveredEventId = request.lastCoveredEventId,
             ),
+            generation,
         )
     }
 }

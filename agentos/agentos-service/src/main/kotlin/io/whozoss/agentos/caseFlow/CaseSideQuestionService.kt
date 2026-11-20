@@ -45,12 +45,14 @@ import java.util.UUID
  * - **The agent's own last request** ([LastLlmRequestRegistry]): its messages exactly as sent, its answer, then
  *   the side question, with the same request options and tool definitions. The request only appends to the
  *   agent's, so the provider's prompt cache serves its prefix; the system message of the agent is unchanged (the
- *   framing of the side question is in the last message). Only when the conversation has not moved since
- *   ([LastLlmRequest.isCurrentFor]), the request was used less than [SideQuestionProperties.snapshotMaxAge] ago
- *   (past it the cache is cold, and replaying the conversation costs more than the transcript), its model and
- *   provider, resolved again (never kept, a provider holds an API key), still produce the same options, and the
- *   caller may use its credentials: the caller is the user the turn ran for, or the provider resolves the same
- *   for both of them.
+ *   framing of the side question is in the last message). Only for the user the turn ran for (its system message
+ *   may carry what the agent knows of them, its credentials may be theirs; the cache benefit is theirs anyway),
+ *   when the conversation has not moved since ([LastLlmRequest.isCurrentFor]), when the request was used less than
+ *   [SideQuestionProperties.snapshotMaxAge] ago (past it the cache is cold, and replaying the conversation costs
+ *   more than the transcript), and when its model and provider, resolved again (never kept: a provider holds an API
+ *   key), still produce the same [LlmRequestOptions] (credentials and headers compared by digest). Right before it
+ *   is sent, it is checked again that no run started and the case was not killed or deleted since
+ *   ([LastLlmRequestRegistry.generation]), and that the conversation still ends on its answer.
  * - **A transcript** of the persisted history ([SideQuestionTranscript]) under a system message of its own, with
  *   the default model of the namespace and its provider resolved for the caller, used as configured. The agent of
  *   the case is deliberately not resolved: that would resolve its tools too, which can start MCP processes or ask
@@ -90,6 +92,9 @@ class CaseSideQuestionService(
 
         /** The model only asked for tools: there is no text to show. */
         object ToolCallsOnly : Outcome
+
+        /** Not sent: the request it reused was outdated in the meantime. */
+        object Outdated : Outcome
     }
 
     /**
@@ -109,11 +114,17 @@ class CaseSideQuestionService(
         val case =
             caseService.findById(caseId, withRemoved = false)
                 ?: throw ResourceNotFoundException("Case not found: $caseId")
-        val events = caseEventService.findByParent(caseId)
+        var events = caseEventService.findByParent(caseId)
         val lastRequest = lastLlmRequestRegistry.get(caseId)
         val fromLastRequest = lastRequest?.let { fromLastRequest(case, events, it, question, userId) }
         if (lastRequest != null && fromLastRequest != null) {
-            when (val outcome = ask(case, fromLastRequest, userId)) {
+            // Right before it is sent: no run started, and the case was not killed or deleted, since it was read, and
+            // the conversation still ends on its answer.
+            val stillCurrent = {
+                events = caseEventService.findByParent(caseId)
+                lastLlmRequestRegistry.generation(caseId) == lastRequest.generation && lastRequest.isCurrentFor(events)
+            }
+            when (val outcome = ask(case, fromLastRequest, userId, stillCurrent)) {
                 is Outcome.Answered -> {
                     // The request refreshed the provider's cache of the prefix.
                     lastLlmRequestRegistry.touch(caseId, lastRequest.capturedAt)
@@ -123,6 +134,10 @@ class CaseSideQuestionService(
                 Outcome.ToolCallsOnly -> {
                     logger.info { "[SideQuestion] The model only asked for tools on case $caseId: asking again from the transcript" }
                 }
+
+                Outcome.Outdated -> {
+                    logger.debug { "[SideQuestion] The last request of case $caseId was outdated before being sent" }
+                }
             }
         }
         return when (val outcome = ask(case, fromTranscript(case, events, question, userId), userId)) {
@@ -130,7 +145,7 @@ class CaseSideQuestionService(
                 outcome.text
             }
 
-            Outcome.ToolCallsOnly -> {
+            Outcome.ToolCallsOnly, Outcome.Outdated -> {
                 logger.warn { "[SideQuestion] LLM returned no text for case $caseId" }
                 throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "The model returned an empty answer")
             }
@@ -150,6 +165,8 @@ class CaseSideQuestionService(
     ): SideQuestionCall? {
         val reason =
             when {
+                // Its system message may carry what the agent knows of that user, and its credentials may be theirs.
+                callerId == null || callerId != lastRequest.userId -> "asked by another user"
                 !lastRequest.isCurrentFor(events) -> "the conversation moved on"
                 lastRequest.lastUsedAt.plus(properties.snapshotMaxAge).isBefore(clock.instant()) -> "its cache is cold"
                 else -> null
@@ -160,14 +177,7 @@ class CaseSideQuestionService(
         val model = case.reasoningEffort?.let { baseModel.copy(reasoningEffort = it) } ?: baseModel
         val baseProvider = runCatching { aiProviderService.getById(lastRequest.providerId) }.getOrNull() ?: return null
         val provider = providerFor(lastRequest.namespaceId, callerId, baseProvider) ?: return null
-        if (callerId != lastRequest.userId) {
-            // The turn's provider may hold the API key of the user it ran for: only reused when it is the caller's too.
-            val runProvider = providerFor(lastRequest.namespaceId, lastRequest.userId, baseProvider) ?: return null
-            if (runProvider != provider) {
-                logger.debug { "[SideQuestion] Last request of case ${case.id} not reused: another user's provider" }
-                return null
-            }
-        }
+        // Same API type, base URL, model and options, same credentials (fingerprint) and headers (digest).
         if (LlmRequestOptions.of(model, provider) != lastRequest.requestOptions) {
             logger.debug { "[SideQuestion] Last request of case ${case.id} not reused: its request options changed" }
             return null
@@ -217,16 +227,18 @@ class CaseSideQuestionService(
             runCatching { aiProviderService.resolveProvider(namespaceId, userId, baseProvider.name) }.getOrNull()
         }
 
-    /** One request, recorded as usage of the case whatever its outcome. */
+    /** One request, recorded as usage of the case whatever its outcome; not sent when [stillCurrent] no longer holds. */
     private fun ask(
         case: Case,
         call: SideQuestionCall,
         userId: UUID?,
+        stillCurrent: () -> Boolean = { true },
     ): Outcome {
         val accumulator = if (usageConfig.enabled) UsageAccumulator() else null
         val registration = accumulator?.let { registerCost(case.id, it) }
         var usageOutcome = UsageOutcome.FAILED
         try {
+            if (!stillCurrent()) return Outcome.Outdated
             val response =
                 try {
                     val request =

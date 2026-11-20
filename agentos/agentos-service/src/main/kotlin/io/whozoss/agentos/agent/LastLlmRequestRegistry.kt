@@ -7,10 +7,13 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.messages.ToolResponseMessage
+import org.springframework.ai.content.MediaContent
 import org.springframework.ai.tool.definition.ToolDefinition
 import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.core.io.Resource
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Clock
@@ -55,6 +58,8 @@ data class LastLlmRequest(
     val lastCoveredEventId: UUID,
     /** Set by [LastLlmRequestRegistry.put]. */
     val capturedAt: Instant = Instant.EPOCH,
+    /** The generation of the case it was captured in ([LastLlmRequestRegistry.generation]), set by `put`. */
+    val generation: Long = 0,
     /** The last time a request reusing this one refreshed the provider's cache ([LastLlmRequestRegistry.touch]). */
     val lastCacheTouchAt: Instant? = null,
 ) {
@@ -67,21 +72,24 @@ data class LastLlmRequest(
         return conversation.size == coveredEventCount && conversation.lastOrNull()?.id == lastCoveredEventId
     }
 
-    /** An approximation of the memory the request holds, in characters. */
+    /** An approximation of the memory the request holds: characters of text, bytes of media. */
     internal fun estimatedSize(): Long =
         messages.sumOf { message ->
-            val text = message.text?.length ?: 0
-            val responses = (message as? ToolResponseMessage)?.responses?.sumOf { it.responseData().length } ?: 0
-            val media =
-                (message as? org.springframework.ai.content.MediaContent)?.media?.sumOf { media ->
-                    when (val data = media.data) {
-                        is ByteArray -> data.size
-                        is String -> data.length
-                        else -> 0
-                    }
-                } ?: 0
-            (text + responses + media).toLong()
+            val text = message.text?.length?.toLong() ?: 0L
+            val toolResults = (message as? ToolResponseMessage)?.responses?.sumOf { it.responseData().length.toLong() } ?: 0L
+            val toolCalls =
+                (message as? AssistantMessage)?.toolCalls?.sumOf { (it.name().length + it.arguments().length).toLong() } ?: 0L
+            val media = (message as? MediaContent)?.media?.sumOf { mediaSize(it.data) } ?: 0L
+            text + toolResults + toolCalls + media
         } + toolDefinitions.sumOf { (it.description().length + it.inputSchema().length).toLong() } + finalText.length
+
+    private fun mediaSize(data: Any?): Long =
+        when (data) {
+            is ByteArray -> data.size.toLong()
+            is Resource -> runCatching { data.contentLength() }.getOrDefault(0L)
+            is String -> data.length.toLong()
+            else -> 0L
+        }
 }
 
 /** The events a turn's messages are built from: what was said, asked, answered, and the tool calls. */
@@ -114,6 +122,27 @@ class LastLlmRequestRegistry(
     private val entries = LinkedHashMap<UUID, LastLlmRequest>()
     private var size = 0L
 
+    /** Bumped for a case by [invalidate]: a capture or a use started before is outdated. Never reset. */
+    private val generations = HashMap<UUID, Long>()
+    private var lastGeneration = 0L
+
+    /**
+     * The current generation of [caseId]. Read it when a run starts (to [put] its capture) or with a request
+     * about to be reused (to check, right before using it, that nothing moved on since).
+     */
+    @Synchronized
+    fun generation(caseId: UUID): Long = generations[caseId] ?: 0L
+
+    /**
+     * The conversation of [caseId] moves on (a run starts) or ends (the case is killed or deleted): its request is
+     * forgotten, and the captures and uses started before are outdated. Returns the new generation.
+     */
+    @Synchronized
+    fun invalidate(caseId: UUID): Long {
+        removeEntry(caseId)
+        return (++lastGeneration).also { generations[caseId] = it }
+    }
+
     /** The last request of [caseId], or null when there is none or it expired. */
     @Synchronized
     fun get(caseId: UUID): LastLlmRequest? {
@@ -125,17 +154,25 @@ class LastLlmRequestRegistry(
         return request
     }
 
-    /** Records [request] as the last one of its case, replacing the previous one; captured now. */
+    /**
+     * Records [request] as the last one of its case, replacing the previous one, captured now; unless the case is
+     * no longer at [generation] (the one read when its run started): then nothing is recorded, and false returned.
+     */
     @Synchronized
-    fun put(request: LastLlmRequest) {
+    fun put(
+        request: LastLlmRequest,
+        generation: Long,
+    ): Boolean {
+        if (generation(request.caseId) != generation) return false
         removeEntry(request.caseId)
-        val captured = request.copy(capturedAt = clock.instant(), lastCacheTouchAt = null)
+        val captured = request.copy(capturedAt = clock.instant(), generation = generation, lastCacheTouchAt = null)
         entries[captured.caseId] = captured
         size += captured.estimatedSize()
         purgeExpired()
         while (entries.isNotEmpty() && (entries.size > MAX_ENTRIES || size > properties.maxSize)) {
             removeEntry(entries.keys.first())
         }
+        return true
     }
 
     /**
@@ -151,6 +188,7 @@ class LastLlmRequestRegistry(
         entries[caseId] = request.copy(lastCacheTouchAt = clock.instant())
     }
 
+    /** Forgets the request of [caseId], without outdating anything else (see [invalidate]). */
     @Synchronized
     fun remove(caseId: UUID) {
         removeEntry(caseId)

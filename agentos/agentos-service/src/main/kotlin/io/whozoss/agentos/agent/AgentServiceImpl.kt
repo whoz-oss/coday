@@ -751,6 +751,9 @@ class AgentServiceImpl(
                             provider = providerConfig,
                             agentName = agentName,
                             agentConfigId = agentId,
+                            // Read as the run starts (its case was invalidated just before): a kill, a deletion or
+                            // another run meanwhile drops the capture.
+                            generation = context.caseId?.let(lastLlmRequestRegistry::generation) ?: 0L,
                         )
                     }
                 val chatClient =

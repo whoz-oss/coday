@@ -409,6 +409,22 @@ class RunCostServiceSpec :
             nextRegistration.finish {}
         }
 
+        "the usage of a side question still in flight when its stopped session ended reaches the session that replaced it" {
+            val (service, case, _) = fixture(100.0)
+            val side = UsageAccumulator()
+            val sideRegistration =
+                (service.nonPausing(case.id, side) as RunCostService.NonPausingRegistration.Registered).registration
+            service.stop(case.id)
+            val next = UsageAccumulator()
+            val nextRegistration = service.register(case.id, next)
+
+            side.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 3.0))
+            sideRegistration.finish {}
+
+            service.state(case.id).cost shouldBe 3.0
+            nextRegistration.finish {}
+        }
+
         "a stop with only a non-pausing registration left ends the session at once" {
             val (service, case, _) = fixture()
             val side = UsageAccumulator()

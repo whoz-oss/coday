@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agent
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.longs.shouldBeLessThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -9,6 +10,8 @@ import io.whozoss.agentos.chat.LlmRequestOptions
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -18,13 +21,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.content.Media
+import org.springframework.core.io.ByteArrayResource
+import org.springframework.util.MimeTypeUtils
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+
+/** Records [request] as captured by a run that started at the current generation of its case. */
+fun LastLlmRequestRegistry.putCurrent(request: LastLlmRequest): Boolean = put(request, generation(request.caseId))
 
 /** A clock the test moves forward. */
 class MovingClock(
@@ -40,7 +50,7 @@ class MovingClock(
 class LastLlmRequestRegistryUnitSpec :
     StringSpec({
         val start: Instant = Instant.parse("2026-01-01T10:00:00Z")
-        val options = LlmRequestOptions(AiApiType.OpenAI, null, emptyMap(), "model", null, null, null)
+        val options = LlmRequestOptions(AiApiType.OpenAI, null, "model", null, null, null, null, "")
 
         fun request(
             caseId: UUID = UUID.randomUUID(),
@@ -68,9 +78,9 @@ class LastLlmRequestRegistryUnitSpec :
             val caseId = UUID.randomUUID()
 
             registry.get(caseId).shouldBeNull()
-            registry.put(request(caseId, finalText = "first"))
+            registry.putCurrent(request(caseId, finalText = "first"))
             clock.now = start.plusSeconds(10)
-            registry.put(request(caseId, finalText = "second"))
+            registry.putCurrent(request(caseId, finalText = "second"))
 
             val stored = registry.get(caseId)!!
             stored.finalText shouldBe "second"
@@ -83,14 +93,14 @@ class LastLlmRequestRegistryUnitSpec :
             val clock = MovingClock(start)
             val registry = LastLlmRequestRegistry(clock)
             val stored = request()
-            registry.put(stored)
+            registry.putCurrent(stored)
             val capturedAt = registry.get(stored.caseId)!!.capturedAt
 
             clock.now = start.plusSeconds(60)
             registry.touch(stored.caseId, capturedAt)
             registry.get(stored.caseId)!!.lastUsedAt shouldBe start.plusSeconds(60)
 
-            registry.put(request(stored.caseId))
+            registry.putCurrent(request(stored.caseId))
             clock.now = start.plusSeconds(120)
             registry.touch(stored.caseId, capturedAt)
             registry.get(stored.caseId)!!.lastCacheTouchAt.shouldBeNull()
@@ -101,8 +111,8 @@ class LastLlmRequestRegistryUnitSpec :
             val registry = LastLlmRequestRegistry(clock)
             val read = request()
             val purged = request()
-            registry.put(read)
-            registry.put(purged)
+            registry.putCurrent(read)
+            registry.putCurrent(purged)
 
             clock.now = start.plus(LastLlmRequestRegistry.TTL)
             registry.get(read.caseId).shouldNotBeNull()
@@ -116,7 +126,7 @@ class LastLlmRequestRegistryUnitSpec :
         "remove forgets the request of a case" {
             val registry = LastLlmRequestRegistry(MovingClock(start))
             val stored = request()
-            registry.put(stored)
+            registry.putCurrent(stored)
 
             registry.remove(stored.caseId)
 
@@ -127,11 +137,11 @@ class LastLlmRequestRegistryUnitSpec :
         "past its capacity, evicts the case captured the longest ago" {
             val registry = LastLlmRequestRegistry(MovingClock(start))
             val requests = List(LastLlmRequestRegistry.MAX_ENTRIES) { request() }
-            requests.forEach(registry::put)
+            requests.forEach(registry::putCurrent)
             // The first case is captured again: it is no longer the oldest.
-            registry.put(requests[0].copy(finalText = "again"))
-            registry.put(request())
-            registry.put(request())
+            registry.putCurrent(requests[0].copy(finalText = "again"))
+            registry.putCurrent(request())
+            registry.putCurrent(request())
 
             registry.get(requests[0].caseId)!!.finalText shouldBe "again"
             registry.get(requests[1].caseId).shouldBeNull()
@@ -147,7 +157,7 @@ class LastLlmRequestRegistryUnitSpec :
             val second = request(question = big)
             val third = request(question = big)
 
-            listOf(first, second, third).forEach(registry::put)
+            listOf(first, second, third).forEach(registry::putCurrent)
 
             registry.get(first.caseId).shouldBeNull()
             registry.get(second.caseId).shouldNotBeNull()
@@ -161,11 +171,82 @@ class LastLlmRequestRegistryUnitSpec :
 
             val read =
                 coroutineScope {
-                    requests.map { stored -> async(Dispatchers.Default) { registry.put(stored) } }.awaitAll()
+                    requests.map { stored -> async(Dispatchers.Default) { registry.putCurrent(stored) } }.awaitAll()
                     requests.map { stored -> async(Dispatchers.Default) { registry.get(stored.caseId)?.caseId } }.awaitAll()
                 }
 
             read shouldBe requests.map { it.caseId }
+        }
+
+        "a capture of a run is dropped when the case moved on since the run started (a kill, a deletion, a new run)" {
+            val registry = LastLlmRequestRegistry(MovingClock(start))
+            val stored = request()
+            val atRunStart = registry.invalidate(stored.caseId)
+
+            registry.invalidate(stored.caseId)
+
+            registry.put(stored, atRunStart) shouldBe false
+            registry.get(stored.caseId).shouldBeNull()
+        }
+
+        "invalidate forgets the request of a case and moves its generation on, never back" {
+            val registry = LastLlmRequestRegistry(MovingClock(start))
+            val stored = request()
+            registry.putCurrent(stored) shouldBe true
+            val before = registry.get(stored.caseId)!!.generation
+
+            val after = registry.invalidate(stored.caseId)
+
+            registry.get(stored.caseId).shouldBeNull()
+            (after > before) shouldBe true
+            registry.generation(stored.caseId) shouldBe after
+            registry.generation(UUID.randomUUID()) shouldBe 0L
+        }
+
+        "a capture made through LastLlmRequestCapture is dropped when the case is killed during the turn" {
+            val registry = LastLlmRequestRegistry(MovingClock(start))
+            val caseId = UUID.randomUUID()
+            val provider = AiProvider(namespaceId = UUID.randomUUID(), name = "p", apiType = AiApiType.OpenAI)
+            val model = AiModel(aiProviderId = provider.id, apiModelName = "m")
+            val capture =
+                LastLlmRequestCapture(
+                    registry,
+                    provider.namespaceId!!,
+                    null,
+                    model,
+                    provider,
+                    "agent",
+                    null,
+                    generation = registry.invalidate(caseId),
+                )
+            val turnEnd = FinalLlmRequest(caseId, listOf(UserMessage("q")), emptyList(), "a", 2, UUID.randomUUID())
+
+            registry.invalidate(caseId)
+            capture.onFinalRequest(turnEnd)
+
+            registry.get(caseId).shouldBeNull()
+        }
+
+        "the size estimate counts media bytes and tool call arguments, not only text" {
+            val withMedia =
+                request().copy(
+                    messages =
+                        listOf(
+                            UserMessage
+                                .builder()
+                                .text("look")
+                                .media(Media(MimeTypeUtils.IMAGE_PNG, ByteArrayResource(ByteArray(10_000))))
+                                .build(),
+                            AssistantMessage
+                                .builder()
+                                .content("")
+                                .toolCalls(listOf(AssistantMessage.ToolCall("id", "function", "tool", "x".repeat(5_000))))
+                                .build(),
+                        ),
+                    finalText = "",
+                )
+
+            withMedia.estimatedSize() shouldBeGreaterThanOrEqual 15_000L
         }
 
         "is current only while the conversation still ends on its answer" {

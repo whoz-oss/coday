@@ -6,6 +6,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.prompt.Prompt
+import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
 
 /** One request sent to a provider, its messages exactly as sent, and the text of its response once it came. */
@@ -33,17 +34,24 @@ class LlmExchangeRecorder {
 }
 
 /**
- * What a request built by [ChatClientProvider.getChatClient] sends besides its messages and tools, its API key
- * aside: two requests with equal options, messages and tools put the same bytes on the wire.
+ * What makes the requests built by [ChatClientProvider.getChatClient] for a model and a provider what they are,
+ * besides their messages and tools. Two requests with equal options, messages and tools put the same bytes on the
+ * wire, with the same credentials.
+ *
+ * Nothing secret or verbatim is kept: the API key only as a [credentialFingerprint], the headers (which may carry
+ * credentials too) only as a [headersDigest], both SHA-256. The real values are resolved again when needed.
  */
 data class LlmRequestOptions(
     val apiType: AiApiType,
     val baseUrl: String?,
-    val headers: Map<String, String>,
     val apiModelName: String,
     val temperature: Double?,
     val maxCompletionTokens: Int?,
     val reasoningEffort: ReasoningEffort?,
+    /** SHA-256 of the API key, null without one. */
+    val credentialFingerprint: String?,
+    /** SHA-256 of the headers, in name order. */
+    val headersDigest: String,
 ) {
     companion object {
         fun of(
@@ -52,11 +60,18 @@ data class LlmRequestOptions(
         ) = LlmRequestOptions(
             apiType = provider.apiType,
             baseUrl = provider.baseUrl,
-            headers = provider.headers,
             apiModelName = model.apiModelName,
             temperature = model.temperature,
             maxCompletionTokens = model.maxCompletionTokens,
             reasoningEffort = model.reasoningEffort,
+            credentialFingerprint = provider.apiKey?.let(::sha256),
+            headersDigest = sha256(provider.headers.toSortedMap().entries.joinToString("\n") { (name, value) -> "$name:$value" }),
         )
+
+        private fun sha256(value: String): String =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(value.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
     }
 }

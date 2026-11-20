@@ -313,14 +313,14 @@ class CaseServiceImpl(
         if (activeRuntimes.containsKey(id)) {
             killSingleCase(id)
         }
-        lastLlmRequestRegistry.remove(id)
+        lastLlmRequestRegistry.invalidate(id)
         return caseRepository.delete(id)
     }
 
     override fun deleteByParent(parentId: UUID): Int {
         findByParent(parentId).forEach {
             killSingleCase(it.id)
-            lastLlmRequestRegistry.remove(it.id)
+            lastLlmRequestRegistry.invalidate(it.id)
         }
         return caseRepository.deleteByParent(parentId)
     }
@@ -764,8 +764,9 @@ class CaseServiceImpl(
         }
 
         logger.info { "Running agent: $agentName for case $caseId" }
-        // The conversation moves on: the last request of the previous turn no longer ends it (a redirect, too).
-        lastLlmRequestRegistry.remove(caseId)
+        // The conversation moves on: the last request of the previous turn no longer ends it (a redirect, too), and
+        // a side question about to reuse it falls back on the transcript.
+        lastLlmRequestRegistry.invalidate(caseId)
         val usageAccumulator = if (usageConfig.enabled) UsageAccumulator() else null
         val context =
             AgentExecutionContext(
@@ -1054,7 +1055,7 @@ class CaseServiceImpl(
 
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
-        lastLlmRequestRegistry.remove(caseId)
+        lastLlmRequestRegistry.invalidate(caseId)
         val runtime = activeRuntimes[caseId]
         if (gatedRuns != null) gatedRuns.kill(caseId, runtime) else runtime?.requestKill()
         if (usageConfig.enabled) runCostService?.stop(caseId)

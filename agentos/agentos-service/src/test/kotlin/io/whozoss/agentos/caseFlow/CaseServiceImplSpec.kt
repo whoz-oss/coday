@@ -24,6 +24,7 @@ import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agent.LastLlmRequest
 import io.whozoss.agentos.agent.LastLlmRequestRegistry
+import io.whozoss.agentos.agent.putCurrent
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
@@ -318,7 +319,7 @@ class CaseServiceImplSpec :
                 toolDefinitions = emptyList(),
                 modelId = UUID.randomUUID(),
                 providerId = UUID.randomUUID(),
-                requestOptions = LlmRequestOptions(AiApiType.OpenAI, null, emptyMap(), "model", null, null, null),
+                requestOptions = LlmRequestOptions(AiApiType.OpenAI, null, "model", null, null, null, null, ""),
                 finalText = "Hi.",
                 agentName = agentName,
                 agentConfigId = agentId,
@@ -331,7 +332,7 @@ class CaseServiceImplSpec :
             val agent = finishingAgent()
             val service = buildService(agent = agent, lastLlmRequestRegistry = registry)
             val case = service.create(Case(namespaceId = namespaceId))
-            registry.put(lastRequestOf(case.id))
+            registry.putCurrent(lastRequestOf(case.id))
 
             service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
 
@@ -345,8 +346,8 @@ class CaseServiceImplSpec :
             val service = buildService(lastLlmRequestRegistry = registry)
             val killed = service.create(Case(namespaceId = namespaceId))
             val deleted = service.create(Case(namespaceId = namespaceId))
-            registry.put(lastRequestOf(killed.id))
-            registry.put(lastRequestOf(deleted.id))
+            registry.putCurrent(lastRequestOf(killed.id))
+            registry.putCurrent(lastRequestOf(deleted.id))
 
             service.killCase(killed.id)
             service.delete(deleted.id)

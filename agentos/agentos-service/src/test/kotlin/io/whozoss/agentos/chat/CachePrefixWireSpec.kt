@@ -103,7 +103,18 @@ class CachePrefixWireSpec :
                 )
             val case = Case(metadata = EntityMetadata(), namespaceId = namespaceId)
             val registry = LastLlmRequestRegistry()
-            val capture = LastLlmRequestCapture(registry, namespaceId, null, model, provider, "planner", UUID.randomUUID())
+            val userId = UUID.randomUUID()
+            val capture =
+                LastLlmRequestCapture(
+                    registry,
+                    namespaceId,
+                    userId,
+                    model,
+                    provider,
+                    "planner",
+                    UUID.randomUUID(),
+                    generation = registry.invalidate(case.id),
+                )
             val agent =
                 AgentSimple(
                     name = "planner",
@@ -130,14 +141,17 @@ class CachePrefixWireSpec :
                     mockk { every { findById(case.id, false) } returns case },
                     mockk { every { findByParent(case.id) } returns persisted },
                     mockk { every { findById(model.id, any()) } returns model },
-                    mockk { every { getById(provider.id) } returns provider },
+                    mockk {
+                        every { getById(provider.id) } returns provider
+                        every { resolveProvider(namespaceId, userId, provider.name) } returns provider
+                    },
                     clients,
                     registry,
                     mockk(relaxed = true),
                     mockk(),
                     Clock.systemUTC(),
                 )
-            sideQuestions.answer(case.id, "Which tools ran?") shouldBe "Two tools ran."
+            sideQuestions.answer(case.id, "Which tools ran?", userId) shouldBe "Two tools ran."
             toolsRun.get() shouldBe 2
             return stub.bodies().map(mapper::readTree)
         }
