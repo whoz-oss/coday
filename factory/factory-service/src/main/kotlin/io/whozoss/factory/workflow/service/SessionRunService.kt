@@ -966,7 +966,7 @@ class SessionRunService(
         // treats SSE as an invalidation hint and reloads this authoritative
         // projection; it never infers progress from elapsed time or silence.
         persistProgressProjection(scope, namespaceId, workflowId, progress)
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
     }
 
     /**
