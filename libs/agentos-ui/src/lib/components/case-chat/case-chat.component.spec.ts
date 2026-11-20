@@ -126,6 +126,32 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  it('keeps Wizz off until enabled, then opens and closes its isolated live-only observer', () => {
+    const original = globalThis.EventSource
+    const sources: Array<EventTarget & { close: jest.Mock }> = []
+    globalThis.EventSource = jest.fn((url: string) => {
+      const source = Object.assign(new EventTarget(), { close: jest.fn(), url })
+      sources.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      expect(ref.instance['wizzEnabled']()).toBe(false)
+      expect(globalThis.EventSource).not.toHaveBeenCalled()
+
+      ref.instance['toggleWizz']()
+      expect(ref.instance['wizzEnabled']()).toBe(true)
+      expect(globalThis.EventSource).toHaveBeenCalledWith('/api/cases/c-1/events?includePreviousEvents=false')
+
+      ref.instance['toggleWizz']()
+      expect(ref.instance['wizzEnabled']()).toBe(false)
+      expect(sources[0]?.close).toHaveBeenCalledTimes(1)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })

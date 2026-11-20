@@ -107,6 +107,7 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { WizzCompletionObserver } from './wizz-completion-observer'
 
 export interface ToolCall {
   requestId: string
@@ -321,12 +322,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
+  private readonly conversationPanel = viewChild<ElementRef<HTMLDivElement>>('conversationPanel')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
   private readonly effortAutocompleteRef = viewChild(EffortAutocompleteComponent)
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
+  /** An opt-in, session-only completion cue. It resets whenever the displayed case changes. */
+  protected readonly wizzEnabled = signal(false)
+  private readonly wizzObserver = new WizzCompletionObserver()
+  private wizzAnimation: Animation | null = null
+  private wizzPreferenceListener: ((event: MediaQueryListEvent) => void) | null = null
+  private wizzMediaQuery: MediaQueryList | null = null
+  private wizzRenderTimer: ReturnType<typeof setTimeout> | null = null
 
   /**
    * Pre-computed markdown HTML per event id.
@@ -995,12 +1004,71 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopWizz()
     if (this.terminalCloseTimer !== null) {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
     }
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
+  }
+
+  protected toggleWizz(): void {
+    if (this.wizzEnabled()) {
+      this.stopWizz()
+      this.wizzEnabled.set(false)
+      return
+    }
+    this.wizzEnabled.set(true)
+    this.wizzObserver.start(this.config.basePath, this.caseId, () => this.onWizzAnswerCompleted())
+  }
+
+  private onWizzAnswerCompleted(): void {
+    if (!this.wizzEnabled()) return
+    if (this.wizzRenderTimer !== null) clearTimeout(this.wizzRenderTimer)
+    this.wizzRenderTimer = setTimeout(() => {
+      this.wizzRenderTimer = null
+      if (this.wizzEnabled()) this.playWizzEffect()
+    })
+  }
+
+  private playWizzEffect(): void {
+    const panel = this.conversationPanel()?.nativeElement
+    if (!panel?.animate) return
+    this.wizzAnimation?.cancel()
+    this.wizzMediaQuery?.removeEventListener('change', this.wizzPreferenceListener!)
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    const play = (reduced: boolean) => {
+      this.wizzAnimation?.cancel()
+      this.wizzAnimation = panel.animate(
+        reduced
+          ? [{ boxShadow: 'inset 0 0 0 2px var(--color-accent)' }, { boxShadow: 'inset 0 0 0 0 transparent' }]
+          : [
+              { transform: 'translateX(0)' },
+              { transform: 'translateX(-4px)' },
+              { transform: 'translateX(4px)' },
+              { transform: 'translateX(0)' },
+            ],
+        { duration: reduced ? 500 : 400, easing: 'ease-out' }
+      )
+    }
+    this.wizzMediaQuery = reducedMotion ?? null
+    this.wizzPreferenceListener = (event) => play(event.matches)
+    reducedMotion?.addEventListener('change', this.wizzPreferenceListener)
+    play(!!reducedMotion?.matches)
+  }
+
+  private stopWizz(): void {
+    this.wizzObserver.stop()
+    this.wizzAnimation?.cancel()
+    this.wizzAnimation = null
+    if (this.wizzRenderTimer !== null) clearTimeout(this.wizzRenderTimer)
+    this.wizzRenderTimer = null
+    if (this.wizzMediaQuery && this.wizzPreferenceListener) {
+      this.wizzMediaQuery.removeEventListener('change', this.wizzPreferenceListener)
+    }
+    this.wizzMediaQuery = null
+    this.wizzPreferenceListener = null
   }
 
   // ---------------------------------------------------------------------------
@@ -1408,6 +1476,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called when the router reuses this component instance for a different case.
    */
   private reinitialise(): void {
+    this.stopWizz()
+    this.wizzEnabled.set(false)
     // Cancel any pending terminal-close timer before reconnecting: a stale timer must
     // not close the freshly created EventSource for the reopened case.
     if (this.terminalCloseTimer !== null) {
