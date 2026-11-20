@@ -126,6 +126,36 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  it('only pulses Wizz after observed live activity, matching agent text, and completion', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      ref.instance['toggleWizz']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, caseId: 'c-1', ...fields }) }))
+
+      emit('MessageEvent', 'history-message', { actor: { role: 'AGENT', id: 'agent-1' }, content: [{ content: 'history' }] })
+      emit('AgentFinishedEvent', 'history-finished', { agentId: 'agent-1' })
+      expect(ref.instance['wizzPulsing']()).toBe(false)
+
+      emit('ThinkingEvent', 'thinking-1')
+      emit('MessageEvent', 'answer-1', { actor: { role: 'AGENT', id: 'agent-1' }, content: [{ content: 'answer' }] })
+      expect(ref.instance['wizzPulsing']()).toBe(false)
+      emit('AgentFinishedEvent', 'finished-1', { agentId: 'agent-1' })
+      expect(ref.instance['wizzPulsing']()).toBe(true)
+
+      ref.instance['toggleWizz']()
+      expect(ref.instance['wizzEnabled']()).toBe(false)
+      expect(ref.instance['wizzPulsing']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })

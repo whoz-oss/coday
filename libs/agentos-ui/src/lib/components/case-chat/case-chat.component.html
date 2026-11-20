@@ -87,6 +87,22 @@
         <!-- Share case -->
         <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
 
+        <button
+          type="button"
+          class="case-chat__wizz-toggle"
+          [class.case-chat__wizz-toggle--active]="wizzEnabled()"
+          [attr.aria-pressed]="wizzEnabled()"
+          aria-label="Wizz"
+          title="Celebrate completed live agent answers"
+          (click)="toggleWizz()"
+        >
+          <span class="material-icons" aria-hidden="true">celebration</span>
+          <span>Wizz</span>
+          @if (wizzEnabled()) {
+            <span class="case-chat__wizz-indicator" aria-hidden="true">on</span>
+          }
+        </button>
+
         <!-- Separator -->
         <span class="case-chat__header-sep"></span>
 
@@ -150,7 +166,11 @@
         </div>
       }
 
-      <div class="case-chat__messages-region">
+      <div
+        class="case-chat__messages-region"
+        [class.case-chat__messages-region--wizzing]="wizzPulsing()"
+        (animationend)="onWizzAnimationEnd($event)"
+      >
         <div #messagesContainer class="case-chat__messages">
           @if (timeline().length === 0) {
             <div class="case-chat__empty">
