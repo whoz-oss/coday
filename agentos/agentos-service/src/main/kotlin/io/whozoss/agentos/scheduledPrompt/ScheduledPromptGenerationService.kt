@@ -85,7 +85,10 @@ import java.util.UUID
  * - `search.tool` is the search tool: no tool selection happens;
  * - `search.params` are the base parameters, which the generated ones keep as they are (see
  *   [LoopConfigGenerationService]): the LLM only adds what the description asks for, typically criteria;
- * - `act.agentName` is the target agent, `act.prompt` the prompt.
+ * - `act.agentName` is the target agent, `act.prompt` the prompt;
+ * - `search.params.resolveTargets`, when a list of strings (a convention of the Whoz search tools), is given to the
+ *   planner as the recipient of each case (e.g. MANAGER), so that the prompt is written in that recipient's voice.
+ *   Without it, the prompt is written to read right for any recipient.
  *
  * A part of the wrong type is a 400, as is a target agent that is not available.
  *
@@ -276,7 +279,22 @@ class ScheduledPromptGenerationService(
         val prompt: String?,
         val searchToolName: String?,
         val baseParams: JsonNode?,
-    )
+    ) {
+        /**
+         * Who each case is opened with, when the base flow configuration says it: the `resolveTargets` of its search
+         * params (a convention of the Whoz search tools, e.g. `["MANAGER"]`), read as a hint only. Null when absent,
+         * empty, or not a list of strings.
+         */
+        val recipients: List<String>?
+            get() =
+                baseParams
+                    ?.get(RESOLVE_TARGETS_PARAM)
+                    ?.takeIf { it.isArray && it.all { item -> item.isTextual } }
+                    ?.map { it.asText() }
+                    ?.filter { it.isNotBlank() }
+                    ?.distinct()
+                    ?.takeIf { it.isNotEmpty() }
+    }
 
     /** The parts of a base flow configuration. */
     private data class ParsedBase(
@@ -518,6 +536,10 @@ class ScheduledPromptGenerationService(
             appendLine()
             appendLine("Target agent candidates (the agent started for each search result):")
             candidates.targets.forEach { appendLine("- ${it.name}: ${it.description.orEmpty()}") }
+            inputs.recipients?.let { recipients ->
+                appendLine()
+                appendLine("Recipient of each case (its relation to the entity of the case): ${recipients.joinToString(", ")}")
+            }
             if (fixed.isNotEmpty()) {
                 appendLine()
                 appendLine("Already decided (copy these values as is):")
@@ -1031,6 +1053,9 @@ class ScheduledPromptGenerationService(
 
         private const val ONLY_CANDIDATE_RATIONALE = "only LOOP agent of the namespace"
 
+        /** Search param naming who each case is opened with, by the convention of the Whoz search tools. */
+        private const val RESOLVE_TARGETS_PARAM = "resolveTargets"
+
         /** Keys of the planning answer's `rationale` object, per field. The preset is chosen by its own call, so it has none. */
         private val RATIONALE_KEYS =
             mapOf(
@@ -1050,11 +1075,16 @@ class ScheduledPromptGenerationService(
             The automation runs on a schedule. Each time, a LOOP agent searches for entities, and starts one case per
             result with a target agent, sending it an opening prompt.
 
+            Each case is already a conversation between the target agent and the person the description wants to
+            reach (the recipient: e.g. the owner of the assignment, the manager of the talent). The entity of the case
+            is given to the target agent separately. The opening prompt is shown in that conversation: the target agent
+            acts on it, and the recipient reads it.
+
             Produce ONLY a JSON object in this exact format:
             {
               "loopAgentName": "<one of the LOOP agent candidates>",
               "targetAgentName": "<one of the target agent candidates>",
-              "prompt": "<opening message sent to the target agent for each result>",
+              "prompt": "<opening message of each case, written as the recipient speaking to the target agent>",
               "name": "<short name of the automation, max $MAX_GENERATED_NAME_LENGTH characters>",
               "recurrence": { "unit": "WEEK" | "MONTH", "days": ["MONDAY", ...], "timeUtc": "HH:mm" },
               "planning": { "startDate": "YYYY-MM-DD", "endType": "NEVER" | "ON_DATE" | "OCCURRENCES",
@@ -1066,8 +1096,26 @@ class ScheduledPromptGenerationService(
             Rules:
             - Agent names MUST be copied exactly from the candidate lists. Never invent one.
             - Copy the "Already decided" values as is.
-            - The prompt is addressed to the target agent, in the language of the description; it must not mention ids
-              or the search: the entity of each result is given to the target agent separately.
+            - The prompt is written in the language of the description, as the recipient speaking to the target agent:
+              the recipient is "I" / "me", the target agent is "you". Never refer to the recipient in the third
+              person (not "the owner", "the talent's manager", "the user you are talking with").
+            - The prompt never asks to contact, notify, message, email or reach out to the recipient: the case already
+              is the conversation with them. Turn such delivery verbs into what the conversation is about: what to
+              analyze, suggest, review, or ask the recipient ("suggest them to me", "ask me to estimate...").
+            - The prompt is about the single entity of the case: refer to it as "this <entity>" or "the provided
+              <entity>". It must not mention ids, the search, or other entities.
+            - When a "Recipient of each case" is given with a single relation (e.g. MANAGER, OWNER), the prompt may state
+              it in the recipient's voice ("As the manager of this <entity>, I...", "As the owner of this <entity>,
+              I..."). Otherwise (no recipient given, or several relations), do not state how the recipient relates to
+              the entity ("I own", "my <entity>"): the prompt must read right for any recipient.
+            - The prompt must not mention the schedule or the recurrence ("every day", "each Monday"): they are
+              configured separately.
+            - Example. Description: "Every day, for each task due next week, contact its owner and ask them to confirm
+              it will be done on time." Prompt: "This task is due next week. Help me review it, then ask me to confirm
+              it will be done on time."
+            - Example. Description: "Every Monday, for each team member with an incomplete profile, suggest
+              improvements to their manager." Prompt: "Analyze the provided team member's profile. Identify what is
+              missing and suggest concrete improvements to me."
             - Times are in UTC. "days" only applies to WEEK (empty list = same weekday as startDate).
             - endDate is required, and strictly after startDate, when endType is ON_DATE.
               maxOccurrenceCount is required, and positive, when endType is OCCURRENCES.
