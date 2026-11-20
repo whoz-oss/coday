@@ -47,6 +47,7 @@ import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.definition.DefaultToolDefinition
+import org.springframework.ai.tool.definition.ToolDefinition
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -64,6 +65,23 @@ import kotlin.time.measureTime
  * because [io.whozoss.agentos.chat.UsageTrackingChatModel] must not count it as a failed run.
  */
 internal class ToolImagesProduced : RuntimeException("A tool produced images", null, false, false)
+
+/**
+ * The last LLM request of a turn of an [AgentSimple] that ended with an answer: what was sent, and the answer.
+ * See [AgentSimple.onFinalRequest].
+ */
+data class FinalLlmRequest(
+    val caseId: UUID,
+    /** The messages of the request, the system message first, exactly as sent. */
+    val messages: List<Message>,
+    /** The tools declared by the request, in their order. */
+    val toolDefinitions: List<ToolDefinition>,
+    /** The answer of the model, as recorded in the case. */
+    val finalText: String,
+    /** The events of the case the turn was run with (the events it produced itself are not counted). */
+    val coveredEventCount: Int,
+    val lastCoveredEventId: UUID?,
+)
 
 /**
  * Simple agent implementation: the LLM orchestrates the tools through one streamed call.
@@ -118,6 +136,17 @@ class AgentSimple(
      * Mirrors [AgentConfigProperties.maxAttachedImages] (default 20).
      */
     val maxAttachedImages: Int = 20,
+    /**
+     * The messages of the last request the chat model sent to the provider, tool rounds included, or null when
+     * it cannot tell (an untracked model runs its tool rounds out of sight): the messages of the last call
+     * are used then, which is the exact request only when that call ran no tool.
+     */
+    private val lastSentMessages: () -> List<Message>? = { null },
+    /**
+     * Called when a turn ends with an answer, with its last request ([FinalLlmRequest]): a later request that
+     * only appends to it can be served by the provider's prompt cache. A failure here never affects the turn.
+     */
+    private val onFinalRequest: ((FinalLlmRequest) -> Unit)? = null,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -195,9 +224,12 @@ class AgentSimple(
                 var content = ""
                 // Set from the last response when the tool round limit cut the run short.
                 var maxIterationsReached: Int? = null
+                // The messages of the last call: its first request.
+                var lastCallMessages: List<Message> = emptyList()
 
                 while (true) {
                     val allMessages = listOfNotNull(effectiveSystemMessage) + convertEventsToMessages(events + runEvents)
+                    lastCallMessages = allMessages
 
                     logger.debug {
                         "[AgentSimple] agent=$name sending ${allMessages.size} messages to LLM $llmProvider/$llmModel with ${tools.size} tool(s)" +
@@ -249,6 +281,10 @@ class AgentSimple(
 
                 maxIterationsReached?.let { emitMaxIterationsWarning(namespaceId, caseId, it) }
 
+                if (content.isNotEmpty() && shouldContinue()) {
+                    reportFinalRequest(caseId, events, lastSentMessages() ?: lastCallMessages, toolCallbacks, content)
+                }
+
                 // Emit the final assistant message
                 if (content.isNotEmpty()) {
                     emit(agentMessage(namespaceId, caseId, content))
@@ -287,6 +323,28 @@ class AgentSimple(
                 handleGenericAgentException(this@AgentSimple, e, namespaceId, caseId, logger)
             }
         }
+
+    private fun reportFinalRequest(
+        caseId: UUID,
+        events: List<CaseEvent>,
+        messages: List<Message>,
+        toolCallbacks: List<ToolCallback>,
+        finalText: String,
+    ) {
+        val callback = onFinalRequest ?: return
+        runCatching {
+            callback(
+                FinalLlmRequest(
+                    caseId = caseId,
+                    messages = messages,
+                    toolDefinitions = toolCallbacks.map { it.toolDefinition },
+                    finalText = finalText,
+                    coveredEventCount = events.size,
+                    lastCoveredEventId = events.lastOrNull()?.id,
+                ),
+            )
+        }.onFailure { logger.warn(it) { "[AgentSimple] agent=$name could not report the final request of case $caseId" } }
+    }
 
     /** What one streamed call (with the Spring AI tool rounds it ran) produced. */
     private class StreamOutcome(

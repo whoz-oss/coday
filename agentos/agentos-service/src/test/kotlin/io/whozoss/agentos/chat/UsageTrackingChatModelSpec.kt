@@ -505,6 +505,67 @@ class UsageTrackingChatModelSpec :
             sent.cacheOptions.strategy shouldBe AnthropicCacheStrategy.CONVERSATION_HISTORY
             sent.internalToolExecutionEnabled shouldBe false
         }
+
+        listOf(false, true).forEach { streaming ->
+            "with runTools off, a ${if (streaming) "streamed" else "synchronous"} response asking for a tool is returned as is and no tool runs" {
+                val toolsExecuted = AtomicInteger()
+                val callback =
+                    toolCallback {
+                        toolsExecuted.incrementAndGet()
+                        "ok"
+                    }
+                val options = ToolCallingChatOptions.builder().toolCallbacks(callback).build()
+                val sent = CopyOnWriteArrayList<Prompt>()
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns options
+                every { raw.call(any<Prompt>()) } answers { response(tool = true, text = "Let me check.").also { sent.add(firstArg()) } }
+                every { raw.stream(any<Prompt>()) } answers { Flux.just(response(tool = true, text = "Let me check.")).also { sent.add(firstArg()) } }
+                val accumulator = UsageAccumulator()
+                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model, runTools = false)
+                val prompt = Prompt(listOf(UserMessage("Hello")), options)
+
+                val result =
+                    if (streaming) {
+                        tracked.stream(prompt).collectList().block(Duration.ofSeconds(2))!!.last()
+                    } else {
+                        tracked.call(prompt)
+                    }
+
+                result.hasToolCalls() shouldBe true
+                result.result.output.text shouldBe "Let me check."
+                toolsExecuted.get() shouldBe 0
+                sent.size shouldBe 1
+                (sent.single().options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe false
+                accumulator.total.totalTokens shouldBe 15L
+                accumulator.failed shouldBe false
+            }
+
+            "onRequest sees every ${if (streaming) "streamed" else "synchronous"} request, tool rounds included, as sent" {
+                val callback = toolCallback { "tool output" }
+                val options = ToolCallingChatOptions.builder().toolCallbacks(callback).build()
+                val sent = CopyOnWriteArrayList<Prompt>()
+                val requests = AtomicInteger()
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns options
+                every { raw.call(any<Prompt>()) } answers {
+                    sent.add(firstArg())
+                    response(tool = requests.getAndIncrement() == 0)
+                }
+                every { raw.stream(any<Prompt>()) } answers {
+                    sent.add(firstArg())
+                    Flux.just(response(tool = requests.getAndIncrement() == 0))
+                }
+                val observed = CopyOnWriteArrayList<Prompt>()
+                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, onRequest = { observed.add(it) })
+                val prompt = Prompt(listOf(UserMessage("Hello")), options)
+
+                if (streaming) tracked.stream(prompt).blockLast(Duration.ofSeconds(2)) else tracked.call(prompt)
+
+                observed.size shouldBe 2
+                observed.map { it.instructions } shouldBe sent.map { it.instructions }
+                observed.last().instructions.map { it.messageType.name } shouldBe listOf("USER", "ASSISTANT", "TOOL")
+            }
+        }
     })
 
 private data class LoopingRun(

@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
 
 /**
@@ -26,6 +27,14 @@ import org.springframework.stereotype.Service
  *
  * The cap on tool rounds is the caller's [getChatClient] `maxToolRounds` (the namespace's override)
  * when given, else the platform's `agentos.limits.agent-max-iterations`.
+ *
+ * With `runTools` false, the client never executes a tool, whatever the model answers: the model always goes
+ * through [UsageTrackingChatModel], which returns a response asking for tools as it is (and turns Spring AI's
+ * internal tool execution off). Without an accumulator to record into (usage disabled), its usage is discarded.
+ *
+ * `onRequest` sees the prompt of every request sent to the provider, tool rounds included. It is only called
+ * through [UsageTrackingChatModel] (usage tracked, or `runTools` false): an untracked model runs its tool rounds
+ * out of sight.
  */
 @Service
 class ChatClientProvider(
@@ -41,6 +50,8 @@ class ChatClientProvider(
         maxToolRounds: Int? = null,
         /** The prompt cache duration chosen by the user the agent runs for; utility calls keep the default. */
         promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+        runTools: Boolean = true,
+        onRequest: ((Prompt) -> Unit)? = null,
     ): ChatClient {
         val chatModel =
             chatModelFactory.createChatModel(
@@ -54,14 +65,17 @@ class ChatClientProvider(
                 reasoningEffort = modelConfig.reasoningEffort,
                 promptCacheTtl = promptCacheTtl,
             )
+        val tracked = usageConfig.enabled && accumulator != null
         val trackedModel =
-            if (usageConfig.enabled && accumulator != null) {
+            if (tracked || !runTools) {
                 UsageTrackingChatModel(
                     chatModel,
-                    accumulator,
+                    accumulator?.takeIf { tracked } ?: UsageAccumulator(),
                     providerConfig.apiType,
                     modelConfig,
                     maxToolRounds = maxToolRounds ?: limits.agentMaxIterations,
+                    runTools = runTools,
+                    onRequest = onRequest,
                 )
             } else {
                 chatModel

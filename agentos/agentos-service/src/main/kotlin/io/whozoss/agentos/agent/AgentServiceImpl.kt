@@ -59,10 +59,13 @@ import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
+import org.springframework.ai.chat.messages.Message
+import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Implementation of [AgentService] that resolves agents from namespace-scoped
@@ -102,6 +105,8 @@ class AgentServiceImpl(
     /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
     private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
     private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
+    /** Where a SIMPLE agent records the last LLM request of its turns, for the calls reusing its prompt cache. */
+    private val lastLlmRequestRegistry: LastLlmRequestRegistry = LastLlmRequestRegistry(),
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -739,6 +744,11 @@ class AgentServiceImpl(
             }
 
             ExecutionMode.SIMPLE -> {
+                // The messages of the last request actually sent, tool rounds included. Only a tracked model (one
+                // with an accumulator) reports them; without one, AgentSimple falls back on the messages of its call.
+                val lastSentMessages = AtomicReference<List<Message>?>(null)
+                val recordRequest: ((Prompt) -> Unit)? =
+                    context.usageAccumulator?.let { { prompt -> lastSentMessages.set(prompt.instructions.toList()) } }
                 val chatClient =
                     chatClientProvider.getChatClient(
                         modelConfig,
@@ -747,6 +757,7 @@ class AgentServiceImpl(
                         context.usageAccumulator,
                         maxToolRounds,
                         resolvedUser?.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES,
+                        onRequest = recordRequest,
                     )
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
@@ -764,6 +775,23 @@ class AgentServiceImpl(
                     requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                    lastSentMessages = lastSentMessages::get,
+                    onFinalRequest = { request ->
+                        lastLlmRequestRegistry.put(
+                            LastLlmRequest(
+                                caseId = request.caseId,
+                                messages = request.messages,
+                                toolDefinitions = request.toolDefinitions,
+                                model = modelConfig,
+                                provider = providerConfig,
+                                finalText = request.finalText,
+                                agentName = agentName,
+                                agentConfigId = agentId,
+                                coveredEventCount = request.coveredEventCount,
+                                lastCoveredEventId = request.lastCoveredEventId,
+                            ),
+                        )
+                    },
                 )
             }
         }
