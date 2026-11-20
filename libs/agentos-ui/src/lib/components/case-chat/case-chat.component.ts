@@ -129,6 +129,7 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { WizzCompletionObserver } from './wizz-completion-observer'
 
 export interface ToolCall {
   requestId: string
@@ -370,6 +371,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
+  private readonly conversationPanel = viewChild<ElementRef<HTMLDivElement>>('conversationPanel')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
   private readonly settings = viewChild(CaseSettingsComponent)
   // The pickers live in the shared settings component: the autocomplete service drives them from here.
@@ -379,6 +381,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
+  /** An opt-in, session-only completion cue. It resets whenever the displayed case changes. */
+  protected readonly wizzEnabled = signal(false)
+  private readonly wizzObserver = new WizzCompletionObserver()
+  private wizzAnimation: Animation | null = null
+  /** Disposes only the currently playing cue; it is never retained for the enabled session. */
+  private wizzPlaybackCleanup: (() => void) | null = null
+  private readonly wizzRenderTimers = new Set<ReturnType<typeof setTimeout>>()
 
   /**
    * Pre-computed markdown HTML per event id, of what the message shows as its text (see [bodyOf]).
@@ -1126,12 +1135,91 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopWizz()
     if (this.terminalCloseTimer !== null) {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
     }
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
+  }
+
+  protected toggleWizz(): void {
+    if (this.wizzEnabled()) {
+      this.stopWizz()
+      this.wizzEnabled.set(false)
+      return
+    }
+    this.wizzEnabled.set(true)
+    // The live observer filters its frames without entering Angular; only a completion schedules DOM work.
+    this.zone.runOutsideAngular(() =>
+      this.wizzObserver.start(this.config.basePath, this.caseId, () => this.onWizzAnswerCompleted())
+    )
+  }
+
+  private onWizzAnswerCompleted(): void {
+    if (!this.wizzEnabled()) return
+    // One queued callback per eligible answer: lifecycle stop clears all of them, but two answers in
+    // the same turn of the event loop must not be silently collapsed into one cue.
+    const timer = setTimeout(() => {
+      this.wizzRenderTimers.delete(timer)
+      if (this.wizzEnabled()) this.playWizzEffect()
+    })
+    this.wizzRenderTimers.add(timer)
+  }
+
+  private playWizzEffect(forceReducedMotion?: boolean): void {
+    const panel = this.conversationPanel()?.nativeElement
+    if (!panel?.animate) return
+    this.disposeWizzPlayback()
+
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    const reducedMotion = forceReducedMotion ?? media?.matches === true
+    const animation = panel.animate(
+      reducedMotion
+        ? [{ boxShadow: 'inset 0 0 0 2px var(--color-accent)' }, { boxShadow: 'inset 0 0 0 0 transparent' }]
+        : [
+            { transform: 'translateX(0)' },
+            { transform: 'translateX(-4px)' },
+            { transform: 'translateX(4px)' },
+            { transform: 'translateX(0)' },
+          ],
+      { duration: reducedMotion ? 500 : 400, easing: 'ease-out' }
+    )
+    let cleanup: (() => void) | null = null
+    const onPreferenceChange = (event: MediaQueryListEvent): void => {
+      // A currently playing shake may be replaced by a highlight. A highlight never turns back
+      // into motion: this callback belongs to one completion cue, not the enabled session.
+      if (!reducedMotion && event.matches && this.wizzPlaybackCleanup === cleanup) this.playWizzEffect(true)
+    }
+    cleanup = () => {
+      if (this.wizzPlaybackCleanup !== cleanup) return
+      animation.onfinish = null
+      animation.oncancel = null
+      if (!reducedMotion) media?.removeEventListener('change', onPreferenceChange)
+      this.wizzPlaybackCleanup = null
+      this.wizzAnimation = null
+    }
+    this.wizzPlaybackCleanup = cleanup
+    this.wizzAnimation = animation
+    animation.onfinish = cleanup
+    animation.oncancel = cleanup
+    if (!reducedMotion) media?.addEventListener('change', onPreferenceChange)
+  }
+
+  private disposeWizzPlayback(): void {
+    const cleanup = this.wizzPlaybackCleanup
+    const animation = this.wizzAnimation
+    if (!cleanup) return
+    cleanup()
+    animation?.cancel()
+  }
+
+  private stopWizz(): void {
+    this.wizzObserver.stop()
+    for (const timer of this.wizzRenderTimers) clearTimeout(timer)
+    this.wizzRenderTimers.clear()
+    this.disposeWizzPlayback()
   }
 
   // ---------------------------------------------------------------------------
@@ -1568,6 +1656,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called when the router reuses this component instance for a different case.
    */
   private reinitialise(): void {
+    this.stopWizz()
+    this.wizzEnabled.set(false)
     // Cancel any pending terminal-close timer before reconnecting: a stale timer must
     // not close the freshly created EventSource for the reopened case.
     if (this.terminalCloseTimer !== null) {

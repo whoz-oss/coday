@@ -94,6 +94,17 @@
         <!-- Share case -->
         <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
 
+        <button
+          type="button"
+          class="case-chat__wizz-toggle"
+          [class.case-chat__wizz-toggle--active]="wizzEnabled()"
+          [attr.aria-pressed]="wizzEnabled()"
+          title="Shake the conversation when an agent answer completes"
+          (click)="toggleWizz()"
+        >
+          Wizz
+        </button>
+
         <!-- Separator -->
         <span class="case-chat__header-sep"></span>
 
@@ -144,6 +155,7 @@
     }
 
     <div
+      #conversationPanel
       class="case-chat"
       (dragenter)="canStageFiles() && attachments.onDragEnter($event)"
       (dragover)="canStageFiles() && attachments.onDragOver($event)"
