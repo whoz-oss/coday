@@ -956,19 +956,18 @@ class AgentServiceImpl(
         val patterns = config.subAgents?.filter { it.isNotBlank() }
         if (patterns.isNullOrEmpty() || context.caseId == null) return null
 
-        val accessibleNames =
+        val accessibleConfigs =
             if (context.userId != null) {
                 agentConfigService
                     .findDeployedByNamespaceIdAndUserIdAndName(
                         namespaceId = context.namespaceId,
                         userId = context.userId,
                         agentName = null,
-                    ).map { it.name }
+                    )
             } else {
-                agentConfigService
-                    .findByNamespace(context.namespaceId, withDisabled = false)
-                    .map { it.name }
+                agentConfigService.findByNamespace(context.namespaceId, withDisabled = false)
             }
+        val accessibleNames = accessibleConfigs.map { it.name }
 
         val regexes = patterns.map { globToRegex(it) }
         val allowedAgents = accessibleNames.filter { name -> regexes.any { it.matches(name) } }
@@ -1001,6 +1000,7 @@ class AgentServiceImpl(
             parentCaseId = context.caseId,
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
+            agentDescriptions = accessibleConfigs.associate { it.name to it.description },
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
             timeoutMs =
                 (

@@ -65,6 +65,9 @@ import java.util.UUID
  * @param parentCaseId     Case id of the delegating agent's case.
  * @param namespaceId      Namespace both cases belong to.
  * @param allowedAgents    Allowlist of agent names this tool may delegate to.
+ * @param agentDescriptions Description of each allowed agent by name, listed in the tool description so the
+ *                         model can pick the right delegate without guessing from the name. Missing or blank
+ *                         entries are listed by name only.
  * @param loadCaseEvents   Lambda that loads persisted events for a case id.
  * @param timeoutMs        Max time a delegation waits without activity from its sub-case or nested delegations,
  *                         excluding cost confirmation.
@@ -77,6 +80,7 @@ class DelegationTool(
     private val loadCaseEvents: suspend (UUID) -> List<CaseEvent>,
     private val timeoutMs: Long,
     private val eventLoadTimeoutMs: Long = EVENT_LOAD_TIMEOUT_MS,
+    private val agentDescriptions: Map<String, String?> = emptyMap(),
 ) : StandardTool<DelegationTool.Args> {
     /**
      * A single delegation within the batch.
@@ -112,12 +116,21 @@ class DelegationTool(
                 All delegations run in parallel — pass multiple entries to fan out work concurrently. 
                 Sub-agents run autonomously; if one needs to ask a question, the question is returned so you can relay it or resolve it, then resume via subCaseId. 
                 A result with maxIterationsReached is partial: the sub-agent hit its iteration limit and summarized its progress; resume via subCaseId to let it continue. 
-                Available agents: ${allowedAgents.joinToString(", ")}.
-                """.trimIndent()
+                A result longer than $MAX_RESULT_CHARS characters is cut in the middle: resume via subCaseId to ask for the part you need. 
+                At most $MAX_PARALLEL_DELEGATIONS delegations per call.
+                Available agents:
+                """.trimIndent() + "\n" + agentList()
             }
         }
     override val version = "1.0.0"
     override val paramType: Class<Args> = Args::class.java
+
+    /** One line per allowed agent, `- name: description`, sorted by name so the prompt prefix stays stable. */
+    private fun agentList(): String =
+        allowedAgents.sortedBy { it.lowercase() }.joinToString("\n") { name ->
+            val description = agentDescriptions[name]?.trim()?.takeIf { it.isNotEmpty() }
+            if (description == null) "- $name" else "- $name: ${description.take(MAX_AGENT_DESCRIPTION_CHARS)}"
+        }
 
     override val inputSchema: String =
         objectMapper
@@ -164,6 +177,15 @@ class DelegationTool(
         if (input == null || input.delegations.isEmpty()) {
             return ToolExecutionResult.error(
                 output = "Delegation requires at least one entry in the delegations list.",
+                errorType = "INVALID_INPUT",
+            )
+        }
+
+        if (input.delegations.size > MAX_PARALLEL_DELEGATIONS) {
+            return ToolExecutionResult.error(
+                output =
+                    "${input.delegations.size} delegations in one call; the limit is $MAX_PARALLEL_DELEGATIONS. " +
+                        "Split them over several calls.",
                 errorType = "INVALID_INPUT",
             )
         }
@@ -297,7 +319,7 @@ class DelegationTool(
                 finishErrorType = null
                 val lastRun = events.filterIsInstance<AgentFinishedEvent>().lastOrNull()
                 DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true,
-                    result = extractLastAgentMessage(events), maxIterationsReached = lastRun?.maxIterationsReached)
+                    result = capResult(extractLastAgentMessage(events), subCaseId), maxIterationsReached = lastRun?.maxIterationsReached)
             }
         } catch (error: Exception) {
             outcome = SubCaseOutcome.ERROR
@@ -349,6 +371,23 @@ class DelegationTool(
             status
         }
 
+    /**
+     * Keeps what returns to the parent's context bounded: a sub-agent that writes a very long answer must not
+     * fill the context of the agent that delegated to save it. The head and the tail are kept, since reports
+     * put the conclusion at the end, and the full text stays in the sub-case, reachable through [subCaseId].
+     */
+    private fun capResult(
+        text: String,
+        subCaseId: UUID,
+    ): String {
+        if (text.length <= MAX_RESULT_CHARS) return text
+        val head = MAX_RESULT_CHARS * 3 / 4
+        val tail = MAX_RESULT_CHARS - head
+        return text.take(head) +
+            "\n\n[... ${text.length - MAX_RESULT_CHARS} characters cut; the full answer is in sub-case $subCaseId, " +
+            "resume it to ask for a part ...]\n\n" + text.takeLast(tail)
+    }
+
     private fun extractLastAgentMessage(events: List<CaseEvent>): String =
         events
             .filterIsInstance<MessageEvent>()
@@ -395,6 +434,14 @@ class DelegationTool(
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
         private const val EVENT_LOAD_TIMEOUT_MS = 10_000L
+
+        /** Largest result returned to the parent per delegation; the rest is cut in the middle. */
+        internal const val MAX_RESULT_CHARS = 24_000
+
+        /** Most delegations one call may fan out; the parent splits larger batches. */
+        internal const val MAX_PARALLEL_DELEGATIONS = 10
+
+        private const val MAX_AGENT_DESCRIPTION_CHARS = 200
 
         /** Upper bound on the wait for a stopped sub-case to settle; a Stop cancels its turn at once. */
         private const val STOP_SETTLE_TIMEOUT_MS = 10_000L

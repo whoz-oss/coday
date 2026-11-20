@@ -5,6 +5,7 @@ import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.casePlugin.CasePluginConfigProperties
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.codayAgent.CodayAgentProperties
+import io.whozoss.agentos.searcherAgent.SearcherAgentProperties
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
@@ -39,6 +40,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
     CaseConfigProperties::class,
     CasePluginConfigProperties::class,
     CodayAgentProperties::class,
+    SearcherAgentProperties::class,
     PersonalNamespaceProperties::class,
     AgentOsPluginsConfigProperties::class,
     PersistenceConfigProperties::class,
