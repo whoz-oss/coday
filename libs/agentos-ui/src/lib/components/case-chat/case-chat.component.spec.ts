@@ -126,6 +126,37 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  it('wizzes once for an eligible fresh agent completion and clears it on disable', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      ref.instance['toggleWizz']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, caseId: 'c-1', namespaceId: 'ns-1', ...fields }) }))
+
+      emit('ThinkingEvent', 'thinking-1')
+      emit('TextChunkEvent', 'chunk-1', { chunk: 'Done' })
+      emit('MessageEvent', 'message-1', {
+        actor: { id: 'agent-1', role: ActorRoleEnum.AGENT, displayName: 'Agent' },
+        content: [{ type: 'Text', content: 'Done' }],
+      })
+      emit('AgentFinishedEvent', 'finish-1', { agentId: 'agent-1', agentName: 'Agent' })
+
+      expect(ref.instance['wizzAnimation']()).toBe('a')
+      emit('AgentFinishedEvent', 'finish-1', { agentId: 'agent-1', agentName: 'Agent' })
+      expect(ref.instance['wizzAnimation']()).toBe('a')
+      ref.instance['toggleWizz']()
+      expect(ref.instance['wizzEnabled']()).toBe(false)
+      expect(ref.instance['wizzAnimation']()).toBeNull()
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })
