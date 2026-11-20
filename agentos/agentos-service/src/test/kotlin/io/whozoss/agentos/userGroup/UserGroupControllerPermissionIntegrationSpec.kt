@@ -123,6 +123,21 @@ class UserGroupControllerPermissionIntegrationSpec : StringSpec() {
                 .andExpect(status().isOk)
         }
 
+        "POST /{id}/members/list returns 404 for a caller without READ, like GET /{id}/members" {
+            val group = createGroup("MembersList-hidden")
+            mockMvc
+                .perform(post("/api/user-groups/${group.id}/members/list").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound)
+        }
+
+        "POST /{id}/members/list returns 200 for a namespace MEMBER (transitive READ)" {
+            val group = createGroup("MembersList-readable")
+            grantNamespace(PermissionRelation.MEMBER)
+            mockMvc
+                .perform(post("/api/user-groups/${group.id}/members/list").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk)
+        }
+
         // -------------------------------------------------------------------------
         // POST / — create — @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'WRITE')")
         // -------------------------------------------------------------------------

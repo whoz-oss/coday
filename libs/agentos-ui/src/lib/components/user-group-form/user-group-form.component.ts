@@ -4,20 +4,25 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, MemberItem, UserGroupMemberRoleEnum, UserGroupSearchResult } from '@whoz-oss/agentos-api-client'
+import {
+  AgentConfig,
+  MemberItem,
+  UserGroupMemberRoleEnum,
+  UserGroupMembersListResponse,
+  UserGroupSearchResult,
+} from '@whoz-oss/agentos-api-client'
 import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-system'
 import { Observable } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
+import { ListFooterComponent } from '../list-footer/list-footer.component'
 import { UserGroupMemberAutocompleteDataSource } from './user-group-member.data-source'
-import { computeMemberDiff, memberLabel } from './user-group-form.util'
-
-/** A user currently selected as a member, with a display label and their role in the group. */
-interface SelectedMember {
-  externalId: string
-  label: string
-  email?: string
-  role: UserGroupMemberRoleEnum
-}
+import {
+  computeAdminDelta,
+  computeMemberDiff,
+  MemberBaseline,
+  mergeMemberPage,
+  SelectedMember,
+} from './user-group-form.util'
 
 /** Max name length — mirrors the backend @Size(max = 250) on UserGroupCreateRequest. */
 const MAX_NAME_LENGTH = 250
@@ -32,8 +37,9 @@ const MAX_NAME_LENGTH = 250
  * The form manages the group name, its deployed agents (a grouped checklist of platform +
  * namespace agent configs, which can be shared across multiple groups),
  * and its members (an inline list with a per-member MEMBER/ADMIN role select + a type-ahead over
- * the namespace's users). On submit, member changes are diffed into the add/remove lists and the
- * full ADMIN set is sent as adminExternalIds.
+ * the namespace's users). In edit mode only the first page of members is loaded; "Load more" fetches
+ * the next ones. On submit, member and admin changes are diffed against the roles the server returned
+ * (the baseline), so members that were never loaded are left untouched. Create sends the full ADMIN set.
  *
  * Slightly over the ~200-line component guideline: HTTP orchestration is already extracted to
  * UserGroupStateService and pure transforms to user-group-form.util.ts. What remains is the
@@ -42,7 +48,7 @@ const MAX_NAME_LENGTH = 250
  */
 @Component({
   selector: 'agentos-user-group-form',
-  imports: [NgTemplateOutlet, ReactiveFormsModule, AutocompleteInputComponent],
+  imports: [NgTemplateOutlet, ReactiveFormsModule, AutocompleteInputComponent, ListFooterComponent],
   templateUrl: './user-group-form.component.html',
   styleUrl: './user-group-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -82,7 +88,12 @@ export class UserGroupFormComponent implements OnInit {
   // --- Members ---
   protected readonly candidateUsers = signal<MemberItem[]>([])
   protected readonly selectedMembers = signal<SelectedMember[]>([])
-  private originalMemberExternalIds: string[] = []
+  /** Server role of every member loaded so far; membership and admin diffs are computed from it. */
+  protected readonly baseline = signal<MemberBaseline>(new Map())
+  protected readonly nextCursor = signal<string | null>(null)
+  protected readonly totalMembers = signal(0)
+  protected readonly isLoadingMoreMembers = signal(false)
+  protected readonly loadMoreMembersFailed = signal(false)
 
   protected readonly memberDataSource = new UserGroupMemberAutocompleteDataSource(
     () => this.candidateUsers(),
@@ -128,15 +139,7 @@ export class UserGroupFormComponent implements OnInit {
         next: ({ group, members }) => {
           this.nameControl.setValue(group.name)
           this.selectedAgentIds.set(new Set(group.agentIds))
-          this.originalMemberExternalIds = members.map((member) => member.externalId)
-          this.selectedMembers.set(
-            members.map((member) => ({
-              externalId: member.externalId,
-              label: memberLabel(member),
-              email: member.email,
-              role: member.role,
-            }))
-          )
+          this.applyMemberPage(members)
           this.isLoading.set(false)
         },
         error: (err) => {
@@ -147,6 +150,35 @@ export class UserGroupFormComponent implements OnInit {
           this.navigateBack()
         },
       })
+  }
+
+  protected loadMoreMembers(): void {
+    const next = this.nextCursor()
+    if (!this.userGroupId || !next || this.isLoadingMoreMembers()) return
+    this.isLoadingMoreMembers.set(true)
+    this.loadMoreMembersFailed.set(false)
+    this.userGroupState
+      .loadMembersPage(this.userGroupId, next)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (page) => {
+          this.applyMemberPage(page)
+          this.isLoadingMoreMembers.set(false)
+        },
+        error: (err) => {
+          console.error('[UserGroupForm] Failed to load more members', err)
+          this.isLoadingMoreMembers.set(false)
+          this.loadMoreMembersFailed.set(true)
+        },
+      })
+  }
+
+  private applyMemberPage(page: UserGroupMembersListResponse): void {
+    const merged = mergeMemberPage(this.selectedMembers(), this.baseline(), page.data)
+    this.selectedMembers.set(merged.rows)
+    this.baseline.set(merged.baseline)
+    this.nextCursor.set(page.metadata.next ?? null)
+    this.totalMembers.set(page.metadata.totalCount)
   }
 
   // ---------------------------------------------------------------------------
@@ -177,7 +209,14 @@ export class UserGroupFormComponent implements OnInit {
     if (this.selectedMembers().some((member) => member.externalId === item.id)) return
     this.selectedMembers.update((members) => [
       ...members,
-      { externalId: item.id, label: item.name, email: item.description, role: UserGroupMemberRoleEnum.MEMBER },
+      // roleEdited: the role is the admin's choice, a later page holding this member must not override it.
+      {
+        externalId: item.id,
+        label: item.name,
+        email: item.description,
+        role: UserGroupMemberRoleEnum.MEMBER,
+        roleEdited: true,
+      },
     ])
   }
 
@@ -189,7 +228,9 @@ export class UserGroupFormComponent implements OnInit {
     const nextRole =
       role === UserGroupMemberRoleEnum.ADMIN ? UserGroupMemberRoleEnum.ADMIN : UserGroupMemberRoleEnum.MEMBER
     this.selectedMembers.update((members) =>
-      members.map((member) => (member.externalId === externalId ? { ...member, role: nextRole } : member))
+      members.map((member) =>
+        member.externalId === externalId ? { ...member, role: nextRole, roleEdited: true } : member
+      )
     )
   }
 
@@ -204,15 +245,11 @@ export class UserGroupFormComponent implements OnInit {
 
     const name = this.nameControl.value.trim()
     const agentIds = [...this.selectedAgentIds()]
-    const selectedMemberIds = this.selectedMembers().map((member) => member.externalId)
-    const adminExternalIds = this.selectedMembers()
-      .filter((member) => member.role === UserGroupMemberRoleEnum.ADMIN)
-      .map((member) => member.externalId)
 
     const call$ =
       this.isEditMode() && this.userGroupId
-        ? this.updateGroup(this.userGroupId, name, agentIds, selectedMemberIds, adminExternalIds)
-        : this.createGroup(name, agentIds, selectedMemberIds, adminExternalIds)
+        ? this.updateGroup(this.userGroupId, name, agentIds)
+        : this.createGroup(name, agentIds)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
@@ -229,35 +266,34 @@ export class UserGroupFormComponent implements OnInit {
     })
   }
 
-  private createGroup(
-    name: string,
-    agentIds: string[],
-    memberExternalIds: string[],
-    adminExternalIds: string[]
-  ): Observable<UserGroupSearchResult> {
+  private createGroup(name: string, agentIds: string[]): Observable<UserGroupSearchResult> {
+    const members = this.selectedMembers()
     return this.userGroupState.create({
       namespaceId: this.namespaceId,
       name,
       agentIds,
-      memberExternalIdsToAdd: memberExternalIds,
-      adminExternalIds,
+      memberExternalIdsToAdd: members.map((member) => member.externalId),
+      adminExternalIds: members
+        .filter((member) => member.role === UserGroupMemberRoleEnum.ADMIN)
+        .map((member) => member.externalId),
     })
   }
 
-  private updateGroup(
-    id: string,
-    name: string,
-    agentIds: string[],
-    selectedMemberIds: string[],
-    adminExternalIds: string[]
-  ): Observable<UserGroupSearchResult> {
-    const { toAdd, toRemove } = computeMemberDiff(this.originalMemberExternalIds, selectedMemberIds)
+  private updateGroup(id: string, name: string, agentIds: string[]): Observable<UserGroupSearchResult> {
+    const members = this.selectedMembers()
+    const baseline = this.baseline()
+    const { toAdd, toRemove } = computeMemberDiff(
+      [...baseline.keys()],
+      members.map((member) => member.externalId)
+    )
+    const admins = computeAdminDelta(baseline, members)
     return this.userGroupState.update(id, {
       name,
       agentIds,
       memberExternalIdsToAdd: toAdd,
       memberExternalIdsToRemove: toRemove,
-      adminExternalIds,
+      adminExternalIdsToAdd: admins.toAdd,
+      adminExternalIdsToRemove: admins.toRemove,
     })
   }
 

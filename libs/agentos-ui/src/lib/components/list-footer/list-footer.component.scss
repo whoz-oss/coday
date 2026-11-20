@@ -1,0 +1,67 @@
+.agentos-list-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary, #6e6e73);
+
+  &__status {
+    margin: 0;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary, #007aff);
+    }
+  }
+
+  &__error {
+    color: var(--color-error, #ff3b30);
+  }
+
+  &__button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+    cursor: pointer;
+    border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
+    background: transparent;
+    padding: 0.2rem 0.6rem;
+    color: var(--color-text, #1d1d1f);
+
+    &:hover:not(:disabled) {
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+    }
+
+    &:disabled {
+      cursor: default;
+      opacity: 0.6;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--color-primary, #007aff);
+    }
+
+    mat-icon {
+      width: 1.125rem;
+      height: 1.125rem;
+      font-size: 1.125rem;
+    }
+  }
+
+  &__spin {
+    animation: agentos-list-footer-spin 0.7s linear infinite;
+  }
+}
+
+@keyframes agentos-list-footer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agentos-list-footer__spin {
+    animation-duration: 1.6s;
+  }
+}

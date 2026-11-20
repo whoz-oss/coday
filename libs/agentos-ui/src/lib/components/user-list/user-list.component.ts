@@ -1,10 +1,11 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, OnInit, output } from '@angular/core'
-import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, output } from '@angular/core'
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { MemberItem, Namespace, NamespaceMembershipControllerService, User } from '@whoz-oss/agentos-api-client'
+import { Namespace, User } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem, IconButtonComponent } from '@whoz-oss/design-system'
-import { catchError, map, of, switchMap } from 'rxjs'
+import { debounceTime, Subject, tap } from 'rxjs'
 import { UserAdminStateService } from '../../services/user-admin-state.service'
+import { ListFooterComponent } from '../list-footer/list-footer.component'
 import { NamespaceSelectComponent } from '../namespace-select/namespace-select.component'
 import { UserItemComponent } from '../user-item/user-item.component'
 
@@ -12,29 +13,28 @@ import { UserItemComponent } from '../user-item/user-item.component'
  * UserListComponent — admin view for listing and managing all users.
  *
  * Loaded at /agentos/admin/users. Responsibilities:
- * - Load and display all users via ds-entity-list
+ * - Load users one server page at a time ("Load more" appends) and display them via ds-entity-list
  * - Navigate to the create form (/agentos/admin/users/new)
  * - Navigate to the edit form (/agentos/admin/users/:userId/edit)
  * - Delete with confirmation (delegated to UserItemComponent)
  *
  * When embedded in the admin Users & Groups console, a [namespaces] list adds a namespace picker to
- * the toolbar and the list is filtered to that namespace's members; the back button and title can be
+ * the toolbar and the list is filtered server-side to that namespace's members; the search box is server-side too; the back button and title can be
  * hidden so the host owns the chrome.
  *
  * Create and edit logic live in UserFormComponent on dedicated routes.
  */
 @Component({
   selector: 'agentos-user-list',
-  imports: [EntityListComponent, UserItemComponent, IconButtonComponent, NamespaceSelectComponent],
+  imports: [EntityListComponent, UserItemComponent, IconButtonComponent, NamespaceSelectComponent, ListFooterComponent],
   templateUrl: './user-list.component.html',
   styleUrl: './user-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class UserListComponent implements OnInit {
+export class UserListComponent {
   private readonly router = inject(Router)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly userAdminState = inject(UserAdminStateService)
-  private readonly namespaceMembership = inject(NamespaceMembershipControllerService)
+  protected readonly state = inject(UserAdminStateService)
 
   /** Toolbar back button (hidden when the host owns navigation). */
   readonly showBackButton = input<boolean>(true)
@@ -47,51 +47,45 @@ export class UserListComponent implements OnInit {
 
   readonly namespaceFilterChange = output<string | null>()
 
-  protected readonly isLoading = this.userAdminState.isLoading
+  protected readonly search$ = new Subject<string>()
+  private query = ''
 
-  /** Ids of the users belonging to the selected namespace, or null when unfiltered. */
-  private readonly namespaceUserIds = toSignal(
-    toObservable(this.selectedNamespaceId).pipe(
-      switchMap((namespaceId) =>
-        namespaceId
-          ? this.namespaceMembership.getMembersNamespaceMembership(namespaceId).pipe(
-              map((members: MemberItem[]) => new Set(members.map((m) => m.id))),
-              // catchError on the inner observable so a failed load does not terminate the
-              // outer stream (which would freeze the signal in an error state for the session);
-              // fall back to unfiltered and log so the failure stays diagnosable (#1076).
-              catchError((err) => {
-                console.error('[UserList] Failed to load namespace users', err)
-                return of(null)
-              })
-            )
-          : of(null)
-      )
-    ),
-    { initialValue: null as Set<string> | null }
+  /** Mapped to EntityListItem[] for ds-entity-list. */
+  protected readonly userItems = computed<EntityListItem[]>(() =>
+    this.state.users().map(
+      (u): EntityListItem => ({
+        id: u.id ?? '',
+        name: [u.firstname, u.lastname].filter(Boolean).join(' ') || u.email || '—',
+        description: u.email,
+      })
+    )
   )
 
-  /** Mapped to EntityListItem[] for ds-entity-list, filtered to the selected namespace when set. */
-  protected readonly userItems = computed<EntityListItem[]>(() => {
-    const filterIds = this.namespaceUserIds()
-    return this.userAdminState
-      .users()
-      .filter((u) => filterIds === null || filterIds.has(u.id ?? ''))
-      .map(
-        (u): EntityListItem => ({
-          id: u.id ?? '',
-          name: [u.firstname, u.lastname].filter(Boolean).join(' ') || u.email || '—',
-          description: u.email,
-        })
-      )
-  })
+  protected readonly emptyMessage = computed(() =>
+    this.state.loadError() ? '' : this.state.isFiltered() ? 'No users match the current filter.' : 'No users found.'
+  )
 
   /** Full user objects indexed by id — used to resolve itemTemplate events. */
   private get usersById(): Map<string, User> {
-    return new Map(this.userAdminState.users().map((u) => [u.id ?? '', u]))
+    return new Map(this.state.users().map((u) => [u.id ?? '', u]))
   }
 
-  ngOnInit(): void {
-    this.userAdminState.loadAll().pipe(takeUntilDestroyed(this.destroyRef)).subscribe()
+  constructor() {
+    // The namespace input's initial emission is the one initial load.
+    toObservable(this.selectedNamespaceId)
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.reload())
+    this.search$
+      .pipe(
+        tap((query) => (this.query = query)),
+        debounceTime(300),
+        takeUntilDestroyed()
+      )
+      .subscribe(() => this.reload())
+  }
+
+  private reload(): void {
+    this.state.reset(this.selectedNamespaceId(), this.query)
   }
 
   protected onNamespaceChange(namespaceId: string | null): void {
@@ -111,7 +105,7 @@ export class UserListComponent implements OnInit {
   }
 
   protected deleteUser(user: User): void {
-    this.userAdminState
+    this.state
       .deleteUser(user.id ?? '')
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe()

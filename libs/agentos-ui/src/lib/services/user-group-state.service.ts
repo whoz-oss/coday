@@ -5,7 +5,7 @@ import {
   MemberItem,
   NamespaceMembershipControllerService,
   UserGroupControllerService,
-  UserGroupMember,
+  UserGroupMembersListResponse,
   UserGroupSearchResult,
 } from '@whoz-oss/agentos-api-client'
 import { forkJoin, Observable } from 'rxjs'
@@ -26,8 +26,10 @@ export interface UpdateUserGroupInput {
   agentIds: string[]
   memberExternalIdsToAdd: string[]
   memberExternalIdsToRemove: string[]
-  /** External ids of the members who should have the ADMIN role. */
-  adminExternalIds: string[]
+  /** Members to promote to ADMIN; the server touches no other admin (delta mode). */
+  adminExternalIdsToAdd: string[]
+  /** Members to demote to MEMBER; the server touches no other admin (delta mode). */
+  adminExternalIdsToRemove: string[]
 }
 
 /** Everything the create/edit form needs before rendering: agent choices and users. */
@@ -37,10 +39,10 @@ export interface UserGroupFormData {
   users: MemberItem[]
 }
 
-/** An existing group plus its members, for the edit form. */
+/** An existing group plus the first page of its members, for the edit form. */
 export interface ExistingUserGroup {
   group: UserGroupSearchResult
-  members: UserGroupMember[]
+  members: UserGroupMembersListResponse
 }
 
 /**
@@ -73,11 +75,11 @@ export class UserGroupStateService {
     })
   }
 
-  /** Loads an existing group and its members for the edit form. */
+  /** Loads an existing group and the first page of its members for the edit form. */
   loadExistingGroup(userGroupId: string): Observable<ExistingUserGroup> {
     return forkJoin({
       group: this.getById(userGroupId),
-      members: this.getMembers(userGroupId),
+      members: this.loadMembersPage(userGroupId),
     })
   }
 
@@ -85,8 +87,9 @@ export class UserGroupStateService {
     return this.controller.getByIdUserGroup(userGroupId)
   }
 
-  getMembers(userGroupId: string): Observable<UserGroupMember[]> {
-    return this.controller.getMembersUserGroup(userGroupId)
+  /** One page of members; `next` is the opaque cursor of the previous page (omit for the first). */
+  loadMembersPage(userGroupId: string, next?: string): Observable<UserGroupMembersListResponse> {
+    return this.controller.listMembersUserGroup(userGroupId, next ? { next } : {})
   }
 
   create(input: CreateUserGroupInput): Observable<UserGroupSearchResult> {
@@ -105,7 +108,9 @@ export class UserGroupStateService {
       agentIds: toWireSet(input.agentIds),
       userExternalIdsToAdd: toWireSet(input.memberExternalIdsToAdd),
       userExternalIdsToRemove: toWireSet(input.memberExternalIdsToRemove),
-      adminExternalIds: toWireSet(input.adminExternalIds),
+      adminExternalIds: toWireSet([]),
+      adminExternalIdsToAdd: toWireSet(input.adminExternalIdsToAdd),
+      adminExternalIdsToRemove: toWireSet(input.adminExternalIdsToRemove),
     })
   }
 

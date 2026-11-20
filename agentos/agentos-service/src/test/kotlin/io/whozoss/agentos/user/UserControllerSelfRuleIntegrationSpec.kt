@@ -290,5 +290,15 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             // were ever removed, this assertion would fail.
             verify(exactly = 0) { userService.findByIds(listOf(targetUserId), false) }
         }
+
+        "POST /api/users/list as a non-admin returns 403 and never reads the users" {
+            every { userService.getCurrentUser() } returns regularUser
+
+            mockMvc
+                .perform(post("/api/users/list").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isForbidden)
+
+            verify(exactly = 0) { userService.findPage(any(), any(), any()) }
+        }
     }
 }
