@@ -789,6 +789,8 @@ class AgentServiceImpl(
                                 agentConfigId = agentId,
                                 coveredEventCount = request.coveredEventCount,
                                 lastCoveredEventId = request.lastCoveredEventId,
+                                promptCacheTtl = resolvedUser?.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES,
+                                userId = resolvedUser?.metadata?.id,
                             ),
                         )
                     },

@@ -15,6 +15,7 @@ import kotlinx.coroutines.coroutineScope
 import org.springframework.ai.chat.messages.SystemMessage
 import org.springframework.ai.chat.messages.UserMessage
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
@@ -106,6 +107,49 @@ class LastLlmRequestRegistryUnitSpec :
             registry.get(requests[1].caseId).shouldBeNull()
             registry.get(requests[2].caseId).shouldBeNull()
             registry.get(requests[3].caseId).shouldNotBeNull()
+        }
+
+        "touch records the refresh, which keeps the request alive for a time to live after it" {
+            val clock = MovingClock(start)
+            val registry = LastLlmRequestRegistry(clock)
+            val stored = request()
+            registry.put(stored)
+            val refreshedAt = start.plus(Duration.ofMinutes(59))
+
+            registry.touch(stored.caseId, stored.capturedAt, refreshedAt)
+
+            registry.get(stored.caseId)!!.lastRefreshAt shouldBe refreshedAt
+            clock.now = refreshedAt.plus(LastLlmRequestRegistry.TTL)
+            registry.get(stored.caseId).shouldNotBeNull()
+            clock.now = refreshedAt.plus(LastLlmRequestRegistry.TTL).plusSeconds(1)
+            registry.get(stored.caseId).shouldBeNull()
+        }
+
+        "touch leaves alone a request that replaced the one refreshed, and a case without request" {
+            val registry = LastLlmRequestRegistry(MovingClock(start))
+            val stored = request()
+            val newer = request(stored.caseId, capturedAt = start.plusSeconds(30))
+            registry.put(stored)
+            registry.put(newer)
+
+            registry.touch(stored.caseId, stored.capturedAt, start.plusSeconds(60))
+            registry.touch(UUID.randomUUID(), start, start.plusSeconds(60))
+
+            registry.get(stored.caseId) shouldBeSameInstanceAs newer
+            registry.all() shouldBe listOf(newer)
+        }
+
+        "all lists the live requests, the least recently captured or refreshed first" {
+            val clock = MovingClock(start)
+            val registry = LastLlmRequestRegistry(clock)
+            val old = request(capturedAt = start.minus(LastLlmRequestRegistry.TTL).minusSeconds(1))
+            val first = request()
+            val second = request()
+            listOf(old, first, second).forEach(registry::put)
+
+            registry.all() shouldBe listOf(first, second)
+            registry.touch(first.caseId, first.capturedAt, start.plusSeconds(10))
+            registry.all().map { it.caseId } shouldBe listOf(second.caseId, first.caseId)
         }
 
         "keeps every request put concurrently, under its capacity" {

@@ -2796,6 +2796,42 @@ class AgentServiceImplUnitSpec : StringSpec() {
             }
         }
 
+        "a SIMPLE agent records its last request with the prompt cache duration and the user it runs for" {
+            val userId = UUID.randomUUID()
+            val user = User(metadata = EntityMetadata(id = userId), externalId = "ext-ttl", promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+            val config = agentConfig(name = "ttl-recorded").copy(executionMode = ExecutionMode.SIMPLE)
+            val model = modelConfig(alias = "sonnet", supportsAdvancedExecution = false)
+            val provider = providerConfig()
+            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, config.name) } returns listOf(config)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns provider
+            every { userService.findById(userId) } returns user
+            every { chatClientProvider.getChatClient(any(), any(), any(), any(), any(), any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            val agent =
+                agentService.findAgentByName(config.name, AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId))
+            // The hook AgentSimple calls at the end of a turn that answered.
+            @Suppress("UNCHECKED_CAST")
+            val onFinalRequest =
+                AgentSimple::class.java
+                    .getDeclaredField("onFinalRequest")
+                    .apply { isAccessible = true }
+                    .get(agent) as (FinalLlmRequest) -> Unit
+            onFinalRequest(FinalLlmRequest(caseId, emptyList(), emptyList(), "Done", 1, UUID.randomUUID()))
+
+            val registry =
+                AgentServiceImpl::class.java
+                    .getDeclaredField("lastLlmRequestRegistry")
+                    .apply { isAccessible = true }
+                    .get(agentService) as LastLlmRequestRegistry
+            val recorded = registry.get(caseId)!!
+            recorded.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+            recorded.userId shouldBe userId
+            recorded.model shouldBe model
+            recorded.provider shouldBe provider
+        }
+
         "an agent run without a known user keeps the default prompt cache duration" {
             val config = agentConfig(name = "ttl-anonymous").copy(executionMode = ExecutionMode.SIMPLE)
             val model = stubAgentOnModel(config, modelFlag = false)

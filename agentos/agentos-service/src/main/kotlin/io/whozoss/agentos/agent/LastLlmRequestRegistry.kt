@@ -2,6 +2,7 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.tool.definition.ToolDefinition
 import org.springframework.stereotype.Component
@@ -15,7 +16,8 @@ import java.util.UUID
  *
  * A request that appends to [messages] (after an [org.springframework.ai.chat.messages.AssistantMessage] of
  * [finalText]), with the same [model], [provider] and [toolDefinitions] in the same order, has the same prefix:
- * the provider's prompt cache can serve it.
+ * the provider's prompt cache can serve it. Sending [messages] again as they are, with the same [promptCacheTtl],
+ * reads the very cache entry the next turn will read, which refreshes its lifetime (cache keep-alive).
  */
 data class LastLlmRequest(
     val caseId: UUID,
@@ -35,16 +37,30 @@ data class LastLlmRequest(
     val coveredEventCount: Int,
     /** The last event of the case the turn was run with: later ones are not in [messages]. */
     val lastCoveredEventId: UUID?,
+    /**
+     * The prompt cache duration the request was sent with (the choice of the user the agent ran for). A request
+     * meant to hit the same cache entry must use it too: with Requesty, [PromptCacheTtl.ONE_HOUR] rewrites the
+     * body ([io.whozoss.agentos.chat.RequestyPromptCache]).
+     */
+    val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+    /** The user whose run made the request, null when it ran for no user. */
+    val userId: UUID? = null,
     val capturedAt: Instant = Instant.now(),
-)
+    /** When a keep-alive ping last refreshed the provider's cache of this request; null when none did. */
+    val lastRefreshAt: Instant? = null,
+) {
+    /** The last time the provider's cache of this request was written or read by AgentOS. */
+    val lastCacheUseAt: Instant get() = lastRefreshAt?.takeIf { it.isAfter(capturedAt) } ?: capturedAt
+}
 
 /**
  * In-memory registry of the [LastLlmRequest] of each case, for the calls that reuse the prompt cache of a
  * conversation (side questions, cache keep-alive). Only the agents that make the request themselves
  * ([AgentSimple]) record one.
  *
- * Bounded: an entry expires [TTL] after its capture (a bit more than the longest prompt cache lifetime), and
- * past [MAX_ENTRIES] cases the oldest capture is evicted. Nothing survives a restart, which is fine: the
+ * Bounded: an entry expires [TTL] after its capture or its last keep-alive refresh ([touch]), whichever is later (a
+ * bit more than the longest prompt cache lifetime), and past [MAX_ENTRIES] cases the least recently captured or
+ * refreshed one is evicted. Nothing survives a restart, which is fine: the
  * provider's cache would be cold anyway after such a delay. Thread-safe.
  */
 @Component
@@ -81,7 +97,31 @@ class LastLlmRequestRegistry(
         entries.remove(caseId)
     }
 
-    private fun isExpired(request: LastLlmRequest): Boolean = request.capturedAt.plus(TTL).isBefore(clock.instant())
+    /** Every request that has not expired, the least recently captured or refreshed first. */
+    @Synchronized
+    fun all(): List<LastLlmRequest> {
+        entries.values.removeIf(::isExpired)
+        return entries.values.toList()
+    }
+
+    /**
+     * Records that a keep-alive ping refreshed the provider's cache of the request of [caseId] captured at
+     * [capturedAt], at [refreshedAt]: the entry then lives [TTL] from that time. Does nothing when the case has
+     * no such request any more (a new turn replaced it, or it expired): a ping never revives an outdated request.
+     */
+    @Synchronized
+    fun touch(
+        caseId: UUID,
+        capturedAt: Instant,
+        refreshedAt: Instant,
+    ) {
+        val current = get(caseId) ?: return
+        if (current.capturedAt != capturedAt) return
+        entries.remove(caseId)
+        entries[caseId] = current.copy(lastRefreshAt = refreshedAt)
+    }
+
+    private fun isExpired(request: LastLlmRequest): Boolean = request.lastCacheUseAt.plus(TTL).isBefore(clock.instant())
 
     companion object {
         /** A bit more than the 1-hour prompt cache lifetime of the providers. */

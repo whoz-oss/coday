@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
@@ -14,6 +15,7 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.case.CaseKeepAliveRequest
 import io.whozoss.agentos.sdk.api.case.CaseReasoningEffortRequest
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
@@ -251,6 +253,7 @@ class CaseController(
                     runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                     // reasoningEffort is not changed here: an absent field must not erase the
                     // override, and null is a meaningful value. See setReasoningEffort.
+                    // keepAlive is not changed here either, see setKeepAlive.
                     // summary and summaryMessageCount are not changed here either: they belong to
                     // CaseSummaryService, a client cannot overwrite them.
                 )
@@ -270,6 +273,32 @@ class CaseController(
     ): CaseDto {
         val updated = caseService.setReasoningEffort(id, request.reasoningEffort)
         logger.info { "Case $id reasoning effort set to ${request.reasoningEffort}" }
+        return updated.withCallerMeta(userService.getCurrentUser().id.toString())
+    }
+
+    /**
+     * PUT /api/cases/{id}/keep-alive — turn the prompt cache keep-alive of the case on or off. Same permission as
+     * the reasoning effort.
+     *
+     * Not part of `CaseApi`: adding an abstract method to an interface that external consumers implement would
+     * break them at startup (same reasoning as [CaseSideQuestionController]).
+     */
+    @Operation(
+        summary = "Turn the prompt cache keep-alive of a case on or off",
+        description =
+            "PUT /api/cases/{id}/keep-alive — while the case is idle, keep the provider's prompt cache of its " +
+                "conversation warm by re-sending the agent's last request with a 1-token answer before the cache " +
+                "expires (every 4:40, or 59:30 with a 1-hour cache), for up to the platform's maximum idle duration " +
+                "after the last agent turn. Each refresh is recorded as usage of the case. Returns the updated Case DTO.",
+    )
+    @PutMapping("/{id}/keep-alive", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Case', 'WRITE')")
+    fun setKeepAlive(
+        @PathVariable id: UUID,
+        @RequestBody request: CaseKeepAliveRequest,
+    ): CaseDto {
+        val updated = caseService.setKeepAlive(id, request.keepAlive)
+        logger.info { "Case $id keep-alive set to ${request.keepAlive}" }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 
@@ -488,6 +517,7 @@ internal fun toDto(entity: Case) =
         scheduledPromptId = entity.scheduledPromptId,
         runCostThreshold = entity.runCostThreshold,
         reasoningEffort = entity.reasoningEffort,
+        keepAlive = entity.keepAlive,
         summary = entity.summary,
         created = entity.metadata.created,
         modified = entity.metadata.modified,

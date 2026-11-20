@@ -266,6 +266,18 @@ class CaseSideQuestionServiceUnitSpec :
             tools.captured.forEach { tool -> shouldThrow<IllegalStateException> { tool.call("{}") } }
         }
 
+        "from the agent's last request: sent with the prompt cache duration of the agent's request" {
+            val stored = lastRequest().copy(promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+            val fixture = Fixture(stored = stored)
+            fixture.stubbedChatClient("ok")
+
+            fixture.service.answer(case.id, "?", userId)
+
+            verify(exactly = 1) {
+                fixture.chatClientProvider.getChatClient(agentModel, agentProvider, case.id.toString(), any(), null, PromptCacheTtl.ONE_HOUR, false, null)
+            }
+        }
+
         "from the agent's last request: records its usage for the agent, the user and the model" {
             val stored = lastRequest()
             val fixture = Fixture(stored = stored)

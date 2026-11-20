@@ -264,6 +264,11 @@ class CaseServiceImpl(
         reasoningEffort: ReasoningEffort?,
     ): Case = edit(caseId) { it.copy(reasoningEffort = reasoningEffort) }
 
+    override fun setKeepAlive(
+        caseId: UUID,
+        keepAlive: Boolean,
+    ): Case = edit(caseId) { it.copy(keepAlive = keepAlive) }
+
     override fun edit(
         id: UUID,
         change: (Case) -> Case,

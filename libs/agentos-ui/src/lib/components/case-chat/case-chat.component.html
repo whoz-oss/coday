@@ -623,6 +623,16 @@
             >
               effort: {{ caseEffortLabel() }}
             </span>
+            <label dsCheck class="case-chat__keep-alive" [title]="keepAliveHint">
+              <input
+                type="checkbox"
+                data-testid="keep-alive"
+                [checked]="keepAlive()"
+                [disabled]="isTerminal()"
+                (change)="onKeepAliveChange($event)"
+              />
+              Keep alive
+            </label>
           }
           <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 

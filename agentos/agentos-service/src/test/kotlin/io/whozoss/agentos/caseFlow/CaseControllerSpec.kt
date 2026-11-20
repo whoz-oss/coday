@@ -8,6 +8,7 @@ import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
@@ -145,6 +146,23 @@ class CaseControllerSpec :
             result.title shouldBe "engineering case"
             result.created shouldBe now
             result.modified shouldBe later
+        }
+
+        "toDto maps keepAlive" {
+            toDto(caseEntity().copy(keepAlive = true)).keepAlive shouldBe true
+            toDto(caseEntity()).keepAlive shouldBe false
+        }
+
+        "create ignores a keepAlive given in the request: the case starts without keep-alive" {
+            val saved = caseEntity()
+            val created = slot<Case>()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.create(capture(created), any()) } returns saved
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(caseResource().copy(keepAlive = true))
+
+            created.captured.keepAlive shouldBe false
         }
 
         // -------------------------------------------------------------------------

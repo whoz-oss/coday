@@ -222,6 +222,14 @@ export class CaseStateService {
     return this.enqueueSave(caseId, (state) => this.saveReasoningEffort(caseId, effort, state))
   }
 
+  /**
+   * Turn the prompt cache keep-alive of the case on or off. Queued with the other saves of the case, like
+   * the reasoning effort.
+   */
+  setKeepAlive(caseId: string, keepAlive: boolean): Observable<Case> {
+    return this.enqueueSave(caseId, (state) => this.saveKeepAlive(caseId, keepAlive, state))
+  }
+
   private enqueueSave(caseId: string, save: (state: { confirmed: Case }) => Observable<Case>): Observable<Case> {
     return defer(() => {
       const pending = this.pendingUpdates.get(caseId)
@@ -318,6 +326,27 @@ export class CaseStateService {
         })
       )
     })
+  }
+
+  private saveKeepAlive(caseId: string, keepAlive: boolean, state: { confirmed: Case }): Observable<Case> {
+    return defer(() => {
+      const previous = state.confirmed.keepAlive ?? false
+      this.patchKeepAlive(caseId, keepAlive)
+      return this.caseController.setKeepAliveCase(caseId, { keepAlive }).pipe(
+        tap((updated) => {
+          state.confirmed = { ...state.confirmed, keepAlive: updated.keepAlive }
+          this.patchKeepAlive(caseId, updated.keepAlive ?? false)
+        }),
+        catchError((err) => {
+          this.patchKeepAlive(caseId, previous)
+          return throwError(() => err)
+        })
+      )
+    })
+  }
+
+  private patchKeepAlive(caseId: string, keepAlive: boolean): void {
+    this.cases.update((list) => list.map((c) => (c.id === caseId ? { ...c, keepAlive } : c)))
   }
 
   private patchReasoningEffort(caseId: string, reasoningEffort: ReasoningEffort | undefined): void {

@@ -1944,6 +1944,38 @@ paths:
           description: OK
       tags:
       - case-controller
+  /api/cases/{id}/keep-alive:
+    put:
+      description: "PUT /api/cases/{id}/keep-alive — while the case is idle, keep\
+        \ the provider's prompt cache of its conversation warm by re-sending the agent's\
+        \ last request with a 1-token answer before the cache expires (every 4:40,\
+        \ or 59:30 with a 1-hour cache), for up to the platform's maximum idle duration\
+        \ after the last agent turn. Each refresh is recorded as usage of the case.\
+        \ Returns the updated Case DTO."
+      operationId: setKeepAliveCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseKeepAliveRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Turn the prompt cache keep-alive of a case on or off
+      tags:
+      - case-controller
   /api/cases/{id}/reasoning-effort:
     put:
       description: "PUT /api/cases/{id}/reasoning-effort — set the case-level override\
@@ -4830,6 +4862,11 @@ components:
         id:
           type: string
           format: uuid
+        keepAlive:
+          type: boolean
+          description: "Whether the provider's prompt cache of the conversation is\
+            \ kept warm while the case is idle. Changed through PUT /api/cases/{id}/keep-alive\
+            \ only: ignored on create and update."
         lastMessageAt:
           type: string
           format: date-time
@@ -4898,6 +4935,7 @@ components:
             \ be null for a sub-case."
       required:
       - favorite
+      - keepAlive
       - namespaceId
       - removed
       - status
@@ -4950,6 +4988,13 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseKeepAliveRequest:
+      type: object
+      properties:
+        keepAlive:
+          type: boolean
+      required:
+      - keepAlive
     CaseReasoningEffortRequest:
       type: object
       properties:

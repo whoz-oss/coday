@@ -13,6 +13,7 @@ describe('CaseStateService', () => {
     unstarCase: jest.Mock
     updateCase: jest.Mock
     setReasoningEffortCase: jest.Mock
+    setKeepAliveCase: jest.Mock
   }
 
   function makeService(listMineMock?: jest.Mock): CaseStateService {
@@ -27,6 +28,11 @@ describe('CaseStateService', () => {
         .fn()
         .mockImplementation((id: string, body: { reasoningEffort?: string }) =>
           of({ id, namespaceId: 'ns', favorite: false, reasoningEffort: body.reasoningEffort } as unknown as Case)
+        ),
+      setKeepAliveCase: jest
+        .fn()
+        .mockImplementation((id: string, body: { keepAlive?: boolean }) =>
+          of({ id, namespaceId: 'ns', favorite: false, keepAlive: body.keepAlive } as unknown as Case)
         ),
     }
     TestBed.configureTestingModule({
@@ -594,6 +600,42 @@ describe('CaseStateService', () => {
       expect(controllerMock.setReasoningEffortCase).toHaveBeenCalledTimes(1)
       expect(svc.cases()[0].title).toBe('renamed')
       expect(svc.cases()[0].reasoningEffort).toBe(ReasoningEffort.XHIGH)
+    })
+  })
+
+  describe('setKeepAlive', () => {
+    const keepAliveCase = (id: string, extra: Partial<Case> = {}): Case =>
+      ({ id, namespaceId: 'ns', favorite: false, title: 't', ...extra }) as unknown as Case
+
+    it('patches the flag optimistically and sends it to the dedicated endpoint', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([keepAliveCase('a')])))
+      svc.loadCases('ns')
+
+      svc.setKeepAlive('a', true).subscribe()
+
+      expect(controllerMock.setKeepAliveCase).toHaveBeenCalledWith('a', { keepAlive: true })
+      expect(controllerMock.updateCase).not.toHaveBeenCalled()
+      expect(svc.cases()[0].keepAlive).toBe(true)
+    })
+
+    it('turns it off', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([keepAliveCase('a', { keepAlive: true })])))
+      svc.loadCases('ns')
+
+      svc.setKeepAlive('a', false).subscribe()
+
+      expect(controllerMock.setKeepAliveCase).toHaveBeenCalledWith('a', { keepAlive: false })
+      expect(svc.cases()[0].keepAlive).toBe(false)
+    })
+
+    it('reverts the optimistic flag when the request fails', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([keepAliveCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.setKeepAliveCase.mockReturnValue(throwError(() => new Error('boom')))
+
+      svc.setKeepAlive('a', true).subscribe({ error: () => undefined })
+
+      expect(svc.cases()[0].keepAlive).toBe(false)
     })
   })
 })

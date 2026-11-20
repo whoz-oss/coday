@@ -50,6 +50,7 @@ import {
 import { AgentConfig, Case, Prompt } from '@whoz-oss/agentos-api-client'
 import {
   BlueprintDirective,
+  CheckDirective,
   ConfirmDialogComponent,
   CopyButtonComponent,
   DrawerComponent,
@@ -216,6 +217,7 @@ function hasActiveSelection(): boolean {
     EffortAutocompleteComponent,
     FileAutocompleteComponent,
     BlueprintDirective,
+    CheckDirective,
     CaseStatusGlyphComponent,
     CopyButtonComponent,
     ComposerAttachmentsComponent,
@@ -428,6 +430,28 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** The case-level reasoning effort shown next to the composer; "default" means each agent's model setting. */
   protected readonly caseEffortLabel = computed(() => effortLabel(this.activeCase()?.reasoningEffort))
+
+  /** Whether the prompt cache of the conversation is kept warm while the case is idle. */
+  protected readonly keepAlive = computed(() => this.activeCase()?.keepAlive ?? false)
+
+  protected readonly keepAliveHint =
+    "Keeps this conversation's prompt cache warm while idle (refresh every 4:40, or 59:30 with a 1-hour cache), " +
+    'for up to 2 hours. Each refresh costs a cache read.'
+
+  /** Save the keep-alive checkbox; on failure the case state rolls the checkbox back. */
+  protected onKeepAliveChange(event: Event): void {
+    const checkbox = event.target as HTMLInputElement
+    if (!this.activeCase()) return
+    this.caseState
+      .setKeepAlive(this.caseId, checkbox.checked)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          checkbox.checked = this.keepAlive()
+          console.error('[CaseChat] Failed to set the keep-alive', err)
+        },
+      })
+  }
 
   /** Which panel is active in the right drawer: files exchange or case members. */
   protected readonly drawerPanel = signal<'files' | 'members'>('files')

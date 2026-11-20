@@ -136,6 +136,14 @@ agentos:
     # It only changes the list the UI shows: who may read which case does not change.
     # Override with env var: AGENTOS_CASE_ADMIN_CASE_LISTING_DEFAULT
     admin-case-listing-default: ${AGENTOS_CASE_ADMIN_CASE_LISTING_DEFAULT:OWN}
+  keep-alive:
+    # Prompt cache keep-alive of the cases that turn it on (CaseKeepAliveScheduler): no refresh is sent once this
+    # long has passed since the agent's last real request in the case. ISO-8601 or Spring duration (2h, 90m).
+    # Override with env var: AGENTOS_KEEP_ALIVE_MAX_IDLE
+    # max-idle: 2h
+    # Interval (ms) between two checks of the cases to refresh.
+    # Override with env var: AGENTOS_KEEP_ALIVE_TICK_INTERVAL_MS
+    # tick-interval-ms: 20000
   exchange:
     # Root directory for file-exchange files (relative to the working directory).
     # Override with env var: AGENTOS_EXCHANGE_MOUNT_ROOT

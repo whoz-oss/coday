@@ -1124,6 +1124,14 @@
     white-space: nowrap;
   }
 
+  &__keep-alive {
+    flex-shrink: 0;
+    color: var(--color-neutral-700);
+    font-family: var(--font-body);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
   &__actions-hint {
     flex: 1;
     font-size: 11px;

@@ -72,12 +72,13 @@ data class UsageRecord(
             agentConfigId: UUID? = null,
             providerName: String? = null,
             apiModelName: String? = null,
+            source: UsageSource = UsageSource.LLM,
         ): UsageRecord =
             UsageRecord(
                 namespaceId = namespaceId,
                 caseId = caseId,
                 userId = userId,
-                source = UsageSource.LLM,
+                source = source,
                 outcome = outcome,
                 agentConfigId = agentConfigId,
                 agentName = agentName,

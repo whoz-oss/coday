@@ -14,6 +14,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -44,8 +45,8 @@ import java.util.concurrent.CompletableFuture
  *
  * Two ways to ask, the first whenever possible:
  * - **The agent's own last request** ([LastLlmRequestRegistry]), when the case has one and no user spoke since:
- *   its messages exactly as sent, its answer, then the side question, with the same model, provider and tool
- *   definitions. The request only appends to the agent's, so the provider's prompt cache serves its prefix,
+ *   its messages exactly as sent, its answer, then the side question, with the same model, provider, prompt cache
+ *   duration and tool definitions. The request only appends to the agent's, so the provider's prompt cache serves its prefix,
  *   and the system message of the agent is unchanged (the framing of the side question is in the last message).
  * - **A transcript** of the persisted history ([SideQuestionTranscript]) under a system message of its own, with
  *   the default model of the namespace used as configured (an answer the user reads at once deserves the
@@ -76,6 +77,8 @@ class CaseSideQuestionService(
         val provider: AiProvider,
         val agentName: String,
         val agentConfigId: UUID?,
+        /** The cache duration of the agent's request, so that its prefix is sent the same way. */
+        val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
     )
 
     /**
@@ -117,6 +120,7 @@ class CaseSideQuestionService(
         provider = lastRequest.provider,
         agentName = lastRequest.agentName,
         agentConfigId = lastRequest.agentConfigId,
+        promptCacheTtl = lastRequest.promptCacheTtl,
     )
 
     private fun fromTranscript(
@@ -155,7 +159,14 @@ class CaseSideQuestionService(
             try {
                 val request =
                     chatClientProvider
-                        .getChatClient(call.model, call.provider, case.id.toString(), accumulator, runTools = false)
+                        .getChatClient(
+                            call.model,
+                            call.provider,
+                            case.id.toString(),
+                            accumulator,
+                            promptCacheTtl = call.promptCacheTtl,
+                            runTools = false,
+                        )
                         .prompt(Prompt(call.messages))
                 // Same definitions, same order as the agent's request; never called (and never executed anyway).
                 val withTools =

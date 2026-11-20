@@ -1,5 +1,13 @@
+import { JsonPipe } from '@angular/common'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
+import {
+  ComponentRef,
+  createComponent,
+  EnvironmentInjector,
+  NO_ERRORS_SCHEMA,
+  signal,
+  WritableSignal,
+} from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -21,7 +29,10 @@ import {
   VoiceMessageControllerService,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
+import { CheckDirective } from '@whoz-oss/design-system'
 import { of, Observable, Subject, throwError } from 'rxjs'
+import { CostPipe } from '../../pipes/cost.pipe'
+import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { CaseStateService } from '../../services/case-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
@@ -45,7 +56,7 @@ import { CaseChatComponent } from './case-chat.component'
  * ExchangeStateService.
  */
 describe('CaseChatComponent — submit with attachments', () => {
-  let http: { post: jest.Mock; get: jest.Mock }
+  let http: { post: jest.Mock; get: jest.Mock; request?: jest.Mock }
   let exchangeState: {
     uploadFile: jest.Mock
     canWriteCase: ReturnType<typeof signal<boolean>>
@@ -108,6 +119,7 @@ describe('CaseChatComponent — submit with attachments', () => {
             updateCaseStatus: jest.fn(),
             notifyAgentMessageEvent: jest.fn(),
             setReasoningEffort: jest.fn().mockReturnValue(of({})),
+            setKeepAlive: jest.fn().mockReturnValue(of({})),
           },
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
@@ -913,6 +925,118 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(ref.injector.get(ComposerAutocompleteService).effortSuggestions()).toHaveLength(EFFORT_OPTIONS.length)
       expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
       expect(http.post).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('keep-alive checkbox', () => {
+    let originalEventSource: typeof EventSource
+    let log: jest.SpyInstance
+
+    beforeEach(() => {
+      // Rendering runs ngOnInit, which opens the case event stream: a silent one stands in for it.
+      originalEventSource = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      // Only the template of the chat itself is rendered: its child components are left as unknown elements.
+      TestBed.overrideComponent(CaseChatComponent, {
+        set: { imports: [CheckDirective, JsonPipe, CostPipe, TokenCountPipe], schemas: [NO_ERRORS_SCHEMA] },
+      })
+      // ngOnInit loads through the generated API services, which need a real configuration.
+      TestBed.overrideProvider(Configuration, { useValue: new Configuration({ basePath: '' }) })
+      http.request = jest.fn().mockReturnValue(of([]))
+    })
+
+    afterEach(() => {
+      globalThis.EventSource = originalEventSource
+      log.mockRestore()
+    })
+
+    const loadCase = (fields: Partial<Case> = {}): void => {
+      TestBed.inject(CaseStateService).cases.set([
+        { id: 'c-1', namespaceId: 'ns-1', status: 'IDLE', ...fields } as Case,
+      ])
+    }
+
+    /** What a click does to a checkbox: it toggles, then fires `change`. */
+    function toggle(input: HTMLInputElement): void {
+      input.checked = !input.checked
+      input.dispatchEvent(new Event('change'))
+    }
+
+    function render(): { ref: ComponentRef<CaseChatComponent>; checkbox: () => HTMLInputElement | null } {
+      const ref = makeComponent()
+      ref.changeDetectorRef.detectChanges()
+      const host = ref.location.nativeElement as HTMLElement
+      return { ref, checkbox: () => host.querySelector<HTMLInputElement>('[data-testid="keep-alive"]') }
+    }
+
+    it('is not rendered without an active case', () => {
+      const { ref, checkbox } = render()
+      try {
+        expect(checkbox()).toBeNull()
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('is rendered next to the composer hint, labelled and explained, and reflects the case', () => {
+      loadCase({ keepAlive: true })
+      const { ref, checkbox } = render()
+      try {
+        const input = checkbox()!
+        expect(input).not.toBeNull()
+        expect(input.checked).toBe(true)
+        const label = input.closest('label')!
+        expect(label.textContent?.trim()).toBe('Keep alive')
+        expect(label.getAttribute('title')).toBe(
+          "Keeps this conversation's prompt cache warm while idle (refresh every 4:40, or 59:30 with a 1-hour cache), " +
+            'for up to 2 hours. Each refresh costs a cache read.'
+        )
+        expect(label.nextElementSibling?.classList.contains('case-chat__actions-hint')).toBe(true)
+
+        TestBed.inject(CaseStateService).cases.set([
+          { id: 'c-1', namespaceId: 'ns-1', status: 'IDLE', keepAlive: false } as Case,
+        ])
+        ref.changeDetectorRef.detectChanges()
+        expect(checkbox()!.checked).toBe(false)
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('saves the new value through the case state when toggled', () => {
+      loadCase()
+      const { ref, checkbox } = render()
+      try {
+        const input = checkbox()!
+        expect(input.checked).toBe(false)
+
+        toggle(input)
+
+        expect(TestBed.inject(CaseStateService).setKeepAlive).toHaveBeenCalledWith('c-1', true)
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('rolls the checkbox back when the save fails', () => {
+      loadCase()
+      const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      ;(TestBed.inject(CaseStateService).setKeepAlive as jest.Mock).mockReturnValueOnce(
+        throwError(() => new Error('forbidden'))
+      )
+      const { ref, checkbox } = render()
+      try {
+        toggle(checkbox()!)
+
+        expect(TestBed.inject(CaseStateService).setKeepAlive).toHaveBeenCalledWith('c-1', true)
+        expect(checkbox()!.checked).toBe(false)
+      } finally {
+        ref.destroy()
+        error.mockRestore()
+      }
     })
   })
 

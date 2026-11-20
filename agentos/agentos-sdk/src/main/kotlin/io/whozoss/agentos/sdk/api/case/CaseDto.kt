@@ -80,6 +80,16 @@ data class CaseDto(
     )
     val reasoningEffort: ReasoningEffort? = null,
     /**
+     * Whether the provider's prompt cache of the conversation is kept warm while the case is idle. Read-only
+     * here: changed through `PUT /api/cases/{id}/keep-alive` only (create and update ignore it).
+     */
+    @field:Schema(
+        description =
+            "Whether the provider's prompt cache of the conversation is kept warm while the case is idle. " +
+                "Changed through PUT /api/cases/{id}/keep-alive only: ignored on create and update.",
+    )
+    val keepAlive: Boolean = false,
+    /**
      * Short summary of the case (what it is about, where it stands), generated and refreshed by the
      * server after agent turns. Null until the first one. Read-only: ignored on create and update.
      */
