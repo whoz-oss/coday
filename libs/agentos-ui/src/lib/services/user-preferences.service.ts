@@ -33,11 +33,20 @@ export interface UserPreferencesPort {
    */
   readonly showTechnical: Signal<boolean>
   setShowTechnical(value: boolean): void
+  /** Absolute path of the project root on this machine, used to open relative file references. Empty when unset. */
+  readonly ideProjectRoot: Signal<string>
+  setIdeProjectRoot(value: string): void
+  /** URL template opening a file in the IDE: `{file}` (URL-encoded absolute path), `{line}`, `{column}`. */
+  readonly ideUrlTemplate: Signal<string>
+  setIdeUrlTemplate(value: string): void
 }
 
 const STORAGE_KEY = 'agentos.enter-key-behavior'
 /** Historical key of the technical logs toggle, kept so existing explicit choices survive. */
 const SHOW_TECHNICAL_STORAGE_KEY = 'agentos.case-chat.showTechnical'
+const IDE_PROJECT_ROOT_STORAGE_KEY = 'agentos.ide.project-root'
+const IDE_URL_TEMPLATE_STORAGE_KEY = 'agentos.ide.url-template'
+export const DEFAULT_IDE_URL_TEMPLATE = 'idea://open?file={file}&line={line}'
 const DEFAULT_BEHAVIOR: EnterKeyBehavior = 'send'
 
 /**
@@ -51,6 +60,14 @@ export class AgentosUserPreferencesService implements UserPreferencesPort {
 
   private readonly _showTechnical = signal<boolean>(this.readStoredShowTechnical())
   readonly showTechnical: Signal<boolean> = this._showTechnical.asReadonly()
+
+  private readonly _ideProjectRoot = signal<string>(this.readStoredString(IDE_PROJECT_ROOT_STORAGE_KEY, ''))
+  readonly ideProjectRoot: Signal<string> = this._ideProjectRoot.asReadonly()
+
+  private readonly _ideUrlTemplate = signal<string>(
+    this.readStoredString(IDE_URL_TEMPLATE_STORAGE_KEY, DEFAULT_IDE_URL_TEMPLATE)
+  )
+  readonly ideUrlTemplate: Signal<string> = this._ideUrlTemplate.asReadonly()
 
   readonly composerHint = computed(() =>
     this._enterKeyBehavior() === 'newline'
@@ -76,6 +93,19 @@ export class AgentosUserPreferencesService implements UserPreferencesPort {
     }
   }
 
+  setIdeProjectRoot(value: string): void {
+    const root = value.trim()
+    this._ideProjectRoot.set(root)
+    this.writeStoredString(IDE_PROJECT_ROOT_STORAGE_KEY, root)
+  }
+
+  /** A blank template resets to the default, so the file links always have one. */
+  setIdeUrlTemplate(value: string): void {
+    const template = value.trim() || DEFAULT_IDE_URL_TEMPLATE
+    this._ideUrlTemplate.set(template)
+    this.writeStoredString(IDE_URL_TEMPLATE_STORAGE_KEY, template)
+  }
+
   shouldSend(event: KeyboardEvent): boolean {
     // Only a real ENTER press sends (ignore IME composition). In send mode any non-Shift ENTER sends
     // (Shift+ENTER inserts a newline); in newline mode only a Ctrl/Cmd modifier sends.
@@ -92,6 +122,23 @@ export class AgentosUserPreferencesService implements UserPreferencesPort {
     } catch {
       // localStorage may be unavailable; fall back to the default (shown).
       return true
+    }
+  }
+
+  private readStoredString(key: string, fallback: string): string {
+    try {
+      return localStorage.getItem(key) ?? fallback
+    } catch {
+      // localStorage may be unavailable; fall back to the default.
+      return fallback
+    }
+  }
+
+  private writeStoredString(key: string, value: string): void {
+    try {
+      localStorage.setItem(key, value)
+    } catch {
+      // localStorage may be unavailable (e.g. private mode); the setting still applies for the session.
     }
   }
 

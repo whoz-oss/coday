@@ -60,11 +60,16 @@ describe('SessionPageState', () => {
 
   it('keeps a projected non-agent execution scoped to its own evidence', () => {
     const executionEvent = { id: 'execution-event' }
-    sessions.update((current) => new Map(current).set('run-1', {
-      phase: { stepId: 'current' }, events: [], attempts: [], lanes: [],
-      phaseByExecutionId: new Map([['execution-1', { stepId: 'build', name: 'Build execution' }]]),
-      eventsByExecutionId: new Map([['execution-1', [executionEvent]]]),
-    }))
+    sessions.update((current) =>
+      new Map(current).set('run-1', {
+        phase: { stepId: 'current' },
+        events: [],
+        attempts: [],
+        lanes: [],
+        phaseByExecutionId: new Map([['execution-1', { stepId: 'build', name: 'Build execution' }]]),
+        eventsByExecutionId: new Map([['execution-1', [executionEvent]]]),
+      })
+    )
     const state = TestBed.inject(SessionPageState)
     state.selectSession('run-1')
     state.selectBlock({ label: 'Build execution', stepId: 'build', executionId: 'execution-1' } as any)
@@ -74,10 +79,14 @@ describe('SessionPageState', () => {
 
   it('does not preserve a vanished execution merely because its linked attempt remains', () => {
     const session: any = {
-      phase: { stepId: 'build' }, events: [], attempts: [{ attemptId: 'attempt-1' }],
+      phase: { stepId: 'build' },
+      events: [],
+      attempts: [{ attemptId: 'attempt-1' }],
       phaseByExecutionId: new Map([['execution-1', { stepId: 'build' }]]),
       eventsByExecutionId: new Map([['execution-1', []]]),
-      lanes: [{ blocks: [{ label: 'Execution', stepId: 'build', executionId: 'execution-1', attemptId: 'attempt-1' }] }],
+      lanes: [
+        { blocks: [{ label: 'Execution', stepId: 'build', executionId: 'execution-1', attemptId: 'attempt-1' }] },
+      ],
     }
     sessions.update((current) => new Map(current).set('run-1', session))
     const state = TestBed.inject(SessionPageState)

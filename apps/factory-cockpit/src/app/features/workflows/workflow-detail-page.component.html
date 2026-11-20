@@ -196,8 +196,21 @@
         }
         @if (step.outcomeTransitions?.pass || step.outcomeTransitions?.fail) {
           <h3>After this step</h3>
-          <p>PASS: {{ step.outcomeTransitions?.pass?.action ?? 'continue' }}@if (step.outcomeTransitions?.pass?.target; as target) { → {{ dependencyLabel(target) }} }</p>
-          <p>FAIL: {{ step.outcomeTransitions?.fail?.action ?? 'block' }}@if (step.outcomeTransitions?.fail?.target; as target) { → {{ dependencyLabel(target) }} }@if (step.outcomeTransitions?.fail?.action === 'return') { · {{ step.outcomeTransitions?.fail?.maxCycles ?? 2 }} correction cycles }</p>
+          <p>
+            PASS: {{ step.outcomeTransitions?.pass?.action ?? 'continue' }}
+            @if (step.outcomeTransitions?.pass?.target; as target) {
+              → {{ dependencyLabel(target) }}
+            }
+          </p>
+          <p>
+            FAIL: {{ step.outcomeTransitions?.fail?.action ?? 'block' }}
+            @if (step.outcomeTransitions?.fail?.target; as target) {
+              → {{ dependencyLabel(target) }}
+            }
+            @if (step.outcomeTransitions?.fail?.action === 'return') {
+              · {{ step.outcomeTransitions?.fail?.maxCycles ?? 2 }} correction cycles
+            }
+          </p>
         }
         @if (state.editing()) {
           <fieldset [disabled]="state.saving()" aria-label="Block properties">
@@ -353,10 +366,22 @@
             </fieldset>
             <fieldset aria-label="After this step">
               <legend>After this step</legend>
-              <p class="sf-muted">Standalone execution only. Code/human failures and technical errors cannot trigger automatic return. Parent-Run fragments are not supported. After the budget, human intervention requires an explicitly authorized successor run.</p>
-              <p class="sf-muted">PASS activation is limited to an existing direct successor: it never bypasses dependencies or disables other branches. A FAIL return is enforced by Factory and replays the configured target scope.</p>
-              <label>On PASS
-                <select [ngModel]="step.outcomeTransitions?.pass?.action ?? 'continue'" (ngModelChange)="state.updateOutcome('pass', $event)" data-outcome-pass>
+              <p class="sf-muted">
+                Standalone execution only. Code/human failures and technical errors cannot trigger automatic return.
+                Parent-Run fragments are not supported. After the budget, human intervention requires an explicitly
+                authorized successor run.
+              </p>
+              <p class="sf-muted">
+                PASS activation is limited to an existing direct successor: it never bypasses dependencies or disables
+                other branches. A FAIL return is enforced by Factory and replays the configured target scope.
+              </p>
+              <label
+                >On PASS
+                <select
+                  [ngModel]="step.outcomeTransitions?.pass?.action ?? 'continue'"
+                  (ngModelChange)="state.updateOutcome('pass', $event)"
+                  data-outcome-pass
+                >
                   <option value="continue">Continue dependencies</option>
                   @if (state.canConfigurePassActivate(step)) {
                     <option value="activate">Activate a direct successor</option>
@@ -365,8 +390,13 @@
               </label>
               @if (step.outcomeTransitions?.pass?.action === 'activate') {
                 @if (state.canConfigurePassActivate(step)) {
-                  <label>PASS destination
-                    <select [ngModel]="step.outcomeTransitions?.pass?.target ?? ''" (ngModelChange)="state.updateOutcomeTarget('pass', $event)" data-outcome-pass-target>
+                  <label
+                    >PASS destination
+                    <select
+                      [ngModel]="step.outcomeTransitions?.pass?.target ?? ''"
+                      (ngModelChange)="state.updateOutcomeTarget('pass', $event)"
+                      data-outcome-pass-target
+                    >
                       <option value="">Choose direct successor</option>
                       @for (candidate of state.passActivationTargets(step); track candidate.id) {
                         <option [value]="candidate.id">{{ candidate.name }} ({{ candidate.id }})</option>
@@ -374,11 +404,19 @@
                     </select>
                   </label>
                 } @else {
-                  <p class="sf-muted">This preserved PASS activation cannot be edited here because Factory only permits a non-decision step to activate a non-conditional direct successor.</p>
+                  <p class="sf-muted">
+                    This preserved PASS activation cannot be edited here because Factory only permits a non-decision
+                    step to activate a non-conditional direct successor.
+                  </p>
                 }
               }
-              <label>On FAIL
-                <select [ngModel]="step.outcomeTransitions?.fail?.action ?? 'block'" (ngModelChange)="state.updateOutcome('fail', $event)" data-outcome-fail>
+              <label
+                >On FAIL
+                <select
+                  [ngModel]="step.outcomeTransitions?.fail?.action ?? 'block'"
+                  (ngModelChange)="state.updateOutcome('fail', $event)"
+                  data-outcome-fail
+                >
                   <option value="block">Block workflow</option>
                   @if (state.canConfigureFailReturn(step)) {
                     <option value="return">Return for correction (accepted agent FAIL only)</option>
@@ -388,17 +426,35 @@
                 </select>
               </label>
               @if (!state.canConfigureFailReturn(step)) {
-                <p class="sf-muted">FAIL return is available only on agent steps with an accepted structured FAIL. Code and human failures block, although those steps can be replayed inside an agent-triggered correction scope.</p>
+                <p class="sf-muted">
+                  FAIL return is available only on agent steps with an accepted structured FAIL. Code and human failures
+                  block, although those steps can be replayed inside an agent-triggered correction scope.
+                </p>
               }
               @if (step.outcomeTransitions?.fail?.action === 'return' && state.canConfigureFailReturn(step)) {
-                <label>Return destination
-                  <select [ngModel]="step.outcomeTransitions?.fail?.target ?? ''" (ngModelChange)="state.updateOutcomeTarget('fail', $event)" data-outcome-fail-target>
+                <label
+                  >Return destination
+                  <select
+                    [ngModel]="step.outcomeTransitions?.fail?.target ?? ''"
+                    (ngModelChange)="state.updateOutcomeTarget('fail', $event)"
+                    data-outcome-fail-target
+                  >
                     <option value="">Choose step</option>
-                    @for (candidate of def.steps; track candidate.id) { <option [value]="candidate.id">{{ candidate.name }} ({{ candidate.id }})</option> }
+                    @for (candidate of def.steps; track candidate.id) {
+                      <option [value]="candidate.id">{{ candidate.name }} ({{ candidate.id }})</option>
+                    }
                   </select>
                 </label>
-                <label>Correction cycle budget
-                  <input type="number" min="1" max="10" [ngModel]="step.outcomeTransitions?.fail?.maxCycles ?? 2" (ngModelChange)="state.updateFailBudget($event)" data-outcome-fail-budget />
+                <label
+                  >Correction cycle budget
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    [ngModel]="step.outcomeTransitions?.fail?.maxCycles ?? 2"
+                    (ngModelChange)="state.updateFailBudget($event)"
+                    data-outcome-fail-budget
+                  />
                 </label>
               }
             </fieldset>

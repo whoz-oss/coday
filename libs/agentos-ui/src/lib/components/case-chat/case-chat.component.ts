@@ -63,6 +63,7 @@ import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
 import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
+import { IdeLinkService } from '../../services/ide-link.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
 import { AgentActivity, describeAgentActivity } from '../agent-activity/agent-activity.models'
@@ -78,6 +79,7 @@ import { parseBtwCommand } from '../composer-autocomplete/btw-command'
 import { SideQuestionStateService } from '../../services/side-question-state.service'
 import { CaseSettingsComponent } from '../case-settings/case-settings.component'
 import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
+import { stripSettingsCommand } from '../composer-autocomplete/settings-command'
 import { AiModelStateService } from '../../services/ai-model-state.service'
 import { chatModelOptions } from '../../services/chat-model.utils'
 import { ModelOption } from '../agent-config-form/model-options'
@@ -132,6 +134,7 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { WizzCompletionObserver } from './wizz-completion-observer'
 
 export interface ToolCall {
   requestId: string
@@ -282,6 +285,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef)
   private readonly injector = inject(Injector)
   private readonly markdown = inject(MarkdownRendererService)
+  private readonly ideLinks = inject(IdeLinkService)
   private readonly exchangeState = inject(ExchangeStateService)
 
   private readonly config = inject(Configuration)
@@ -374,6 +378,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
+  private readonly conversationPanel = viewChild<ElementRef<HTMLDivElement>>('conversationPanel')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
   private readonly settings = viewChild(CaseSettingsComponent)
   // The pickers live in the shared settings component: the autocomplete service drives them from here.
@@ -383,6 +388,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
+  /** An opt-in, session-only completion cue. It resets whenever the displayed case changes. */
+  protected readonly wizzEnabled = signal(false)
+  private readonly wizzObserver = new WizzCompletionObserver()
+  private wizzAnimation: Animation | null = null
+  /** Disposes only the currently playing cue; it is never retained for the enabled session. */
+  private wizzPlaybackCleanup: (() => void) | null = null
+  private readonly wizzRenderTimers = new Set<ReturnType<typeof setTimeout>>()
 
   /**
    * Pre-computed markdown HTML per event id, of what the message shows as its text (see [bodyOf]).
@@ -634,6 +646,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Listener cleanup function registered on the messages container. */
   private scrollListenerCleanup: (() => void) | null = null
+  /** Removes the file-link click listener registered on the messages container. */
+  private messagesClickCleanup: (() => void) | null = null
 
   constructor() {
     this.autocomplete.init(this.namespaceId)
@@ -698,6 +712,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // Register DOM-dependent behaviour after the first render.
     afterNextRender(() => {
       this.attachScrollListener()
+      this.attachMessagesClickListener()
       this.resizeComposer()
     })
   }
@@ -1130,12 +1145,92 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.stopWizz()
     if (this.terminalCloseTimer !== null) {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
     }
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
+    this.messagesClickCleanup?.()
+  }
+
+  protected toggleWizz(): void {
+    if (this.wizzEnabled()) {
+      this.stopWizz()
+      this.wizzEnabled.set(false)
+      return
+    }
+    this.wizzEnabled.set(true)
+    // The live observer filters its frames without entering Angular; only a completion schedules DOM work.
+    this.zone.runOutsideAngular(() =>
+      this.wizzObserver.start(this.config.basePath!!, this.caseId, () => this.onWizzAnswerCompleted())
+    )
+  }
+
+  private onWizzAnswerCompleted(): void {
+    if (!this.wizzEnabled()) return
+    // One queued callback per eligible answer: lifecycle stop clears all of them, but two answers in
+    // the same turn of the event loop must not be silently collapsed into one cue.
+    const timer = setTimeout(() => {
+      this.wizzRenderTimers.delete(timer)
+      if (this.wizzEnabled()) this.playWizzEffect()
+    })
+    this.wizzRenderTimers.add(timer)
+  }
+
+  private playWizzEffect(forceReducedMotion?: boolean): void {
+    const panel = this.conversationPanel()?.nativeElement
+    if (!panel?.animate) return
+    this.disposeWizzPlayback()
+
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    const reducedMotion = forceReducedMotion ?? media?.matches === true
+    const animation = panel.animate(
+      reducedMotion
+        ? [{ boxShadow: 'inset 0 0 0 2px var(--color-accent)' }, { boxShadow: 'inset 0 0 0 0 transparent' }]
+        : [
+            { transform: 'translateX(0)' },
+            { transform: 'translateX(-4px)' },
+            { transform: 'translateX(4px)' },
+            { transform: 'translateX(0)' },
+          ],
+      { duration: reducedMotion ? 500 : 400, easing: 'ease-out' }
+    )
+    let cleanup: (() => void) | null = null
+    const onPreferenceChange = (event: MediaQueryListEvent): void => {
+      // A currently playing shake may be replaced by a highlight. A highlight never turns back
+      // into motion: this callback belongs to one completion cue, not the enabled session.
+      if (!reducedMotion && event.matches && this.wizzPlaybackCleanup === cleanup) this.playWizzEffect(true)
+    }
+    cleanup = () => {
+      if (this.wizzPlaybackCleanup !== cleanup) return
+      animation.onfinish = null
+      animation.oncancel = null
+      if (!reducedMotion) media?.removeEventListener('change', onPreferenceChange)
+      this.wizzPlaybackCleanup = null
+      this.wizzAnimation = null
+    }
+    this.wizzPlaybackCleanup = cleanup
+    this.wizzAnimation = animation
+    animation.onfinish = cleanup
+    animation.oncancel = cleanup
+    if (!reducedMotion) media?.addEventListener('change', onPreferenceChange)
+  }
+
+  private disposeWizzPlayback(): void {
+    const cleanup = this.wizzPlaybackCleanup
+    const animation = this.wizzAnimation
+    if (!cleanup) return
+    cleanup()
+    animation?.cancel()
+  }
+
+  private stopWizz(): void {
+    this.wizzObserver.stop()
+    for (const timer of this.wizzRenderTimers) clearTimeout(timer)
+    this.wizzRenderTimers.clear()
+    this.disposeWizzPlayback()
   }
 
   // ---------------------------------------------------------------------------
@@ -1158,6 +1253,34 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     el.addEventListener('scroll', onScroll, { passive: true })
     this.scrollListenerCleanup = () => el.removeEventListener('scroll', onScroll)
+  }
+
+  /**
+   * Delegated click listener on the messages container, for the file references rendered as links in a message.
+   * A native listener (not a template handler): the links are injected HTML, and the template a11y lint wants a key
+   * handler on a clickable div. Enter on a focused link fires its click, which reaches this listener too.
+   */
+  private attachMessagesClickListener(): void {
+    const el = this.messagesContainer()?.nativeElement
+    if (!el) return
+
+    const onClick = (event: MouseEvent): void => this.onMessagesClick(event)
+
+    el.addEventListener('click', onClick)
+    this.messagesClickCleanup = () => el.removeEventListener('click', onClick)
+  }
+
+  /** A file reference rendered in a message opens in the IDE; any other click in the messages is left alone. */
+  private onMessagesClick(event: MouseEvent): void {
+    const link = event.target instanceof Element ? event.target.closest('a.agentos-file-link') : null
+    if (!link) return
+    event.preventDefault()
+    const url = this.ideLinks.resolveIdeUrl({
+      path: link.getAttribute('data-file') ?? '',
+      line: Number(link.getAttribute('data-line')) || undefined,
+      column: Number(link.getAttribute('data-column')) || undefined,
+    })
+    if (url) window.location.assign(url)
   }
 
   /** Programmatically scroll the messages container to the very bottom. */
@@ -1527,16 +1650,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return !!this.activeCase() && !this.isTerminal() && !this.isRunning()
   }
 
-  /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
+  /** Apply the level picked after /effort (or with the chip), and remove the command, only it, from the composer. */
   protected onEffortSelected(option: EffortOption): void {
     this.autocomplete.effortSuggestions.set([])
     if (!this.canChangeEffort()) return
-    this.inputValue.set('')
-    const input = this.composerInput()?.nativeElement
-    if (input) {
-      input.value = ''
-      this.resizeComposer(input)
-    }
+    this.removeSettingsCommand()
     this.caseState
       .setReasoningEffort(this.caseId, option.effort)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -1545,22 +1663,33 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       })
   }
 
-  /** Apply the model picked after /model (null = back to each agent's own) and clear the command from the composer. */
+  /** Apply the model picked after /model (null = back to each agent's own), and remove the command from the composer. */
   protected onModelSelected(choice: ModelChoice): void {
     this.autocomplete.modelSuggestions.set([])
     if (!this.canChangeEffort()) return
-    this.inputValue.set('')
-    const input = this.composerInput()?.nativeElement
-    if (input) {
-      input.value = ''
-      this.resizeComposer(input)
-    }
+    this.removeSettingsCommand()
     this.caseState
       .setModel(this.caseId, choice.model)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: (err) => console.error('[CaseChat] Failed to set the AI model', err),
       })
+  }
+
+  /**
+   * A choice made from the chip leaves the composer alone: its text, its cursor, the attachments. Only a typed
+   * `/model` or `/effort` command is removed, and the textarea is touched only when the text really changes.
+   */
+  private removeSettingsCommand(): void {
+    const current = this.inputValue()
+    const next = stripSettingsCommand(current)
+    if (next === current) return
+    this.inputValue.set(next)
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = next
+      this.resizeComposer(input)
+    }
   }
 
   protected closeAtAutocomplete(): void {
@@ -1572,6 +1701,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called when the router reuses this component instance for a different case.
    */
   private reinitialise(): void {
+    this.stopWizz()
+    this.wizzEnabled.set(false)
     // Cancel any pending terminal-close timer before reconnecting: a stale timer must
     // not close the freshly created EventSource for the reopened case.
     if (this.terminalCloseTimer !== null) {

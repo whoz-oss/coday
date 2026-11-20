@@ -292,7 +292,11 @@ describe('workflow block composition', () => {
     expect(state.canConfigureFailReturn()).toBe(true)
     state.select('step-1')
     state.updateBlock({ id: 'implement' })
-    expect(state.definition()?.steps?.[1]?.outcomeTransitions?.fail).toEqual({ action: 'return', target: 'implement', maxCycles: 2 })
+    expect(state.definition()?.steps?.[1]?.outcomeTransitions?.fail).toEqual({
+      action: 'return',
+      target: 'implement',
+      maxCycles: 2,
+    })
     state.removeBlock()
     expect(state.definition()?.steps?.[0]?.outcomeTransitions?.fail).toEqual({ action: 'block' })
     state.save()
@@ -301,8 +305,16 @@ describe('workflow block composition', () => {
 
   it('matches the backend outcome contract: return requires an agent, self/ancestor and a 1–10 integer budget', () => {
     const base: any = {
-      workflowType: 'x', title: 'X', steps: [
-        { id: 'a', name: 'A', responsibility: { kind: 'agent', name: 'Dev' }, dependsOn: [], outcomeTransitions: { fail: { action: 'return', target: 'missing', maxCycles: 0 } } },
+      workflowType: 'x',
+      title: 'X',
+      steps: [
+        {
+          id: 'a',
+          name: 'A',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          dependsOn: [],
+          outcomeTransitions: { fail: { action: 'return', target: 'missing', maxCycles: 0 } },
+        },
       ],
     }
     expect(validateStructure(base)).toContain('ancestor')
@@ -615,10 +627,19 @@ describe('workflow definition diagram', () => {
   it('adds a FAIL return edge without changing DAG dependency layout', () => {
     const layout = layoutDefinition([
       { id: 'implement', name: 'Implement', dependsOn: [] },
-      { id: 'review', name: 'Review', dependsOn: ['implement'], outcomeTransitions: { fail: { action: 'return', target: 'implement', maxCycles: 2 } } },
+      {
+        id: 'review',
+        name: 'Review',
+        dependsOn: ['implement'],
+        outcomeTransitions: { fail: { action: 'return', target: 'implement', maxCycles: 2 } },
+      },
     ])
     expect(layout.edges.filter((edge) => edge.kind === 'dependency')).toHaveLength(1)
-    expect(layout.edges.find((edge) => edge.kind === 'fail-return')).toMatchObject({ from: 'review', to: 'implement', label: 'FAIL → correction (≤2)' })
+    expect(layout.edges.find((edge) => edge.kind === 'fail-return')).toMatchObject({
+      from: 'review',
+      to: 'implement',
+      label: 'FAIL → correction (≤2)',
+    })
   })
 
   it('represents branching and merging dependencies even when steps are not topologically ordered', () => {

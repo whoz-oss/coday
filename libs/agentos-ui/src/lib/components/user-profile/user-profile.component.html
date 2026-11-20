@@ -58,6 +58,38 @@
       </ds-form-field>
     </ds-group>
 
+    <ds-group heading="IDE links">
+      <ds-form-field
+        label="IDE project root (absolute path)"
+        controlId="ide-project-root"
+        hint="Folder of the project on this machine. Relative file references in agent replies open from it."
+      >
+        <input
+          dsControl
+          #projectRootInput
+          id="ide-project-root"
+          type="text"
+          placeholder="/Users/you/Workspace/project"
+          [value]="ideProjectRoot()"
+          (change)="setIdeProjectRoot(projectRootInput.value)"
+        />
+      </ds-form-field>
+      <ds-form-field
+        label="IDE URL template"
+        controlId="ide-url-template"
+        hint="Opens a file in IntelliJ IDEA. {file} is the URL-encoded absolute path, {line} and {column} the position."
+      >
+        <input
+          dsControl
+          #urlTemplateInput
+          id="ide-url-template"
+          type="text"
+          [value]="ideUrlTemplate()"
+          (change)="setIdeUrlTemplate(urlTemplateInput.value)"
+        />
+      </ds-form-field>
+    </ds-group>
+
     <!-- Messaging accounts are linked outside the profile form, in both modes. Hidden when no bot runs. -->
     <agentos-messaging-accounts />
 
