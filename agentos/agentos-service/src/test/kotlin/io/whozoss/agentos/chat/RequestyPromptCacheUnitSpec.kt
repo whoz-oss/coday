@@ -3,6 +3,7 @@ package io.whozoss.agentos.chat
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.kotest.assertions.throwables.shouldThrowAny
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -80,13 +81,29 @@ class RequestyPromptCacheUnitSpec :
             ).forEach { url -> withClue(url.toString()) { RequestyPromptCache.isRequesty(url) shouldBe false } }
         }
 
-        "isClaudeModel matches Claude model names, whatever the prefix or case" {
-            RequestyPromptCache.isClaudeModel("anthropic/claude-sonnet-4-5") shouldBe true
-            RequestyPromptCache.isClaudeModel("policy/claude-opus") shouldBe true
-            RequestyPromptCache.isClaudeModel("bedrock/Claude-Haiku") shouldBe true
-            RequestyPromptCache.isClaudeModel("openai/gpt-5") shouldBe false
-            RequestyPromptCache.isClaudeModel("") shouldBe false
-            RequestyPromptCache.isClaudeModel(null) shouldBe false
+        "the default model pattern matches Claude model names, whatever the prefix or case" {
+            val properties = RequestyPromptCacheProperties()
+
+            properties.matchesModel("anthropic/claude-sonnet-4-5") shouldBe true
+            properties.matchesModel("policy/claude-opus") shouldBe true
+            properties.matchesModel("bedrock/Claude-Haiku") shouldBe true
+            properties.matchesModel("openai/gpt-5") shouldBe false
+            properties.matchesModel("policy/sonnet-with-fallback") shouldBe false
+            properties.matchesModel("") shouldBe false
+            properties.matchesModel(null) shouldBe false
+        }
+
+        "a custom model pattern can add Claude-backed policies" {
+            val properties = RequestyPromptCacheProperties(modelPattern = "(?i)claude|^policy/sonnet-with-fallback$")
+
+            properties.matchesModel("policy/sonnet-with-fallback") shouldBe true
+            properties.matchesModel("anthropic/claude-sonnet-4-5") shouldBe true
+            properties.matchesModel("policy/sonnet-with-fallback-2") shouldBe false
+            properties.matchesModel("openai/gpt-5") shouldBe false
+        }
+
+        "an invalid model pattern fails when the properties are built" {
+            shouldThrowAny { RequestyPromptCacheProperties(modelPattern = "(unclosed") }
         }
 
         // ---------------------------------------------------------------------------------------------

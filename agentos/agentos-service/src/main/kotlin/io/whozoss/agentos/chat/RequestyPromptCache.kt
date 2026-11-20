@@ -9,6 +9,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import mu.KLogging
 import org.reactivestreams.Publisher
+import org.springframework.boot.context.properties.ConfigurationProperties
+import org.springframework.boot.context.properties.bind.DefaultValue
 import org.springframework.core.io.buffer.DataBuffer
 import org.springframework.core.io.buffer.DataBufferUtils
 import org.springframework.http.client.ClientHttpRequestInterceptor
@@ -20,6 +22,7 @@ import org.springframework.web.reactive.function.client.ExchangeFilterFunction
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import java.net.URI
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * One-hour prompt caching for Claude models via Requesty (OpenAI-compatible API).
@@ -30,7 +33,7 @@ import java.net.URI
  * body with [addOneHourCacheControl] instead.
  *
  * [ChatModelFactory] only installs the hooks when the user chose [PromptCacheTtl.ONE_HOUR], the base URL
- * [isRequesty] and the model [isClaudeModel]. Otherwise nothing is installed and the request stays the one
+ * [isRequesty] and the model matches [RequestyPromptCacheProperties.modelPattern]. Otherwise nothing is installed and the request stays the one
  * Spring AI builds.
  *
  * Every rewrite failure leaves the body as it was: the call is never failed for caching. Bodies larger than
@@ -62,9 +65,6 @@ internal object RequestyPromptCache : KLogging() {
                 ?: return false
         return host == REQUESTY_DOMAIN || host.endsWith(".$REQUESTY_DOMAIN")
     }
-
-    /** Whether [modelName] is a Claude model, e.g. Requesty's `anthropic/claude-*` or `policy/claude-*`. */
-    fun isClaudeModel(modelName: String?): Boolean = modelName?.contains("claude", ignoreCase = true) == true
 
     /** RestClient hook (blocking calls): rewrites the body of `/chat/completions` requests. */
     fun interceptor(): ClientHttpRequestInterceptor =
@@ -226,34 +226,44 @@ internal object RequestyPromptCache : KLogging() {
      * Collects what the original body inserter writes, rewrites it with [rewriteChatCompletionsBody], fixes
      * `Content-Length` (the JDK connector sizes the body from it) and writes the result to [delegate].
      *
-     * The encoder has already produced the whole body in memory: collecting only keeps references to its
-     * buffers. Above [MAX_REWRITE_BYTES] they are written as they are, without being copied or parsed.
+     * Buffers are collected one by one. As soon as their running size exceeds [MAX_REWRITE_BYTES], collecting
+     * stops: the buffers already received and the rest of the stream are written as they are, with the original
+     * `Content-Length`. Buffers still held when the write is cancelled or fails are released.
      */
     private class RewritingClientHttpRequest(
         delegate: ClientHttpRequest,
         private val path: String,
     ) : ClientHttpRequestDecorator(delegate) {
-        override fun writeWith(body: Publisher<out DataBuffer>): Mono<Void> =
-            Flux
-                .from(body)
-                .doOnDiscard(DataBuffer::class.java) { DataBufferUtils.release(it) }
-                .collectList()
-                .flatMap { buffers ->
-                    val size = buffers.sumOf { it.readableByteCount().toLong() }
-                    if (size > MAX_REWRITE_BYTES) {
-                        logger.debug { "Requesty 1h cache: body of $path is $size bytes, above $MAX_REWRITE_BYTES, sent unchanged" }
-                        delegate.writeWith(Flux.fromIterable(buffers))
+        override fun writeWith(body: Publisher<out DataBuffer>): Mono<Void> {
+            val received = AtomicLong()
+            return Flux
+                .from<DataBuffer>(body)
+                // One chunk holding the whole body when it stays within the cap; otherwise a first chunk closed by
+                // the buffer that crosses the cap, then one chunk per later buffer.
+                .bufferUntil { buffer -> received.addAndGet(buffer.readableByteCount().toLong()) > MAX_REWRITE_BYTES }
+                .switchOnFirst { first, chunks ->
+                    val buffers = chunks.concatMapIterable { it }
+                    if (first.hasValue() && received.get() > MAX_REWRITE_BYTES) {
+                        logger.debug { "Requesty 1h cache: body of $path is above $MAX_REWRITE_BYTES bytes, sent unchanged" }
+                        delegate.writeWith(buffers)
                     } else {
-                        val bytes = buffers.drainTo(size.toInt())
-                        val rewritten = rewriteChatCompletionsBody(path, bytes)
-                        if (rewritten !== bytes) delegate.headers.contentLength = rewritten.size.toLong()
-                        delegate.writeWith(Mono.just(delegate.bufferFactory().wrap(rewritten)))
+                        buffers.collectList().flatMap { writeRewritten(it) }
                     }
-                }
+                }.doOnDiscard(DataBuffer::class.java) { DataBufferUtils.release(it) }
+                .doOnDiscard(List::class.java) { chunk -> chunk.forEach { (it as? DataBuffer)?.let(DataBufferUtils::release) } }
+                .then()
+        }
 
         /** Flushing boundaries do not matter for a JSON request body: it goes through the same rewrite. */
         override fun writeAndFlushWith(body: Publisher<out Publisher<out DataBuffer>>): Mono<Void> =
             writeWith(Flux.from(body).concatMap { Flux.from<DataBuffer>(it) })
+
+        private fun writeRewritten(buffers: List<DataBuffer>): Mono<Void> {
+            val bytes = buffers.drainTo(buffers.sumOf { it.readableByteCount() })
+            val rewritten = rewriteChatCompletionsBody(path, bytes)
+            if (rewritten !== bytes) delegate.headers.contentLength = rewritten.size.toLong()
+            return delegate.writeWith(Mono.just(delegate.bufferFactory().wrap(rewritten)))
+        }
 
         /** Copies the buffers into one array and releases them. */
         private fun List<DataBuffer>.drainTo(size: Int): ByteArray {
@@ -270,5 +280,30 @@ internal object RequestyPromptCache : KLogging() {
             }
             return bytes
         }
+    }
+}
+
+/**
+ * Which models get the one-hour prompt cache markers when their user chose [PromptCacheTtl.ONE_HOUR] and they are
+ * reached through Requesty.
+ *
+ * [modelPattern] is a regular expression searched in the API model name (a match anywhere counts). The default
+ * matches every Claude model name (`anthropic/claude-*`, `policy/claude-*`...). Requesty policy names do not always
+ * tell the backing model: extend the pattern for policies backed by Claude, e.g.
+ * `(?i)claude|^policy/sonnet-with-fallback$`. The markers must only reach Anthropic models.
+ */
+@ConfigurationProperties(prefix = "agentos.requesty.prompt-cache")
+data class RequestyPromptCacheProperties(
+    @DefaultValue(DEFAULT_MODEL_PATTERN)
+    val modelPattern: String = DEFAULT_MODEL_PATTERN,
+) {
+    /** Compiled once; an invalid pattern fails at startup. */
+    private val modelRegex = Regex(modelPattern)
+
+    /** Whether [modelName] gets the one-hour markers. */
+    fun matchesModel(modelName: String?): Boolean = modelName != null && modelRegex.containsMatchIn(modelName)
+
+    companion object {
+        const val DEFAULT_MODEL_PATTERN = "(?i)claude"
     }
 }

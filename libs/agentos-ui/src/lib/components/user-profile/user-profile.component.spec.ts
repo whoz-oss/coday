@@ -67,7 +67,7 @@ describe('UserProfileComponent (prompt cache duration)', () => {
     const element = render()
 
     expect(element.textContent).toContain('Prompt cache duration (Claude models via Requesty)')
-    expect(element.textContent).toContain('5 minutes (default)')
+    expect(element.textContent).toContain('5 minutes (Requesty default)')
   })
 
   it('shows the stored duration in read mode', () => {
@@ -76,7 +76,7 @@ describe('UserProfileComponent (prompt cache duration)', () => {
     const element = render()
 
     expect(element.textContent).toContain('1 hour')
-    expect(element.textContent).not.toContain('5 minutes (default)')
+    expect(element.textContent).not.toContain('5 minutes (Requesty default)')
   })
 
   it('offers both durations with a hint in edit mode, preselecting the stored one', () => {
@@ -88,12 +88,12 @@ describe('UserProfileComponent (prompt cache duration)', () => {
     const select = element.querySelector('#up-promptCacheTtl') as HTMLSelectElement
 
     expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual([
-      '5 minutes (default)',
+      '5 minutes (Requesty default)',
       '1 hour',
     ])
     expect(select.value).toBe(PromptCacheTtl.ONE_HOUR)
     expect(element.textContent).toContain(
-      '1 hour costs more per cache write but keeps the conversation cached during longer pauses.'
+      '1 hour sends explicit 1-hour cache markers for Claude models: each cache write costs more, but the conversation stays cached during longer pauses. 5 minutes leaves the request as is (Requesty automatic caching).'
     )
   })
 

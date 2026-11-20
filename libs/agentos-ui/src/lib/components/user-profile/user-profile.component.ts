@@ -137,7 +137,7 @@ export class UserProfileComponent implements OnInit {
    * writes 1.25x, 1h writes 2x input; reads are much cheaper (0.05x-0.1x depending on model) and refresh the TTL.
    */
   protected readonly promptCacheTtlOptions: ReadonlyArray<{ value: PromptCacheTtl; label: string }> = [
-    { value: PromptCacheTtl.FIVE_MINUTES, label: '5 minutes (default)' },
+    { value: PromptCacheTtl.FIVE_MINUTES, label: '5 minutes (Requesty default)' },
     { value: PromptCacheTtl.ONE_HOUR, label: '1 hour' },
   ]
 

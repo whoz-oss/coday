@@ -110,7 +110,7 @@
             label="Prompt cache duration (Claude models via Requesty)"
             controlId="up-promptCacheTtl"
             hintId="up-promptCacheTtl-hint"
-            hint="1 hour costs more per cache write but keeps the conversation cached during longer pauses."
+            hint="1 hour sends explicit 1-hour cache markers for Claude models: each cache write costs more, but the conversation stays cached during longer pauses. 5 minutes leaves the request as is (Requesty automatic caching)."
           >
             <select
               dsControl

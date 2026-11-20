@@ -55,6 +55,7 @@ data class AnthropicProperties(
 /**
  * Builds the provider-specific [ChatModel] for an [AiApiType].
  *
+ * [requestyPromptCache] tells which models get the one-hour prompt cache markers through Requesty.
  * [isRequestyBaseUrl] tells whether a base URL is the Requesty router. Spring always uses the public constructor,
  * which matches on the host ([RequestyPromptCache.isRequesty]); the internal one lets the wire tests stand a
  * loopback stub in for Requesty.
@@ -64,6 +65,7 @@ class ChatModelFactory internal constructor(
     private val observationRegistry: ObservationRegistry,
     private val anthropicProperties: AnthropicProperties,
     private val usageConfig: UsageConfigProperties,
+    private val requestyPromptCache: RequestyPromptCacheProperties = RequestyPromptCacheProperties(),
     private val isRequestyBaseUrl: (String) -> Boolean,
 ) {
     @Autowired
@@ -71,7 +73,8 @@ class ChatModelFactory internal constructor(
         observationRegistry: ObservationRegistry,
         anthropicProperties: AnthropicProperties,
         usageConfig: UsageConfigProperties = UsageConfigProperties(),
-    ) : this(observationRegistry, anthropicProperties, usageConfig, RequestyPromptCache::isRequesty)
+        requestyPromptCache: RequestyPromptCacheProperties = RequestyPromptCacheProperties(),
+    ) : this(observationRegistry, anthropicProperties, usageConfig, requestyPromptCache, RequestyPromptCache::isRequesty)
 
     fun createChatModel(
         apiType: AiApiType,
@@ -157,7 +160,7 @@ class ChatModelFactory internal constructor(
         val restClientBuilder = RestClient.builder()
         val webClientBuilder = WebClient.builder()
         val oneHourRequestyCache =
-            promptCacheTtl == PromptCacheTtl.ONE_HOUR && isRequestyBaseUrl(baseUrl) && RequestyPromptCache.isClaudeModel(model)
+            promptCacheTtl == PromptCacheTtl.ONE_HOUR && isRequestyBaseUrl(baseUrl) && requestyPromptCache.matchesModel(model)
         if (oneHourRequestyCache) {
             restClientBuilder.requestInterceptor(RequestyPromptCache.interceptor())
             webClientBuilder.filter(RequestyPromptCache.filter())

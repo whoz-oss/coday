@@ -56,6 +56,7 @@ class RequestyPromptCacheWireSpec :
             requesty: Boolean,
             usageTracking: Boolean = true,
             modelName: String = claude,
+            modelPattern: String = RequestyPromptCacheProperties.DEFAULT_MODEL_PATTERN,
         ): ChatClient {
             val usageConfig = UsageConfigProperties(enabled = usageTracking)
             val factory =
@@ -63,6 +64,7 @@ class RequestyPromptCacheWireSpec :
                     ObservationRegistry.NOOP,
                     AnthropicProperties(promptCachingEnabled = true),
                     usageConfig,
+                    RequestyPromptCacheProperties(modelPattern),
                     isRequestyBaseUrl = { baseUrl -> requesty || RequestyPromptCache.isRequesty(baseUrl) },
                 )
             val providerId = UUID.randomUUID()
@@ -200,7 +202,10 @@ class RequestyPromptCacheWireSpec :
         fun JsonNode.cacheControlCount(): Int =
             (if (has("cache_control")) 1 else 0) + elements().asSequence().sumOf { it.cacheControlCount() }
 
-        fun assertOneHourMarkers(body: String) {
+        fun assertOneHourMarkers(
+            body: String,
+            model: String = claude,
+        ) {
             val request = mapper.readTree(body)
             withClue("requesty.auto_cache must be false, body was: $body") {
                 request.get("requesty")?.get("auto_cache")?.asBoolean() shouldBe false
@@ -219,7 +224,7 @@ class RequestyPromptCacheWireSpec :
             }
             request.cacheControlCount() shouldBe 2
             // The options Spring AI set are still there.
-            request.get("model").asText() shouldBe "anthropic/claude-sonnet-4-5"
+            request.get("model").asText() shouldBe model
             request.get("max_completion_tokens").asInt() shouldBe 1024
             request.get("tools").size() shouldBe 1
         }
@@ -259,6 +264,22 @@ class RequestyPromptCacheWireSpec :
                 otherProvider.body shouldBe baseline.body
                 otherProvider.framing shouldBe baseline.framing
                 otherProvider.body.contains("cache_control") shouldBe false
+            }
+
+            "$mode, a policy added by a custom model pattern on Requesty with 1h: the body carries 1h markers" {
+                val policy = "policy/sonnet-with-fallback"
+                val sent =
+                    send(
+                        chatClient(
+                            PromptCacheTtl.ONE_HOUR,
+                            requesty = true,
+                            modelName = policy,
+                            modelPattern = "(?i)claude|^policy/sonnet-with-fallback$",
+                        ),
+                        streaming,
+                    )
+
+                assertOneHourMarkers(sent.body, model = policy)
             }
 
             "$mode, a non-Claude model on Requesty with 1h: the body is byte-for-byte the one sent before the setting existed" {
