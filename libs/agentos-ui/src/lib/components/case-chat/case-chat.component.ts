@@ -1516,10 +1516,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Asks a side question: the answer shows in the aside, and neither the question nor the answer reaches the case.
    * Does nothing the case cannot take (ended, gone) or while an upload or a recording is under way, like a send;
    * an empty question keeps the text, to be completed.
+   *
+   * Only an answer clears the composer, and only if it still holds this same /btw: on a failure, or for a question
+   * too long to be sent, the text stays, to be asked again or shortened.
    */
   private askSideQuestion(question: string): void {
     if (!question || this.composerClosed() || this.attachments.isUploading() || this.voice.isBusy()) return
-    this.sideQuestions.ask(this.caseId, question)
+    const submitted = this.inputValue()
+    this.sideQuestions.ask(this.caseId, question, () => {
+      if (this.inputValue() === submitted) this.clearComposer()
+    })
+  }
+
+  private clearComposer(): void {
     this.inputValue.set('')
     const input = this.composerInput()?.nativeElement
     if (input) {

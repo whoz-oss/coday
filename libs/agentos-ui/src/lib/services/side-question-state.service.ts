@@ -3,6 +3,12 @@ import { computed, inject, Injectable, OnDestroy, signal } from '@angular/core'
 import { Subscription } from 'rxjs'
 import { SideQuestionApiService } from './side-question-api.service'
 
+/** The longest question the server accepts, once trimmed (`CaseSideQuestionController.MAX_QUESTION_LENGTH`). */
+export const SIDE_QUESTION_MAX_LENGTH = 4000
+
+/** How much of a question too long to be asked the aside shows. */
+const TOO_LONG_PREVIEW_LENGTH = 280
+
 /** What the user is told when a side question fails, by HTTP status. The server's own message is never shown. */
 export function sideQuestionErrorMessage(err: unknown): string {
   const status = err instanceof HttpErrorResponse ? err.status : undefined
@@ -13,7 +19,7 @@ export function sideQuestionErrorMessage(err: unknown): string {
     case 404:
       return 'This case is no longer available.'
     case 409:
-      return 'No AI model is available to answer: ask an administrator to configure a default model.'
+      return 'This question cannot be answered now: no AI model is available, or this case has reached its run cost limit.'
     case 502:
       return 'The model could not answer. Try again.'
     default:
@@ -45,21 +51,35 @@ export class SideQuestionStateService implements OnDestroy {
   /** Bumped by every [ask] and [dismiss]: a response of an older one is stale. */
   private generation = 0
 
-  /** Asks [question] about the case [caseId], replacing the aside that was shown. A blank question is ignored. */
-  ask(caseId: string, question: string): void {
+  /**
+   * Asks [question] about the case [caseId], replacing the aside that was shown. A blank question is ignored; one
+   * longer than [SIDE_QUESTION_MAX_LENGTH] is not sent, the aside says why. [onAnswered] is called when the answer
+   * arrives, and never on a failure or once the aside was replaced or dismissed.
+   */
+  ask(caseId: string, question: string, onAnswered?: () => void): void {
     const text = question.trim()
     if (!text) return
     this.cancelRequest()
     const generation = ++this.generation
+    this.answer.set(null)
+    if (text.length > SIDE_QUESTION_MAX_LENGTH) {
+      this.question.set(text.length > TOO_LONG_PREVIEW_LENGTH ? `${text.slice(0, TOO_LONG_PREVIEW_LENGTH)}…` : text)
+      this.pending.set(false)
+      this.error.set(
+        `This question is too long (${text.length} characters): a side question has at most ` +
+          `${SIDE_QUESTION_MAX_LENGTH} characters. Shorten it and ask again.`
+      )
+      return
+    }
     this.question.set(text)
     this.pending.set(true)
-    this.answer.set(null)
     this.error.set(null)
     this.subscription = this.api.ask(caseId, text).subscribe({
       next: (response) => {
         if (generation !== this.generation) return
         this.answer.set(response.answer)
         this.pending.set(false)
+        onAnswered?.()
       },
       error: (err: unknown) => {
         if (generation !== this.generation) return

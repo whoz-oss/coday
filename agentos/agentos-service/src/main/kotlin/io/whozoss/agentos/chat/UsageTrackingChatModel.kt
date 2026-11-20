@@ -40,6 +40,12 @@ import java.util.concurrent.atomic.AtomicReference
  * summary never ends on a dropped tool call, and it carries [MAX_ITERATIONS_REACHED] in its
  * metadata so the agent can tell the user it stopped early. A response without tool calls at
  * that point completes the run normally.
+ *
+ * With [runTools] false, no tool is ever executed: a response that asks for tools is returned as it is, after
+ * accounting. It is the switch of the calls that must not change anything (the side questions); Spring AI's
+ * `internalToolExecutionEnabled` flag is not enough, since this class executes the tools itself.
+ *
+ * [onRequest] sees the prompt of every request sent to the provider, tool rounds included, before it is sent.
  */
 class UsageTrackingChatModel(
     private val delegate: ChatModel,
@@ -48,6 +54,8 @@ class UsageTrackingChatModel(
     private val model: AiModel,
     private val toolManager: ToolCallingManager = DefaultToolCallingManager.builder().build(),
     private val maxToolRounds: Int = LimitsConfigProperties().agentMaxIterations,
+    private val runTools: Boolean = true,
+    private val onRequest: ((Prompt) -> Unit)? = null,
 ) : ChatModel by delegate {
     /**
      * Kotlin `by delegate` does not forward Java interface default methods: without this override,
@@ -88,7 +96,7 @@ class UsageTrackingChatModel(
     ): ChatResponse {
         val response = trackedCall(prompt)
         return when {
-            !response.hasToolCalls() -> {
+            !response.hasToolCalls() || !runTools -> {
                 response
             }
 
@@ -110,6 +118,7 @@ class UsageTrackingChatModel(
 
     private fun trackedCall(prompt: Prompt): ChatResponse {
         awaitPermission()
+        onRequest?.invoke(prompt)
         return delegate.call(prompt).also { accumulator.record(CostCalculator.extract(it, apiType, model)) }
     }
 
@@ -163,7 +172,7 @@ class UsageTrackingChatModel(
                 Flux.defer {
                     val response = aggregated.get()
                     when {
-                        response == null || !response.hasToolCalls() -> {
+                        response == null || !response.hasToolCalls() || !runTools -> {
                             Flux.empty()
                         }
 
@@ -196,7 +205,12 @@ class UsageTrackingChatModel(
         val lastUsage = AtomicReference<LlmUsage?>(null)
         return Mono
             .fromFuture(accumulator.beforeCall())
-            .thenMany(Flux.defer { delegate.stream(prompt) })
+            .thenMany(
+                Flux.defer {
+                    onRequest?.invoke(prompt)
+                    delegate.stream(prompt)
+                },
+            )
             .doOnNext { response ->
                 val usage = CostCalculator.extract(response, apiType, model)
                 if (usage != LlmUsage.ZERO) lastUsage.set(usage)

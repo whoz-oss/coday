@@ -37,7 +37,7 @@ export class CaseSideQuestionControllerService extends BaseService {
 
   /**
    * Ask a side question about a case
-   * POST /api/cases/{caseId}/side-questions: answers a quick question from the conversation of the case, without tools. Nothing is persisted or broadcast, and a running turn is not interrupted. 400 for a blank or too long question, 409 when the namespace has no default AI model, 502 when the model fails to answer.
+   * POST /api/cases/{caseId}/side-questions: answers a quick question from the conversation of the case, without running any tool. Nothing is added to the case or broadcast, and a running turn is not interrupted; its LLM usage is recorded on the case and counts toward its run cost. 400 for a blank or too long question, 409 when the namespace has no default AI model or the case has reached its run cost limit, 502 when the model fails to answer.
    * @param caseId
    * @param sideQuestionRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.

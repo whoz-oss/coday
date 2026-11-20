@@ -1649,10 +1649,12 @@ paths:
   /api/cases/{caseId}/side-questions:
     post:
       description: "POST /api/cases/{caseId}/side-questions: answers a quick question\
-        \ from the conversation of the case, without tools. Nothing is persisted or\
-        \ broadcast, and a running turn is not interrupted. 400 for a blank or too\
-        \ long question, 409 when the namespace has no default AI model, 502 when\
-        \ the model fails to answer."
+        \ from the conversation of the case, without running any tool. Nothing is\
+        \ added to the case or broadcast, and a running turn is not interrupted; its\
+        \ LLM usage is recorded on the case and counts toward its run cost. 400 for\
+        \ a blank or too long question, 409 when the namespace has no default AI model\
+        \ or the case has reached its run cost limit, 502 when the model fails to\
+        \ answer."
       operationId: askSideQuestionCaseSideQuestion
       parameters:
       - in: path

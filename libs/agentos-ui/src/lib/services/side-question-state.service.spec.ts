@@ -2,7 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http'
 import { TestBed } from '@angular/core/testing'
 import { Subject, throwError } from 'rxjs'
 import { SideQuestionApiService } from './side-question-api.service'
-import { SideQuestionStateService, sideQuestionErrorMessage } from './side-question-state.service'
+import {
+  SIDE_QUESTION_MAX_LENGTH,
+  SideQuestionStateService,
+  sideQuestionErrorMessage,
+} from './side-question-state.service'
 
 describe('SideQuestionStateService', () => {
   let api: { ask: jest.Mock }
@@ -56,6 +60,57 @@ describe('SideQuestionStateService', () => {
     expect(service.answer()).toBeNull()
     expect(service.error()).toBe('The model could not answer. Try again.')
     expect(service.question()).toBe('q')
+  })
+
+  it('calls back on the answer only, never on a failure', () => {
+    const answered = jest.fn()
+    const response = new Subject<{ answer: string }>()
+    api.ask.mockReturnValue(response)
+    service.ask('c-1', 'q', answered)
+    expect(answered).not.toHaveBeenCalled()
+
+    response.next({ answer: 'a' })
+    expect(answered).toHaveBeenCalledTimes(1)
+
+    const failing = jest.fn()
+    api.ask.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 502 })))
+    service.ask('c-1', 'q2', failing)
+    expect(failing).not.toHaveBeenCalled()
+  })
+
+  it('does not call back a replaced question', () => {
+    const answered = jest.fn()
+    const first = new Subject<{ answer: string }>()
+    api.ask.mockReturnValueOnce(first).mockReturnValueOnce(new Subject())
+    service.ask('c-1', 'first', answered)
+    service.ask('c-1', 'second')
+
+    first.next({ answer: 'stale' })
+
+    expect(answered).not.toHaveBeenCalled()
+  })
+
+  it('accepts a question of exactly the maximum length once trimmed', () => {
+    api.ask.mockReturnValue(new Subject())
+
+    service.ask('c-1', `  ${'a'.repeat(SIDE_QUESTION_MAX_LENGTH)}  `)
+
+    expect(api.ask).toHaveBeenCalledWith('c-1', 'a'.repeat(SIDE_QUESTION_MAX_LENGTH))
+    expect(service.error()).toBeNull()
+  })
+
+  it('sends no question longer than the maximum and says why in the aside', () => {
+    const answered = jest.fn()
+
+    service.ask('c-1', 'a'.repeat(SIDE_QUESTION_MAX_LENGTH + 1), answered)
+
+    expect(api.ask).not.toHaveBeenCalled()
+    expect(answered).not.toHaveBeenCalled()
+    expect(service.visible()).toBe(true)
+    expect(service.pending()).toBe(false)
+    expect(service.error()).toContain('too long')
+    expect(service.error()).toContain(`${SIDE_QUESTION_MAX_LENGTH}`)
+    expect(service.question()!.length).toBeLessThan(SIDE_QUESTION_MAX_LENGTH)
   })
 
   it('ignores a blank question', () => {
@@ -130,7 +185,7 @@ describe('SideQuestionStateService', () => {
   it('a new question after an error clears it', () => {
     api.ask.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })))
     service.ask('c-1', 'q1')
-    expect(service.error()).toContain('No AI model')
+    expect(service.error()).toContain('no AI model is available')
 
     const response = new Subject<{ answer: string }>()
     api.ask.mockReturnValueOnce(response)
@@ -158,7 +213,8 @@ describe('sideQuestionErrorMessage()', () => {
     expect(message(400)).toContain('empty or too long')
     expect(message(403)).toContain('no longer available')
     expect(message(404)).toContain('no longer available')
-    expect(message(409)).toContain('No AI model')
+    expect(message(409)).toContain('no AI model is available')
+    expect(message(409)).toContain('run cost limit')
     expect(message(502)).toContain('could not answer')
   })
 

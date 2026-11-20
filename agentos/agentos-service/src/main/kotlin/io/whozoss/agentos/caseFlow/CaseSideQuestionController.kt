@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
@@ -47,14 +48,16 @@ data class SideQuestionResponse(
 @RestController
 class CaseSideQuestionController(
     private val sideQuestionService: CaseSideQuestionService,
+    private val userService: UserService,
 ) {
     @Operation(
         summary = "Ask a side question about a case",
         description =
             "POST /api/cases/{caseId}/side-questions: answers a quick question from the conversation of the case, " +
-                "without tools. Nothing is persisted or broadcast, and a running turn is not interrupted. " +
-                "400 for a blank or too long question, 409 when the namespace has no default AI model, " +
-                "502 when the model fails to answer.",
+                "without running any tool. Nothing is added to the case or broadcast, and a running turn is not " +
+                "interrupted; its LLM usage is recorded on the case and counts toward its run cost. " +
+                "400 for a blank or too long question, 409 when the namespace has no default AI model or the case " +
+                "has reached its run cost limit, 502 when the model fails to answer.",
     )
     @PostMapping(
         "/api/cases/{caseId}/side-questions",
@@ -74,7 +77,8 @@ class CaseSideQuestionController(
         }
         // The question is the user's text: it stays out of the logs.
         logger.info { "Side question asked on case $caseId (${question.length} chars)" }
-        return SideQuestionResponse(answer = sideQuestionService.answer(caseId, question))
+        val userId = userService.getCurrentUser().id
+        return SideQuestionResponse(answer = sideQuestionService.answer(caseId, question, userId))
     }
 
     companion object : KLogging() {
