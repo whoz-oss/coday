@@ -107,6 +107,8 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { GlobalStreamService } from '../../services/global-stream.service'
+import { WizzCompletionCorrelator } from './wizz-completion'
 
 export interface ToolCall {
   requestId: string
@@ -246,6 +248,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly caseState = inject(CaseStateService)
   private readonly oauthService = inject(OAuthAgentosService)
   private readonly userState = inject(UserStateService)
+  private readonly globalStream = inject(GlobalStreamService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -327,6 +330,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
+
+  /** Local-only completion effect; never persisted or reconstructed from case history. */
+  protected readonly wizzEnabled = signal(false)
+  protected readonly wizzAnimating = signal(false)
+  private wizzCompletion = new WizzCompletionCorrelator(this.caseId, this.namespaceId)
+  private wizzRestartFrame: number | null = null
+  private wizzRestartActivationFrame: number | null = null
+  private wizzGeneration = 0
 
   /**
    * Pre-computed markdown HTML per event id.
@@ -981,6 +992,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.voiceCapability.load()
+    this.globalStream.caseEvents$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event.type !== 'AgentFinishedEvent') return
+      this.playWizzFor(this.wizzCompletion.observeLiveCompletion(event as AgentFinishedEvent, this.events(), this.wizzEnabled()))
+    })
     this.connectSse()
 
     // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
@@ -999,6 +1014,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
     }
+    this.clearWizz()
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
   }
@@ -1048,6 +1064,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * after CLOSED, so a backend that has come back up needs this (or a page reload) to be seen.
    */
   protected retryStream(): void {
+    this.clearWizz()
     this.dropCaseProbe()
     this.streamUnavailable.set(false)
     this.caseGone.set(false)
@@ -1125,6 +1142,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
+          this.playWizzFor(this.wizzCompletion.reconcile(this.events()))
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1283,6 +1301,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       const closed = this.eventSource?.readyState === EVENT_SOURCE_CLOSED
       if (closed) console.warn('[AgentOS SSE] stream closed for case', this.caseId)
       this.zone.run(() => {
+        this.clearWizz()
         this.isRunning.set(false)
         // Do not mark terminal on transport error: EventSource may reconnect.
         // CLOSED is the exception — the browser will not retry, so say the stream is gone
@@ -1297,6 +1316,53 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
   private anyToolResponseThisTurn = false
+
+  protected toggleWizz(): void {
+    const enabled = !this.wizzEnabled()
+    this.wizzEnabled.set(enabled)
+    if (!enabled) this.clearWizz()
+  }
+
+  /** Removes only this panel's finite effect; no scroll or focus state is touched. */
+  protected onWizzAnimationEnd(event: AnimationEvent): void {
+    if (
+      event.target !== event.currentTarget ||
+      (event.animationName !== 'case-chat-wizz' && event.animationName !== 'case-chat-wizz-highlight')
+    ) {
+      return
+    }
+    this.wizzAnimating.set(false)
+  }
+
+  private playWizzFor(completionIds: string[]): void {
+    if (completionIds.length === 0 || !this.wizzEnabled()) return
+    const generation = this.wizzGeneration
+    if (this.wizzRestartFrame !== null) cancelAnimationFrame(this.wizzRestartFrame)
+    if (this.wizzRestartActivationFrame !== null) cancelAnimationFrame(this.wizzRestartActivationFrame)
+    this.wizzAnimating.set(false)
+    // Keep one rendered frame without the class before restoring it, so a second answer reliably
+    // restarts the finite CSS animation rather than being coalesced with the first one.
+    this.wizzRestartFrame = requestAnimationFrame(() => {
+      this.wizzRestartFrame = null
+      this.wizzRestartActivationFrame = requestAnimationFrame(() => {
+        this.wizzRestartActivationFrame = null
+        if (generation === this.wizzGeneration && this.wizzEnabled()) this.wizzAnimating.set(true)
+      })
+    })
+  }
+
+  private clearWizz(): void {
+    this.wizzCompletion.clearPending()
+    if (this.wizzRestartFrame !== null) {
+      cancelAnimationFrame(this.wizzRestartFrame)
+      this.wizzRestartFrame = null
+    }
+    if (this.wizzRestartActivationFrame !== null) {
+      cancelAnimationFrame(this.wizzRestartActivationFrame)
+      this.wizzRestartActivationFrame = null
+    }
+    this.wizzAnimating.set(false)
+  }
 
   protected onInput(event: Event): void {
     const input = event.target as HTMLTextAreaElement
@@ -1408,6 +1474,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called when the router reuses this component instance for a different case.
    */
   private reinitialise(): void {
+    this.clearWizz()
+    this.wizzEnabled.set(false)
+    this.wizzGeneration += 1
+    this.wizzCompletion = new WizzCompletionCorrelator(this.caseId, this.namespaceId)
     // Cancel any pending terminal-close timer before reconnecting: a stale timer must
     // not close the freshly created EventSource for the reopened case.
     if (this.terminalCloseTimer !== null) {
