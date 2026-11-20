@@ -107,6 +107,7 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { WizzResponse } from './wizz-response'
 
 export interface ToolCall {
   requestId: string
@@ -327,6 +328,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
+
+  /** Optional, session-local feedback for an eligible live agent response. */
+  protected readonly wizzEnabled = signal(false)
+  protected readonly wizzAnimation = signal<'a' | 'b' | null>(null)
+  private readonly wizzResponse = new WizzResponse()
 
   /**
    * Pre-computed markdown HTML per event id.
@@ -995,6 +1001,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.clearWizz()
     if (this.terminalCloseTimer !== null) {
       clearTimeout(this.terminalCloseTimer)
       this.terminalCloseTimer = null
@@ -1048,6 +1055,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * after CLOSED, so a backend that has come back up needs this (or a page reload) to be seen.
    */
   protected retryStream(): void {
+    this.wizzResponse.reset()
     this.dropCaseProbe()
     this.streamUnavailable.set(false)
     this.caseGone.set(false)
@@ -1086,12 +1094,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private connectSse(): void {
     const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
+    const caseIdAtConnection = this.caseId
 
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
+    const source = this.eventSource
 
     // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
     // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
     const handler = (msg: globalThis.MessageEvent<string>) => {
+      if (this.eventSource !== source || this.caseId !== caseIdAtConnection) return
       const sseEventName = (msg as unknown as { type?: string }).type
       const raw = msg.data
 
@@ -1113,9 +1124,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
+          let messageText = ''
           if (event.type === 'MessageEvent') {
             const msg = event as CaseMessageEvent
             const text = this.extractText(msg)
+            messageText = text
             if (!this.messageHtmlCache.has(event.id)) {
               this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
             }
@@ -1125,6 +1138,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
+
+          if (this.wizzResponse.consume(event, messageText) && this.wizzEnabled()) {
+            this.startWizz()
+          }
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1280,9 +1297,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
 
     this.eventSource.onerror = () => {
-      const closed = this.eventSource?.readyState === EVENT_SOURCE_CLOSED
+      if (this.eventSource !== source || this.caseId !== caseIdAtConnection) return
+      const closed = source.readyState === EVENT_SOURCE_CLOSED
       if (closed) console.warn('[AgentOS SSE] stream closed for case', this.caseId)
       this.zone.run(() => {
+        this.wizzResponse.reset()
         this.isRunning.set(false)
         // Do not mark terminal on transport error: EventSource may reconnect.
         // CLOSED is the exception — the browser will not retry, so say the stream is gone
@@ -1293,6 +1312,28 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         }
       })
     }
+  }
+
+  protected toggleWizz(): void {
+    const enabled = !this.wizzEnabled()
+    this.wizzEnabled.set(enabled)
+    this.wizzResponse.setEnabled(enabled)
+    if (!enabled) this.clearWizz()
+  }
+
+  protected finishWizz(event: AnimationEvent): void {
+    const animation = event.animationName.endsWith('-a') ? 'a' : event.animationName.endsWith('-b') ? 'b' : null
+    if (animation && this.wizzAnimation() === animation) this.wizzAnimation.set(null)
+  }
+
+  private startWizz(): void {
+    // Alternating names restarts a second completion without forcing layout reads.
+    this.wizzAnimation.set(this.wizzAnimation() === 'a' ? 'b' : 'a')
+  }
+
+  private clearWizz(): void {
+    this.wizzResponse.reset()
+    this.wizzAnimation.set(null)
   }
 
   /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
@@ -1416,6 +1457,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.eventSource = null
+    this.clearWizz()
+    this.wizzEnabled.set(false)
     this.dropCaseProbe()
     this.streamUnavailable.set(false)
     this.caseGone.set(false)
