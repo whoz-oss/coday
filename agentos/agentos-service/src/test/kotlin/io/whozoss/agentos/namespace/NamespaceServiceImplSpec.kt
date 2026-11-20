@@ -12,12 +12,14 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID.randomUUID
 
@@ -36,14 +38,16 @@ class NamespaceServiceImplSpec :
         val permissionService = mockk<PermissionService>()
         val userGroupRepository = mockk<io.whozoss.agentos.userGroup.UserGroupRepository>(relaxed = true)
         val agentConfigRepository = mockk<AgentConfigRepository>(relaxed = true)
-        val service =
+        fun serviceWithDefault(adminCaseListingDefault: AdminCaseListing) =
             NamespaceServiceImpl(
                 namespaceRepository,
                 permissionService,
                 userGroupRepository,
                 agentConfigRepository,
                 LimitsConfigProperties(),
+                CaseConfigProperties(adminCaseListingDefault = adminCaseListingDefault),
             )
+        val service = serviceWithDefault(adminCaseListingDefault = AdminCaseListing.OWN)
 
         val userId = randomUUID().toString()
 
@@ -76,6 +80,38 @@ class NamespaceServiceImplSpec :
             } returns emptyList()
 
             service.findIdsVisibleTo(userId, Action.READ) shouldBe emptyList()
+        }
+
+        // -------------------------------------------------------------------------
+        // resolveAdminCaseListing
+        // -------------------------------------------------------------------------
+
+        val values = AdminCaseListing.entries
+        // Every override (including none) against every platform default: the override always wins.
+        (values.map<AdminCaseListing, AdminCaseListing?> { it } + null).forEach { override ->
+            values.forEach { platformDefault ->
+                val expected = override ?: platformDefault
+                "resolveAdminCaseListing is $expected for override=$override and platform default=$platformDefault" {
+                    val namespaceId = randomUUID()
+                    every { namespaceRepository.findByIds(listOf(namespaceId), false) } returns
+                        listOf(Namespace(metadata = EntityMetadata(id = namespaceId), name = "ns", adminCaseListing = override))
+
+                    serviceWithDefault(platformDefault).resolveAdminCaseListing(namespaceId) shouldBe expected
+                }
+
+                "resolveAdminCaseListing of a namespace in hand is $expected for override=$override and default=$platformDefault" {
+                    val namespace = Namespace(name = "ns", adminCaseListing = override)
+
+                    serviceWithDefault(platformDefault).resolveAdminCaseListing(namespace) shouldBe expected
+                }
+            }
+        }
+
+        "resolveAdminCaseListing falls back to the platform default for an unknown namespace" {
+            val namespaceId = randomUUID()
+            every { namespaceRepository.findByIds(listOf(namespaceId), false) } returns emptyList()
+
+            values.forEach { serviceWithDefault(it).resolveAdminCaseListing(namespaceId) shouldBe it }
         }
 
         // -------------------------------------------------------------------------

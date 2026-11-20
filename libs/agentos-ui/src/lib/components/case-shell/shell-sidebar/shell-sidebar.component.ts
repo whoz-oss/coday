@@ -12,7 +12,9 @@ import {
 import { Case, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { CaseDrawerComponent } from '../../case-drawer/case-drawer.component'
 import { ShellUserMenuComponent } from '../shell-user-menu/shell-user-menu.component'
-import { AvatarComponent, BlueprintDirective } from '@whoz-oss/design-system'
+import { AvatarComponent, BlueprintDirective, SegmentedComponent, SegmentedOption } from '@whoz-oss/design-system'
+import { CaseListMode } from '../../../services/case-state.service'
+import { LIST_MODE_HINT, LIST_MODE_OPTIONS } from '../list-mode-options'
 
 /**
  * ShellSidebarComponent — desktop sidebar.
@@ -32,7 +34,7 @@ import { AvatarComponent, BlueprintDirective } from '@whoz-oss/design-system'
  */
 @Component({
   selector: 'agentos-shell-sidebar',
-  imports: [CaseDrawerComponent, ShellUserMenuComponent, BlueprintDirective, AvatarComponent],
+  imports: [CaseDrawerComponent, ShellUserMenuComponent, BlueprintDirective, AvatarComponent, SegmentedComponent],
   templateUrl: './shell-sidebar.component.html',
   styleUrl: './shell-sidebar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -150,6 +152,12 @@ export class ShellSidebarComponent {
   readonly workspaces = input<Record<string, WorkspaceView>>({})
   readonly cases = input.required<Case[]>()
   readonly activeCaseId = input.required<string | null>()
+  /** Whether the compact Mine / All switch is offered (an administrator of a namespace set to SWITCH). */
+  readonly canSwitchListMode = input(false)
+  readonly listMode = input<CaseListMode>('mine')
+
+  protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = LIST_MODE_OPTIONS
+  protected readonly listModeHint = LIST_MODE_HINT
 
   // User menu
   readonly userInitials = input.required<string>()
@@ -166,6 +174,7 @@ export class ShellSidebarComponent {
 
   // Outputs
   readonly collapseRequested = output<void>()
+  readonly listModeChanged = output<CaseListMode>()
   readonly homeClicked = output<void>()
   readonly namespaceSelected = output<NamespaceListItem>()
   readonly nsMenuToggled = output<void>()

@@ -4304,6 +4304,12 @@ components:
           additionalProperties: {}
       required:
       - content
+    AdminCaseListing:
+      type: string
+      enum:
+      - OWN
+      - SWITCH
+      - ALL
     AgentConfig:
       type: object
       properties:
@@ -6044,6 +6050,9 @@ components:
     Namespace:
       type: object
       properties:
+        adminCaseListing:
+          $ref: "#/components/schemas/AdminCaseListing"
+          description: Cases admins see. Null inherits the platform default.
         configPath:
           type: string
           description: "Optional filesystem path to a directory containing base configuration\
@@ -6151,6 +6160,9 @@ components:
     NamespaceListItem:
       type: object
       properties:
+        adminCaseListingEffective:
+          $ref: "#/components/schemas/AdminCaseListing"
+          description: Resolved cases admins see. Read-only.
         configPath:
           type: string
         defaultAgentName:

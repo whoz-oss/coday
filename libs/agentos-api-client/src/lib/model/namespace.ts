@@ -7,8 +7,13 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { AdminCaseListing } from './admin-case-listing'
 
 export interface Namespace {
+  /**
+   * Cases admins see. Null inherits the platform default.
+   */
+  adminCaseListing?: AdminCaseListing
   /**
    * Optional filesystem path to a directory containing base configuration for this namespace (agents, tools, etc.).
    */

@@ -119,6 +119,16 @@
     </div>
 
     <!-- Case list -->
+    @if (canSwitchListMode()) {
+      <div class="shell-sidebar__list-mode" [attr.title]="listModeHint">
+        <ds-segmented
+          [label]="listModeHint"
+          [options]="listModeOptions"
+          [value]="listMode()"
+          (valueChange)="listModeChanged.emit($event)"
+        />
+      </div>
+    }
     <div class="shell-sidebar__cases-scroll">
       <agentos-case-drawer
         [cases]="cases()"

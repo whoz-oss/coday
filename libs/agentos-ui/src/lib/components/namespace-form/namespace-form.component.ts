@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, injec
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { AdminCaseListing, Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 import { DS_PAGE_KIT } from '@whoz-oss/design-system'
 import { UsageConfigurationService } from '../../services/usage-configuration.service'
 import { UserStateService } from '../../services/user-state.service'
@@ -11,6 +11,20 @@ import { absolutePathValidator } from './absolute-path.validator'
 /** The backend stores the maximum tool rounds as an int32 and refuses anything below 1. */
 const MAX_TOOL_ROUNDS_MIN = 1
 const MAX_TOOL_ROUNDS_MAX = 2_147_483_647
+
+/**
+ * What the "Cases visible to admins" select holds: an empty string for the default (an absent override, which the
+ * backend reads as "inherit the platform default"), else the override itself.
+ */
+export type AdminCaseListingChoice = AdminCaseListing | ''
+
+/** The choices of the select, in display order. The first one, the default, carries the empty value. */
+export const ADMIN_CASE_LISTING_OPTIONS: ReadonlyArray<{ value: AdminCaseListingChoice; label: string }> = [
+  { value: '', label: 'Default' },
+  { value: AdminCaseListing.OWN, label: 'Their own cases' },
+  { value: AdminCaseListing.SWITCH, label: 'Their own, with a switch to see all' },
+  { value: AdminCaseListing.ALL, label: 'All cases of the namespace' },
+]
 
 /**
  * NamespaceFormComponent — full-page create / edit form for a namespace.
@@ -90,6 +104,7 @@ export class NamespaceFormComponent implements OnInit {
         Validators.pattern(/^\d+$/),
       ],
     }),
+    adminCaseListing: new FormControl<AdminCaseListingChoice>('', { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -123,6 +138,12 @@ export class NamespaceFormComponent implements OnInit {
   protected get maxToolRoundsControl() {
     return this.form.controls.maxToolRounds
   }
+
+  protected get adminCaseListingControl() {
+    return this.form.controls.adminCaseListing
+  }
+
+  protected readonly adminCaseListingOptions = ADMIN_CASE_LISTING_OPTIONS
 
   /**
    * `type="number"` reports an empty value for anything it cannot parse ("1O0", "--50", "1e"), and the
@@ -182,6 +203,7 @@ export class NamespaceFormComponent implements OnInit {
           this.defaultAgentNameControl.setValue(ns.defaultAgentName ?? '')
           this.runCostThresholdControl.setValue(ns.runCostThreshold ?? null)
           this.maxToolRoundsControl.setValue(ns.maxToolRounds ?? null)
+          this.adminCaseListingControl.setValue(ns.adminCaseListing ?? '')
           this.isLoading.set(false)
         },
         error: () => {
@@ -208,6 +230,8 @@ export class NamespaceFormComponent implements OnInit {
       // emptied field is sent as absent, which is how the backend clears the override on PUT. An
       // untouched field still carries the loaded value, so an unrelated edit never wipes it.
       maxToolRounds: this.maxToolRoundsControl.value ?? undefined,
+      // Same rule: the default is sent as absent (the backend clears the override), any other choice as itself.
+      adminCaseListing: this.adminCaseListingControl.value || undefined,
       // Only a super-admin sends the field. For anyone else the loaded value, spread above, goes back unchanged.
       ...(this.canEditSharedExchangePath() ? { sharedExchangePath: this.sharedExchangePathPayload() } : {}),
     }
