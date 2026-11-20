@@ -25,5 +25,6 @@ export interface MessageEvent {
   llmProvider?: string
   reasoningEffort?: ReasoningEffort
   requestedReasoningEffort?: ReasoningEffort
+  rerunOf?: string
   sessionContext?: { [key: string]: any }
 }

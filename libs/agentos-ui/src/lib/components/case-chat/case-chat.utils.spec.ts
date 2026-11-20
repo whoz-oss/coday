@@ -4,17 +4,24 @@ import {
   AgentRunningEvent,
   AgentSelectedEvent,
   AnswerEvent,
+  CaseEvent,
   CaseStatusEvent,
   CaseStatusEventStatusEnum,
+  MessageEvent as CaseMessageEvent,
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
 } from '@whoz-oss/agentos-api-client'
 import {
+  effectiveConversation,
   findLegitimateAnswer,
   messageAuthorLabel,
   messagingPlatformLabel,
+  isAuthorOf,
+  rerunErrorMessage,
   runningAfter,
   senderLabel,
+  textOfMessage,
+  withText,
 } from './case-chat.utils'
 
 const metadata = { id: '', created: '', modified: '', removed: false }
@@ -227,5 +234,157 @@ describe('runningAfter', () => {
 
   it('does not decide on an event that says nothing about the run', () => {
     expect(runningAfter(question('q1'))).toBeNull()
+  })
+})
+
+/** A message of the log: the text of a user message is its id, unless told otherwise. */
+function message(
+  id: string,
+  role: ActorRoleEnum,
+  rerunOf?: string,
+  content: unknown[] = [{ type: 'Text', content: id }]
+): CaseMessageEvent {
+  return {
+    id,
+    type: 'MessageEvent',
+    caseId: 'c-1',
+    namespaceId: 'ns-1',
+    timestamp: '2026-01-01T00:00:00Z',
+    metadata,
+    actor: { id: role === ActorRoleEnum.USER ? 'u-1' : 'agent-1', role, displayName: id },
+    content,
+    rerunOf,
+  } as unknown as CaseMessageEvent
+}
+
+describe('effectiveConversation', () => {
+  const user = (id: string, rerunOf?: string) => message(id, ActorRoleEnum.USER, rerunOf)
+  const agent = (id: string) => message(id, ActorRoleEnum.AGENT)
+  const ids = (events: CaseEvent[]) => events.map((event) => event.id)
+
+  it('returns the very same list when no message re-runs another one', () => {
+    const events = [user('u1'), agent('a1'), user('u2')]
+
+    expect(effectiveConversation(events)).toBe(events)
+  })
+
+  it('replaces a message and everything recorded after it by its re-run', () => {
+    const events = [user('u0'), agent('a0'), user('u1'), agent('a1'), user('u2', 'u1')]
+
+    expect(ids(effectiveConversation(events))).toEqual(['u0', 'a0', 'u2'])
+  })
+
+  it('keeps going after the re-run: what follows it is part of the conversation', () => {
+    const events = [user('u1'), agent('a1'), user('u2', 'u1'), agent('a2'), user('u3')]
+
+    expect(ids(effectiveConversation(events))).toEqual(['u2', 'a2', 'u3'])
+  })
+
+  it('follows a chain of re-runs, a re-run being re-run itself', () => {
+    const events = [user('u1'), agent('a1'), user('u2', 'u1'), agent('a2'), user('u3', 'u2'), agent('a3')]
+
+    expect(ids(effectiveConversation(events))).toEqual(['u3', 'a3'])
+  })
+
+  it('re-runs the very first message of the case', () => {
+    const events = [user('u1'), agent('a1'), user('u2'), agent('a2'), user('u3', 'u1')]
+
+    expect(ids(effectiveConversation(events))).toEqual(['u3'])
+  })
+
+  it('cuts the orchestration events, the tools, the questions and the sub-cases that followed the message', () => {
+    const running = { ...agentRunning, id: 'run-1' }
+    const finished = { ...agentFinished, id: 'fin-1' }
+    const status = { ...statusEvent(CaseStatusEventStatusEnum.RUNNING), id: 'status-1' }
+    const events = [running, user('u1'), status, question('q1'), agent('a1'), finished, user('u2', 'u1')]
+
+    // What came before the re-run message stays (the first run of the agent), what came after it goes.
+    expect(ids(effectiveConversation(events))).toEqual(['run-1', 'u2'])
+  })
+
+  it('simply adds a re-run whose target is unknown', () => {
+    const events = [user('u1'), agent('a1'), user('u2', 'ghost')]
+
+    expect(ids(effectiveConversation(events))).toEqual(['u1', 'a1', 'u2'])
+  })
+
+  it('simply adds a re-run whose target was already cut by an earlier one', () => {
+    const events = [user('u1'), agent('a1'), user('u2', 'u1'), user('u3', 'u1')]
+
+    expect(ids(effectiveConversation(events))).toEqual(['u2', 'u3'])
+  })
+
+  it('does not take an agent message for a re-run, whatever it carries', () => {
+    const events = [user('u1'), agent('a1'), message('a2', ActorRoleEnum.AGENT, 'u1')]
+
+    expect(effectiveConversation(events)).toBe(events)
+  })
+
+  it('never modifies the log it reads', () => {
+    const events = [user('u1'), agent('a1'), user('u2', 'u1')]
+
+    effectiveConversation(events)
+
+    expect(ids(events)).toEqual(['u1', 'a1', 'u2'])
+  })
+})
+
+describe('textOfMessage and withText', () => {
+  const audio = { type: 'Audio', path: 'voice-messages/v.webm', mimeType: 'audio/webm' }
+  const text = (content: string) => ({ type: 'Text', content })
+
+  it('reads the text parts only, in order', () => {
+    const event = message('u1', ActorRoleEnum.USER, undefined, [audio, text('hello '), text('there')])
+
+    expect(textOfMessage(event)).toBe('hello there')
+  })
+
+  it('puts the new text where the first text part was, drops the other ones, keeps the other parts', () => {
+    const event = message('u1', ActorRoleEnum.USER, undefined, [audio, text('one'), text('two')])
+
+    expect(withText(event, 'new').content).toEqual([audio, text('new')])
+  })
+
+  it('puts the text first in a message that had none', () => {
+    const event = message('u1', ActorRoleEnum.USER, undefined, [audio])
+
+    expect(withText(event, 'new').content).toEqual([text('new'), audio])
+  })
+
+  it('leaves the message it starts from untouched', () => {
+    const event = message('u1', ActorRoleEnum.USER, undefined, [text('old')])
+
+    withText(event, 'new')
+
+    expect(textOfMessage(event)).toBe('old')
+  })
+})
+
+describe('isAuthorOf', () => {
+  const human = (id: string) => ({ id, role: ActorRoleEnum.USER, displayName: 'x' })
+
+  it('is true for the turn of the current user, whatever the letter case of the ids', () => {
+    expect(isAuthorOf(human('u-1'), 'u-1')).toBe(true)
+    expect(isAuthorOf(human('ABCDEF00-0000-0000-0000-000000000001'), 'abcdef00-0000-0000-0000-000000000001')).toBe(true)
+  })
+
+  it('is false for someone else, for an agent and while the current user is not loaded', () => {
+    expect(isAuthorOf(human('u-2'), 'u-1')).toBe(false)
+    expect(isAuthorOf({ id: 'u-1', role: ActorRoleEnum.AGENT, displayName: 'x' }, 'u-1')).toBe(false)
+    expect(isAuthorOf(human('u-1'), null)).toBe(false)
+    expect(isAuthorOf(human('u-1'), undefined)).toBe(false)
+  })
+})
+
+describe('rerunErrorMessage', () => {
+  it('says why the server refused, by status', () => {
+    expect(rerunErrorMessage(400)).toContain('cannot be re-run')
+    expect(rerunErrorMessage(403)).toContain('author')
+    expect(rerunErrorMessage(409)).toContain('run is in progress')
+  })
+
+  it('falls back to a generic message for any other failure', () => {
+    expect(rerunErrorMessage(500)).toContain('could not be sent')
+    expect(rerunErrorMessage(undefined)).toContain('could not be sent')
   })
 })

@@ -1,4 +1,11 @@
-<ds-drawer position="end" [(open)]="filesOpen" drawerWidth="400px" [mobileFullWidth]="true">
+<ds-drawer
+  position="end"
+  [(open)]="filesOpen"
+  [drawerWidth]="drawerWidth.width() + 'px'"
+  [mobileFullWidth]="true"
+  [resizable]="true"
+  (widthChange)="drawerWidth.setWidth($event)"
+>
   <div dsDrawerSide class="case-home__drawer-side">
     @if (filesOpen()) {
       <agentos-exchange-shell

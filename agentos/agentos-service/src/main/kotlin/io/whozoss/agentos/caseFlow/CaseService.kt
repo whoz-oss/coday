@@ -141,6 +141,14 @@ interface CaseService : EntityService<Case, UUID> {
      * it is embedded directly on [io.whozoss.agentos.sdk.caseEvent.MessageEvent.sessionContext]
      * and persisted with the message. Only the last user message's context is injected into
      * the LLM prompt; earlier turns' context is ignored during message conversion.
+     *
+     * [rerunOf] re-runs a previous user message of the case: [content] takes its place and the conversation
+     * restarts from just before it (see [io.whozoss.agentos.sdk.caseEvent.MessageEvent.rerunOf]). The non-text
+     * parts of the replaced message are kept, only its text is replaced. Refused when:
+     * - it comes with [answerToEventId] (`BadRequestException`) or the text is blank (`BadRequestException`)
+     * - the target is not a user message of this case (`BadRequestException`)
+     * - a run is in flight, or the target is no longer part of the conversation (`ConflictException`)
+     * - [actor] is not the author of the target (`AccessDeniedException`)
      */
     fun addMessage(
         caseId: UUID,
@@ -148,6 +156,7 @@ interface CaseService : EntityService<Case, UUID> {
         content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,
         answerToEventId: UUID? = null,
         sessionContext: Map<String, Any?>? = null,
+        rerunOf: UUID? = null,
     )
 
     // ========================================

@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core'
 import { finalize } from 'rxjs'
+import { CODE_VERIFICATION_PRESETS, isCodeVerificationPreset } from './code-verification-presets'
 import {
   FactoryApiError,
   FactoryApiService,
@@ -46,7 +47,10 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 
 /** Helpful early feedback only: registration always uses the canonical backend validator. */
-export function validateStructure(definition: FullWorkflowDefinition): string | null {
+export function validateStructure(
+  definition: FullWorkflowDefinition,
+  newCodeStepIds: ReadonlySet<string> = new Set()
+): string | null {
   if (!SAFE_ID.test(definition.workflowType ?? ''))
     return 'Workflow type: use 1–128 letters, digits, dots, underscores or hyphens, starting with a letter or digit.'
   if (!definition.title?.trim() || definition.title.length > 256) return 'Workflow name must contain 1–256 characters.'
@@ -58,7 +62,19 @@ export function validateStructure(definition: FullWorkflowDefinition): string | 
     if (!SAFE_ID.test(step.id)) return `Invalid block ID: ${step.id}`
     if (!step.name.trim() || step.name.length > 256) return `${step.id}: block name must contain 1–256 characters.`
     if (!step.responsibility?.name?.trim())
-      return `${step.id}: ${step.responsibility?.kind === 'human' ? 'enter a human role.' : 'select an agent (or preserve the existing code responsibility).'}`
+      return `${step.id}: ${
+        step.responsibility?.kind === 'human'
+          ? 'enter a human role.'
+          : step.responsibility?.kind === 'code'
+            ? 'select a code verifier.'
+            : 'select an agent.'
+      }`
+    if (
+      step.responsibility?.kind === 'code' &&
+      newCodeStepIds.has(step.id) &&
+      !isCodeVerificationPreset(step.responsibility.name)
+    )
+      return `${step.id}: select a supported code verifier.`
     if (step.dependsOn?.some((id) => !ids.has(id))) return `${step.id}: missing predecessor.`
     if (new Set(step.dependsOn).size !== (step.dependsOn?.length ?? 0)) return `${step.id}: duplicate predecessor.`
     const contract = explicitContract(step)
@@ -136,6 +152,8 @@ export class WorkflowStepEditorState {
   readonly namespaces = signal<NamespaceOption[]>([])
   readonly namespaceId = signal('')
   readonly agents = signal<string[]>([])
+  readonly codeVerificationPresets = CODE_VERIFICATION_PRESETS
+  private readonly newCodeStepIds = signal<ReadonlySet<string>>(new Set())
   readonly agentsLoading = signal(false)
   readonly discoveryError = signal<string | null>(null)
   private discoverySequence = 0
@@ -164,7 +182,7 @@ export class WorkflowStepEditorState {
       if (error) return error
     }
     const definition = this.preview()
-    return this.structureDirty() && definition ? validateStructure(definition) : null
+    return this.structureDirty() && definition ? validateStructure(definition, this.newCodeStepIds()) : null
   })
   readonly preview = computed(() => {
     const definition = this.definition()
@@ -179,6 +197,7 @@ export class WorkflowStepEditorState {
     this.baseline = { schemaVersion: '1', workflowType: '', version: '', title: '', steps: [] }
     this.definition.set(this.baseline)
     this.targetVersion.set('1.0.0')
+    this.newCodeStepIds.set(new Set())
   }
 
   loadDiscovery(): void {
@@ -214,7 +233,7 @@ export class WorkflowStepEditorState {
     this.changeDefinition({ ...this.definition(), [field]: value })
   }
 
-  addBlock(kind: 'agent' | 'human' = 'agent'): void {
+  addBlock(kind: 'agent' | 'human' | 'code' = 'agent'): void {
     if (!this.editing() || this.saving()) return
     const definition = this.definition()
     if (!definition || (definition.steps?.length ?? 0) >= 500) return
@@ -227,14 +246,36 @@ export class WorkflowStepEditorState {
         ...(definition.steps ?? []),
         {
           id,
-          name: `${kind === 'human' ? 'Human' : 'Agent'} step ${number}`,
+          name: `${kind === 'human' ? 'Human' : kind === 'code' ? 'Code' : 'Agent'} step ${number}`,
           responsibility: { kind, name: '' },
           dependsOn: [],
           ...(kind === 'agent' ? { entry: [], mission: '', exit: [] } : {}),
         },
       ],
     })
+    if (kind === 'code') this.newCodeStepIds.update((ids) => new Set([...ids, id]))
     this.selectedId.set(id)
+  }
+
+  isNewCodeStep(id: string): boolean {
+    return this.newCodeStepIds().has(id)
+  }
+
+  canRemoveSelected(): boolean {
+    const step = this.selected()
+    if (!this.editing() || !step || this.saving()) return false
+    return (
+      step.responsibility?.kind === 'agent' ||
+      step.responsibility?.kind === 'human' ||
+      (step.responsibility?.kind === 'code' &&
+        (this.isNewCodeStep(step.id) || isCodeVerificationPreset(step.responsibility.name)))
+    )
+  }
+
+  setCodeVerification(name: string): void {
+    if (this.selected()?.responsibility?.kind === 'code' && isCodeVerificationPreset(name)) {
+      this.updateBlock({ responsibility: { kind: 'code', name } })
+    }
   }
 
   updateBlock(patch: Partial<FullWorkflowStep>): void {
@@ -278,6 +319,13 @@ export class WorkflowStepEditorState {
         delete drafts[selected.id]
       }
       this.drafts.set(drafts)
+      this.newCodeStepIds.update((ids) => {
+        if (!ids.has(selected.id)) return ids
+        const next = new Set(ids)
+        next.delete(selected.id)
+        next.add(id)
+        return next
+      })
     }
     this.changeDefinition({ ...this.definition(), steps })
     this.selectedId.set(id)
@@ -337,6 +385,19 @@ export class WorkflowStepEditorState {
     }
   }
 
+  addExistingCodeInstructions(): void {
+    const step = this.selected()
+    if (
+      this.editing() &&
+      !this.saving() &&
+      step?.responsibility?.kind === 'code' &&
+      !this.isNewCodeStep(step.id) &&
+      !this.draft()
+    ) {
+      this.setDraft(step.id, { entry: [], mission: step.name, exit: [] })
+    }
+  }
+
   connect(predecessor: string, checked: boolean): void {
     const step = this.selected()
     if (
@@ -354,24 +415,33 @@ export class WorkflowStepEditorState {
 
   removeBlock(): void {
     const selected = this.selected()
-    if (
-      !this.editing() ||
-      !selected ||
-      !['agent', 'human'].includes(selected.responsibility?.kind ?? '') ||
-      this.saving()
-    )
-      return
+    if (!this.canRemoveSelected() || !selected) return
+    const removesCodeStep = selected.responsibility?.kind === 'code'
     const steps =
       this.definition()
         ?.steps?.filter((step) => step.id !== selected.id)
         .map((step) => ({
           ...step,
           dependsOn: step.dependsOn?.filter((id) => id !== selected.id),
+          ...(removesCodeStep && step.decision
+            ? {
+                decision: {
+                  ...step.decision,
+                  routes: step.decision.routes.filter((route) => route.target !== selected.id),
+                },
+              }
+            : {}),
+          ...(removesCodeStep && step.join === selected.id ? { join: undefined } : {}),
           legacyContract: step.dependsOn?.includes(selected.id) ? undefined : step.legacyContract,
         })) ?? []
     const drafts = { ...this.drafts() }
     delete drafts[selected.id]
     this.drafts.set(drafts)
+    this.newCodeStepIds.update((ids) => {
+      const next = new Set(ids)
+      next.delete(selected.id)
+      return next
+    })
     this.changeDefinition({ ...this.definition(), steps })
     this.selectedId.set(steps[0]?.id ?? null)
   }
@@ -405,6 +475,7 @@ export class WorkflowStepEditorState {
           this.structureDirty.set(false)
           this.selectedId.set(definition.steps?.[0]?.id ?? null)
           this.targetVersion.set('')
+          this.newCodeStepIds.set(new Set())
         },
         error: (error: FactoryApiError) => this.error.set(error.message || 'Unable to load workflow definition.'),
       })
@@ -452,6 +523,7 @@ export class WorkflowStepEditorState {
       this.definition.set(this.baseline)
       this.structureDirty.set(false)
       this.targetVersion.set(this.creating() ? '1.0.0' : '')
+      this.newCodeStepIds.set(new Set())
       this.selectedId.set(this.baseline?.steps?.[0]?.id ?? null)
       this.error.set(null)
       this.saved.set(null)
@@ -506,6 +578,7 @@ export class WorkflowStepEditorState {
           this.drafts.set({})
           this.structureDirty.set(false)
           this.creating.set(false)
+          this.newCodeStepIds.set(new Set())
           this.targetVersion.set('')
         },
         error: (error: FactoryApiError) => {

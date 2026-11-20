@@ -10,6 +10,12 @@ export class SessionPageState {
   private readonly namespace = signal<string | undefined>(undefined)
 
   readonly selection = signal<BlockSelection | null>(null)
+  /**
+   * Automatic selection follows the current backend phase after every live
+   * projection update. A selection made from the diagram or timeline pins the
+   * requested step instead.
+   */
+  private readonly selectionPinnedByUser = signal(false)
   readonly session = computed(() => this.store.session(this.runId()))
   readonly parentRun = computed(() => this.store.parentRunFor(this.runId()))
   readonly run = computed(() => this.store.runs().find((candidate) => candidate.id === this.runId()))
@@ -58,6 +64,7 @@ export class SessionPageState {
     this.runId.set(runId)
     this.namespace.set(namespaceId)
     this.selection.set(null)
+    this.selectionPinnedByUser.set(false)
     if (runId) {
       this.store.selectSession(runId, namespaceId)
       if (runId.includes('__f')) {
@@ -68,10 +75,24 @@ export class SessionPageState {
 
   selectDefaultStep(): void {
     const stepId = this.session()?.phase.stepId
-    if (stepId && !this.selection()) this.selection.set({ stepId })
+    const currentSelection = this.selection()
+    // Retain the selection object for an unchanged active step. Consumers use
+    // its identity as a context-change signal (for example, EventLog resets
+    // filters), so every SSE projection must not look like a new selection.
+    if (stepId && !this.selectionPinnedByUser() && currentSelection?.stepId !== stepId) {
+      this.selection.set({ stepId })
+    }
+  }
+
+  selectStep(stepId: string): void {
+    this.selectionPinnedByUser.set(true)
+    this.selection.set({ stepId })
   }
 
   reconcileSelection(): void {
+    // Automatic selection follows the current phase directly; only a pinned
+    // user selection needs validity reconciliation against the refreshed view.
+    if (!this.selectionPinnedByUser()) return
     const session = this.session()
     const selection = this.selection()
     if (!session || !selection) return
@@ -91,6 +112,7 @@ export class SessionPageState {
   }
 
   selectBlock(block: TimelineBlock): void {
+    this.selectionPinnedByUser.set(true)
     const selection: BlockSelection = { stepId: block.stepId ?? block.label }
     if (block.kind === 'launch_request') selection.kind = 'launch_request'
     if (block.attemptId) selection.attemptId = block.attemptId

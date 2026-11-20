@@ -9,6 +9,144 @@ import { ExchangeScope } from '../../services/exchange-state.service'
 /** Maximum number of files attachable to a single message. */
 export const MAX_ATTACHMENTS = 10
 
+// ── The lines a message carries for its files: the one place where their format lives ──────────────────────────
+//
+// A message has no attachment metadata: the composer appends technical lines to its text, which is what the agent
+// reads to know which files to consult.
+//
+//   [Files attached to the case exchange: a.pdf, b.png]
+//   [Files attached to the namespace exchange: c.md]
+//   [Files referenced: namespace:docs/readme.md, case:notes/todo.md]
+//
+// They form one block, a line each, joined by a newline, and the block is separated from the text by a blank line
+// (or is the whole content when there is no text). Writers (buildAttachmentMention, buildReferenceMention, the
+// composers) and readers (splitAttachmentMentions) all go through the helpers below: change the format here only.
+
+const ATTACHED_OPEN = '[Files attached to the '
+const ATTACHED_MIDDLE = ' exchange: '
+const REFERENCED_OPEN = '[Files referenced: '
+const LINE_CLOSE = ']'
+const ITEM_SEPARATOR = ', '
+const LINE_SEPARATOR = '\n'
+const BLOCK_SEPARATOR = '\n\n'
+
+/** Word that names an exchange in the lines of a message. */
+export type MentionScopeWord = 'case' | 'namespace'
+
+const MENTION_SCOPES: ExchangeScope[] = [ExchangeFileEntryScopeEnum.CASE, ExchangeFileEntryScopeEnum.NAMESPACE]
+
+export function mentionScopeWord(scope: ExchangeScope): MentionScopeWord {
+  return scope === ExchangeFileEntryScopeEnum.CASE ? 'case' : 'namespace'
+}
+
+/** `[Files attached to the case exchange: a.pdf, b.png]` */
+export function attachedMentionLine(scope: ExchangeScope, names: string[]): string {
+  return `${ATTACHED_OPEN}${mentionScopeWord(scope)}${ATTACHED_MIDDLE}${names.join(ITEM_SEPARATOR)}${LINE_CLOSE}`
+}
+
+/** One entry of a referenced-files line: `namespace:docs/readme.md`. */
+export function referencedMentionEntry(scope: ExchangeScope, path: string): string {
+  return `${mentionScopeWord(scope)}:${path}`
+}
+
+/** `[Files referenced: namespace:docs/readme.md, case:notes/todo.md]` */
+export function referencedMentionLine(entries: string[]): string {
+  return `${REFERENCED_OPEN}${entries.join(ITEM_SEPARATOR)}${LINE_CLOSE}`
+}
+
+/** The lines of a message, as one block. */
+export function joinMentionLines(lines: string[]): string {
+  return lines.join(LINE_SEPARATOR)
+}
+
+/**
+ * The content of a message: its text, then the block of file lines. Without a block the text is the content, without
+ * text the block is.
+ */
+export function joinAttachmentMentions(body: string, mentions: string): string {
+  if (!mentions) return body
+  return body ? `${body}${BLOCK_SEPARATOR}${mentions}` : mentions
+}
+
+/** A file a message carries, as its lines tell it. */
+export interface MentionedFile {
+  /** Name shown on the chip: the file name, without its directory. */
+  name: string
+  /** Path in its exchange, as the agent reads it. */
+  path: string
+  scope: ExchangeScope
+  /** Uploaded with the message, or picked from an exchange. */
+  kind: 'attached' | 'referenced'
+}
+
+export interface AttachmentMentionSplit {
+  /** What the user wrote. */
+  body: string
+  /** The files of the block, in order. */
+  files: MentionedFile[]
+  /** The block as it is in the content, to be put back with [joinAttachmentMentions]. Empty when there is none. */
+  mentions: string
+}
+
+function scopeOfWord(word: string): ExchangeScope | null {
+  return MENTION_SCOPES.find((scope) => mentionScopeWord(scope) === word) ?? null
+}
+
+/** The files of one line, or null when the line is not exactly one of the lines the composer writes. */
+function parseMentionLine(line: string): MentionedFile[] | null {
+  if (!line.endsWith(LINE_CLOSE)) return null
+  if (line.startsWith(ATTACHED_OPEN)) {
+    const inner = line.slice(ATTACHED_OPEN.length, -LINE_CLOSE.length)
+    for (const scope of MENTION_SCOPES) {
+      const prefix = `${mentionScopeWord(scope)}${ATTACHED_MIDDLE}`
+      if (!inner.startsWith(prefix)) continue
+      const names = inner.slice(prefix.length).split(ITEM_SEPARATOR)
+      if (names.some((name) => name.length === 0)) return null
+      return names.map((name) => ({ name, path: name, scope, kind: 'attached' as const }))
+    }
+    return null
+  }
+  if (line.startsWith(REFERENCED_OPEN)) {
+    const files: MentionedFile[] = []
+    for (const entry of line.slice(REFERENCED_OPEN.length, -LINE_CLOSE.length).split(ITEM_SEPARATOR)) {
+      const colon = entry.indexOf(':')
+      const scope = colon > 0 ? scopeOfWord(entry.slice(0, colon)) : null
+      const path = entry.slice(colon + 1)
+      if (!scope || !path) return null
+      files.push({ name: path.split('/').pop() || path, path, scope, kind: 'referenced' })
+    }
+    return files
+  }
+  return null
+}
+
+/**
+ * Separates the text a user wrote from the block of file lines the composer put at its end.
+ *
+ * Only the final block is read, and only when every one of its lines is exactly one of the lines above: a text
+ * without such a block, or with a line that merely looks like one (in the middle of the text, or slightly different),
+ * is returned as it is, with no file. So that `joinAttachmentMentions(body, mentions)` gives back [text] exactly,
+ * which is checked before answering.
+ *
+ * Limits: a file name that holds the separator `, ` is read as several files, and what an older version wrote in
+ * another format is not recognised (it stays in the text).
+ */
+export function splitAttachmentMentions(text: string): AttachmentMentionSplit {
+  const unchanged: AttachmentMentionSplit = { body: text, files: [], mentions: '' }
+  const separator = text.lastIndexOf(BLOCK_SEPARATOR)
+  const body = separator < 0 ? '' : text.slice(0, separator)
+  const mentions = separator < 0 ? text : text.slice(separator + BLOCK_SEPARATOR.length)
+  if (!mentions) return unchanged
+  const files: MentionedFile[] = []
+  for (const line of mentions.split(LINE_SEPARATOR)) {
+    const parsed = parseMentionLine(line)
+    if (!parsed) return unchanged
+    files.push(...parsed)
+  }
+  if (joinAttachmentMentions(body, mentions) !== text) return unchanged
+  return { body, files, mentions }
+}
+
 export type AttachmentStatus = 'pending' | 'uploading' | 'uploaded' | 'error'
 
 /** A file staged in the composer, not yet (or partially) uploaded to the exchange. */
@@ -52,11 +190,11 @@ export function buildAttachmentMention(attachments: PendingAttachment[]): string
   const lines: string[] = []
   const caseNames = namesFor(ExchangeFileEntryScopeEnum.CASE)
   const namespaceNames = namesFor(ExchangeFileEntryScopeEnum.NAMESPACE)
-  if (caseNames.length > 0) lines.push(`[Files attached to the case exchange: ${caseNames.join(', ')}]`)
+  if (caseNames.length > 0) lines.push(attachedMentionLine(ExchangeFileEntryScopeEnum.CASE, caseNames))
   if (namespaceNames.length > 0) {
-    lines.push(`[Files attached to the namespace exchange: ${namespaceNames.join(', ')}]`)
+    lines.push(attachedMentionLine(ExchangeFileEntryScopeEnum.NAMESPACE, namespaceNames))
   }
-  return lines.join('\n')
+  return joinMentionLines(lines)
 }
 
 const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {

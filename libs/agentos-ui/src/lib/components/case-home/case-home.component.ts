@@ -58,11 +58,17 @@ import {
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
-import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import {
+  isNamespaceTargeted,
+  joinAttachmentMentions,
+  joinMentionLines,
+  resolveUploadScope,
+} from '../composer-attachments/composer-attachments.utils'
 import { CaseWorkspaceService, workspacesUnavailable } from '../../services/case-workspace.service'
 import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
@@ -168,6 +174,8 @@ export class CaseHomeComponent implements OnInit {
   protected readonly inputValue = signal('')
   /** Right-side file drawer (namespace files only: there is no case yet). */
   protected readonly filesOpen = signal(false)
+  /** Width of the right drawer, resizable and shared with the case chat. */
+  protected readonly drawerWidth = inject(ExchangeDrawerWidthService)
   /** Exchange files picked in the drawer: shown as chips, referenced (never uploaded) by the first message. */
   protected readonly referencedFiles = signal<ExchangeFileRef[]>([])
   protected readonly isCreating = signal(false)
@@ -633,8 +641,7 @@ export class CaseHomeComponent implements OnInit {
       const referenceMention = buildReferenceMention(references)
       if (referenceMention) mentions.push(referenceMention)
       if (mentions.length > 0) {
-        const block = mentions.join('\n')
-        content = content ? `${content}\n\n${block}` : block
+        content = joinAttachmentMentions(content, joinMentionLines(mentions))
       }
 
       // Step 3: send the first message before navigating.
