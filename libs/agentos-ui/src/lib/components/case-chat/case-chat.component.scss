@@ -941,6 +941,19 @@
       text-decoration: underline;
     }
 
+    // A file reference in a code span opens the IDE: the code keeps its look, the link adds the pointer and the
+    // underline on hover (::ng-deep as for `pre`, the element is injected).
+    ::ng-deep .agentos-file-link {
+      color: inherit;
+      text-decoration: none;
+      cursor: pointer;
+
+      &:hover,
+      &:focus-visible {
+        text-decoration: underline;
+      }
+    }
+
     h1,
     h2,
     h3,
