@@ -70,6 +70,18 @@
           }
         </div>
 
+        <button
+          type="button"
+          class="case-chat__wizz-toggle"
+          [class.case-chat__wizz-toggle--active]="wizzEnabled()"
+          [attr.aria-pressed]="wizzEnabled()"
+          aria-label="Wizz reply effect"
+          title="Wizz reply effect"
+          (click)="toggleWizz()"
+        >
+          Wizz <span aria-hidden="true">{{ wizzEnabled() ? 'on' : 'off' }}</span>
+        </button>
+
         <!-- Exchange toggle -->
         <div class="case-chat__header-exchange">
           <ds-icon-button
@@ -150,7 +162,7 @@
         </div>
       }
 
-      <div class="case-chat__messages-region">
+      <div class="case-chat__messages-region" [class.case-chat__messages-region--wizz]="wizzActive()">
         <div #messagesContainer class="case-chat__messages">
           @if (timeline().length === 0) {
             <div class="case-chat__empty">
