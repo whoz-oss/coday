@@ -112,6 +112,9 @@
                 @if (b.failureCode) {
                   <span class="block-meta-item block-meta-item--failure sf-mono">{{ b.failureCode }}</span>
                 }
+                @if (b.cycleNumber !== undefined) {
+                  <span class="block-meta-item block-meta-item--cycle sf-mono">cycle {{ b.cycleNumber }}</span>
+                }
               </span>
               <span class="ticks" aria-hidden="true">
                 @for (t of b.ticksSec ?? []; track $index) {

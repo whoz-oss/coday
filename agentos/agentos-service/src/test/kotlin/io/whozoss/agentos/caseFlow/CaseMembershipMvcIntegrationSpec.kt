@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.content
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -30,7 +31,8 @@ import java.util.UUID
  *
  * Focuses on:
  * - GET /api/cases/{id}/members returns 200 with JSON array
- * - PATCH /api/cases/{id}/members with valid body returns 200
+ * - PATCH /api/cases/{id}/members with valid body returns 200 (the invitee is a member of the case's namespace)
+ * - PATCH inviting a user outside the case's namespace returns 422, super-admin caller included
  * - PATCH with invalid body (duplicate userId) returns 400
  * - 404 when case does not exist
  */
@@ -77,12 +79,29 @@ class CaseMembershipMvcIntegrationSpec : SuperAdminCallerSpec() {
             )
             val caseId = createCaseViaHttp(ns.id.toString())
             val target = userService.resolveOrCreateByExternalId("patch-target-${UUID.randomUUID()}@example.com")
+            // Only members of the case's namespace can be invited (#1630).
+            mockMvc.perform(put("/api/namespaces/${ns.id}/members/${target.id}"))
+                .andExpect(status().isOk)
 
             mockMvc.perform(
                 patch("/api/cases/$caseId/members")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""[{"userId":"${target.id}","role":"MEMBER"}]"""),
             ).andExpect(status().isOk)
+        }
+
+        "PATCH /api/cases/{id}/members returns 422 when the invitee is not a member of the case's namespace" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "membership-outsider-ns"),
+            )
+            val caseId = createCaseViaHttp(ns.id.toString())
+            val outsider = userService.resolveOrCreateByExternalId("patch-outsider-${UUID.randomUUID()}@example.com")
+
+            mockMvc.perform(
+                patch("/api/cases/$caseId/members")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""[{"userId":"${outsider.id}","role":"MEMBER"}]"""),
+            ).andExpect(status().`is`(422))
         }
 
         "PATCH /api/cases/{id}/members with duplicate userId returns 400" {

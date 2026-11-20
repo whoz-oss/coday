@@ -89,9 +89,18 @@ The OpenAPI document is `factory/factory-service/openapi/factory-workstream-http
 
 ## Behaviour
 
-- **Every operation requires an explicit `namespaceId` UUID query parameter** from the assignment. Factory resolves its existing workstream inside the authenticated organization; reads never initialize a mapping. A missing mapping returns `WORKFLOW_NOT_FOUND`; an inactive mapping is refused. `get_workstream` additionally checks that the path workstream matches this mapping.
-- **`start_workflow`** creates a normal Factory run. It is not attributed to an AgentOS case. The caller supplies
-  an `Idempotency-Key`; Factory namespaces it by the user.
+- **Every operation requires an explicit `namespaceId` UUID query parameter** from the assignment. Factory resolves its workstream inside the authenticated organization, never another organization. Reads and `request_agent_retry` are lookup-only: a missing mapping returns `WORKFLOW_NOT_FOUND` without creating one. An inactive mapping is refused. `get_workstream` additionally checks that the path workstream matches this mapping.
+- **`start_workflow`** resolves or initializes a missing namespace workstream, then creates a normal Factory run.
+  No manual provisioning is required for first launch. Concurrent initializers converge on one active mapping;
+  existing identity, metadata, governance restrictions, allowed workflow types and status are never reset.
+  Paused/archived mappings remain refused. Namespace, request shape/field types, pin pairing/format and the
+  `Idempotency-Key` are validated before initialization, so controller-level invalid requests do not create mappings.
+  A supplied version must be strict numeric x.y.z with no leading zeroes except 0 (at most 128 characters),
+  paired with a lowercase 64-hex canonical hash. Definition selection and exact pin matching are still enforced
+  during run creation; initialization is not a transaction with run creation. An unknown registered type (`404`)
+  or stale canonical hash (`409`) can therefore leave an active mapping but no run.
+  The run is not attributed to an AgentOS case. Factory namespaces the caller's `Idempotency-Key` by the user:
+  identical key/payload replays return the same run; divergent payloads are refused.
 - **`request_agent_retry`** opens at most one retry request per step: a repeated call returns the existing one
   (`200`, `idempotent: true`).
 - **`get_required_human_actions`** is information only (`answerableFromThisChannel: false`). Human validations
@@ -184,7 +193,7 @@ The skill contains exact structured `body` examples for validation→registratio
 launch. An identical canonical registration replay returns the same type/version/hash (`201`); differing content
 at that identity is `409`, never replacement. The optional UI `If-None-Match: *` precondition is intentionally not
 exposed by the authoring tool because it rejects even identical replays. Definitions remain organization-wide;
-launch requires `namespaceId` mapped in that organization, and the workstream's allowed types remain enforced.
+launch resolves or initializes the `namespaceId` mapping in that organization, and the workstream's allowed types remain enforced.
 `FACTORY_WORKSTREAM__start_workflow` now accepts `definitionVersion` plus `definitionHash` together in `body`;
 use the exact registration response. Old callers without pins retain legacy behavior. Refresh the workstream spec
 cache (default 60 minutes, or restart/config change) to see the new fields. Registration never creates a run.

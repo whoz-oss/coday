@@ -3,6 +3,7 @@ package io.whozoss.agentos.namespace
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.sdk.api.namespace.AdminCaseListing
 import java.util.UUID
 
 /**
@@ -68,4 +69,16 @@ interface NamespaceService : EntityService<Namespace, String> {
      * to depend on [io.whozoss.agentos.config.LimitsConfigProperties] for this concern.
      */
     fun resolveRunCostThreshold(namespaceId: UUID): Double?
+
+    /**
+     * Resolves which cases the administrators of [namespaceId] see in their case list:
+     * `Namespace.adminCaseListing ?: agentos.case.admin-case-listing-default`.
+     *
+     * An unknown namespace resolves to the platform default. The value only drives the UI: it never
+     * changes who may read which case.
+     */
+    fun resolveAdminCaseListing(namespaceId: UUID): AdminCaseListing
+
+    /** Same resolution for a namespace already in hand, so that a listing does not read each one again. */
+    fun resolveAdminCaseListing(namespace: Namespace): AdminCaseListing
 }

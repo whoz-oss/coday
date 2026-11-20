@@ -1,5 +1,6 @@
 export * from './actor'
 export * from './add-message-request'
+export * from './admin-case-listing'
 export * from './agent-config'
 export * from './agent-config-defaults-dto'
 export * from './agent-config-search-request'

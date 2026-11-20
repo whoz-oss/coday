@@ -204,6 +204,8 @@ class CapabilityExecutionService(
     private val agentOsWorkspaceIdentityValidator: AgentOsWorkspaceIdentityValidator? = null,
     @param:Autowired(required = false)
     private val worktreeExecutionOccupancyService: WorktreeExecutionOccupancyService? = null,
+    @param:Autowired(required = false)
+    private val standaloneWorkspaceProvisioning: io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -223,6 +225,24 @@ class CapabilityExecutionService(
 
     /** The durable ids produced by the agent claim phase (Phase 1). */
     private data class AgentClaim(val attemptId: String, val capabilityToken: String?)
+
+    /** Pre-claim preparation. Never dispatches an agent and never touches an existing attempt. */
+    fun prepareAgentWorkspace(scope: TenantScope, namespaceId: String, workflowId: String, step: WorkflowStepDefinition) {
+        val provisioning = standaloneWorkspaceProvisioning?.takeIf { it.enabled } ?: return
+        if (!agentOsAdapterProperties.enabled &&
+            projectedSteps(scope, namespaceId, workflowId).any { it.responsibility.kind == ResponsibilityKind.CODE }) {
+            throw io.whozoss.factory.workspace.TerminalWorkspaceAdoptionException(
+                "AGENT_POLLING_WORKSPACE_UNSUPPORTED: code workflows require the durable AgentOS bridge")
+        }
+        val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
+        if (parentRunIdOf(instance) != null ||
+            !projectedSteps(scope, namespaceId, workflowId).any { it.responsibility.kind == ResponsibilityKind.CODE } ||
+            durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, step.id) != null) return
+        val entry = requireSingleEntryAgentStep(scope, namespaceId, workflowId)?.id
+        val family = resolveCaseFamily(scope, namespaceId, workflowId, step, entry)
+        provisioning.ensureReady(scope, namespaceId, workflowId, requireNotNull(family.rootCaseId),
+            instance?.instance?.get("title") as? String ?: workflowId, resolveExternalUserId(scope, instance))
+    }
 
     fun resolveAndRecord(
         scope: TenantScope,
@@ -306,13 +326,13 @@ class CapabilityExecutionService(
     ): CapabilityExecution {
         val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
         val parentRunId = parentRunIdOf(instance)
-        val occupancyService = if (parentRunId != null) {
+        val occupancyService = if (parentRunId != null || hasAdoptedStandaloneWorkspace(scope, instance)) {
             worktreeExecutionOccupancyService
                 ?: error("Worktree execution occupancy service is required for parent Run code fragments")
         } else null
         val ownerId = "code:${UUID.randomUUID()}"
         val occupancy = try {
-            occupancyService?.acquireForWorkflow(scope, parentRunId!!, "code", ownerId, repoRoot)
+            occupancyService?.acquireForWorkflow(scope, parentRunId ?: workflowId, "code", ownerId, repoRoot)
         } catch (_: WorktreeExecutionOccupancyConflict) {
             return CapabilityExecution(
                 CapabilityOutcome.CodeRefused(
@@ -406,7 +426,7 @@ class CapabilityExecutionService(
             if (!eligibleIds.add(id)) continue
             steps[id]?.dependsOn?.forEach(queue::addLast)
         }
-        return evidenceRepository.list(scope, namespaceId, workflowId)
+        return applicableEvidence(scope, namespaceId, workflowId)
             .asReversed()
             .firstNotNullOfOrNull { evidence ->
                 if (evidence.stepId !in eligibleIds || evidence.kind != AGENT_RESULT_EVIDENCE_KIND || evidence.outcome != "pass") {
@@ -513,8 +533,12 @@ class CapabilityExecutionService(
     ): BriefAssembly {
         val ticketInstruction = briefFromTicket(ticket)
         val entryStep = step.dependsOn.isEmpty()
-        val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
+        val evidence = applicableEvidence(scope, namespaceId, workflowId)
         val inputs = LinkedHashMap<String, Any?>()
+        currentExecution(scope, namespaceId, workflowId, step.id)?.get("executionId")?.let { inputs["stepExecutionId"] = it }
+        workflowRepository.findInstance(scope, namespaceId, workflowId)?.projection?.get("correctionContext")?.let {
+            inputs["correctionContext"] = it
+        }
         if (step.dependsOn.isNotEmpty()) {
             for (dependency in step.dependsOn) {
                 val item = evidence.lastOrNull {
@@ -1000,6 +1024,54 @@ class CapabilityExecutionService(
         return brief to envelope
     }
 
+    /** Allocate a fresh, context-pinned attempt once per correction execution, before any dispatch. */
+    private fun prepareCorrectionAttempt(scope: TenantScope, namespace: String, workflow: String,
+                                         step: WorkflowStepDefinition, ticket: String?) {
+        val execution = currentExecution(scope, namespace, workflow, step.id) ?: return
+        if (((execution["executionNumber"] as? Number)?.toInt() ?: 1) <= 1) return
+        check(agentOsAdapterProperties.enabled) { "OUTCOME_REPLAY_REQUIRES_DURABLE_BRIDGE" }
+        val executionId = execution["executionId"] as String
+        withReservationLock("${scope.organizationId}|${scope.workstreamId}|$namespace|$workflow|${step.id}") {
+            newTransaction<Unit> {
+                val predecessor = durableAgentAttemptService.findLatestForStep(scope, namespace, workflow, step.id)
+                if (predecessor?.resumptionContext == "outcome-execution:$executionId") return@newTransaction
+                // Questions/research may have created successors within the same execution.
+                if (predecessor?.contextEnvelope?.let { AttemptContextEnvelope.fromJson(it).inputs["stepExecutionId"] } == executionId) return@newTransaction
+                check(predecessor == null || predecessor.status.terminal) { "CORRECTION_PREDECESSOR_ACTIVE" }
+                val number = durableAgentAttemptService.nextAttemptNumber(scope, namespace, workflow, step.id)
+                val attemptId = retryAttemptId(workflow, step.id, number)
+                val instance = requireNotNull(workflowRepository.findInstance(scope, namespace, workflow))
+                val (template, envelope) = buildContextEnvelope(scope, namespace, workflow, step, ticket, number,
+                    step.responsibility.name ?: "agent", instance.amendmentSeq)
+                val brief = renderSubmissionIdentifiers(template, attemptId)
+                val family = resolveCaseFamily(scope, namespace, workflow, step, requireSingleEntryAgentStep(scope, namespace, workflow)?.id)
+                val environment = workEnvironmentRepository?.findLatestByWorkflowId(scope, parentRunIdOf(instance) ?: workflow)
+                val token = issueDurableCapability(scope, namespace, workflow, step, attemptId, family.caseId,
+                    step.responsibility.name ?: "agent", brief)
+                durableAgentAttemptService.registerRetry(scope, DurableAgentAttempt(
+                    attemptId, family.caseId, namespace, workflow, step.id, number, step.responsibility.name ?: "agent",
+                    capabilityToken = token, brief = brief,
+                    contextEnvelope = envelope.copy(briefHash = CanonicalJsonHash.sha256(brief)).toJson(),
+                    resumptionContext = "{\"reason\":\"outcome-correction\",\"executionId\":\"$executionId\"}", expectedAmendmentSeq = instance.amendmentSeq,
+                    environmentRef = environment?.environmentId ?: predecessor?.environmentRef,
+                    expectedEnvironmentRevision = environment?.revision ?: predecessor?.expectedEnvironmentRevision,
+                    rootCaseId = family.rootCaseId, parentCaseId = family.parentCaseId,
+                ))
+            }
+        }
+    }
+
+    private fun applicableEvidence(scope: TenantScope, namespace: String, workflow: String): List<WorkflowEvidenceItem> {
+        val states = workflowRepository.findStepStates(scope, namespace, workflow).associateBy { it.stepId }
+        return evidenceRepository.list(scope, namespace, workflow).filter { item ->
+            val execution = states[item.stepId]?.payload?.get("execution") as? Map<*, *>
+            execution == null || item.facts["executionId"] == execution["executionId"]
+        }
+    }
+
+    private fun currentExecution(scope: TenantScope, namespace: String, workflow: String, step: String): Map<*, *>? =
+        workflowRepository.findStepStates(scope, namespace, workflow).firstOrNull { it.stepId == step }?.payload?.get("execution") as? Map<*, *>
+
     /** The frozen brief + serialized envelope of an attempt, reused verbatim on replay. */
     private data class FrozenContext(val brief: String, val envelopeJson: String)
 
@@ -1124,7 +1196,8 @@ class CapabilityExecutionService(
                 // Reuse the same bounded/redacted representation as the terminal
                 // session evidence. This improves new runs while the cockpit still
                 // correlates legacy rich session evidence through evidenceId.
-                facts = mapOf("stepId" to step.id, "verdict" to outcome.verdict) +
+                facts = mapOf("stepId" to step.id, "verdict" to outcome.verdict,
+                    "executionId" to currentExecution(scope, namespaceId, workflowId, step.id)?.get("executionId")) +
                     codeVerificationFacts(outcome),
                 idempotencyKey = null,
                 createdAt = null,
@@ -1153,6 +1226,7 @@ class CapabilityExecutionService(
                 revision = 1,
                 payload = linkedMapOf(
                     "stepId" to step.id,
+                    "executionId" to currentExecution(scope, namespaceId, workflowId, step.id)?.get("executionId"),
                     "role" to outcome.role,
                     "actions" to listOf(
                         mapOf("id" to "approve", "label" to "Approuver"),
@@ -1196,6 +1270,11 @@ class CapabilityExecutionService(
             resolveAgentViaAdapter(scope, namespaceId, workflowId, step, ticket, durableAgentAttemptService, agentOsExecutionAdapter, onAgentObservation)
         } else {
             val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
+            if (parentRunIdOf(instance) == null && standaloneWorkspaceProvisioning?.enabled == true &&
+                projectedSteps(scope, namespaceId, workflowId).any { it.responsibility.kind == ResponsibilityKind.CODE }) {
+                return CapabilityExecution(CapabilityOutcome.AgentFailed(step.id, step.responsibility.name,
+                    "AGENT_POLLING_WORKSPACE_UNSUPPORTED", "Standalone agent/code workflows require the durable AgentOS bridge."))
+            }
             if (parentRunIdOf(instance) != null) {
                 CapabilityExecution(
                     CapabilityOutcome.AgentDeferred(
@@ -1260,6 +1339,7 @@ class CapabilityExecutionService(
         // registers N+1. The DAG must follow that authoritative successor;
         // otherwise only the recovery scanner can drive N+1 while this path
         // remains anchored to the terminal predecessor.
+        prepareCorrectionAttempt(scope, namespaceId, workflowId, step, ticket)
         val latestAttempt = attempts.findLatestForStep(scope, namespaceId, workflowId, step.id)
         val attemptId = latestAttempt?.attemptId ?: stableAttemptId(workflowId, step.id)
         val ownerToken = UUID.randomUUID().toString()
@@ -1425,7 +1505,7 @@ class CapabilityExecutionService(
         attempts: DurableAgentAttemptService,
     ): AgentWorktreeAcquisition {
         val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
-        if (parentRunIdOf(instance) == null) return AgentWorktreeAcquisition()
+        if (parentRunIdOf(instance) == null && !hasAdoptedStandaloneWorkspace(scope, instance)) return AgentWorktreeAcquisition()
         val service = worktreeExecutionOccupancyService
             ?: error("Worktree execution occupancy service is required for parent Run agent fragments")
         val attempt = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
@@ -1477,7 +1557,8 @@ class CapabilityExecutionService(
         attempts: DurableAgentAttemptService,
     ) {
         val service = worktreeExecutionOccupancyService ?: return
-        if (parentRunIdOf(workflowRepository.findInstance(scope, namespaceId, workflowId)) == null) return
+        val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
+        if (parentRunIdOf(instance) == null && !hasAdoptedStandaloneWorkspace(scope, instance)) return
         val resultService = agentStepResultService ?: return
         try {
             if (resultService.acceptedResult(scope, namespaceId, workflowId, step.id, attemptId) == null) return
@@ -1556,6 +1637,10 @@ class CapabilityExecutionService(
         return entries.single()
     }
 
+    private fun hasAdoptedStandaloneWorkspace(scope: TenantScope, instance: WorkflowInstanceRecord?): Boolean =
+        instance != null && workEnvironmentRepository?.findLatestByWorkflowId(scope, instance.workflowId)?.envType ==
+            io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService.ENV_TYPE
+
     private fun parentRunIdOf(instance: WorkflowInstanceRecord?): String? {
         if (instance == null) return null
         (instance.instance["runId"] as? String)?.takeIf { it.isNotBlank() }?.let { return it }
@@ -1565,19 +1650,16 @@ class CapabilityExecutionService(
 
     /**
      * Resolves the authenticated external user identity to relay to AgentOS as
-     * `X-External-User-Id` from the persisted workflow instance (or parent Run
-     * work environment).
+     * `X-External-User-Id` exclusively from the boundary-authenticated persisted
+     * controllerRequest. Body-supplied execution actors and old environment owners are not credentials.
      */
     private fun resolveExternalUserId(scope: TenantScope, instance: WorkflowInstanceRecord?): String? {
         if (instance != null) {
-            val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
-            (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
             val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
             (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
         }
-        val environmentOwnerId = parentRunIdOf(instance) ?: instance?.workflowId ?: return null
-        val env = workEnvironmentRepository?.findLatestByWorkflowId(scope, environmentOwnerId)
-        return env?.createdBy?.takeIf { it.isNotBlank() }
+        // No body-derived execution actor or legacy environment attribution fallback.
+        return null
     }
 
     /**
@@ -1604,6 +1686,7 @@ class CapabilityExecutionService(
                 WorkflowStepContract.fromJson(raw),
                 WorkflowDecision.parse(raw["decision"]),
                 raw["join"] as? String,
+                io.whozoss.factory.workflow.domain.OutcomeTransitions.parse(raw["outcomeTransitions"]),
             )
         }
     }
@@ -1773,6 +1856,14 @@ class CapabilityExecutionService(
             val environmentOwnerId = parentRunIdOf(instance) ?: workflowId
             val environment = workEnvironmentRepository?.findLatestByWorkflowId(scope, environmentOwnerId)
                 ?: workEnvironmentRepository?.findLatestByWorkflowId(scope, workflowId)
+            if (parentRunIdOf(instance) == null && standaloneWorkspaceProvisioning?.enabled == true &&
+                projectedSteps(scope, namespaceId, workflowId).any { it.responsibility.kind == ResponsibilityKind.CODE }) {
+                check(environment != null && environment.workflowId == workflowId && environment.namespaceId == namespaceId &&
+                    environment.parentCaseId == family.rootCaseId && environment.provisioningFailure == null &&
+                    environment.lifecycleState == io.whozoss.factory.environment.domain.WorkEnvironmentState.READY) {
+                    "Standalone workspace must be prepared before agent claim"
+                }
+            }
             val capabilityToken = issueDurableCapability(
                 scope, namespaceId, workflowId, step, attemptId, family.caseId, agentId, brief,
             )
@@ -1853,6 +1944,12 @@ class CapabilityExecutionService(
         val persistedAttempt = attempts.find(
             scope, namespaceId, workflowId, step.id, reservation.attemptId,
         ) ?: error("Durable attempt '${reservation.attemptId}' vanished before AgentOS execution")
+        val executionId = currentExecution(scope, namespaceId, workflowId, step.id)?.get("executionId")
+        if (executionId != null) {
+            check(persistedAttempt.contextEnvelope?.let { AttemptContextEnvelope.fromJson(it).inputs["stepExecutionId"] } == executionId) {
+                "EXECUTION_GENERATION_FENCED"
+            }
+        }
         val binding = TrustedCaseBinding(
             caseId = reservation.caseId,
             namespaceId = namespaceId,
@@ -2132,6 +2229,12 @@ class CapabilityExecutionService(
         runtimeProof: VerdictDeriver.RuntimeCaseTerminationProof? = null,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
+        val executionId = currentExecution(scope, namespaceId, workflowId, step.id)?.get("executionId")
+        if (executionId != null) {
+            val attempt = requireNotNull(durableAgentAttemptService.find(scope, namespaceId, workflowId, step.id, reservation.attemptId))
+            val pinned = attempt.contextEnvelope?.let { AttemptContextEnvelope.fromJson(it).inputs["stepExecutionId"] }
+            check(pinned == executionId) { "EXECUTION_GENERATION_FENCED" }
+        }
         if (workspaceDeltaCollector != null && ( workspaceDelta.changedFilesDuringTurn.isNotEmpty() || workspaceDelta.watchedFiles.isNotEmpty())) {
             evidenceRepository.append(
                 scope,
@@ -2148,6 +2251,7 @@ class CapabilityExecutionService(
                     facts = mapOf(
                         "attemptId" to reservation.attemptId,
                         "stepId" to step.id,
+                        "executionId" to executionId,
                         "captureStatus" to workspaceDelta.captureStatus.name,
                         "headShaBefore" to workspaceDelta.headShaBefore,
                         "headShaAfter" to workspaceDelta.headShaAfter,
@@ -2183,7 +2287,7 @@ class CapabilityExecutionService(
                     kind = AGENT_RESULT_EVIDENCE_KIND,
                     outcome = outcome,
                     source = mapOf("kind" to "agentos-adapter", "agentId" to agentId, "attemptId" to reservation.attemptId),
-                    facts = facts + mapOf("attemptId" to reservation.attemptId, "stepId" to step.id) + runtimeProofFacts(runtimeProof),
+                    facts = facts + mapOf("attemptId" to reservation.attemptId, "stepId" to step.id, "executionId" to executionId) + runtimeProofFacts(runtimeProof),
                     idempotencyKey = null,
                     createdAt = null,
                 ),

@@ -35,6 +35,54 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `exact root requested once then default adapter adopts it and child only inherits`() {
+        val builder = RestClient.builder()
+        val server = MockRestServiceServer.bindTo(builder).build()
+        val proxy = HttpAgentOsProxyClient(builder, "http://agentos.test")
+        val adapter = io.whozoss.factory.adapter.agentos.DefaultAgentOsExecutionAdapter(builder, "http://agentos.test")
+        server.expect(requestTo("http://agentos.test/api/cases/root"))
+            .andExpect(header("X-External-User-Id", "alice"))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("http://agentos.test/api/cases"))
+            .andExpect(header("X-External-User-Id", "alice"))
+            .andExpect(content().json("""{"id":"root","namespaceId":"ns","title":"Title","worktree":true}""", true))
+            .andRespond(withSuccess("""{"id":"root","namespaceId":"ns"}""", MediaType.APPLICATION_JSON))
+        repeat(2) {
+            server.expect(requestTo("http://agentos.test/api/cases/root"))
+                .andExpect(header("X-External-User-Id", "alice"))
+                .andRespond(withSuccess("""{"id":"root","namespaceId":"ns"}""", MediaType.APPLICATION_JSON))
+        }
+        server.expect(requestTo("http://agentos.test/api/cases/child"))
+            .andExpect(header("X-External-User-Id", "alice"))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("http://agentos.test/api/cases"))
+            .andExpect(header("X-External-User-Id", "alice"))
+            .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath("$.parentCaseId").value("root"))
+            .andExpect(org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath("$.worktree").doesNotExist())
+            .andRespond(withSuccess("""{"id":"child","namespaceId":"ns","parentCaseId":"root"}""", MediaType.APPLICATION_JSON))
+        proxy.ensureRunRootCase("root", "ns", "Title", "alice")
+        proxy.ensureRunRootCase("root", "ns", "Title", "alice")
+        val rootBinding = io.whozoss.factory.adapter.agentos.TrustedCaseBinding("root", "attempt", "ns", externalUserId = "alice")
+        assertThat(adapter.createOrRecoverExecution(rootBinding, "wf", "entry").recovered).isTrue()
+        adapter.createOrRecoverExecution(rootBinding.copy(caseId = "child", attemptId = "child-attempt", parentCaseId = "root"), "wf", "child")
+        server.verify()
+    }
+
+    @Test
+    fun `exact root refuses a foreign namespace or child case without posting another root`() {
+        listOf("""{"id":"root","namespaceId":"other"}""",
+            """{"id":"root","namespaceId":"ns","parentCaseId":"parent"}""").forEach { body ->
+            val (client, server) = buildClient()
+            server.expect(requestTo("http://agentos.test/api/cases/root"))
+                .andExpect(header("X-External-User-Id", "alice"))
+                .andRespond(withSuccess(body, MediaType.APPLICATION_JSON))
+            assertThatThrownBy { client.ensureRunRootCase("root", "ns", "Title", "alice") }
+                .hasMessageContaining("identity mismatch")
+            server.verify()
+        }
+    }
+
+    @Test
     fun `fetchAgents relays the trusted external user header`() {
         val (client, server) = buildClient()
         server.expect(requestTo("http://agentos.test/api/agent-configs/by-parentId/ns-1"))
@@ -66,6 +114,7 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
     fun `getRunCost parses the run-cost reply into the local dto`() {
         val (client, server) = buildClient()
         server.expect(requestTo("http://agentos.test/api/cases/case-1/run-cost"))
+            .andExpect(header("X-External-User-Id", "reader-1"))
             .andRespond(
                 withSuccess(
                     """{"caseId":"case-1","since":"2026-01-01T00:00:00Z","cost":12.5,""" +
@@ -75,7 +124,7 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
                 ),
             )
 
-        val runCost = client.getRunCost("case-1", null)
+        val runCost = client.getRunCost("case-1", "reader-1")
 
         assertThat(runCost).isEqualTo(
             RunCostDto(
@@ -106,6 +155,18 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
         // swallows every failure: the metrics endpoint must still answer 200.
         assertThat(failing.getRunCost("broken", null)).isNull()
         failingServer.verify()
+    }
+
+    @Test
+    fun `getRunCost degrades to null on forbidden without retrying as a privileged identity`() {
+        val (client, server) = buildClient()
+        server.expect(requestTo("http://agentos.test/api/cases/private-case/run-cost"))
+            .andExpect(header("X-External-User-Id", "reader-1"))
+            .andRespond(withStatus(HttpStatus.FORBIDDEN))
+
+        assertThat(client.getRunCost("private-case", "reader-1")).isNull()
+
+        server.verify()
     }
 
     @Test

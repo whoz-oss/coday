@@ -307,7 +307,7 @@ class WorkflowController(
             title = workflow["title"] as String,
             relations = relations,
             ticket = ticket,
-            controllerRequest = requestText?.let {
+            controllerRequest = (requestText ?: "").let {
                 ControllerRequestInput(
                     text = it,
                     namespaceId = caller.namespaceId,
@@ -319,7 +319,7 @@ class WorkflowController(
         )
         val repoRoot = resolveRepoRoot(caller.namespaceId, user.userId)
             ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
-        return respond(service.start(caller.scope, caller.namespaceId, command, execution, repoRoot))
+        return respond(service.start(caller.scope, caller.namespaceId, command, execution.copy(actorId = caller.actorId), repoRoot))
     }
 
     // ----- transitions ---------------------------------------------------
@@ -719,7 +719,7 @@ class WorkflowController(
         if (resolvedScope !in setOf("self", "descendants")) {
             throw workflowException("INVALID_METRICS_SCOPE", "scope must be self or descendants.")
         }
-        return WorkflowDataEnvelope(service.metrics(caller.scope, caller.namespaceId, workflowId, resolvedScope))
+        return WorkflowDataEnvelope(service.metrics(caller.scope, caller.namespaceId, workflowId, resolvedScope, caller.actorId))
     }
 
     // ----- evidence ------------------------------------------------------
@@ -965,7 +965,7 @@ class WorkflowController(
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<WorkflowActionsResponseDto> {
         val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
-        return WorkflowDataEnvelope(service.workflowActions(caller.scope, caller.namespaceId, workflowId, canReply = true))
+        return WorkflowDataEnvelope(service.workflowActions(caller.scope, caller.namespaceId, workflowId, canReply = true, actorId = caller.actorId))
     }
 
     @PostMapping(path = ["/{workflowId}/cost/continue"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -1090,7 +1090,7 @@ class WorkflowController(
         }
         val kind = evidence["kind"] as? String
         if (kind.isNullOrBlank()) throw workflowException(WorkflowErrorCodes.INVALID_EVIDENCE)
-        if (kind in setOf("oracle-result", "human-decision")) {
+        if (kind in setOf("oracle-result", "human-decision", "branch-preparation")) {
             throw workflowException(
                 WorkflowErrorCodes.FACTORY_ONLY_EVIDENCE,
                 "$kind evidence is produced only by a trusted Factory control-plane route.",

@@ -9,6 +9,7 @@ import io.whozoss.factory.config.SessionProperties
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.FactoryCaller
+import io.whozoss.factory.workflow.web.requireNamespaceId
 import io.whozoss.factory.workflow.web.resolveWorkflowCaller
 import io.whozoss.factory.web.factoryError
 import io.whozoss.factory.workflow.domain.WorkflowBlockerDto
@@ -42,9 +43,10 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * It is an ordinary authenticated API: the caller is whoever the
  * `AuthenticationFilter` admitted (the OS user in local mode, or the user a Factory JWT / proxy header identifies in auth mode), and
- * the tenant is that user's scope. The namespace is resolved exclusively from the
- * workstream registry of that scope (a domain rule, not an authorization one);
- * workflow and step identifiers supplied by the model are references.
+ * the tenant is that user's scope. The namespace is resolved from the workstream
+ * registry of that organization (a domain rule, not an authorization one). Only
+ * launch initializes a missing mapping; reads and retry are lookup-only.
+ * Workflow and step identifiers supplied by the model are references.
  *
  * Human validations stay in Factory: this facade lists pending human actions for
  * information only and can never answer them.
@@ -122,7 +124,7 @@ class WorkstreamServiceController(
         val steps = (projection?.get("steps") as? List<*>).orEmpty().filterIsInstance<Map<*, *>>().map { step ->
             mapOf("id" to step["id"], "name" to step["name"], "status" to step["status"])
         }
-        val actions = workflowService.workflowActions(caller.scope, namespace, id, canReply = false)
+        val actions = workflowService.workflowActions(caller.scope, namespace, id, canReply = false, actorId = caller.userId)
         val attempts = durableAttempts.findByWorkflow(caller.scope, namespace, id)
         return WorkflowDataEnvelope(
             linkedMapOf(
@@ -174,7 +176,7 @@ class WorkstreamServiceController(
     ): WorkflowDataEnvelope<Map<String, Any?>> {
         val caller = resolveCaller(user, namespaceId)
         val blockers = workflowService
-            .workflowActions(caller.scope, workstreamService.requireConfiguredNamespace(caller.scope), requireWorkflowId(workflowId), canReply = false)
+            .workflowActions(caller.scope, workstreamService.requireConfiguredNamespace(caller.scope), requireWorkflowId(workflowId), canReply = false, actorId = caller.userId)
             .blockers
         return WorkflowDataEnvelope(
             mapOf("items" to blockers.take(MAX_ITEMS).map(::blockerView), "truncated" to (blockers.size > MAX_ITEMS)),
@@ -240,10 +242,23 @@ class WorkstreamServiceController(
         @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
-        val caller = resolveCaller(user, namespaceId)
+        // Validate all request shape and key constraints before initialization can write.
+        val requestedNamespace = requireNamespaceId(namespaceId.trim().lowercase())
         val request = body ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         if (request.keys.any { it !in START_FIELDS }) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
-        val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
+        for (field in listOf("title", "ticket")) {
+            if (request.containsKey(field) && request[field] !is String) {
+                throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "$field must be a string.")
+            }
+        }
+        val definitionVersion = optionalPin(request, "definitionVersion")
+        val definitionHash = optionalPin(request, "definitionHash")
+        if ((definitionVersion == null) != (definitionHash == null) ||
+            (definitionVersion != null && (definitionVersion.length > 128 || !DEFINITION_VERSION_PATTERN.matches(definitionVersion) ||
+                definitionHash == null || !DEFINITION_HASH_PATTERN.matches(definitionHash)))
+        ) {
+            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "definitionVersion and a canonical definitionHash are required together.")
+        }
         val workflowType = (request["workflowType"] as? String)?.trim()
             ?.takeIf { ID_PATTERN.matches(it) }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "workflowType is invalid.")
@@ -257,6 +272,12 @@ class WorkstreamServiceController(
         }
         val key = idempotencyKey?.trim()?.takeIf { KEY_PATTERN.matches(it) }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "A valid Idempotency-Key is required.")
+
+        // Reuse the race-safe initializer; existing entries (including governance
+        // and inactive status) are never reset. No other facade operation initializes.
+        val workstream = workstreamService.findOrInitializeForNamespace(user.organizationId, requestedNamespace)
+        val caller = ScopedCaller(TenantScope(user.organizationId, workstream.workstreamId), user.userId)
+        val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         assertWorkflowTypeAllowed(caller.scope, workflowType)
 
         // The key is namespaced by the user, so two callers can never collide, and
@@ -274,8 +295,8 @@ class WorkstreamServiceController(
                 initialRequest = null,
                 parameters = ticket?.let { mapOf("ticket" to it) } ?: emptyMap(),
                 idempotencyKey = "svc:${caller.userId}:$key",
-                definitionVersion = optionalPin(request, "definitionVersion"),
-                definitionHash = optionalPin(request, "definitionHash"),
+                definitionVersion = definitionVersion,
+                definitionHash = definitionHash,
             ),
             repoRoot = sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() },
         )
@@ -394,6 +415,8 @@ class WorkstreamServiceController(
         val STEP_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$")
         val KEY_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$")
         val TICKET_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$")
+        val DEFINITION_VERSION_PATTERN = Regex("""^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$""")
+        val DEFINITION_HASH_PATTERN = Regex("^[0-9a-f]{64}$")
         val REASON_PATTERN = Regex("^[A-Za-z0-9._-]{1,64}$")
         val START_FIELDS = setOf("workflowType", "title", "ticket", "definitionVersion", "definitionHash")
         val RETRY_FIELDS = setOf("stepId", "expectedRevision", "reasonCode")

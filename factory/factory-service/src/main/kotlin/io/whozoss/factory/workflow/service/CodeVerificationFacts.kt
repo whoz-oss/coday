@@ -46,6 +46,8 @@ internal fun codeVerificationFacts(outcome: CapabilityOutcome): Map<String, Any?
         "command" to redactAndBound(outcome.command, MAX_COMMAND_CHARS),
         "cwd" to (outcome.cwd ?: "target-repository-root"),
         "observedHead" to outcome.observedHead,
+        "observedHeadAfter" to outcome.observedHeadAfter,
+        "workspaceStable" to outcome.workspaceStable,
         "rootIdentity" to outcome.rootIdentity,
         "exitCode" to outcome.exitCode,
         "timedOut" to outcome.timedOut,
@@ -54,11 +56,13 @@ internal fun codeVerificationFacts(outcome: CapabilityOutcome): Map<String, Any?
         "stdout" to boundedStream(outcome.stdout),
         "stderr" to boundedStream(outcome.stderr),
         "code" to when {
+            !outcome.workspaceStable -> "VERIFICATION_WORKSPACE_CHANGED"
             outcome.timedOut -> "VERIFICATION_TIMED_OUT"
             outcome.verdict -> "VERIFICATION_PASSED"
             else -> "VERIFICATION_FAILED"
         },
         "message" to when {
+            !outcome.workspaceStable -> "Workspace branch/HEAD changed during verification; build proof rejected."
             outcome.timedOut -> "Verification timed out after ${outcome.durationMs} ms."
             outcome.verdict -> "Verification completed successfully."
             else -> "Verification exited with code ${outcome.exitCode}."

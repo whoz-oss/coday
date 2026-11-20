@@ -104,6 +104,7 @@ data class WorkflowStepDefinition(
     val decision: WorkflowDecision? = null,
     /** Decision step whose branches converge here. Ordinary dependencies remain AND. */
     val join: String? = null,
+    val outcomeTransitions: OutcomeTransitions? = null,
 )
 
 /** Ordered prose obligations, not machine-verified predicates or orchestration commands. */

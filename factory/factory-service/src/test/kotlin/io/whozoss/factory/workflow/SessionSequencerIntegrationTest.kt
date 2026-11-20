@@ -359,6 +359,354 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
 
     // ----- tests ---------------------------------------------------------
 
+    @Autowired lateinit var environments: io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
+    @Autowired lateinit var transactions: org.springframework.transaction.PlatformTransactionManager
+    @Autowired lateinit var occupations: io.whozoss.factory.worktree.persistence.Neo4jWorktreeExecutionOccupancyRepository
+    @Autowired lateinit var stepResults: io.whozoss.factory.agentattempt.service.AgentStepResultService
+    @Autowired lateinit var objectMapper: com.fasterxml.jackson.databind.ObjectMapper
+
+    private fun gitAt(path: Path, vararg args: String): String {
+        val process = ProcessBuilder(listOf("git", "-C", path.toString()) + args).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        check(process.waitFor(20, java.util.concurrent.TimeUnit.SECONDS) && process.exitValue() == 0) { output }
+        return output.trim()
+    }
+
+    private fun realWorkspace(): Pair<Path, String> {
+        val source = Files.createDirectory(repoRoot.resolve("source"))
+        gitAt(source, "init", "-b", "main")
+        gitAt(source, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "baseline")
+        val workspace = repoRoot.resolve("adopted")
+        gitAt(source, "worktree", "add", "-b", "factory/test", workspace.toString())
+        Files.createDirectories(workspace.resolve("factory"))
+        Files.writeString(workspace.resolve("factory/verification.json"),
+            """{"schemaVersion":"1","verifications":{"check":{"command":"pwd > code-cwd"}}}""")
+        return workspace to gitAt(workspace, "rev-parse", "HEAD")
+    }
+
+    private fun adoptedSession(
+        workflowId: String,
+        proxy: io.whozoss.factory.proxy.AgentOsProxyClient,
+        adapter: AgentOsExecutionAdapter,
+        afterPreparation: () -> Unit = {},
+    ): SessionRunService {
+        val provisioning = io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService(environments, proxy,
+            transactions, io.whozoss.factory.run.service.RunProvisioningTiming(0, 1), io.whozoss.factory.workspace.WorkspaceProperties())
+        val capability = io.mockk.spyk(CapabilityExecutionService(CapabilityResolver(), workflowRepository, evidenceRepository,
+            interactionRepository, attemptRepository, durableAttempts, adapter,
+            agentStepResultService = stepResults,
+            transactionManager = transactions, workEnvironmentRepository = environments,
+            agentOsWorkspaceIdentityValidator = io.whozoss.factory.worktree.AgentOsWorkspaceIdentityValidator(proxy),
+            worktreeExecutionOccupancyService = io.whozoss.factory.worktree.WorktreeExecutionOccupancyService(environments, occupations, transactionManager = transactions),
+            standaloneWorkspaceProvisioning = provisioning))
+        every { capability.prepareAgentWorkspace(any(), any(), any(), any()) } answers {
+            callOriginal()
+            afterPreparation()
+        }
+        // Fake the remote worker only: submit through the real result service, then let the
+        // production finalization and accepted-result release hook fence/release the occupation.
+        every { adapter.observeTurnResult(any(), any(), any(), any()) } answers {
+            val token = firstArg<io.whozoss.factory.adapter.agentos.TurnToken>()
+            val attempt = durableAttempts.findLatestForStep(scope, namespace, workflowId,
+                if (token.attemptId == CapabilityExecutionService.stableAttemptId(workflowId, "entry")) "entry" else "child")!!
+            stepResults.submitTrusted(scope, attempt,
+                objectMapper.readTree("""{"status":"PASS","summary":"done","claims":{"modifiedFiles":[]}}"""),
+                attempt.agentName, "test-result:${attempt.attemptId}")
+            AgentOsObservationResult(AgentOsExecutionVerdict.Succeeded(emptyMap()))
+        }
+        return SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub,
+            transactionManager = transactions,
+            runWorktreeResolver = io.whozoss.factory.workspace.RunWorktreeResolver(io.whozoss.factory.workspace.WorkspaceStateWaiter(
+                io.whozoss.factory.workspace.WorkEnvironmentWorkspaceStateAdapter(environments))))
+    }
+
+    private fun standaloneStart(id: String, child: Boolean = false) {
+        startSession(id, id, buildList {
+            add(stepJson("entry", "agent", "Writer", emptyList()))
+            if (child) add(stepJson("child", "agent", "Reviewer", listOf("entry")))
+            add(stepJson("build", "code", "check", listOf(if (child) "child" else "entry")))
+        })
+        val instance = workflowRepository.findInstance(scope, namespace, id)!!
+        check(workflowRepository.updateInstance(scope, namespace, id, instance.revision, instance.copy(
+            revision = instance.revision + 1,
+            instance = instance.instance + mapOf("controllerRequest" to mapOf("actorId" to "alice"),
+                "controllerExecution" to mapOf("actorId" to "spoofed-body-actor")))))
+    }
+
+    @Test fun `standalone adopts real root before agent and child then code uses same cwd and replay is inert`() {
+        val (workspace, base) = realWorkspace()
+        val id = "standalone-real-adoption"
+        standaloneStart(id, child = true)
+        val proxy = mockk<io.whozoss.factory.proxy.AgentOsProxyClient>()
+        every { proxy.ensureRunRootCase(any(), namespace, any(), "alice") } answers {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse()
+            assertThat(environments.findLatestByWorkflowId(scope, id)!!.lifecycleState)
+                .isIn(io.whozoss.factory.environment.domain.WorkEnvironmentState.PROVISIONING, io.whozoss.factory.environment.domain.WorkEnvironmentState.READY)
+        }
+        every { proxy.fetchWorkspaceChanges(any(), "alice") } returns
+            mapOf("equipped" to true, "status" to "READY", "path" to workspace.toString(), "changes" to mapOf("base" to base))
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+            val binding = firstArg<TrustedCaseBinding>()
+            val environment = environments.findLatestByWorkflowId(scope, id)!!
+            assertThat(binding.environmentRef).isEqualTo(environment.environmentId)
+            assertThat(environment.worktreePath).isEqualTo(workspace.toRealPath().toString())
+            assertThat(binding.externalUserId).isEqualTo("alice")
+            if (invocation.args[2] == "child") assertThat(binding.parentCaseId).isEqualTo(environment.parentCaseId)
+            CaseHandle(binding.caseId, namespace, true)
+        }
+        val runner = adoptedSession(id, proxy, adapter)
+        assertThat(runner.runSession(scope, namespace, id, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+        val environment = environments.findLatestByWorkflowId(scope, id)!!
+        assertThat(environment.parentCaseId).isEqualTo(workflowRepository.findInstance(scope, namespace, id)!!.rootCaseId)
+        assertThat(environment.baseCommit).isEqualTo(base)
+        assertThat(Files.readString(workspace.resolve("code-cwd")).trim()).isEqualTo(workspace.toRealPath().toString())
+        val revision = environment.revision
+        val count = evidenceRepository.list(scope, namespace, id).size
+        assertThat(runner.runSession(scope, namespace, id, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(environments.findLatestByWorkflowId(scope, id)!!.revision).isEqualTo(revision)
+        assertThat(evidenceRepository.list(scope, namespace, id)).hasSize(count)
+        verify(exactly = 2) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+    }
+
+    @Test fun `explicit disabled workspace allows polling with provisioning bean present`() {
+        val id = "standalone-disabled-polling"
+        standaloneStart(id)
+        val provisioning = io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService(environments,
+            mockk(), transactions, io.whozoss.factory.run.service.RunProvisioningTiming(0, 1),
+            io.whozoss.factory.workspace.WorkspaceProperties(enabled = false))
+        var calls = 0
+        val resolver = CapabilityResolver(object : AgentTurnCapability {
+            override fun executeAgentTurn(request: AgentTurnRequest): AgentTurnResult {
+                calls++
+                return AgentTurnResult.Completed("PASS")
+            }
+        })
+        val capability = CapabilityExecutionService(resolver, workflowRepository, evidenceRepository, interactionRepository,
+            attemptRepository, durableAttempts, mockk(relaxed = true),
+            agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false), standaloneWorkspaceProvisioning = provisioning)
+        val step = WorkflowStepDefinition("entry", "Entry", io.whozoss.factory.workflow.domain.WorkflowStepResponsibility(
+            io.whozoss.factory.workflow.domain.ResponsibilityKind.AGENT, "Writer"), emptyList())
+        capability.prepareAgentWorkspace(scope, namespace, id, step)
+        assertThat(capability.resolveAndRecord(scope, namespace, id, step, repoRoot).outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
+        assertThat(calls).isEqualTo(1)
+        assertThat(environments.findLatestByWorkflowId(scope, id)).isNull()
+    }
+
+    @Test fun `enabled workspace with disabled adapter fails before root reservation or provisioning`() {
+        val id = "standalone-refused-polling"
+        standaloneStart(id)
+        val proxy = mockk<io.whozoss.factory.proxy.AgentOsProxyClient>()
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        val provisioning = io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService(environments, proxy,
+            transactions, io.whozoss.factory.run.service.RunProvisioningTiming(0, 1),
+            io.whozoss.factory.workspace.WorkspaceProperties())
+        val capability = CapabilityExecutionService(CapabilityResolver(), workflowRepository, evidenceRepository,
+            interactionRepository, attemptRepository, durableAttempts, adapter,
+            agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false), standaloneWorkspaceProvisioning = provisioning)
+        val runner = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub,
+            transactionManager = transactions)
+        assertThat(runner.runSession(scope, namespace, id, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(workflowRepository.findInstance(scope, namespace, id)!!.rootCaseId).isNull()
+        assertThat(environments.findLatestByWorkflowId(scope, id)).isNull()
+        assertThat(durableAttempts.findLatestForStep(scope, namespace, id, "entry")).isNull()
+        verify(exactly = 0) { proxy.ensureRunRootCase(any(), any(), any(), any()) }
+        verify(exactly = 0) { adapter.createOrRecoverExecution(any<TrustedCaseBinding>(), any(), any()) }
+        verify(exactly = 0) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+    }
+
+    @Test fun `relative root invariant fails durably through sequencer and replay never provisions again`() {
+        val id = "standalone-relative-root"
+        standaloneStart(id)
+        val proxy = mockk<io.whozoss.factory.proxy.AgentOsProxyClient>()
+        every { proxy.ensureRunRootCase(any(), namespace, any(), "alice") } returns Unit
+        every { proxy.fetchWorkspaceChanges(any(), "alice") } returns
+            mapOf("equipped" to true, "status" to "READY", "path" to "relative/root")
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        repeat(2) {
+            assertThat(adoptedSession(id, proxy, adapter).runSession(scope, namespace, id, repoRoot).status)
+                .isEqualTo(WorkflowStatuses.FAILED)
+        }
+        assertThat(environments.findLatestByWorkflowId(scope, id)!!.provisioningFailure).isEqualTo("ROOT_WORKSPACE_ADOPTION_FAILED")
+        assertThat(durableAttempts.findLatestForStep(scope, namespace, id, "entry")).isNull()
+        verify(exactly = 1) { proxy.ensureRunRootCase(any(), any(), any(), any()) }
+        verify(exactly = 0) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+    }
+
+    @Test fun `body-only actor cannot provision standalone workspace`() {
+        val id = "standalone-no-authenticated-actor"
+        standaloneStart(id)
+        val instance = workflowRepository.findInstance(scope, namespace, id)!!
+        check(workflowRepository.updateInstance(scope, namespace, id, instance.revision,
+            instance.copy(revision = instance.revision + 1, instance = instance.instance - "controllerRequest")))
+        val proxy = mockk<io.whozoss.factory.proxy.AgentOsProxyClient>()
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        assertThat(adoptedSession(id, proxy, adapter).runSession(scope, namespace, id, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+        verify(exactly = 0) { proxy.ensureRunRootCase(any(), any(), any(), any()) }
+        verify(exactly = 0) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+    }
+
+    @Test fun `pre-claim crash after READY adoption resumes through a new sequencer without losing baseline`() {
+        val (workspace, base) = realWorkspace()
+        val id = "standalone-preclaim-crash"
+        standaloneStart(id)
+        val proxy = mockk<io.whozoss.factory.proxy.AgentOsProxyClient>()
+        val rootCase = CapabilityExecutionService.stableCaseId(id, "entry")
+        every { proxy.ensureRunRootCase(rootCase, namespace, any(), "alice") } returns Unit
+        every { proxy.fetchWorkspaceChanges(rootCase, "alice") } returns
+            mapOf("equipped" to true, "status" to "READY", "path" to workspace.toString())
+        val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+        every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+            val b = firstArg<TrustedCaseBinding>()
+            CaseHandle(b.caseId, namespace, true)
+        }
+        org.assertj.core.api.Assertions.assertThatThrownBy {
+            adoptedSession(id, proxy, adapter) { throw AssertionError("process crash after adoption") }
+                .runSession(scope, namespace, id, repoRoot)
+        }.isInstanceOf(AssertionError::class.java)
+        assertThat(statusOf(id, "entry")).isEqualTo(WorkflowStatuses.READY)
+        assertThat(durableAttempts.findLatestForStep(scope, namespace, id, "entry")).isNull()
+        val adopted = environments.findLatestByWorkflowId(scope, id)!!
+        assertThat(adopted.baseCommit).isEqualTo(base)
+        assertThat(adoptedSession(id, proxy, adapter).runSession(scope, namespace, id, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(environments.findLatestByWorkflowId(scope, id)).isEqualTo(adopted)
+        verify(exactly = 1) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+    }
+
+    @Test fun `transient adoption failures and interruption leave READY without attempt and resume through sequencer`() {
+        val (workspace, _) = realWorkspace()
+        listOf("absent", "preparing", "network", "ready-error", "interrupt").forEach { scenario ->
+            val id = "standalone-transient-$scenario"
+            standaloneStart(id)
+            val rootCase = CapabilityExecutionService.stableCaseId(id, "entry")
+            val proxy = mockk<io.whozoss.factory.proxy.AgentOsProxyClient>()
+            every { proxy.ensureRunRootCase(rootCase, namespace, any(), "alice") } returns Unit
+            every { proxy.fetchWorkspaceChanges(rootCase, "alice") } answers {
+                when (scenario) {
+                    "absent" -> null
+                    "preparing" -> mapOf("equipped" to true, "status" to "PREPARING")
+                    "ready-error" -> mapOf("equipped" to true, "status" to "READY", "error" to "Retry shortly")
+                    "interrupt" -> throw InterruptedException("interrupted HTTP")
+                    else -> throw io.whozoss.factory.proxy.AgentOsUnavailableException("network", java.io.IOException("connection reset"))
+                }
+            }
+            val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+            every { adapter.createOrRecoverExecution(any(), any(), any()) } answers {
+                val b = firstArg<TrustedCaseBinding>()
+                assertThat(b.externalUserId).isEqualTo("alice")
+                CaseHandle(b.caseId, namespace, true)
+            }
+            try {
+                org.assertj.core.api.Assertions.assertThatThrownBy {
+                    adoptedSession(id, proxy, adapter).runSession(scope, namespace, id, repoRoot)
+                }.isInstanceOf(if (scenario == "interrupt") InterruptedException::class.java else
+                    io.whozoss.factory.workspace.TransientWorkspaceAdoptionException::class.java)
+                assertThat(Thread.currentThread().isInterrupted).isEqualTo(scenario == "interrupt")
+            } finally { Thread.interrupted() }
+            assertThat(statusOf(id, "entry")).isEqualTo(WorkflowStatuses.READY)
+            assertThat(durableAttempts.findLatestForStep(scope, namespace, id, "entry")).isNull()
+            val pending = environments.findLatestByWorkflowId(scope, id)!!
+            assertThat(pending.provisioningFailure).isNull()
+            verify(exactly = 0) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+            every { proxy.fetchWorkspaceChanges(rootCase, "alice") } returns
+                mapOf("equipped" to true, "status" to "READY", "path" to workspace.toString())
+            assertThat(adoptedSession(id, proxy, adapter).runSession(scope, namespace, id, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
+            assertThat(environments.findLatestByWorkflowId(scope, id)!!.environmentId).isEqualTo(pending.environmentId)
+            verify(exactly = 1) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+        }
+    }
+
+    @Test fun `explicit failed standalone workspace persists failure with no dispatch or automatic retry`() {
+        listOf("FAILED").forEachIndexed { index, status ->
+            val id = "standalone-adoption-failure-$index"
+            standaloneStart(id)
+            val proxy = mockk<io.whozoss.factory.proxy.AgentOsProxyClient>()
+            every { proxy.ensureRunRootCase(any(), any(), any(), "alice") } returns Unit
+            every { proxy.fetchWorkspaceChanges(any(), "alice") } returns status?.let { mapOf("equipped" to true, "status" to it) }
+            val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+            val runner = adoptedSession(id, proxy, adapter)
+            assertThat(runner.runSession(scope, namespace, id, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+            assertThat(environments.findLatestByWorkflowId(scope, id)!!.provisioningFailure).isEqualTo("ROOT_WORKSPACE_ADOPTION_FAILED")
+            val count = evidenceRepository.list(scope, namespace, id).size
+            assertThat(runner.runSession(scope, namespace, id, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+            assertThat(evidenceRepository.list(scope, namespace, id)).hasSize(count)
+            verify(exactly = 1) { proxy.fetchWorkspaceChanges(any(), any()) }
+            verify(exactly = 0) { adapter.startTurn(any<TrustedCaseBinding>(), any(), any()) }
+        }
+    }
+
+    @Test
+    fun `standalone missing environment failure is durable and replay does not recheck workspace`() {
+        val workflowId = "wf-strict-workspace"
+        startSession("strict-workspace", workflowId, listOf(stepJson("build", "code", "build", emptyList())))
+        var reads = 0
+        val port = object : io.whozoss.factory.workspace.WorkspaceStatePort {
+            override fun latestForWorkflow(scope: io.whozoss.factory.persistence.TenantScope, workflowId: String): io.whozoss.factory.workspace.WorkspaceSnapshot? {
+                reads++
+                return null
+            }
+        }
+        val capability = mockk<CapabilityExecutionService>()
+        val runner = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub,
+            runWorktreeResolver = io.whozoss.factory.workspace.RunWorktreeResolver(io.whozoss.factory.workspace.WorkspaceStateWaiter(port)))
+
+        assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(workflowId, "build")).isEqualTo(WorkflowStatuses.FAILED)
+        val failures = evidenceRepository.list(scope, namespace, workflowId).filter { it.outcome == WorkflowStatuses.FAILED }
+        assertThat(failures).hasSize(1)
+        assertThat(failures.single().facts["message"].toString()).contains("CODE_WORKSPACE_REQUIRED")
+        assertThat(failures.single().facts["executed"]).isEqualTo(false)
+        val evidenceCount = evidenceRepository.list(scope, namespace, workflowId).size
+        assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(reads).isEqualTo(1)
+        assertThat(evidenceRepository.list(scope, namespace, workflowId)).hasSize(evidenceCount)
+        verify(exactly = 0) { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `code binding sees root case reserved by entry agent in the same session`() {
+        val workflowId = "wf-refreshed-root"
+        startSession("refreshed-root", workflowId, listOf(
+            stepJson("entry", "agent", "architect", emptyList()),
+            stepJson("build", "code", "build", listOf("entry")),
+        ))
+        val capability = mockk<CapabilityExecutionService>()
+        every { capability.prepareAgentWorkspace(any(), any(), any(), any()) } returns Unit
+        every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } answers {
+            val step = invocation.args[3] as WorkflowStepDefinition
+            if (step.id == "entry") {
+                workflowRepository.reserveRootCase(scope, namespace, workflowId, "fresh-root")
+                CapabilityExecution(CapabilityOutcome.AgentCompleted("entry", "architect", "PASS"))
+            } else {
+                CapabilityExecution(CapabilityOutcome.CodeRefused("build", "build", "VERIFICATION_MANIFEST_MISSING", "missing"))
+            }
+        }
+        val resolver = mockk<io.whozoss.factory.workspace.RunWorktreeResolver>()
+        every { resolver.resolveBinding(any(), any(), any(), any(), any(), any(), any()) } answers {
+            assertThat(invocation.args[5]).isEqualTo("fresh-root")
+            io.whozoss.factory.workspace.CodeWorkspaceBinding(repoRoot, "run-environment", workflowId)
+        }
+        val runner = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub,
+            runWorktreeResolver = resolver)
+        assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+        verify(exactly = 1) { resolver.resolveBinding(any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `missing manifest refusal is durable and terminal replay does not inspect it again`() {
+        val workflowId = "wf-missing-manifest-durable"
+        startSession("missing-manifest-durable", workflowId, listOf(stepJson("build", "code", "build", emptyList())))
+        // Existing shared integration profile explicitly disables workspace checks.
+        assertThat(sessionRunService.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+        val failure = evidenceRepository.list(scope, namespace, workflowId).last { it.outcome == WorkflowStatuses.FAILED }
+        assertThat(failure.facts["code"]).isEqualTo("VERIFICATION_MANIFEST_MISSING")
+        assertThat(failure.facts["executed"]).isEqualTo(false)
+        val count = evidenceRepository.list(scope, namespace, workflowId).size
+        writeManifest("build" to "exit 0")
+        assertThat(sessionRunService.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(evidenceRepository.list(scope, namespace, workflowId)).hasSize(count)
+    }
+
     @Test
     fun `a linear code DAG completes every step`() {
         writeScript("pass", "exit 0")

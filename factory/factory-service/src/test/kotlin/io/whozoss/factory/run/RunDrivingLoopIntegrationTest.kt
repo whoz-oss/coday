@@ -322,6 +322,8 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
     fun `vertical slice - parent run shares rootCaseId and worktree across fragments, handles human checkpoint, bounds correction loop to EscalateHuman, survives idempotent replay and completes`() {
         // Prepare verification scripts ONLY in sharedWorktreeRoot (NOT in fallbackRepoRoot!).
         // This proves that code steps in fragments resolve their worktree via the parent RunId.
+        Files.createDirectories(sharedWorktreeRoot.resolve(".git"))
+        Files.writeString(sharedWorktreeRoot.resolve(".git/HEAD"), "a".repeat(40))
         writeScriptInWorktree("pass", "exit 0")
         writeScriptInWorktree("fail", "exit 2")
         writeManifestInWorktree(
@@ -337,6 +339,7 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
         every { provisioningProxy.ensureRunRootCase(any(), any(), any(), any()) } returns Unit
         every { provisioningProxy.fetchWorkspaceChanges(any(), any()) } returns mapOf(
             "equipped" to true, "status" to "READY", "path" to sharedWorktreeRoot.toString(),
+            "branch" to "factory/test",
         )
 
         // Track every AgentOS case binding observed across all fragments
@@ -423,6 +426,13 @@ class RunDrivingLoopIntegrationTest : Neo4jDomainIntegrationTest() {
                 statePort = WorkEnvironmentWorkspaceStateAdapter(workEnvironmentRepository),
                 properties = WorkspaceProperties(enabled = true),
             ),
+            git = io.whozoss.factory.environment.port.GitCommandRunner { root, arguments ->
+                io.whozoss.factory.environment.port.GitCommandResult(0, when {
+                    "--show-toplevel" in arguments -> root.toString()
+                    arguments.first() == "symbolic-ref" -> "factory/test"
+                    else -> "a".repeat(40)
+                }, "")
+            },
         )
 
         val sessionRunService = SessionRunService(

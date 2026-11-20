@@ -10,6 +10,12 @@ export class SessionPageState {
   private readonly namespace = signal<string | undefined>(undefined)
 
   readonly selection = signal<BlockSelection | null>(null)
+  /**
+   * Automatic selection follows the current backend phase after every live
+   * projection update. A selection made from the diagram or timeline pins the
+   * requested step instead.
+   */
+  private readonly selectionPinnedByUser = signal(false)
   readonly session = computed(() => this.store.session(this.runId()))
   readonly parentRun = computed(() => this.store.parentRunFor(this.runId()))
   readonly run = computed(() => this.store.runs().find((candidate) => candidate.id === this.runId()))
@@ -20,6 +26,8 @@ export class SessionPageState {
     const selection = this.selection()
     if (!selection) return session.phase
     if (selection.kind === 'launch_request') return session.launchRequest
+    // An outcome ledger selection is more specific than its linked agent attempt.
+    if (selection.executionId) return session.phaseByExecutionId?.get(selection.executionId)
     if (selection.attemptId) return session.phaseByAttemptId?.get(selection.attemptId)
     return session.phaseByStepId?.get(selection.stepId)
   })
@@ -35,6 +43,9 @@ export class SessionPageState {
     const selection = this.selection()
     if (!selection) return session.events
     if (selection.kind === 'launch_request') return []
+    if (selection.executionId) {
+      return session.eventsByExecutionId ? (session.eventsByExecutionId.get(selection.executionId) ?? []) : null
+    }
     if (selection.attemptId) {
       return session.eventsByAttemptId ? (session.eventsByAttemptId.get(selection.attemptId) ?? []) : null
     }
@@ -58,6 +69,7 @@ export class SessionPageState {
     this.runId.set(runId)
     this.namespace.set(namespaceId)
     this.selection.set(null)
+    this.selectionPinnedByUser.set(false)
     if (runId) {
       this.store.selectSession(runId, namespaceId)
       if (runId.includes('__f')) {
@@ -68,10 +80,24 @@ export class SessionPageState {
 
   selectDefaultStep(): void {
     const stepId = this.session()?.phase.stepId
-    if (stepId && !this.selection()) this.selection.set({ stepId })
+    const currentSelection = this.selection()
+    // Retain the selection object for an unchanged active step. Consumers use
+    // its identity as a context-change signal (for example, EventLog resets
+    // filters), so every SSE projection must not look like a new selection.
+    if (stepId && !this.selectionPinnedByUser() && currentSelection?.stepId !== stepId) {
+      this.selection.set({ stepId })
+    }
+  }
+
+  selectStep(stepId: string): void {
+    this.selectionPinnedByUser.set(true)
+    this.selection.set({ stepId })
   }
 
   reconcileSelection(): void {
+    // Automatic selection follows the current phase directly; only a pinned
+    // user selection needs validity reconciliation against the refreshed view.
+    if (!this.selectionPinnedByUser()) return
     const session = this.session()
     const selection = this.selection()
     if (!session || !selection) return
@@ -79,11 +105,18 @@ export class SessionPageState {
     const stillExists = blocks.some((block) =>
       selection.kind === 'launch_request'
         ? block.kind === 'launch_request'
-        : selection.attemptId
-          ? block.attemptId === selection.attemptId
-          : (block.stepId ?? block.label) === selection.stepId && !block.attemptId
+        : selection.executionId
+          ? block.executionId === selection.executionId
+          : selection.attemptId
+            ? block.attemptId === selection.attemptId
+            : (block.stepId ?? block.label) === selection.stepId && !block.attemptId && !block.executionId
     )
-    if (stillExists || (!selection.attemptId && session.routingSteps?.some((step) => step.id === selection.stepId)))
+    if (
+      stillExists ||
+      (!selection.attemptId &&
+        !selection.executionId &&
+        session.routingSteps?.some((step) => step.id === selection.stepId))
+    )
       return
     const fallback = blocks[0]
     if (fallback) this.selectBlock(fallback)
@@ -91,10 +124,12 @@ export class SessionPageState {
   }
 
   selectBlock(block: TimelineBlock): void {
+    this.selectionPinnedByUser.set(true)
     const selection: BlockSelection = { stepId: block.stepId ?? block.label }
     if (block.kind === 'launch_request') selection.kind = 'launch_request'
     if (block.attemptId) selection.attemptId = block.attemptId
     if (block.caseId) selection.caseId = block.caseId
+    if (block.executionId) selection.executionId = block.executionId
     this.selection.set(selection)
   }
 

@@ -1010,6 +1010,15 @@ class WorkflowService(
     ): HumanReplyOutcome {
         val interaction = interactionRepository.find(scope, namespaceId, workflowId, interactionId)
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_NOT_FOUND)
+        if (interaction.interactionType == "correction_exhausted") {
+            throw workflowException(WorkflowErrorCodes.ACTION_NOT_ALLOWED, "Correction budget exhausted; inspect evidence and create an explicitly authorized successor run. No automatic budget reset.")
+        }
+        val pinnedExecution = interaction.payload["executionId"]
+        val currentExecution = repository.findStepStates(scope, namespaceId, workflowId)
+            .firstOrNull { it.stepId == interaction.stepId }?.payload?.get("execution") as? Map<*, *>
+        if (currentExecution != null && pinnedExecution != currentExecution["executionId"]) {
+            throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "This approval belongs to a previous execution.")
+        }
         val actions = (interaction.payload["actions"] as? List<*>).orEmpty().mapNotNull { entry ->
             (entry as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
         }
@@ -1213,8 +1222,7 @@ class WorkflowService(
         if (interaction.interactionType != CHECKPOINT_INTERACTION_TYPE) return
         val runner = sessionRunService ?: return
         val instance = repository.findInstance(scope, namespaceId, workflowId)
-        val actorId = (instance?.instance?.get("controllerExecution") as? Map<*, *>)?.get("actorId") as? String
-            ?: (instance?.instance?.get("controllerRequest") as? Map<*, *>)?.get("actorId") as? String
+        val actorId = (instance?.instance?.get("controllerRequest") as? Map<*, *>)?.get("actorId") as? String
         val root = repoRoot ?: resolveRepoRoot(namespaceId, actorId)
         logger.debug { "Auto-resuming session $workflowId after checkpoint ${interaction.interactionId}" }
         runner.runSession(scope, namespaceId, workflowId, root)
@@ -1246,6 +1254,9 @@ class WorkflowService(
     ): WorkflowHttpResult {
         val instance = activeInstance(scope, namespaceId, workflowId)
         val snapshot = instance.toSnapshot()
+        if (instance.projection.containsKey("stepExecutions")) {
+            throw workflowException(WorkflowErrorCodes.ACTION_NOT_ALLOWED, "Outcome-managed executions cannot use legacy step retry; create an explicitly authorized successor run.")
+        }
         if (snapshot.stepStatus(stepId) != "blocked") {
             throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "Only a blocked step can be retried.")
         }
@@ -1523,12 +1534,12 @@ class WorkflowService(
     }
 
     @Transactional(readOnly = true)
-    fun metrics(scope: TenantScope, namespaceId: String, workflowId: String, scopeName: String): Map<String, Any?> {
+    fun metrics(scope: TenantScope, namespaceId: String, workflowId: String, scopeName: String, actorId: String): Map<String, Any?> {
         val timing = timing(scope, namespaceId, workflowId)
         val retries = retries(scope, namespaceId, workflowId)
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = false)
-        val realCost = aggregateRealCost(scope, namespaceId, workflowId)
+        val realCost = aggregateRealCost(scope, namespaceId, workflowId, actorId)
         return mapOf(
             "namespaceId" to namespaceId,
             "workflowId" to workflowId,
@@ -1596,7 +1607,8 @@ class WorkflowService(
 
     /**
      * Aggregates the real run cost of the workflow over its distinct case ids,
-     * read from AgentOS `GET /api/cases/{caseId}/run-cost`.
+     * read from AgentOS `GET /api/cases/{caseId}/run-cost` as the authenticated
+     * reader [actorId], never as the persisted workflow creator.
      *
      * Degradation is total: a disabled proxy, an unreachable AgentOS, an unknown
      * case or any unexpected error yields the zero aggregate and never breaks
@@ -1604,12 +1616,12 @@ class WorkflowService(
      * never folded into `cost` as 0.
      */
     @Suppress("UNCHECKED_CAST")
-    private fun aggregateRealCost(scope: TenantScope, namespaceId: String, workflowId: String): RealCostAggregate {
+    private fun aggregateRealCost(scope: TenantScope, namespaceId: String, workflowId: String, actorId: String): RealCostAggregate {
         val proxy = agentOsProxyClient ?: return RealCostAggregate()
         return try {
             var aggregate = RealCostAggregate()
             for (caseId in resolveWorkflowCaseIds(scope, namespaceId, workflowId, null)) {
-                val runCost = proxy.getRunCost(caseId, null) ?: continue
+                val runCost = proxy.getRunCost(caseId, actorId) ?: continue
                 val pausedCases = if (runCost.paused) {
                     runCost.pausedCaseIds.ifEmpty { listOf(runCost.caseId) }
                 } else {
@@ -1651,6 +1663,7 @@ class WorkflowService(
         namespaceId: String,
         workflowId: String,
         canReply: Boolean,
+        actorId: String,
     ): WorkflowActionsResponseDto {
         val projectionState = getProjection(scope, namespaceId, workflowId)
         requireExistingWorkflow(projectionState)
@@ -1666,7 +1679,7 @@ class WorkflowService(
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = true)
         val attempts = durableAgentAttemptService?.findByWorkflow(scope, namespaceId, workflowId).orEmpty()
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
-        val realCost = aggregateRealCost(scope, namespaceId, workflowId)
+        val realCost = aggregateRealCost(scope, namespaceId, workflowId, actorId)
 
         val actions = mutableListOf<AllowedActionDto>()
         val blockers = mutableListOf<WorkflowBlockerDto>()
@@ -1682,7 +1695,7 @@ class WorkflowService(
                 interaction.stepId,
                 "Waiting for a human decision on step '${interaction.stepId}'.",
             )
-            if (canReply) {
+            if (canReply && interaction.interactionType != "correction_exhausted") {
                 actions.add(
                     AllowedActionDto(
                         type = WorkflowActionTypes.REPLY,
@@ -1830,7 +1843,12 @@ class WorkflowService(
                 )
             }
 
-        return WorkflowActionsResponseDto(allowedActions = actions, blockers = blockers)
+        // Legacy retry is refused for outcome-managed executions; never advertise a command
+        // that would bypass the execution ledger or the persisted correction budget.
+        val permittedActions = if (governedInstance?.projection?.containsKey("stepExecutions") == true) {
+            actions.filterNot { it.type == WorkflowActionTypes.RETRY }
+        } else actions
+        return WorkflowActionsResponseDto(allowedActions = permittedActions, blockers = blockers)
     }
 
     /**
@@ -2021,6 +2039,7 @@ fun WorkflowDefinitionRecord.toPolicyDefinition(): WorkflowPolicyDefinition {
             contract = WorkflowStepContract.fromJson(step),
             decision = WorkflowDecision.parse(step["decision"]),
             join = step["join"] as? String,
+            outcomeTransitions = io.whozoss.factory.workflow.domain.OutcomeTransitions.parse(step["outcomeTransitions"]),
         )
     }
     return WorkflowPolicyDefinition(workflowType = workflowType, version = version, definitionHash = definitionHash, steps = steps)

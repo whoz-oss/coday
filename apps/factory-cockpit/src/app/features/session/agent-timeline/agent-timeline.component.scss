@@ -313,6 +313,9 @@
 .block-meta-item--failure {
   color: var(--sf-error-text);
 }
+.block-meta-item--cycle {
+  color: var(--color-accent-700);
+}
 
 .ticks {
   position: relative;

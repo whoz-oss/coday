@@ -51,7 +51,9 @@ class SessionRunSubmissionService(
     ): SubmissionResult {
         val submissionId = stableSubmissionId(scope, namespaceId, workflowId, operation)
         val nodeId = OutboxEventNode.compositeId(scope.organizationId, submissionId)
-        val existing = outbox.findActiveRunSubmission(nodeId, SESSION_RUN_REQUESTED)
+        val continuationId = OutboxEventNode.compositeId(scope.organizationId,
+            io.whozoss.factory.agentattempt.service.OutboxDrainService.continuationId(scope.workstreamId, namespaceId, workflowId))
+        val existing = outbox.findActiveRunSubmission(nodeId, SESSION_RUN_REQUESTED, continuationId)
         if (existing != null) {
             return SubmissionResult(
                 submissionId = existing.eventId,
@@ -59,6 +61,17 @@ class SessionRunSubmissionService(
                 idempotent = true,
                 status = existing.status,
             )
+        }
+        if (outbox.existsById(nodeId)) {
+            val payload = objectMapper.writeValueAsString(mapOf("submissionId" to submissionId,
+                "namespaceId" to namespaceId, "workflowId" to workflowId, "repoRoot" to repoRoot,
+                "operation" to operation, "ticket" to ticket))
+            if (outbox.resubmitAfterDead(nodeId, continuationId, payload) > 0) {
+                return SubmissionResult(submissionId, queued = true, idempotent = false, status = PENDING)
+            }
+            outbox.findActiveRunSubmission(nodeId, SESSION_RUN_REQUESTED, continuationId)?.let {
+                return SubmissionResult(it.eventId, it.status == PENDING, true, it.status)
+            }
         }
         // A terminal failed submission may be explicitly re-submitted under a
         // new identity; active pending/dispatched rows remain deterministically
