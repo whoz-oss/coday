@@ -89,6 +89,8 @@ class ChatModelFactory internal constructor(
         reasoningEffort: ReasoningEffort? = null,
         /** The calling user's choice; only changes the request for Claude models via Requesty (OpenAI API type). */
         promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+        /** Receives the cost reported in OpenAI-compatible responses (e.g. Requesty `usage.cost`). */
+        providerCost: ProviderReportedCost? = null,
     ): ChatModel {
         val resolvedApiKey = apiKey ?: ""
         return when (apiType) {
@@ -101,6 +103,7 @@ class ChatModelFactory internal constructor(
                     maxCompletionTokens = maxCompletionTokens,
                     reasoningEffort = reasoningEffort,
                     promptCacheTtl = promptCacheTtl,
+                    providerCost = providerCost,
                 )
             }
 
@@ -171,11 +174,18 @@ class ChatModelFactory internal constructor(
         maxCompletionTokens: Int?,
         reasoningEffort: ReasoningEffort?,
         promptCacheTtl: PromptCacheTtl,
+        providerCost: ProviderReportedCost? = null,
     ): ChatModel {
         // Same defaults as OpenAiApi.Builder; request/response hooks are added only when needed.
         val restClientBuilder = RestClient.builder()
         val webClientBuilder = WebClient.builder()
+        if (providerCost != null) {
+            // Reads the cost the provider reports in the response.
+            restClientBuilder.requestInterceptor(ProviderCostCapture.interceptor(providerCost))
+            webClientBuilder.filter(ProviderCostCapture.filter(providerCost))
+        }
         if (appliesOneHourCache(AiApiType.OpenAI, baseUrl, model, promptCacheTtl)) {
+            // Rewrites the outgoing request body; independent of the response-side cost hooks above.
             restClientBuilder.requestInterceptor(RequestyPromptCache.interceptor())
             webClientBuilder.filter(RequestyPromptCache.filter())
         }

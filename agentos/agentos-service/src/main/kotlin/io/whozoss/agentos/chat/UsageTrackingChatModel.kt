@@ -46,6 +46,8 @@ import java.util.concurrent.atomic.AtomicReference
  * `internalToolExecutionEnabled` flag is not enough, since this class executes the tools itself.
  *
  * [exchangeRecorder] sees every request sent to the provider, tool rounds included, and the text of its response.
+ *
+ * A cost reported by the provider for a request ([providerCost]) replaces the pricing estimate.
  */
 class UsageTrackingChatModel(
     private val delegate: ChatModel,
@@ -56,6 +58,7 @@ class UsageTrackingChatModel(
     private val maxToolRounds: Int = LimitsConfigProperties().agentMaxIterations,
     private val runTools: Boolean = true,
     private val exchangeRecorder: LlmExchangeRecorder? = null,
+    private val providerCost: ProviderReportedCost? = null,
 ) : ChatModel by delegate {
     /**
      * Kotlin `by delegate` does not forward Java interface default methods: without this override,
@@ -119,8 +122,9 @@ class UsageTrackingChatModel(
     private fun trackedCall(prompt: Prompt): ChatResponse {
         awaitPermission()
         exchangeRecorder?.requestSent(prompt)
+        providerCost?.clear()
         return delegate.call(prompt).also {
-            accumulator.record(CostCalculator.extract(it, apiType, model))
+            accumulator.record(withProviderCost(CostCalculator.extract(it, apiType, model)))
             exchangeRecorder?.responseReceived(it.result?.output?.text)
         }
     }
@@ -216,17 +220,25 @@ class UsageTrackingChatModel(
             .thenMany(
                 Flux.defer {
                     exchangeRecorder?.requestSent(prompt)
+                    providerCost?.clear()
                     delegate.stream(prompt)
                 },
             )
             .doOnNext { response ->
                 val usage = CostCalculator.extract(response, apiType, model)
                 if (usage != LlmUsage.ZERO) lastUsage.set(usage)
-            }.doOnComplete { lastUsage.getAndSet(null)?.let(accumulator::record) }
-            .doOnError {
-                lastUsage.getAndSet(null)?.let(accumulator::record)
-            }.doOnCancel { lastUsage.getAndSet(null)?.let(accumulator::record) }
+            }.doOnComplete { recordLast(lastUsage) }
+            .doOnError { recordLast(lastUsage) }
+            .doOnCancel { recordLast(lastUsage) }
     }
+
+    private fun recordLast(lastUsage: AtomicReference<LlmUsage?>) {
+        lastUsage.getAndSet(null)?.let { accumulator.record(withProviderCost(it)) }
+    }
+
+    /** The provider's own figure is authoritative; the estimate remains the fallback. */
+    private fun withProviderCost(usage: LlmUsage): LlmUsage =
+        providerCost?.take()?.let { usage.copy(estimatedCostUsd = it) } ?: usage
 
     /** The summary is streamed as it comes; a last chunk adds what completes it, and the limit marker. */
     private fun streamSummary(prompt: Prompt): Flux<ChatResponse> =
