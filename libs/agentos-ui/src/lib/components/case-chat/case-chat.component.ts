@@ -100,6 +100,8 @@ import {
   effectiveConversation,
   findLegitimateAnswer,
   isAuthorOf,
+  messageAuthorLabel,
+  messagingPlatformLabel,
   rerunErrorMessage,
   rerunTargetOf,
   runningAfter,
