@@ -11,6 +11,7 @@ import io.mockk.verify
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
+import io.whozoss.agentos.caseFlow.CaseRunAdmission
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.NamespaceService
@@ -23,7 +24,10 @@ import java.util.concurrent.CompletionException
 
 class RunCostServiceSpec :
     StringSpec({
-        fun fixture(threshold: Double? = 10.0): Triple<RunCostService, Case, MutableMap<UUID, Case>> {
+        fun fixture(
+            threshold: Double? = 10.0,
+            admission: CaseRunAdmission = CaseRunAdmission(),
+        ): Triple<RunCostService, Case, MutableMap<UUID, Case>> {
             val case = Case(namespaceId = UUID.randomUUID(), runCostThreshold = threshold)
             val saved = mutableMapOf(case.id to case)
             val repo = mockk<CaseRepository>()
@@ -35,7 +39,7 @@ class RunCostServiceSpec :
             every { namespaces.resolveRunCostThreshold(any()) } returns null
             val records = mockk<UsageRecordService>()
             every { records.sumCostByCaseTreeSince(any(), any()) } returns null
-            return Triple(RunCostService(repo, events, namespaces, records, UsageConfigProperties(enabled = true)), case, saved)
+            return Triple(RunCostService(repo, events, namespaces, records, UsageConfigProperties(enabled = true), admission), case, saved)
         }
 
         "usage is disabled by default before any data access or registration" {
@@ -427,9 +431,11 @@ class RunCostServiceSpec :
         }
 
         "after a stop, no side question is admitted until a new run starts, even once the stopped session is gone" {
-            val (service, case, _) = fixture()
+            val admission = CaseRunAdmission()
+            val (service, case, _) = fixture(admission = admission)
             val turn = UsageAccumulator()
             val registration = service.register(case.id, turn)
+            admission.stopped(case.id)
             service.stop(case.id)
             registration.finish {}
 
@@ -441,14 +447,35 @@ class RunCostServiceSpec :
         }
 
         "a new run admits side questions again after a stop" {
-            val (service, case, _) = fixture()
+            val admission = CaseRunAdmission()
+            val (service, case, _) = fixture(admission = admission)
+            admission.stopped(case.id)
             service.stop(case.id)
+            admission.runStarting(case.id)
             val next = service.register(case.id, UsageAccumulator())
 
             val admitted = service.nonPausing(case.id, UsageAccumulator())
 
             admitted.shouldBeInstanceOf<RunCostService.NonPausingRegistration.Registered>().registration.finish {}
             next.finish {}
+        }
+
+        "a stop arriving while a run's agent is resolved is not erased when that stopped run registers" {
+            val admission = CaseRunAdmission()
+            val (service, case, _) = fixture(admission = admission)
+            admission.runStarting(case.id)
+            // The user stops the case while its agent is being resolved...
+            admission.stopped(case.id)
+            service.stop(case.id)
+            // ...and the stopped run registers afterwards.
+            val registration = service.register(case.id, UsageAccumulator())
+
+            val refused = service.nonPausing(case.id, UsageAccumulator())
+
+            (refused as RunCostService.NonPausingRegistration.Refused).reason shouldBe
+                RunCostService.NonPausingRegistration.Reason.STOPPED
+            admission.isStopped(case.id) shouldBe true
+            registration.finish {}
         }
 
         listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { status ->

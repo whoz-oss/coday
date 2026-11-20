@@ -64,8 +64,10 @@ import java.util.UUID
  *   for OAuth. Also the retry of a request that only answered with tool calls.
  *
  * Every request is recorded as usage of the case ([UsageRecord], agent name [SIDE_QUESTION_AGENT_NAME]) and counts
- * toward its run cost. A case that has ended (killed, in error) spends nothing more: 409. So does a case (or an
- * ancestor) stopped since its last run started, waiting for a cost confirmation, or at its threshold: a side question never pauses anything itself, though a running turn may pause at its
+ * toward its run cost. A case that has ended (killed, in error) or was stopped since its last run started
+ * ([CaseRunAdmission]), or whose ancestor did, spends nothing more: 409, whether usage is tracked or not (the stops
+ * are in memory, lost on restart). So does a case (or an ancestor) waiting for a cost confirmation, or at its
+ * threshold: a side question never pauses anything itself, though a running turn may pause at its
  * next gate because the side question's spend crossed the threshold.
  */
 @Service
@@ -79,6 +81,7 @@ class CaseSideQuestionService(
     private val usageRecordService: UsageRecordService,
     private val runCostService: RunCostService,
     private val clock: Clock,
+    private val runAdmission: CaseRunAdmission,
     private val properties: SideQuestionProperties = SideQuestionProperties(),
     private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) {
@@ -119,10 +122,7 @@ class CaseSideQuestionService(
         val case =
             caseService.findById(caseId, withRemoved = false)
                 ?: throw ResourceNotFoundException("Case not found: $caseId")
-        // Usage tracked or not: an ended case spends nothing more.
-        if (case.status == CaseStatus.KILLED || case.status == CaseStatus.ERROR) {
-            throw ConflictException("This case has ended: a side question cannot be answered")
-        }
+        requireAdmitted(case)
         var events = caseEventService.findByParent(caseId)
         val lastRequest = lastLlmRequestRegistry.get(caseId)
         val fromLastRequest = lastRequest?.let { fromLastRequest(case, events, it, question, userId) }
@@ -222,6 +222,26 @@ class CaseSideQuestionService(
             model = model,
             provider = provider,
         )
+    }
+
+    /**
+     * Lifecycle admission, independent of cost tracking: neither [case] nor an ancestor has ended (killed, in error)
+     * or was stopped since its last run started.
+     */
+    private fun requireAdmitted(case: Case) {
+        var current: Case? = case
+        var depth = 0
+        while (current != null && depth++ < MAX_LINEAGE_DEPTH) {
+            val whose = if (current.id == case.id) "This case" else "A parent of this case"
+            val why =
+                when {
+                    current.status == CaseStatus.KILLED || current.status == CaseStatus.ERROR -> "has ended"
+                    runAdmission.isStopped(current.id) -> "was stopped (send a message to resume it)"
+                    else -> null
+                }
+            if (why != null) throw ConflictException("$whose $why: a side question cannot be answered now")
+            current = current.parentCaseId?.let { caseService.findById(it, withRemoved = false) }
+        }
     }
 
     /** [baseProvider] with the overlays of [userId] (their own API key, if any), as an agent run resolves it. */
@@ -368,6 +388,9 @@ class CaseSideQuestionService(
     companion object : KLogging() {
         /** The agent name of the usage of every side question: no agent answers it, whatever request it reuses. */
         const val SIDE_QUESTION_AGENT_NAME = "side-question"
+
+        /** Beyond it the parents of a case are not checked (the cost service refuses deeper lineages anyway). */
+        private const val MAX_LINEAGE_DEPTH = 11
 
         internal const val SYSTEM_PROMPT =
             "You are answering a side question (a \"by the way\") about an ongoing conversation between a user and " +

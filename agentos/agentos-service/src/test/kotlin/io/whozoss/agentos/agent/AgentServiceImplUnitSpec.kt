@@ -81,6 +81,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.springframework.ai.chat.client.ChatClient
 import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseRunAdmission
 import io.whozoss.agentos.caseFlow.CaseSideQuestionService
 import io.whozoss.agentos.chat.LlmExchangeRecorder
 import io.whozoss.agentos.chat.UsageAccumulator
@@ -488,6 +489,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     mockk(),
                     mockk(),
                     Clock.systemUTC(),
+                    CaseRunAdmission(),
                 )
 
             sideQuestions.answer(caseId, "Is it green?", userId) shouldBe "It is green."

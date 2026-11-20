@@ -3,6 +3,7 @@ package io.whozoss.agentos.usage
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
+import io.whozoss.agentos.caseFlow.CaseRunAdmission
 import io.whozoss.agentos.caseFlow.saveChange
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.UsageConfigProperties
@@ -36,14 +37,10 @@ class RunCostService(
     private val namespaces: NamespaceService,
     private val records: UsageRecordService,
     private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
+    /** The cases stopped since their last run started, recorded by the case service whether usage is tracked or not. */
+    private val runAdmission: CaseRunAdmission = CaseRunAdmission(),
 ) {
     private val sessions = mutableMapOf<UUID, Session>()
-
-    /**
-     * Cases stopped by the user ([stop]) since their last run started: no side question is admitted for them, even
-     * once their stopped session is gone, until a new run registers ([register]).
-     */
-    private val stoppedCases = mutableSetOf<UUID>()
 
     internal data class Session(
         val caseId: UUID,
@@ -122,8 +119,6 @@ class RunCostService(
     ): Registration {
         requireEnabled()
         val runSessions = prepareSessions(ancestors(caseId))
-        // A new run starts: side questions are admitted again.
-        stoppedCases.remove(caseId)
         publish(runSessions, accumulator, pausing = true)
         return Registration(accumulator, runSessions).also { accumulator.beforeCall = it::beforeCall }
     }
@@ -145,9 +140,9 @@ class RunCostService(
 
     /**
      * Registers spend that must never pause its case (a side question), in one atomic step: refused when the case or
-     * one of its ancestors has ended (killed, in error), was stopped since its last run started (even once its
-     * session is gone: no fresh session is made for a side question then), is waiting for a cost confirmation, or is
-     * at or over its threshold.
+     * one of its ancestors has ended (killed, in error), was stopped since its last run started ([CaseRunAdmission],
+     * even once its session is gone: no fresh session is made for a side question then), is waiting for a cost
+     * confirmation, or is at or over its threshold. Like the live sessions, the stops are in memory: lost on restart.
      *
      * Once registered, its spend counts toward the cost of the case and its ancestors like a run's: a running turn
      * may pause at its next gate because of it. Its own requests never wait for a confirmation (they only fail when
@@ -164,7 +159,7 @@ class RunCostService(
             val reason =
                 when {
                     case.status == CaseStatus.KILLED || case.status == CaseStatus.ERROR -> NonPausingRegistration.Reason.ENDED
-                    case.id in stoppedCases -> NonPausingRegistration.Reason.STOPPED
+                    runAdmission.isStopped(case.id) -> NonPausingRegistration.Reason.STOPPED
                     else -> null
                 }
             if (reason != null) return NonPausingRegistration.Refused(case.id, reason)
@@ -271,9 +266,7 @@ class RunCostService(
     @Synchronized
     fun stop(caseId: UUID) {
         if (!usageConfig.enabled) return
-        stoppedCases += caseId
         sessions.values.filter { caseId in it.ancestorIds }.forEach { session ->
-            stoppedCases += session.caseId
             session.stopped = true
             session.cancellation.completeExceptionally(CostRunStopped())
             session.confirmation?.completeExceptionally(CostRunStopped())

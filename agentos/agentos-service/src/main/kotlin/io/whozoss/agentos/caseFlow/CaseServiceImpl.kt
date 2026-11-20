@@ -113,6 +113,8 @@ class CaseServiceImpl(
     coroutineContext: CoroutineContext = Dispatchers.IO,
     /** The last LLM request of each case's turns: forgotten when a run starts, or the case is killed or deleted. */
     private val lastLlmRequestRegistry: LastLlmRequestRegistry = LastLlmRequestRegistry(),
+    /** The cases stopped since their last run started, for the side questions: kept whether usage is tracked or not. */
+    private val runAdmission: CaseRunAdmission = CaseRunAdmission(),
 ) : CaseService,
     SubCaseManager {
     /**
@@ -314,6 +316,7 @@ class CaseServiceImpl(
             killSingleCase(id)
         }
         lastLlmRequestRegistry.forget(id)
+        runAdmission.forget(id)
         return caseRepository.delete(id)
     }
 
@@ -321,6 +324,7 @@ class CaseServiceImpl(
         findByParent(parentId).forEach {
             killSingleCase(it.id)
             lastLlmRequestRegistry.forget(it.id)
+            runAdmission.forget(it.id)
         }
         return caseRepository.deleteByParent(parentId)
     }
@@ -767,6 +771,8 @@ class CaseServiceImpl(
         // The conversation moves on: the last request of the previous turn no longer ends it (a redirect, too), and
         // a side question about to reuse it falls back on the transcript. The new generation goes to the agent.
         val llmRequestGeneration = lastLlmRequestRegistry.invalidate(caseId)
+        // Before the agent is resolved: a stop arriving from now on (during the resolution too) is this run's, and stays.
+        runAdmission.runStarting(caseId)
         val usageAccumulator = if (usageConfig.enabled) UsageAccumulator() else null
         val context =
             AgentExecutionContext(
@@ -1022,6 +1028,8 @@ class CaseServiceImpl(
         // Mark every runtime interrupted before unblocking any waiting model call. With a gate, a
         // launch admitted but not running yet is cancelled in the same pass.
         family.forEach { if (gatedRuns != null) gatedRuns.cancelAdmitted(it) else it.requestInterrupt() }
+        // No side question for them until their next run, whether usage is tracked or not.
+        family.forEach { runAdmission.stopped(it.id) }
         if (usageConfig.enabled) runCostService?.stop(caseId)
         // Cancel the running turns, so an agent waiting in a tool or an LLM stream stops now. Only once
         // every runtime is marked: a cancelled child ends IDLE, which completes its parent's delegation.
@@ -1057,6 +1065,7 @@ class CaseServiceImpl(
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
         lastLlmRequestRegistry.invalidate(caseId)
+        runAdmission.stopped(caseId)
         val runtime = activeRuntimes[caseId]
         if (gatedRuns != null) gatedRuns.kill(caseId, runtime) else runtime?.requestKill()
         if (usageConfig.enabled) runCostService?.stop(caseId)

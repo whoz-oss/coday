@@ -270,6 +270,7 @@ class CaseServiceImplSpec :
                 },
             coroutineContext: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
             lastLlmRequestRegistry: LastLlmRequestRegistry = LastLlmRequestRegistry(),
+            runAdmission: CaseRunAdmission = CaseRunAdmission(),
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -303,6 +304,7 @@ class CaseServiceImplSpec :
                 runCostService = runCostService,
                 coroutineContext = coroutineContext,
                 lastLlmRequestRegistry = lastLlmRequestRegistry,
+                runAdmission = runAdmission,
             )
         }
 
@@ -338,6 +340,25 @@ class CaseServiceImplSpec :
 
             verify(timeout = 3_000) { agent.run(any(), any()) }
             registry.get(case.id) shouldBe null
+            service.shutdown()
+        }
+
+        "a kill is recorded for the side questions even without usage tracking, a new run clears it, a deletion forgets it" {
+            val admission = CaseRunAdmission()
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, runAdmission = admission)
+            val resumed = service.create(Case(namespaceId = namespaceId))
+            val deleted = service.create(Case(namespaceId = namespaceId))
+            admission.stopped(resumed.id)
+
+            service.killCase(deleted.id)
+            service.addMessage(resumed.id, userActor, listOf(MessageContent.Text("hello")))
+            verify(timeout = 3_000) { agent.run(any(), any()) }
+
+            admission.isStopped(deleted.id) shouldBe true
+            admission.isStopped(resumed.id) shouldBe false
+            service.delete(deleted.id)
+            admission.isStopped(deleted.id) shouldBe false
             service.shutdown()
         }
 

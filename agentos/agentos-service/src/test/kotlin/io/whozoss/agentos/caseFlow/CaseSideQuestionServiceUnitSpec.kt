@@ -171,6 +171,7 @@ class CaseSideQuestionServiceUnitSpec :
         /** A real cost service over [cases], whose usage since the last user message cost [pastCost] per case. */
         fun runCostService(
             vararg cases: Case,
+            admission: CaseRunAdmission = CaseRunAdmission(),
             pastCost: (UUID) -> Double? = { null },
         ): RunCostService =
             RunCostService(
@@ -179,6 +180,7 @@ class CaseSideQuestionServiceUnitSpec :
                 mockk<NamespaceService> { every { resolveRunCostThreshold(any()) } returns null },
                 mockk { every { sumCostByCaseTreeSince(any(), any()) } answers { pastCost(firstArg())?.let { UsageCostAggregate(it, 0) } } },
                 UsageConfigProperties(enabled = true),
+                admission,
             )
 
         class Fixture(
@@ -192,10 +194,18 @@ class CaseSideQuestionServiceUnitSpec :
             usageEnabled: Boolean = true,
             val runCostService: RunCostService = runCostService(case),
             usageRecordFailure: Exception? = null,
+            /** The other cases the service can read (the parents of [storedCase]). */
+            parents: List<Case> = emptyList(),
+            val runAdmission: CaseRunAdmission = CaseRunAdmission(),
         ) {
             val clock = MovingClock(start)
             val chatClientProvider: ChatClientProvider = mockk()
-            val caseService: CaseService = mockk { every { findById(any(), any()) } returns storedCase }
+            val caseService: CaseService =
+                mockk {
+                    every { findById(any(), any()) } answers {
+                        (listOfNotNull(storedCase) + parents).firstOrNull { it.id == firstArg<UUID>() }
+                    }
+                }
             val caseEventService: CaseEventService = mockk { every { findByParent(any()) } returns events }
             val records = CopyOnWriteArrayList<UsageRecord>()
             val usageRecordService: UsageRecordService =
@@ -233,6 +243,7 @@ class CaseSideQuestionServiceUnitSpec :
                     usageRecordService,
                     runCostService,
                     clock,
+                    runAdmission,
                     SideQuestionProperties(),
                     UsageConfigProperties(enabled = usageEnabled),
                 )
@@ -609,19 +620,64 @@ class CaseSideQuestionServiceUnitSpec :
             }
         }
 
-        "a case stopped since its last run started gets a 409 and no LLM call, even once its session is gone" {
-            val runCost = runCostService(case)
-            val turn = runCost.register(case.id, UsageAccumulator())
-            runCost.stop(case.id)
-            turn.finish {}
-            val fixture = Fixture(stored = lastRequest(), runCostService = runCost)
-            fixture.answering(text("ok"))
+        listOf(true, false).forEach { usageEnabled ->
+            "a case stopped since its last run started gets a 409 and no LLM call (usage tracked: $usageEnabled)" {
+                val runAdmission = CaseRunAdmission()
+                val runCost = runCostService(case, admission = runAdmission)
+                val turn = runCost.register(case.id, UsageAccumulator())
+                runAdmission.stopped(case.id)
+                runCost.stop(case.id)
+                turn.finish {}
+                val fixture =
+                    Fixture(stored = lastRequest(), usageEnabled = usageEnabled, runCostService = runCost, runAdmission = runAdmission)
+                fixture.answering(text("ok"))
 
-            val error = shouldThrow<ConflictException> { fixture.service.answer(case.id, "?", runUserId) }
+                val error = shouldThrow<ConflictException> { fixture.service.answer(case.id, "?", runUserId) }
 
-            error.message!! shouldContain "stopped"
-            fixture.prompts.shouldBeEmpty()
-            runCost.state(case.id).active shouldBe false
+                error.message!! shouldContain "stopped"
+                fixture.prompts.shouldBeEmpty()
+                runCost.state(case.id).active shouldBe false
+            }
+
+            "a sub-case whose parent has ended gets a 409 and no LLM call (usage tracked: $usageEnabled)" {
+                val parent = Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.KILLED)
+                val child = case.copy(parentCaseId = parent.id)
+                val fixture =
+                    Fixture(
+                        storedCase = child,
+                        parents = listOf(parent),
+                        usageEnabled = usageEnabled,
+                        runCostService = runCostService(parent, child),
+                    )
+                fixture.answering(text("ok"))
+
+                val error = shouldThrow<ConflictException> { fixture.service.answer(child.id, "?", runUserId) }
+
+                error.message!! shouldContain "parent"
+                error.message!! shouldContain "ended"
+                fixture.prompts.shouldBeEmpty()
+            }
+
+            "a sub-case whose parent was stopped gets a 409 and no LLM call (usage tracked: $usageEnabled)" {
+                val parent = Case(metadata = EntityMetadata(), namespaceId = namespaceId)
+                val child = case.copy(parentCaseId = parent.id)
+                val runAdmission = CaseRunAdmission().also { it.stopped(parent.id) }
+                val fixture =
+                    Fixture(
+                        storedCase = child,
+                        parents = listOf(parent),
+                        usageEnabled = usageEnabled,
+                        runCostService = runCostService(parent, child, admission = runAdmission),
+                        runAdmission = runAdmission,
+                    )
+                fixture.answering(text("ok"))
+
+                val error = shouldThrow<ConflictException> { fixture.service.answer(child.id, "?", runUserId) }
+
+                error.message!! shouldContain "parent"
+                error.message!! shouldContain "stopped"
+                fixture.prompts.shouldBeEmpty()
+            }
         }
 
         "the transcript path is refused the same way over the threshold" {

@@ -18,6 +18,7 @@ import io.whozoss.agentos.agent.AgentSimple
 import io.whozoss.agentos.agent.LastLlmRequestCapture
 import io.whozoss.agentos.agent.LastLlmRequestRegistry
 import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseRunAdmission
 import io.whozoss.agentos.caseFlow.CaseSideQuestionService
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.actor.Actor
@@ -150,6 +151,7 @@ class CachePrefixWireSpec :
                     mockk(relaxed = true),
                     mockk(),
                     Clock.systemUTC(),
+                    CaseRunAdmission(),
                 )
             sideQuestions.answer(case.id, "Which tools ran?", userId) shouldBe "Two tools ran."
             toolsRun.get() shouldBe 2
