@@ -9,7 +9,13 @@
     @if (isPlatformMode) {
       <ds-tag headerMeta variant="outline">Platform level</ds-tag>
     }
+    @if (configFile()) {
+      <agentos-config-file-tag headerMeta [file]="configFile()" />
+    }
   </ds-section-header>
+  @if (configFile()) {
+    <agentos-config-file-panel [file]="configFile()" noun="agent config" savingCreatesCopy (settled)="cancel()" />
+  }
 
   @if (isLoading()) {
     <p class="ds-hint">Loading&hellip;</p>

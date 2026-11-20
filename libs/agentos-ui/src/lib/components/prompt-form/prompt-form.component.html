@@ -3,7 +3,13 @@
     <button dsButton variant="ghost" type="button" title="Back to prompts" (click)="cancel()">
       &larr; {{ isPlatformMode ? 'Platform prompts' : 'Prompts' }}
     </button>
+    @if (configFile()) {
+      <agentos-config-file-tag headerMeta [file]="configFile()" />
+    }
   </ds-section-header>
+  @if (configFile()) {
+    <agentos-config-file-panel [file]="configFile()" noun="prompt" (settled)="cancel()" />
+  }
 
   @if (isLoading()) {
     <p class="ds-hint">Loading&hellip;</p>

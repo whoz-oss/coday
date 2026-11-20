@@ -77,7 +77,7 @@ class ObjectMapperConfiguration {
      * Configured for clean, human-readable output:
      * - No `---` document start marker ([YAMLGenerator.Feature.WRITE_DOC_START_MARKER] disabled)
      * - Dates as ISO-8601 strings, not numeric arrays ([SerializationFeature.WRITE_DATES_AS_TIMESTAMPS] disabled, [JavaTimeModule] registered)
-     * - No inclusion policy: each controller's [toExportModel] filters fields
+     * - No inclusion policy: the file models of [io.whozoss.agentos.configFile] filter fields
      *   explicitly via `buildMap`, so nulls and empty values are never handed
      *   to Jackson in the first place.
      *
@@ -85,6 +85,9 @@ class ObjectMapperConfiguration {
      * - [io.whozoss.agentos.agentConfig.AgentConfigController]
      * - [io.whozoss.agentos.integrationConfig.IntegrationConfigController]
      * - [io.whozoss.agentos.prompt.PromptController]
+     *
+     * and by [io.whozoss.agentos.configFile.ConfigFileService], to compare a file with the database copy
+     * that masks it.
      */
     @Bean
     @Qualifier("yamlExportMapper")

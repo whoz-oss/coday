@@ -46,6 +46,8 @@
                 }}</ds-tag>
                 @if (row.scope === 'platform') {
                   <ds-tag variant="outline">Read-only</ds-tag>
+                } @else {
+                  <agentos-config-file-tag [file]="configFiles.of(row.config.id)" [showDatabase]="configFiles.any()" />
                 }
               </div>
             </td>

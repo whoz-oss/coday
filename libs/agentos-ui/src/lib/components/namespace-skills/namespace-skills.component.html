@@ -58,6 +58,12 @@
                 }
                 @if (row.skill.readOnly) {
                   <ds-tag variant="neutral">SKILL.md</ds-tag>
+                } @else if (row.scope === 'namespace') {
+                  <agentos-config-file-tag
+                    fileLabel="SKILL.md"
+                    [file]="configFiles.of(row.skill.id)"
+                    [showDatabase]="configFiles.any()"
+                  />
                 }
               </div>
             </td>

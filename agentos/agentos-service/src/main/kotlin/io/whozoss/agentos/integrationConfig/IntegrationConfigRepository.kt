@@ -1,6 +1,7 @@
 package io.whozoss.agentos.integrationConfig
 
 import io.whozoss.agentos.entity.EntityRepository
+import io.whozoss.agentos.plugin.filesystem.ConfigFileSource
 import java.util.UUID
 
 /**
@@ -14,7 +15,9 @@ import java.util.UUID
  * configs. User-only configs (`namespaceId == null && userId != null`) do not currently
  * materialise a relationship — that is handled by story 6.2 when the user CRUD is added.
  */
-interface IntegrationConfigRepository : EntityRepository<IntegrationConfig, UUID> {
+interface IntegrationConfigRepository :
+    EntityRepository<IntegrationConfig, UUID>,
+    ConfigFileSource<IntegrationConfig> {
     /**
      * Find all non-removed configs scoped to the given namespace,
      * regardless of [IntegrationConfig.userId].

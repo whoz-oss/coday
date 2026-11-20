@@ -230,4 +230,16 @@ class FilesystemYamlCacheUnitSpec :
 
             result shouldBe listOf("top")
         }
+
+        "getEntries returns each parsed item with the file it was read from" {
+            val dir = tempDir()
+            val top = writeYaml(dir, "top.yaml", "top")
+            val nested = writeYaml(dir.resolve("a").also { Files.createDirectories(it) }, "nested.yaml", "nested")
+            writeYaml(dir, "blank.yaml", "  ")
+
+            val registry = FilesystemYamlCacheRegistry<String>(parser = { _, file -> stringParser(file) })
+
+            registry.getEntries(dir).map { it.value to it.file }.toSet() shouldBe setOf("top" to top, "nested" to nested)
+            registry.getAll(dir).toSet() shouldBe setOf("top", "nested")
+        }
     })

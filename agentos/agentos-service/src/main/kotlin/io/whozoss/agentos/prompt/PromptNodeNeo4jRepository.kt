@@ -157,6 +157,16 @@ interface PromptNodeNeo4jRepository : Neo4jRepository<PromptNode, String> {
     )
     fun softDeleteByAgentConfigId(agentConfigId: String): Int
 
+    /** Counts the non-removed prompts linked to the given agentConfigId, whatever their scope. */
+    @Query(
+        $$"""
+            MATCH (p:Prompt {agentConfigId: $agentConfigId})
+            WHERE NOT COALESCE(p.removed, false)
+            RETURN count(p)
+            """,
+    )
+    fun countActiveByAgentConfigId(agentConfigId: String): Int
+
     /**
      * Find all non-removed prompts at an exact scope level, optionally filtered by agentConfigIds.
      * Scope is determined by the combination of namespaceId and userId (null = not set).

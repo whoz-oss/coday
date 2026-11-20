@@ -5,6 +5,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   AuthSettingDto,
+  ConfigFileKindEnum,
   IntegrationConfig,
   IntegrationTypeControllerService,
   IntegrationTypeDescriptor,
@@ -13,6 +14,9 @@ import { DS_PAGE_KIT, JsonSchemaFormComponent, JsonSchemaObject } from '@whoz-os
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { IntegrationConfigStateService, IntegrationScope } from '../../services/integration-config-state.service'
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
+import { injectConfigFile } from '../../services/config-files.service'
+import { ConfigFilePanelComponent } from '../config-file-status/config-file-panel.component'
+import { ConfigFileTagComponent } from '../config-file-status/config-file-tag.component'
 
 const VALID_SCOPES: ReadonlySet<IntegrationScope> = new Set(['platform', 'namespace', 'userOnNs', 'userGlobal'])
 
@@ -49,7 +53,13 @@ const SCOPE_LABEL: Readonly<Record<IntegrationScope, string>> = Object.freeze({
  */
 @Component({
   selector: 'agentos-integration-form',
-  imports: [DS_PAGE_KIT, ReactiveFormsModule, JsonSchemaFormComponent],
+  imports: [
+    ConfigFilePanelComponent,
+    ConfigFileTagComponent,
+    DS_PAGE_KIT,
+    ReactiveFormsModule,
+    JsonSchemaFormComponent,
+  ],
   templateUrl: './integration-form.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -63,6 +73,12 @@ export class IntegrationFormComponent implements OnInit {
   private readonly namespaceRole = inject(NamespaceRoleStateService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+  /** Where the edited config comes from: its file, a database copy that masks its file, or neither. */
+  protected readonly configFile = injectConfigFile(
+    this.namespaceId,
+    ConfigFileKindEnum.INTEGRATION,
+    this.route.snapshot.paramMap.get('integrationId') ?? undefined
+  )
 
   /** True when editing/creating a platform-level integration config (no :namespaceId segment in route). */
   protected readonly isPlatformMode = !this.namespaceId

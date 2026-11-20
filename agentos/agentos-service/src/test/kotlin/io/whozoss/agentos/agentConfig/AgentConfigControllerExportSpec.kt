@@ -12,6 +12,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.testutil.yamlExportMapper
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpHeaders
@@ -403,4 +404,14 @@ class AgentConfigControllerExportSpec : StringSpec({
         }
     }
 
+    "export writes the resolved execution mode, and omits the default SIMPLE" {
+        val legacyAdvanced = config()
+        val loop = config().copy(executionMode = ExecutionMode.LOOP)
+        val simple = config().copy(advancedExecution = false)
+        listOf(legacyAdvanced, loop, simple).forEach { every { service.findById(it.metadata.id) } returns it }
+
+        controller.export(legacyAdvanced.metadata.id).body!! shouldContain Regex("executionMode: \"?ADVANCED")
+        controller.export(loop.metadata.id).body!! shouldContain Regex("executionMode: \"?LOOP")
+        controller.export(simple.metadata.id).body!! shouldNotContain "executionMode"
+    }
 })

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agentConfig
 
 import io.whozoss.agentos.entity.EntityRepository
+import io.whozoss.agentos.plugin.filesystem.ConfigFileSource
 import java.util.UUID
 
 /**
@@ -9,7 +10,9 @@ import java.util.UUID
  * Agent configs may be scoped under a namespace ([parentId] is the namespace UUID) or
  * exist at the platform level ([parentId] = null).
  */
-interface AgentConfigRepository : EntityRepository<AgentConfig, UUID?> {
+interface AgentConfigRepository :
+    EntityRepository<AgentConfig, UUID?>,
+    ConfigFileSource<AgentConfig> {
     /**
      * Returns [AgentConfig]s accessible to [userId] in [namespaceId].
      * When [agentName] is non-null, further filters to configs whose name starts with

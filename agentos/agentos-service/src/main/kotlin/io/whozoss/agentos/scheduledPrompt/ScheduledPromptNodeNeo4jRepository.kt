@@ -219,4 +219,15 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
             """,
     )
     fun softDeleteWithPromptsByAgentConfigId(agentConfigId: String): Int
+
+    /** Counts the non-removed scheduled prompts referencing the given agentConfigId. */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.agentConfigId = $agentConfigId
+              AND NOT COALESCE(sp.removed, false)
+            RETURN count(sp)
+            """,
+    )
+    fun countActiveByAgentConfigId(agentConfigId: String): Int
 }

@@ -94,5 +94,8 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      */
     fun softDeleteWithPromptsByAgentConfigId(agentConfigId: UUID): Int
 
+    /** How many non-removed [ScheduledPrompt]s reference [agentConfigId]: what deleting it would delete. */
+    fun countActiveByAgentConfigId(agentConfigId: UUID): Int
+
 
 }

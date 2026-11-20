@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, OnInit, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { IntegrationConfig, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { ConfigFileKindEnum, IntegrationConfig, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
-import { map, of, switchMap } from 'rxjs'
+import { map, of, Subject, switchMap } from 'rxjs'
 import {
   IntegrationConfigStateService,
   IntegrationConfigViewModel,
@@ -16,6 +16,8 @@ import { IntegrationConfigSource, sourceOf } from '../../utils/integration-confi
 import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
+import { injectConfigFileStatuses } from '../../services/config-files.service'
+import { ConfigFileTagComponent } from '../config-file-status/config-file-tag.component'
 
 interface IntegrationRow {
   readonly key: string
@@ -36,6 +38,7 @@ interface IntegrationRow {
     TagComponent,
     TableFilterComponent,
     RowDeleteActionComponent,
+    ConfigFileTagComponent,
   ],
   templateUrl: './integrations-all-scopes.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -54,6 +57,13 @@ export class IntegrationsAllScopesComponent implements OnInit {
   protected readonly isLoading = signal(true)
   protected readonly rows = signal<IntegrationRow[]>([])
   protected readonly deletion = createRowDeletionState()
+  /** Reloads the config files each time the integrations do, so their tags follow a deletion. */
+  private readonly configFilesReload$ = new Subject<void>()
+  protected readonly configFiles = injectConfigFileStatuses(
+    this.namespaceId,
+    ConfigFileKindEnum.INTEGRATION,
+    this.configFilesReload$
+  )
   protected readonly rowFilter = createRowFilter(this.rows, (row) =>
     [row.config.name, row.config.integrationType, row.scopeLabel, row.source].join(' ')
   )
@@ -78,6 +88,7 @@ export class IntegrationsAllScopesComponent implements OnInit {
     this.state.vm$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (viewModel) => {
         this.rows.set(this.toRows(viewModel))
+        this.configFilesReload$.next()
         this.isLoading.set(false)
       },
       error: () => this.isLoading.set(false),
