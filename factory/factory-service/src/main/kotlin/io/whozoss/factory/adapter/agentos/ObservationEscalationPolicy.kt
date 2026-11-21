@@ -56,11 +56,16 @@ class ObservationEscalationPolicy(
 
         // (1) REST snapshot: the durable case state is authoritative and cheap.
         steps += STEP_SNAPSHOT
-        runCatching { adapter.reconcileResult(TurnToken.unbaselined(caseId, attemptId)) }.getOrNull()?.let { result ->
+        val snapshotResult = runCatching { adapter.reconcileResult(TurnToken.unbaselined(caseId, attemptId)) }.getOrNull()
+        snapshotResult?.let { result ->
             val reconciled = result.verdict
             if (reconciled is AgentOsExecutionVerdict.WaitingHuman) return Escalation(reconciled, steps, result.runtimeProof)
             reconciled.terminalOrNull()?.let { return Escalation(it, steps, result.runtimeProof) }
         }
+        val snapshotVerdict = snapshotResult?.verdict
+        val activelyRunning = snapshotVerdict is AgentOsExecutionVerdict.Indeterminate &&
+            snapshotVerdict.reason == VerdictDeriver.NOT_QUIESCENT &&
+            snapshotVerdict.evidence["caseStatus"] == "RUNNING"
 
         // (2) Bounded SSE reconnection: may observe the terminal event the lost
         // stream missed, with checkpoint deduplication.
@@ -73,8 +78,8 @@ class ObservationEscalationPolicy(
             observed.terminalOrNull()?.let { return Escalation(it, steps, result.runtimeProof) }
         }
 
-        // (3) Explicit kill, only when the timeout policy allows it.
-        if (!killOnTimeout) {
+        // (3) Explicit kill, only when the timeout policy allows it and the case is not actively RUNNING.
+        if (!killOnTimeout || activelyRunning) {
             return Escalation(indeterminateAfter(initial, steps), steps)
         }
         steps += STEP_KILL
