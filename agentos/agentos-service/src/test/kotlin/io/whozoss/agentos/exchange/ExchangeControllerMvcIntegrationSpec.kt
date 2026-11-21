@@ -26,15 +26,19 @@ import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.request
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.nio.file.DirectoryNotEmptyException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.NoSuchFileException
+import java.nio.file.NotDirectoryException
 import java.io.IOException
 import java.time.Instant
 import java.util.UUID
@@ -400,6 +404,249 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isBadRequest)
                 .andReturn()
             result.resolvedException?.message shouldBe "Invalid file operation"
+        }
+
+        // -------------------------------------------------------------------------
+        // Folders: upload into a directory, create, delete, ZIP archive (case and namespace scopes)
+        // -------------------------------------------------------------------------
+
+        "POST case file with a directory stores the file inside that folder" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns true
+            every { exchangeStorageService.writeNew(any(), "docs/specs/report.txt", any(), ExchangeScope.CASE) } returns
+                entry("docs/specs/report.txt", ExchangeScope.CASE)
+
+            val file = MockMultipartFile("file", "report.txt", "text/plain", "data".toByteArray())
+
+            // surrounding slashes and blanks of the directory are not part of the stored path
+            mockMvc.perform(multipart("/api/cases/$caseId/files").file(file).param("directory", " /docs/specs/ "))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.path").value("docs/specs/report.txt"))
+            verify { exchangeStorageService.writeNew(any(), "docs/specs/report.txt", any(), ExchangeScope.CASE) }
+        }
+
+        "POST namespace file with a directory stores the file inside that folder" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed(any()) } returns true
+            every { exchangeStorageService.writeNew(any(), "docs/doc.md", any(), ExchangeScope.NAMESPACE) } returns
+                entry("docs/doc.md", ExchangeScope.NAMESPACE)
+
+            val file = MockMultipartFile("file", "doc.md", "text/markdown", "data".toByteArray())
+
+            mockMvc.perform(multipart("/api/namespaces/$namespaceId/files").file(file).param("directory", "docs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.path").value("docs/doc.md"))
+        }
+
+        "POST case file checks the extension on the file name, wherever the directory is" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.isUploadAllowed("docs/malware.exe") } returns false
+
+            val file = MockMultipartFile("file", "malware.exe", "application/octet-stream", "data".toByteArray())
+
+            mockMvc.perform(multipart("/api/cases/$caseId/files").file(file).param("directory", "docs"))
+                .andExpect(status().isBadRequest)
+            verify(exactly = 0) { exchangeStorageService.writeNew(any(), any(), any(), any()) }
+        }
+
+        "POST case directory creates the folder" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.createDirectory(any(), "docs/drafts") } returns
+                ExchangeDirectoryEntry(path = "docs/drafts", name = "drafts", directory = true)
+
+            mockMvc.perform(post("/api/cases/$caseId/files/directory").param("path", "docs/drafts"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.path").value("docs/drafts"))
+                .andExpect(jsonPath("$.directory").value(true))
+        }
+
+        "POST case directory maps a conflict to 409 and an invalid path to 400" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.createDirectory(any(), "docs") } throws FileExistsException("Already exists: docs")
+            every { exchangeStorageService.createDirectory(any(), "../escape") } throws
+                InvalidExchangePathException("Invalid path: path traversal not allowed (../escape)")
+
+            mockMvc.perform(post("/api/cases/$caseId/files/directory").param("path", "docs"))
+                .andExpect(status().isConflict)
+            mockMvc.perform(post("/api/cases/$caseId/files/directory").param("path", "../escape"))
+                .andExpect(status().isBadRequest)
+        }
+
+        "POST case directory returns 403 and creates nothing when WRITE is denied" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns false
+
+            mockMvc.perform(post("/api/cases/$caseId/files/directory").param("path", "docs"))
+                .andExpect(status().isForbidden)
+            verify(exactly = 0) { exchangeStorageService.createDirectory(any(), any()) }
+        }
+
+        "POST namespace directory creates the folder for an admin and is 403 for a member" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.createDirectory(any(), "docs") } returns
+                ExchangeDirectoryEntry(path = "docs", name = "docs", directory = true)
+
+            mockMvc.perform(post("/api/namespaces/$namespaceId/files/directory").param("path", "docs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.directory").value(true))
+
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns false
+            mockMvc.perform(post("/api/namespaces/$namespaceId/files/directory").param("path", "other"))
+                .andExpect(status().isForbidden)
+        }
+
+        "DELETE case directory returns a success body" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.deleteDirectory(any(), "docs") } returns Unit
+
+            mockMvc.perform(delete("/api/cases/$caseId/files/directory").param("path", "docs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.success").value(true))
+            verify { exchangeStorageService.deleteDirectory(any(), "docs") }
+        }
+
+        "DELETE case directory maps missing to 404, not a directory or blank to 400, protected entries to 409" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.deleteDirectory(any(), "gone") } throws NoSuchFileException("/srv/private/gone")
+            every { exchangeStorageService.deleteDirectory(any(), "file.txt") } throws NotDirectoryException("/srv/private/file.txt")
+            every { exchangeStorageService.deleteDirectory(any(), " ") } throws InvalidExchangePathException("Invalid path: path must not be blank")
+            every { exchangeStorageService.deleteDirectory(any(), "repo") } throws
+                ReservedEntryConflictException("Folder contains protected entries: /srv/private/repo")
+
+            mockMvc.perform(delete("/api/cases/$caseId/files/directory").param("path", "gone"))
+                .andExpect(status().isNotFound)
+            val notDirectory = mockMvc.perform(delete("/api/cases/$caseId/files/directory").param("path", "file.txt"))
+                .andExpect(status().isBadRequest)
+                .andReturn()
+            notDirectory.resolvedException?.message shouldBe "Not a directory"
+            mockMvc.perform(delete("/api/cases/$caseId/files/directory").param("path", " "))
+                .andExpect(status().isBadRequest)
+            val reserved = mockMvc.perform(delete("/api/cases/$caseId/files/directory").param("path", "repo"))
+                .andExpect(status().isConflict)
+                .andReturn()
+            // generic message: the server path of the storage exception must not reach the response
+            reserved.resolvedException?.message shouldBe "Folder contains protected entries"
+        }
+
+        "DELETE case directory returns 403 and deletes nothing when WRITE is denied" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns false
+
+            mockMvc.perform(delete("/api/cases/$caseId/files/directory").param("path", "docs"))
+                .andExpect(status().isForbidden)
+            verify(exactly = 0) { exchangeStorageService.deleteDirectory(any(), any()) }
+        }
+
+        "DELETE namespace directory returns a success body for an admin and is 403 for a member" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.deleteDirectory(any(), "docs") } returns Unit
+
+            mockMvc.perform(delete("/api/namespaces/$namespaceId/files/directory").param("path", "docs"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.success").value(true))
+
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns false
+            mockMvc.perform(delete("/api/namespaces/$namespaceId/files/directory").param("path", "docs"))
+                .andExpect(status().isForbidden)
+            verify(exactly = 1) { exchangeStorageService.deleteDirectory(any(), any()) }
+        }
+
+        "GET case archive streams a zip named after the folder" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+
+            val started = mockMvc.perform(get("/api/cases/$caseId/files/archive").param("path", "docs/specs"))
+                .andExpect(request().asyncStarted())
+                .andReturn()
+            mockMvc.perform(asyncDispatch(started))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Content-Type", "application/zip"))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"specs.zip\""))
+            verify { exchangeStorageService.assertArchivable(any(), "docs/specs") }
+            verify { exchangeStorageService.writeArchive(any(), "docs/specs", any()) }
+        }
+
+        "GET case archive of the root is named case-files.zip" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+
+            val started = mockMvc.perform(get("/api/cases/$caseId/files/archive"))
+                .andExpect(request().asyncStarted())
+                .andReturn()
+            mockMvc.perform(asyncDispatch(started))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"case-files.zip\""))
+            verify { exchangeStorageService.writeArchive(any(), "", any()) }
+        }
+
+        "GET case archive reports a missing folder or a file as an error before streaming" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { exchangeStorageService.assertArchivable(any(), "gone") } throws NoSuchFileException("/srv/private/gone")
+            every { exchangeStorageService.assertArchivable(any(), "file.txt") } throws NotDirectoryException("/srv/private/file.txt")
+
+            mockMvc.perform(get("/api/cases/$caseId/files/archive").param("path", "gone"))
+                .andExpect(status().isNotFound)
+            mockMvc.perform(get("/api/cases/$caseId/files/archive").param("path", "file.txt"))
+                .andExpect(status().isBadRequest)
+            verify(exactly = 0) { exchangeStorageService.writeArchive(any(), any(), any()) }
+        }
+
+        "GET case archive returns 404 and archives nothing when READ is denied" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns false
+
+            mockMvc.perform(get("/api/cases/$caseId/files/archive"))
+                .andExpect(status().isNotFound)
+            verify(exactly = 0) { exchangeStorageService.assertArchivable(any(), any()) }
+            verify(exactly = 0) { exchangeStorageService.writeArchive(any(), any(), any()) }
+        }
+
+        "GET namespace archive streams a zip, named namespace-files.zip at the root" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns true
+
+            val started = mockMvc.perform(get("/api/namespaces/$namespaceId/files/archive"))
+                .andExpect(request().asyncStarted())
+                .andReturn()
+            mockMvc.perform(asyncDispatch(started))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Content-Type", "application/zip"))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"namespace-files.zip\""))
+        }
+
+        "GET namespace archive returns 404 when READ is denied" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns false
+
+            mockMvc.perform(get("/api/namespaces/$namespaceId/files/archive").param("path", "docs"))
+                .andExpect(status().isNotFound)
         }
 
         // -------------------------------------------------------------------------

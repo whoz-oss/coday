@@ -8,6 +8,7 @@ import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.io.IOException
+import java.io.OutputStream
 import java.net.URLConnection
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -25,6 +26,8 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Filesystem-backed storage for the AgentOS file exchange.
@@ -153,12 +156,35 @@ class ExchangeStorageService(
     ): List<ExchangeFileEntry> {
         if (!Files.exists(root)) return emptyList()
         val entries = mutableListOf<ExchangeFileEntry>()
+        walkRegularFiles(root) { file ->
+            // A concurrent delete can make the file vanish before toEntry stats it: skip it.
+            // Any other stat failure is unexpected — skip it too, but log it (don't swallow silently).
+            runCatching { entries += toEntry(root, file, scope) }
+                .onFailure { e ->
+                    if (e !is NoSuchFileException) {
+                        logger.warn(e) { "Skipping exchange file in manifest: $file" }
+                    }
+                }
+        }
+        return entries
+    }
+
+    /**
+     * Walk the regular files under [start], calling [onFile] for each: the one rule set shared by the
+     * manifest and the folder archive (depth cap, reserved entries skipped, symlinks not followed).
+     *
+     * @throws IOException when [start] itself is unreadable.
+     */
+    private fun walkRegularFiles(
+        start: Path,
+        onFile: (Path) -> Unit,
+    ) {
         var rootFailure: IOException? = null
         // walkFileTree (not Files.walk) so an unreadable file OR subdirectory encountered mid-walk is
         // skipped via visitFileFailed rather than aborting the whole listing with an UncheckedIOException
         // (a 500 that would also leak the absolute server path). Symlinks are not followed.
         Files.walkFileTree(
-            root,
+            start,
             emptySet(),
             MANIFEST_MAX_DEPTH,
             object : SimpleFileVisitor<Path>() {
@@ -185,16 +211,7 @@ class ExchangeStorageService(
                             logger.debug { "Skipping reserved file entry in manifest: $file" }
                         return FileVisitResult.CONTINUE
                     }
-                    if (attrs.isRegularFile) {
-                        // A concurrent delete can make the file vanish before toEntry stats it: skip it.
-                        // Any other stat failure is unexpected — skip it too, but log it (don't swallow silently).
-                        runCatching { entries += toEntry(root, file, scope) }
-                            .onFailure { e ->
-                                if (e !is NoSuchFileException) {
-                                    logger.warn(e) { "Skipping exchange file in manifest: $file" }
-                                }
-                            }
-                    }
+                    if (attrs.isRegularFile) onFile(file)
                     return FileVisitResult.CONTINUE
                 }
 
@@ -205,9 +222,9 @@ class ExchangeStorageService(
                     // A failure to open the scope root itself (it exists but is unreadable: bad perms,
                     // broken mount, stale handle) must NOT be reported as an empty manifest — surface it
                     // below. Failures deeper in the tree are skipped so one bad file/dir can't hide the rest.
-                    if (file == root) {
+                    if (file == start) {
                         rootFailure = exc
-                        logger.error(exc) { "Exchange scope root is unreadable: $root" }
+                        logger.error(exc) { "Exchange scope root is unreadable: $start" }
                     } else {
                         logger.warn(exc) { "Skipping unreadable exchange path in manifest: $file" }
                     }
@@ -217,7 +234,6 @@ class ExchangeStorageService(
         )
         // Generic message on purpose (no absolute-path leak); the log above carries the details.
         if (rootFailure != null) throw IOException("Failed to list exchange files")
-        return entries
     }
 
     /**
@@ -302,6 +318,177 @@ class ExchangeStorageService(
     ) {
         val resolved = resolveWithin(root, relativePath)
         Files.delete(resolved)
+    }
+
+    /**
+     * Create the folder [relativePath] under [root], with any missing parent. Create-only: fails when
+     * a file or a folder already uses the path (callers map to 409).
+     *
+     * @throws FileExistsException if the target already exists.
+     * @throws InvalidExchangePathException if the path is blank, escapes the boundary or reaches a reserved entry.
+     */
+    fun createDirectory(
+        root: Path,
+        relativePath: String,
+    ): ExchangeDirectoryEntry {
+        Files.createDirectories(root)
+        val resolved = resolveWithin(root, relativePath)
+        val canonicalRoot = root.toRealPath()
+        if (resolved == canonicalRoot) throw FileExistsException("Already exists: $relativePath")
+        resolved.parent?.let { Files.createDirectories(it) }
+        try {
+            // Not createDirectories: only createDirectory fails atomically when the target exists.
+            Files.createDirectory(resolved)
+        } catch (e: FileAlreadyExistsException) {
+            logger.info(e) { "Folder '$relativePath' already exists" }
+            throw FileExistsException("Already exists: $relativePath")
+        }
+        val attributes = Files.readAttributes(resolved, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+        return ExchangeDirectoryEntry(
+            path = canonicalRoot.relativize(resolved).joinToString("/") { it.toString() },
+            name = resolved.fileName.toString(),
+            directory = true,
+            lastModified = attributes.lastModifiedTime().toInstant(),
+        )
+    }
+
+    /**
+     * Delete the folder [relativePath] under [root] with everything in it. Symlinks inside are deleted
+     * as links, never followed. The scope root itself can never be deleted.
+     *
+     * The subtree is checked for reserved entries first and nothing is deleted when one is found, so
+     * a repository's `.git` can not be removed by deleting its parent folder.
+     *
+     * @throws InvalidExchangePathException if the path is blank, escapes the boundary, reaches a reserved
+     *   entry, or is the scope root.
+     * @throws ReservedEntryConflictException if the subtree holds a reserved entry.
+     * @throws java.nio.file.NoSuchFileException if the folder does not exist.
+     * @throws java.nio.file.NotDirectoryException if the path denotes a file (or a symlink).
+     */
+    fun deleteDirectory(
+        root: Path,
+        relativePath: String,
+    ) {
+        val resolved = resolveWithin(root, relativePath)
+        if (resolved == root.toRealPath()) {
+            throw InvalidExchangePathException("Invalid path: the scope root cannot be deleted")
+        }
+        if (!Files.exists(resolved, LinkOption.NOFOLLOW_LINKS)) throw NoSuchFileException(relativePath)
+        if (!Files.isDirectory(resolved, LinkOption.NOFOLLOW_LINKS)) throw NotDirectoryException(relativePath)
+
+        Files.walkFileTree(
+            resolved,
+            object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(
+                    dir: Path,
+                    attrs: BasicFileAttributes,
+                ): FileVisitResult = refuseReserved(dir)
+
+                override fun visitFile(
+                    file: Path,
+                    attrs: BasicFileAttributes,
+                ): FileVisitResult = refuseReserved(file)
+
+                private fun refuseReserved(path: Path): FileVisitResult {
+                    if (reservedEntries.reserves(path.fileName?.toString())) {
+                        throw ReservedEntryConflictException("Folder contains protected entries: $relativePath")
+                    }
+                    return FileVisitResult.CONTINUE
+                }
+            },
+        )
+        Files.walkFileTree(
+            resolved,
+            object : SimpleFileVisitor<Path>() {
+                override fun visitFile(
+                    file: Path,
+                    attrs: BasicFileAttributes,
+                ): FileVisitResult {
+                    Files.delete(file)
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun postVisitDirectory(
+                    dir: Path,
+                    exc: IOException?,
+                ): FileVisitResult {
+                    if (exc != null) throw exc
+                    Files.delete(dir)
+                    return FileVisitResult.CONTINUE
+                }
+            },
+        )
+    }
+
+    /**
+     * Check that [relativePath] can be archived, without writing anything. Called before the response is
+     * committed, so that a missing or invalid folder is reported as an HTTP error rather than as a
+     * broken stream.
+     *
+     * @throws InvalidExchangePathException if the path escapes the boundary or reaches a reserved entry.
+     * @throws java.nio.file.NoSuchFileException if the folder does not exist.
+     * @throws java.nio.file.NotDirectoryException if the path denotes a file.
+     */
+    fun assertArchivable(
+        root: Path,
+        relativePath: String,
+    ) {
+        archiveStart(root, relativePath)
+    }
+
+    /**
+     * Stream the regular files under the folder [relativePath] (empty: the whole scope) of [root] into [out]
+     * as a ZIP, each file copied without being held in memory. Entry names are relative to that folder.
+     * Reserved entries and symlinks are left out, as in the manifest. A scope nobody has written to yet
+     * gives an empty archive.
+     *
+     * @throws InvalidExchangePathException if the path escapes the boundary or reaches a reserved entry.
+     * @throws java.nio.file.NoSuchFileException if the folder does not exist.
+     * @throws java.nio.file.NotDirectoryException if the path denotes a file.
+     */
+    fun writeArchive(
+        root: Path,
+        relativePath: String,
+        out: OutputStream,
+    ) {
+        val start = archiveStart(root, relativePath)
+        val zip = ZipOutputStream(out)
+        if (start != null) {
+            walkRegularFiles(start) { file ->
+                // Open before announcing the entry: a file that vanished or became unreadable is left out
+                // instead of leaving an empty entry behind.
+                val input =
+                    try {
+                        Files.newInputStream(file)
+                    } catch (e: IOException) {
+                        logger.warn(e) { "Skipping exchange file in archive: $file" }
+                        return@walkRegularFiles
+                    }
+                input.use {
+                    val entry = ZipEntry(start.relativize(file).joinToString("/") { it.toString() })
+                    runCatching { entry.setLastModifiedTime(Files.getLastModifiedTime(file)) }
+                    zip.putNextEntry(entry)
+                    it.copyTo(zip)
+                    zip.closeEntry()
+                }
+            }
+        }
+        // Not closed on failure above on purpose: a truncated stream must not look like a complete archive.
+        zip.finish()
+        out.flush()
+    }
+
+    /** The directory to archive, or null when the scope root does not exist yet (nothing to archive). */
+    private fun archiveStart(
+        root: Path,
+        relativePath: String,
+    ): Path? {
+        val normalized = relativePath.trim().trim('/')
+        if (normalized.isEmpty()) return if (Files.exists(root)) root.toRealPath() else null
+        val directory = resolveWithin(root, normalized)
+        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) throw NoSuchFileException(normalized)
+        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) throw NotDirectoryException(normalized)
+        return directory
     }
 
     /**
