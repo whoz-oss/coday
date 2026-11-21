@@ -418,6 +418,163 @@ describe('ExchangeDrawerComponent referenced files', () => {
   })
 })
 
+describe('ExchangeDrawerComponent folder actions', () => {
+  const CASE = ExchangeFileEntryScopeEnum.CASE
+  const NS = ExchangeFileEntryScopeEnum.NAMESPACE
+  const folder = (path: string) => ({ path, name: path.split('/').pop() as string, directory: true })
+
+  function setup(options: { write?: boolean; breadcrumb?: boolean } = {}) {
+    const { write = true, breadcrumb = false } = options
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    for (const scope of ['case', 'namespace']) {
+      fixture.componentRef.setInput(`${scope}Status`, 'ready')
+      fixture.componentRef.setInput(`${scope}SectionVisible`, true)
+      fixture.componentRef.setInput(`${scope}Folders`, [folder('docs')])
+      fixture.componentRef.setInput(scope === 'case' ? 'canWriteCase' : 'canWriteNamespace', write)
+      if (breadcrumb) fixture.componentRef.setInput(`${scope}Breadcrumb`, [{ label: 'docs', path: 'docs' }])
+    }
+    const created = jest.fn()
+    const deleted = jest.fn()
+    const downloadAll = jest.fn()
+    fixture.componentInstance.createFolderRequested.subscribe(created)
+    fixture.componentInstance.deleteFolderRequested.subscribe(deleted)
+    fixture.componentInstance.downloadAllRequested.subscribe(downloadAll)
+    fixture.detectChanges()
+    const el = fixture.nativeElement as HTMLElement
+    const section = (scope: 'case' | 'namespace') => el.querySelector(`[data-track="ExchangeDrawer-${scope}Section"]`)!
+    return { fixture, el, section, created, deleted, downloadAll }
+  }
+
+  it.each(['case', 'namespace'] as const)('labels the %s download after the scope at the root', (scope) => {
+    const { section } = setup()
+    const title = section(scope).querySelector<HTMLButtonElement>('ds-icon-button[icon="download"] button')!.title
+    expect(title).toBe(scope === 'case' ? 'Download all case files' : 'Download all namespace files')
+  })
+
+  it.each(['case', 'namespace'] as const)('labels the %s download after the folder once inside one', (scope) => {
+    const { section, downloadAll } = setup({ breadcrumb: true })
+    const button = section(scope).querySelector<HTMLButtonElement>('ds-icon-button[icon="download"] button')!
+    expect(button.title).toBe('Download all files in this folder')
+    button.click()
+    expect(downloadAll).toHaveBeenCalledWith(scope === 'case' ? CASE : NS)
+  })
+
+  it('emits the folder to delete with its scope and full path, without opening it', () => {
+    const { fixture, section, deleted } = setup()
+    // A delete button next to a folder row must not navigate into the folder.
+    const opened = jest.fn()
+    fixture.componentInstance.folderOpened.subscribe(opened)
+    section('case')
+      .querySelector<HTMLButtonElement>('.exchange-drawer__folder-row ds-icon-button[icon="delete"] button')!
+      .click()
+    section('namespace')
+      .querySelector<HTMLButtonElement>('.exchange-drawer__folder-row ds-icon-button[icon="delete"] button')!
+      .click()
+    expect(deleted.mock.calls).toEqual([[{ scope: CASE, path: 'docs' }], [{ scope: NS, path: 'docs' }]])
+    expect(opened).not.toHaveBeenCalled()
+  })
+
+  it('keeps the folder row a navigation button, sibling of its delete action', () => {
+    const { section } = setup()
+    const row = section('case').querySelector('.exchange-drawer__folder-row')!
+    expect(row.querySelector('button.exchange-drawer__folder')).not.toBeNull()
+    expect(row.querySelector('button.exchange-drawer__folder ds-icon-button')).toBeNull()
+  })
+
+  it('opens the New folder prompt, names the parent, and emits the trimmed name once', () => {
+    const { fixture, el, section, created } = setup({ breadcrumb: true })
+    section('case').querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+    fixture.detectChanges()
+    expect(el.querySelector('agentos-exchange-folder-form')?.textContent).toContain('New folder in "docs"')
+
+    const input = el.querySelector<HTMLInputElement>('[data-track="ExchangeFolderForm-name"]')!
+    input.value = '  api  '
+    input.dispatchEvent(new Event('input'))
+    el.querySelector<HTMLButtonElement>('[data-track="ExchangeFolderForm-create"]')!.click()
+    fixture.detectChanges()
+
+    expect(created).toHaveBeenCalledTimes(1)
+    expect(created).toHaveBeenCalledWith({ scope: CASE, name: 'api' })
+    expect(el.querySelector('agentos-exchange-folder-form')).toBeNull()
+  })
+
+  it('says the folder goes in the root when no folder is browsed', () => {
+    const { fixture, el, section } = setup()
+    section('namespace').querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+    fixture.detectChanges()
+    expect(el.querySelector('agentos-exchange-folder-form')?.textContent).toContain('New folder in the root')
+  })
+
+  it('toggles the prompt with its button and drops it when a folder is opened', () => {
+    const { fixture, el, section } = setup()
+    const button = () =>
+      section('case').querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!
+    button().click()
+    fixture.detectChanges()
+    expect(el.querySelector('agentos-exchange-folder-form')).not.toBeNull()
+    button().click()
+    fixture.detectChanges()
+    expect(el.querySelector('agentos-exchange-folder-form')).toBeNull()
+
+    button().click()
+    fixture.detectChanges()
+    section('case').querySelector<HTMLButtonElement>('button.exchange-drawer__folder')!.click()
+    fixture.detectChanges()
+    expect(el.querySelector('agentos-exchange-folder-form')).toBeNull()
+  })
+
+  it('shows one prompt at a time', () => {
+    const { fixture, el, section } = setup()
+    section('case').querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+    section('namespace').querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+    fixture.detectChanges()
+    expect(el.querySelectorAll('agentos-exchange-folder-form')).toHaveLength(1)
+    expect(section('namespace').querySelector('agentos-exchange-folder-form')).not.toBeNull()
+  })
+
+  it('hides every write affordance, but keeps the folder and its download, when read-only', () => {
+    const { fixture, el, section } = setup({ write: false })
+    for (const scope of ['case', 'namespace'] as const) {
+      expect(section(scope).querySelector('ds-icon-button[icon="create_new_folder"]')).toBeNull()
+      expect(section(scope).querySelector('ds-icon-button[icon="upload_file"]')).toBeNull()
+      expect(section(scope).querySelector('.exchange-drawer__folder-row ds-icon-button[icon="delete"]')).toBeNull()
+      expect(section(scope).querySelector('.exchange-drawer__folder-row')).not.toBeNull()
+      expect(section(scope).querySelector('ds-icon-button[icon="download"]')).not.toBeNull()
+    }
+    expect(el.querySelector('agentos-exchange-folder-form')).toBeNull()
+    fixture.destroy()
+  })
+
+  it('never shows the prompt once write access is lost', () => {
+    const { fixture, el, section } = setup()
+    section('case').querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+    fixture.detectChanges()
+    expect(el.querySelector('agentos-exchange-folder-form')).not.toBeNull()
+
+    fixture.componentRef.setInput('canWriteCase', false)
+    fixture.detectChanges()
+
+    expect(el.querySelector('agentos-exchange-folder-form')).toBeNull()
+  })
+
+  it('does not offer delete on the folders of a filter result, which have no delete action', fakeAsync(() => {
+    const { fixture, el } = setup()
+    fixture.componentRef.setInput('caseManifestStatus', 'ready')
+    fixture.componentRef.setInput('caseManifest', [{ path: 'docs/a.md', filename: 'a.md', size: 1 }])
+    const input = el.querySelector<HTMLInputElement>('[data-track="ExchangeDrawer-caseFilterInput"]')!
+    input.value = 'a.md'
+    input.dispatchEvent(new Event('input'))
+    tick(150)
+    fixture.detectChanges()
+
+    const tree = el.querySelector('.exchange-drawer__tree')!
+    expect(tree.querySelector('.exchange-drawer__folder')).not.toBeNull()
+    expect(tree.querySelector('.exchange-drawer__folder-row ds-icon-button[icon="delete"]')).toBeNull()
+    fixture.destroy()
+  }))
+})
+
 describe('ExchangeDrawerComponent directory controls', () => {
   it('distinguishes workspace preparation from file loading errors', () => {
     TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
@@ -454,14 +611,19 @@ describe('ExchangeDrawerComponent directory controls', () => {
     loadMore[0]!.click()
     loadMore[1]!.click()
     expect(more.mock.calls).toEqual([[ExchangeFileEntryScopeEnum.CASE], [ExchangeFileEntryScopeEnum.NAMESPACE]])
-    expect(fixture.nativeElement.querySelector('[title="Download all case files"]')).not.toBeNull()
-    expect(fixture.nativeElement.querySelector('[title="Download all namespace files"]')).not.toBeNull()
+    const downloadTitles = () =>
+      Array.from<HTMLButtonElement>(
+        fixture.nativeElement.querySelectorAll('ds-icon-button[icon="download"] button')
+      ).map((button) => button.title)
+    // At the root of both scopes each button is named after its scope.
+    expect(downloadTitles()).toEqual(['Download all case files', 'Download all namespace files'])
     fixture.componentRef.setInput('caseFolders', [])
     fixture.componentRef.setInput('caseBreadcrumb', [{ label: 'empty', path: 'empty' }])
     fixture.componentRef.setInput('namespaceLoadingMore', true)
     fixture.detectChanges()
     expect(loadMore[1]!.disabled).toBe(true)
-    expect(fixture.nativeElement.querySelector('[title="Download all case files"]')).not.toBeNull()
+    // Inside a folder, even an empty one, the button stays and is scoped to that folder.
+    expect(downloadTitles()).toEqual(['Download all files in this folder', 'Download all namespace files'])
   })
   it('mounts the Git/participant observer only while Files is visible and cancels it on close', fakeAsync(() => {
     const request = new Subject<ExchangeEnvironment>()

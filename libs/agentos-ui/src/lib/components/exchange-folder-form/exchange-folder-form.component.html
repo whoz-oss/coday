@@ -1,0 +1,33 @@
+<form class="exchange-folder-form" novalidate (submit)="onSubmit($event)">
+  <label class="exchange-folder-form__label" for="exchange-folder-name">
+    New folder in {{ parentPath() ? '"' + parentPath() + '"' : 'the root' }}
+  </label>
+  <div class="exchange-folder-form__row">
+    <input
+      #nameInput
+      id="exchange-folder-name"
+      class="exchange-folder-form__input"
+      type="text"
+      placeholder="Folder name"
+      autocomplete="off"
+      data-track="ExchangeFolderForm-name"
+      [value]="name()"
+      [attr.aria-invalid]="error() ? 'true' : null"
+      [attr.aria-describedby]="error() ? 'exchange-folder-error' : null"
+      (input)="onInput($event)"
+      (keydown.escape)="onEscape($event)"
+    />
+    <button type="submit" class="exchange-folder-form__button" data-track="ExchangeFolderForm-create">Create</button>
+    <button
+      type="button"
+      class="exchange-folder-form__button"
+      data-track="ExchangeFolderForm-cancel"
+      (click)="cancelled.emit()"
+    >
+      Cancel
+    </button>
+  </div>
+  @if (error(); as message) {
+    <p id="exchange-folder-error" class="exchange-folder-form__error" role="alert">{{ message }}</p>
+  }
+</form>

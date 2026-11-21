@@ -220,7 +220,8 @@ describe('ComposerAttachmentsService', () => {
       expect(mention).toBe('[Files attached to the case exchange: a.pdf, b.xlsx]')
       expect(service.attachments().map((a) => a.status)).toEqual(['uploaded', 'uploaded'])
       expect(exchangeState.uploadFile).toHaveBeenCalledTimes(2)
-      expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, expect.any(File))
+      // Always the scope root: the mention names the file by its bare name, whatever folder the drawer browses.
+      expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, expect.any(File), '')
       expect(service.isUploading()).toBe(false)
     })
 
