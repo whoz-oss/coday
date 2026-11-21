@@ -1,0 +1,83 @@
+@use 'libs/design-system/src/styles' as ds;
+
+:host {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.folder-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  &__label {
+    font-family: var(--font-heading, monospace);
+    font-size: 11px;
+    color: var(--color-text-secondary, #6e6e73);
+    overflow-wrap: anywhere;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  &__input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--color-text, #1d1d1f);
+    background: var(--color-bg, #f2f2f3);
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    border-radius: var(--radius-md, 0);
+
+    &:focus-visible {
+      outline: none;
+      border-color: var(--color-primary, #007aff);
+    }
+
+    &[aria-invalid='true'] {
+      border-color: var(--color-error, #ff3b30);
+    }
+  }
+
+  &__button {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    font-family: var(--font-heading, monospace);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--color-text, #1d1d1f);
+    background: transparent;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    border-radius: var(--radius-md, 0);
+
+    &:hover {
+      background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+    }
+
+    &:focus-visible {
+      @include ds.focus-ring;
+    }
+
+    &--primary {
+      color: var(--color-text-inverse, #fff);
+      background: var(--color-primary, #007aff);
+      border-color: var(--color-primary, #007aff);
+
+      &:hover {
+        background: var(--color-primary-hover, #0062cc);
+      }
+    }
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 12px;
+    color: var(--color-error, #ff3b30);
+  }
+}

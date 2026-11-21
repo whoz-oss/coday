@@ -43,6 +43,8 @@
     (uploadRequested)="onUpload($event)"
     (downloadRequested)="onDownload($event)"
     (downloadAllRequested)="onDownloadAll($event)"
+    (createFolderRequested)="onCreateFolder($event)"
+    (deleteFolderRequested)="onDeleteFolderRequest($event)"
     (deleteRequested)="onDeleteRequest($event)"
     (retryRequested)="onRetry()"
     (filterChanged)="onFilterChanged($event)"
@@ -60,4 +62,14 @@
   cancelLabel="Cancel"
   (confirmed)="onConfirmDelete()"
   (cancelled)="onCancelDelete()"
+/>
+
+<ds-confirm-dialog
+  [open]="folderConfirmOpen()"
+  title="Delete folder"
+  [message]="folderDeleteMessage()"
+  confirmLabel="Delete"
+  cancelLabel="Cancel"
+  (confirmed)="onConfirmFolderDelete()"
+  (cancelled)="onCancelFolderDelete()"
 />

@@ -1,6 +1,6 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
-import { ExchangeControllerService, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangeControllerService, ExchangeFileEntryScopeEnum, ExchangeFolderApiService } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs'
 import { CaseWorkspaceService } from '../../services/case-workspace.service'
 import { MAX_VIEWABLE_SIZE } from '../../services/exchange-content.utils'
@@ -44,11 +44,18 @@ describe('ExchangeShellComponent filters', () => {
       getCaseFileContentExchange: jest.fn().mockReturnValue(of({ content: 'body' })),
       getNamespaceFileContentExchange: jest.fn().mockReturnValue(of({ content: 'body' })),
     }
+    const folders = {
+      uploadFile: jest.fn().mockReturnValue(of({})),
+      createDirectory: jest.fn().mockReturnValue(of({})),
+      deleteDirectory: jest.fn().mockReturnValue(of({ success: true, message: 'ok' })),
+      downloadArchive: jest.fn().mockReturnValue(of(new Blob(['zip']))),
+    }
     TestBed.configureTestingModule({
       imports: [ExchangeShellComponent],
       providers: [
         { provide: ActivatedRoute, useValue: { queryParams: route } },
         { provide: ExchangeControllerService, useValue: api },
+        { provide: ExchangeFolderApiService, useValue: folders },
         { provide: CaseWorkspaceService, useValue: { watch: jest.fn(), enabled$: of(false) } },
       ],
     })
@@ -58,7 +65,7 @@ describe('ExchangeShellComponent filters', () => {
     fixture.detectChanges()
     const shell = fixture.componentInstance
     const state = TestBed.inject(ExchangeStateService)
-    return { fixture, shell, state, api, route }
+    return { fixture, shell, state, api, route, folders }
   }
 
   it('reveals the namespace filter after an external file is reported by the existing refresh', () => {
@@ -862,6 +869,224 @@ describe('ExchangeShellComponent filters', () => {
     await shell['onConfirmDelete']()
     expect(remove).not.toHaveBeenCalled()
     fixture.destroy()
+  })
+
+  describe('folders', () => {
+    const writable = { ...listing, capability: 'READ_WRITE' }
+    const folderEntry = { path: 'docs', name: 'docs', directory: true }
+    const manifestOf = (...paths: string[]) => ({ capability: 'READ_WRITE', files: paths.map((p) => file(p)) })
+
+    function setupWritable() {
+      const ctx = setup()
+      ctx.api.browseCaseFilesExchange.mockImplementation((_id: string, path: string) =>
+        of({ ...writable, path, entries: path ? [] : [folderEntry], totalEntries: path ? 0 : 1 })
+      )
+      ctx.api.browseNamespaceFilesExchange.mockImplementation((_id: string, path: string) =>
+        of({ ...writable, path, entries: path ? [] : [folderEntry], totalEntries: path ? 0 : 1 })
+      )
+      ctx.state.refreshManifest()
+      ctx.fixture.detectChanges()
+      return ctx
+    }
+
+    it('downloads the folder being browsed as one ZIP, through a single archive request', async () => {
+      const { fixture, shell, state, folders, api } = setupWritable()
+      state.browseCase('docs')
+      const save = jest
+        .spyOn(state as unknown as { saveBlob: (body: Blob | string, name: string) => void }, 'saveBlob')
+        .mockImplementation(() => undefined)
+      fixture.detectChanges()
+
+      await shell['onDownloadAll'](CASE)
+
+      expect(folders.downloadArchive).toHaveBeenCalledTimes(1)
+      expect(folders.downloadArchive).toHaveBeenCalledWith(CASE, 'c-1', 'docs')
+      expect(save).toHaveBeenCalledTimes(1)
+      expect(save).toHaveBeenCalledWith(expect.any(Blob), 'docs.zip')
+      expect(api.getCaseFilesManifestExchange).not.toHaveBeenCalled()
+      expect(shell['actionError']()).toBeNull()
+      fixture.destroy()
+    })
+
+    it('shows an error when the archive cannot be downloaded', async () => {
+      const { fixture, shell, folders } = setupWritable()
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      folders.downloadArchive.mockReturnValue(throwError(() => ({ message: 'network down' })))
+      await shell['onDownloadAll'](NAMESPACE)
+      expect(shell['actionError']()).toBe('network down')
+      fixture.destroy()
+    })
+
+    it('uploads every selected file into the folder being browsed, read once for the whole batch', async () => {
+      const { fixture, shell, state, folders } = setupWritable()
+      state.browseCase('docs')
+      fixture.detectChanges()
+      const upload = shell['onUpload']({ scope: CASE, files: [new File(['a'], 'a.txt'), new File(['b'], 'b.txt')] })
+      // Leaving the folder mid-batch must not scatter the rest of the selection.
+      state.browseCase('')
+      await upload
+      expect(folders.uploadFile.mock.calls.map((call) => [call[2], call[3].name])).toEqual([
+        ['docs', 'a.txt'],
+        ['docs', 'b.txt'],
+      ])
+      fixture.destroy()
+    })
+
+    it('uploads to the scope root when none is open', async () => {
+      const { fixture, shell, api, folders } = setupWritable()
+      Object.assign(api, { uploadCaseFileExchange: jest.fn().mockReturnValue(of({})) })
+      await shell['onUpload']({ scope: CASE, files: [new File(['a'], 'a.txt')] })
+      expect(folders.uploadFile).not.toHaveBeenCalled()
+      expect((api as unknown as { uploadCaseFileExchange: jest.Mock }).uploadCaseFileExchange).toHaveBeenCalled()
+      fixture.destroy()
+    })
+
+    it('creates a folder named in the drawer inside the folder being browsed', async () => {
+      const { fixture, shell, state, folders } = setupWritable()
+      state.browseCase('docs')
+      fixture.detectChanges()
+      await shell['onCreateFolder']({ scope: CASE, name: 'specs' })
+      expect(folders.createDirectory).toHaveBeenCalledWith(CASE, 'c-1', 'docs/specs')
+      expect(shell['actionError']()).toBeNull()
+      fixture.destroy()
+    })
+
+    it('shows why a folder could not be created', async () => {
+      const { fixture, shell, folders } = setupWritable()
+      folders.createDirectory.mockReturnValue(throwError(() => ({ status: 409 })))
+      await shell['onCreateFolder']({ scope: CASE, name: 'docs' })
+      expect(shell['actionError']()).toBe('A file or folder with this name already exists.')
+      fixture.destroy()
+    })
+
+    it('asks for confirmation before deleting a folder, naming it and the number of files inside', () => {
+      const { fixture, shell, api, folders } = setupWritable()
+      api.getCaseFilesManifestExchange.mockReturnValue(
+        of(manifestOf('docs/a.md', 'docs/deep/b.md', 'docs/deep/c.md', 'other/d.md'))
+      )
+
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      fixture.detectChanges()
+
+      expect(shell['folderConfirmOpen']()).toBe(true)
+      expect(shell['folderDeleteMessage']()).toBe(
+        'Delete the folder "docs" and its 3 files? This action cannot be undone.'
+      )
+      expect((fixture.nativeElement as HTMLElement).querySelector('[role=dialog]')?.textContent).toContain('3 files')
+      expect(folders.deleteDirectory).not.toHaveBeenCalled()
+      fixture.destroy()
+    })
+
+    it.each([
+      [[], 'Delete the empty folder "docs"? This action cannot be undone.'],
+      [['docs/a.md'], 'Delete the folder "docs" and its 1 file? This action cannot be undone.'],
+    ])('words the confirmation for %j files', (paths, message) => {
+      const { fixture, shell, api } = setupWritable()
+      api.getCaseFilesManifestExchange.mockReturnValue(of(manifestOf(...paths)))
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      expect(shell['folderDeleteMessage']()).toBe(message)
+      fixture.destroy()
+    })
+
+    it('falls back to a generic message when the files cannot be counted, and still lets the user delete', async () => {
+      const { fixture, shell, api, folders } = setupWritable()
+      api.getCaseFilesManifestExchange.mockReturnValue(throwError(() => ({ status: 500 })))
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      expect(shell['folderDeleteMessage']()).toBe(
+        'Delete the folder "docs" and everything in it? This action cannot be undone.'
+      )
+      await shell['onConfirmFolderDelete']()
+      expect(folders.deleteDirectory).toHaveBeenCalledWith(CASE, 'c-1', 'docs')
+      fixture.destroy()
+    })
+
+    it('deletes nothing when the confirmation is cancelled', async () => {
+      const { fixture, shell, api, folders } = setupWritable()
+      api.getCaseFilesManifestExchange.mockReturnValue(of(manifestOf('docs/a.md')))
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      shell['onCancelFolderDelete']()
+      expect(shell['folderConfirmOpen']()).toBe(false)
+      await shell['onConfirmFolderDelete']()
+      expect(folders.deleteDirectory).not.toHaveBeenCalled()
+      fixture.destroy()
+    })
+
+    it('deletes the confirmed folder and closes the preview of a file that was inside it', async () => {
+      const { fixture, shell, api, folders } = setupWritable()
+      api.getCaseFilesManifestExchange.mockReturnValue(of(manifestOf('docs/a.md')))
+      shell['onFilterChanged']({ scope: CASE, query: 'a' })
+      fixture.detectChanges()
+      shell['onFileSelected']({ scope: CASE, path: 'docs/a.md' })
+      expect(shell['selectedFile']()).not.toBeNull()
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+
+      await shell['onConfirmFolderDelete']()
+
+      expect(folders.deleteDirectory).toHaveBeenCalledWith(CASE, 'c-1', 'docs')
+      expect(shell['folderConfirmOpen']()).toBe(false)
+      expect(shell['selectedFile']()).toBeNull()
+      fixture.destroy()
+    })
+
+    it('keeps the preview of a file outside the deleted folder, even one whose name starts the same', async () => {
+      const { fixture, shell, api } = setupWritable()
+      api.getCaseFilesManifestExchange.mockReturnValue(of(manifestOf('docs-old/a.md')))
+      shell['onFilterChanged']({ scope: CASE, query: 'a' })
+      fixture.detectChanges()
+      shell['onFileSelected']({ scope: CASE, path: 'docs-old/a.md' })
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      await shell['onConfirmFolderDelete']()
+      expect(shell['selectedFile']()?.path).toBe('docs-old/a.md')
+      fixture.destroy()
+    })
+
+    it('says why a folder with protected content was not deleted', async () => {
+      const { fixture, shell, api, folders } = setupWritable()
+      api.getCaseFilesManifestExchange.mockReturnValue(of(manifestOf('repo/a.md')))
+      folders.deleteDirectory.mockReturnValue(throwError(() => ({ status: 409 })))
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'repo' })
+      await shell['onConfirmFolderDelete']()
+      expect(shell['actionError']()).toBe('This folder contains protected files and cannot be deleted.')
+      fixture.destroy()
+    })
+
+    it('ignores the file count of a request replaced by another one', () => {
+      const { fixture, shell, api } = setupWritable()
+      const slow = new Subject<ReturnType<typeof manifestOf>>()
+      api.getCaseFilesManifestExchange.mockReturnValue(slow)
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      shell['onCancelFolderDelete']()
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'other' })
+      slow.next(manifestOf('docs/a.md', 'docs/b.md', 'other/c.md'))
+      expect(shell['folderDeleteMessage']()).toBe(
+        'Delete the folder "other" and its 1 file? This action cannot be undone.'
+      )
+      fixture.destroy()
+    })
+
+    it('drops a pending folder deletion when the case changes', async () => {
+      const { fixture, shell, folders, route } = setupWritable()
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      expect(shell['folderConfirmOpen']()).toBe(true)
+      route.next({ ns: 'ns-1', case: 'c-2' })
+      fixture.detectChanges()
+      expect(shell['folderConfirmOpen']()).toBe(false)
+      await shell['onConfirmFolderDelete']()
+      expect(folders.deleteDirectory).not.toHaveBeenCalled()
+      fixture.destroy()
+    })
+
+    it('refuses folder actions on a scope that became forbidden', async () => {
+      const { fixture, shell, api, folders } = setupWritable()
+      api.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 403 })))
+      TestBed.inject(ExchangeStateService).refreshCase()
+      fixture.detectChanges()
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      await shell['onCreateFolder']({ scope: CASE, name: 'x' })
+      expect(shell['folderConfirmOpen']()).toBe(false)
+      expect(folders.createDirectory).not.toHaveBeenCalled()
+      fixture.destroy()
+    })
   })
 
   it.each([CASE, NAMESPACE])('routes %s search failure and retry through the drawer', fakeAsync((scope) => {

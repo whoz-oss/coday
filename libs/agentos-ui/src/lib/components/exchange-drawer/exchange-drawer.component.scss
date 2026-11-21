@@ -205,6 +205,19 @@
     padding: 0;
   }
 
+  // A folder row: the button that opens it, then its delete action (writers only).
+  &__folder-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+
+    > .exchange-drawer__folder {
+      flex: 1;
+      min-width: 0;
+      width: auto;
+    }
+  }
+
   &__folder {
     display: flex;
     align-items: center;

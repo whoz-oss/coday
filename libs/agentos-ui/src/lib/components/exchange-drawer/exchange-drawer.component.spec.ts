@@ -418,6 +418,136 @@ describe('ExchangeDrawerComponent referenced files', () => {
   })
 })
 
+describe('ExchangeDrawerComponent folder actions', () => {
+  const NS = ExchangeFileEntryScopeEnum.NAMESPACE
+  const CASE = ExchangeFileEntryScopeEnum.CASE
+  const folder = { path: 'docs', name: 'docs', directory: true }
+
+  function setup(canWrite: boolean) {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    for (const scope of ['case', 'namespace']) {
+      fixture.componentRef.setInput(`${scope}Status`, 'ready')
+      fixture.componentRef.setInput(`${scope}SectionVisible`, true)
+      fixture.componentRef.setInput(`${scope}Folders`, [folder])
+    }
+    fixture.componentRef.setInput('canWriteCase', canWrite)
+    fixture.componentRef.setInput('canWriteNamespace', canWrite)
+    const created = jest.fn()
+    const deleted = jest.fn()
+    const downloaded = jest.fn()
+    fixture.componentInstance.createFolderRequested.subscribe(created)
+    fixture.componentInstance.deleteFolderRequested.subscribe(deleted)
+    fixture.componentInstance.downloadAllRequested.subscribe(downloaded)
+    fixture.detectChanges()
+    const el = fixture.nativeElement as HTMLElement
+    const section = (scope: ExchangeFileEntryScopeEnum) =>
+      el.querySelector<HTMLElement>(
+        `[data-track="ExchangeDrawer-${scope === CASE ? 'case' : 'namespace'}Section"]`
+      )!
+    return { fixture, el, section, created, deleted, downloaded }
+  }
+
+  it.each([CASE, NS])('labels the %s download after the scope at the root and after the folder inside one', (scope) => {
+    const { fixture, section } = setup(true)
+    const rootLabel = scope === CASE ? 'Download all case files' : 'Download all namespace files'
+    expect(section(scope).querySelector(`[title="${rootLabel}"]`)).not.toBeNull()
+
+    fixture.componentRef.setInput(
+      scope === CASE ? 'caseBreadcrumb' : 'namespaceBreadcrumb',
+      [{ label: 'docs', path: 'docs' }]
+    )
+    fixture.detectChanges()
+
+    expect(section(scope).querySelector(`[title="${rootLabel}"]`)).toBeNull()
+    expect(section(scope).querySelector('[title="Download all files in this folder"]')).not.toBeNull()
+  })
+
+  it.each([CASE, NS])('asks for the %s download without a path: the state knows the folder being browsed', (scope) => {
+    const { section, downloaded } = setup(true)
+    section(scope).querySelector<HTMLButtonElement>('button[title^="Download all"]')!.click()
+    expect(downloaded).toHaveBeenCalledWith(scope)
+  })
+
+  it.each([CASE, NS])('offers writers a %s folder to delete, naming it, and relays the request', (scope) => {
+    const { section, deleted } = setup(true)
+    const button = section(scope).querySelector<HTMLButtonElement>('button[title="Delete folder docs"]')!
+    button.click()
+    expect(deleted).toHaveBeenCalledWith({ scope, path: 'docs' })
+  })
+
+  it.each([CASE, NS])('keeps a read-only %s section free of any folder write action', (scope) => {
+    const { section, el } = setup(false)
+    expect(section(scope).querySelector('[title="New folder"]')).toBeNull()
+    expect(section(scope).querySelector('[title^="Delete folder"]')).toBeNull()
+    expect(el.querySelector('agentos-exchange-folder-form')).toBeNull()
+    // Reading stays possible: the folder opens and the section can still be downloaded.
+    expect(section(scope).querySelector('.exchange-drawer__folder')).not.toBeNull()
+    expect(section(scope).querySelector('[title^="Download all"]')).not.toBeNull()
+  })
+
+  it.each([CASE, NS])('opens a name form for a new %s folder, in the folder being browsed', (scope) => {
+    const { fixture, section } = setup(true)
+    fixture.componentRef.setInput(
+      scope === CASE ? 'caseBreadcrumb' : 'namespaceBreadcrumb',
+      [{ label: 'docs', path: 'docs' }]
+    )
+    fixture.detectChanges()
+    section(scope).querySelector<HTMLButtonElement>('button[title="New folder"]')!.click()
+    fixture.detectChanges()
+    expect(section(scope).querySelector('agentos-exchange-folder-form')?.textContent).toContain('New folder in docs')
+  })
+
+  it('emits the trimmed name of a new folder with its scope and closes the form', () => {
+    const { fixture, section, created } = setup(true)
+    section(CASE).querySelector<HTMLButtonElement>('button[title="New folder"]')!.click()
+    fixture.detectChanges()
+    const form = section(CASE).querySelector('agentos-exchange-folder-form')!
+    const input = form.querySelector<HTMLInputElement>('input')!
+    input.value = '  specs '
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.click()
+    fixture.detectChanges()
+    expect(created).toHaveBeenCalledWith({ scope: CASE, name: 'specs' })
+    expect(section(CASE).querySelector('agentos-exchange-folder-form')).toBeNull()
+  })
+
+  it.each(['', '  ', 'a/b', 'a\\b', '..'])('rejects the folder name "%s" in the form, emitting nothing', (name) => {
+    const { fixture, section, created } = setup(true)
+    section(CASE).querySelector<HTMLButtonElement>('button[title="New folder"]')!.click()
+    fixture.detectChanges()
+    const form = section(CASE).querySelector('agentos-exchange-folder-form')!
+    form.querySelector<HTMLInputElement>('input')!.value = name
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.click()
+    fixture.detectChanges()
+    expect(created).not.toHaveBeenCalled()
+    expect(form.querySelector('[role="alert"]')).not.toBeNull()
+    expect(form.querySelector('input')!.getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('closes the form on Cancel without emitting', () => {
+    const { fixture, section, created } = setup(true)
+    section(CASE).querySelector<HTMLButtonElement>('button[title="New folder"]')!.click()
+    fixture.detectChanges()
+    const cancel = Array.from(section(CASE).querySelectorAll('agentos-exchange-folder-form button')).find(
+      (b) => b.textContent?.trim() === 'Cancel'
+    ) as HTMLButtonElement
+    cancel.click()
+    fixture.detectChanges()
+    expect(section(CASE).querySelector('agentos-exchange-folder-form')).toBeNull()
+    expect(created).not.toHaveBeenCalled()
+  })
+
+  it('drops an open form when the section stops being writable', () => {
+    const { fixture, section } = setup(true)
+    section(CASE).querySelector<HTMLButtonElement>('button[title="New folder"]')!.click()
+    fixture.detectChanges()
+    expect(section(CASE).querySelector('agentos-exchange-folder-form')).not.toBeNull()
+    fixture.componentRef.setInput('canWriteCase', false)
+    fixture.detectChanges()
+    expect(section(CASE).querySelector('agentos-exchange-folder-form')).toBeNull()
+  })
+})
+
 describe('ExchangeDrawerComponent directory controls', () => {
   it('distinguishes workspace preparation from file loading errors', () => {
     TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
@@ -461,7 +591,9 @@ describe('ExchangeDrawerComponent directory controls', () => {
     fixture.componentRef.setInput('namespaceLoadingMore', true)
     fixture.detectChanges()
     expect(loadMore[1]!.disabled).toBe(true)
-    expect(fixture.nativeElement.querySelector('[title="Download all case files"]')).not.toBeNull()
+    // Inside an (empty) folder the button is scoped to it, and says so.
+    expect(fixture.nativeElement.querySelector('[title="Download all files in this folder"]')).not.toBeNull()
+    expect(fixture.nativeElement.querySelector('[title="Download all case files"]')).toBeNull()
   })
   it('mounts the Git/participant observer only while Files is visible and cancels it on close', fakeAsync(() => {
     const request = new Subject<ExchangeEnvironment>()

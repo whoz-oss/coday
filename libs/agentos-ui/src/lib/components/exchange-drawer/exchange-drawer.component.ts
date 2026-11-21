@@ -25,6 +25,7 @@ import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@who
 import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
 import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-list.component'
+import { ExchangeFolderFormComponent } from '../exchange-folder-form/exchange-folder-form.component'
 import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
 import { ExchangeFileRow, ExchangeItemComponent } from '../exchange-item/exchange-item.component'
 import { FilteredFileTree } from '../../services/exchange-file-filter.utils'
@@ -60,6 +61,7 @@ export interface ExchangeReferenceToggle {
     SpinnerComponent,
     EmptyStateComponent,
     ExchangeFileListComponent,
+    ExchangeFolderFormComponent,
     ExchangeFolderNavComponent,
     ExchangeContentViewerComponent,
     ExchangeItemComponent,
@@ -114,7 +116,12 @@ export class ExchangeDrawerComponent {
   readonly loadMoreRequested = output<ExchangeScope>()
   readonly uploadRequested = output<{ scope: ExchangeScope; files: File[] }>()
   readonly downloadRequested = output<ExchangeFileRef>()
+  /** The folder being browsed in this scope (the whole scope at its root) was asked as one ZIP. */
   readonly downloadAllRequested = output<ExchangeScope>()
+  /** A new folder was named, to be created inside the folder being browsed. */
+  readonly createFolderRequested = output<{ scope: ExchangeScope; name: string }>()
+  /** Deletion of a folder (and its content) was asked; the parent confirms it. */
+  readonly deleteFolderRequested = output<ExchangeFileRef>()
   readonly deleteRequested = output<ExchangeFileRef>()
   readonly retryRequested = output<void>()
   readonly filterChanged = output<{ scope: ExchangeScope; query: string }>()
@@ -299,6 +306,14 @@ export class ExchangeDrawerComponent {
 
   protected onFolderOpen(scope: ExchangeScope, path: string): void {
     this.folderOpened.emit({ scope, path })
+  }
+
+  /** Scope whose "new folder" form is open, if any. */
+  protected readonly creatingFolderIn = signal<ExchangeScope | null>(null)
+
+  protected onFolderNameSubmitted(scope: ExchangeScope, name: string): void {
+    this.creatingFolderIn.set(null)
+    this.createFolderRequested.emit({ scope, name })
   }
   protected readonly namespaceRows = computed(() => this.namespaceFiles().map(ExchangeItemComponent.toRow))
   protected readonly referencedCount = computed(() => this.referenced().length)
