@@ -527,7 +527,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
 
     await ref.instance['submit']()
 
-    expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.NAMESPACE, expect.any(File))
+    expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.NAMESPACE, expect.any(File), '')
     const messageCall = api.addMessageCase.mock.calls[0]!
     expect((messageCall[1] as { content: string }).content).toContain(
       '[Files attached to the namespace exchange: shared.md]'

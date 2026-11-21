@@ -32,6 +32,13 @@
                   [disabled]="caseUploading()"
                   (action)="triggerUpload(CASE)"
                 />
+                <ds-icon-button
+                  icon="create_new_folder"
+                  variant="primary"
+                  title="New folder"
+                  inputTrack="ExchangeDrawer-caseNewFolder"
+                  (action)="toggleFolderForm(CASE)"
+                />
               } @else if (caseStatus() === 'ready') {
                 <span class="exchange-drawer__readonly-badge">read-only</span>
               }
@@ -39,7 +46,7 @@
                 <ds-icon-button
                   icon="download"
                   variant="default"
-                  title="Download all case files"
+                  [title]="caseDownloadTitle()"
                   (action)="downloadAllRequested.emit(CASE)"
                 />
               }
@@ -56,6 +63,13 @@
             }
             @if (caseUploading()) {
               <p class="exchange-drawer__inflight">Uploading…</p>
+            }
+            @if (creatingFolderIn() === CASE && canWriteCase()) {
+              <agentos-exchange-folder-form
+                [parentPath]="caseParentPath()"
+                (submitted)="onFolderNamed(CASE, $event)"
+                (cancelled)="creatingFolderIn.set(null)"
+              />
             }
 
             @switch (caseStatus()) {
@@ -92,7 +106,7 @@
                 @if (caseFolders().length > 0) {
                   <ul class="exchange-drawer__folders" role="list">
                     @for (folder of caseFolders(); track folder.path) {
-                      <li role="listitem">
+                      <li role="listitem" class="exchange-drawer__folder-row">
                         <button type="button" class="exchange-drawer__folder" [attr.data-track]="'ExchangeDrawer-folder_CASE:' + folder.path" (click)="onFolderOpen(CASE, folder.path)">
                           <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true"
                             >folder_open</span
@@ -115,6 +129,15 @@
                             >chevron_right</span
                           >
                         </button>
+                        @if (canWriteCase()) {
+                          <ds-icon-button
+                            icon="delete"
+                            variant="danger"
+                            [title]="'Delete folder ' + folder.name"
+                            [inputTrack]="'ExchangeDrawer-deleteFolder_CASE:' + folder.path"
+                            (action)="deleteFolderRequested.emit({ scope: CASE, path: folder.path })"
+                          />
+                        }
                       </li>
                     }
                   </ul>
@@ -171,6 +194,13 @@
                   [disabled]="namespaceUploading()"
                   (action)="triggerUpload(NAMESPACE)"
                 />
+                <ds-icon-button
+                  icon="create_new_folder"
+                  variant="primary"
+                  title="New folder"
+                  inputTrack="ExchangeDrawer-namespaceNewFolder"
+                  (action)="toggleFolderForm(NAMESPACE)"
+                />
               } @else {
                 <span class="exchange-drawer__readonly-badge">read-only</span>
               }
@@ -178,7 +208,7 @@
                 <ds-icon-button
                   icon="download"
                   variant="default"
-                  title="Download all namespace files"
+                  [title]="namespaceDownloadTitle()"
                   (action)="downloadAllRequested.emit(NAMESPACE)"
                 />
               }
@@ -186,6 +216,13 @@
           </div>
 
           <div class="exchange-drawer__section-body">
+            @if (creatingFolderIn() === NAMESPACE && canWriteNamespace()) {
+              <agentos-exchange-folder-form
+                [parentPath]="namespaceParentPath()"
+                (submitted)="onFolderNamed(NAMESPACE, $event)"
+                (cancelled)="creatingFolderIn.set(null)"
+              />
+            }
             @switch (namespaceStatus()) {
               @case ('loading') {
                 <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading namespace files" /></div>
@@ -213,7 +250,7 @@
                 @if (namespaceFolders().length > 0) {
                   <ul class="exchange-drawer__folders" role="list">
                     @for (folder of namespaceFolders(); track folder.path) {
-                      <li role="listitem">
+                      <li role="listitem" class="exchange-drawer__folder-row">
                         <button
                           type="button"
                           class="exchange-drawer__folder"
@@ -228,6 +265,15 @@
                             >chevron_right</span
                           >
                         </button>
+                        @if (canWriteNamespace()) {
+                          <ds-icon-button
+                            icon="delete"
+                            variant="danger"
+                            [title]="'Delete folder ' + folder.name"
+                            [inputTrack]="'ExchangeDrawer-deleteFolder_NAMESPACE:' + folder.path"
+                            (action)="deleteFolderRequested.emit({ scope: NAMESPACE, path: folder.path })"
+                          />
+                        }
                       </li>
                     }
                   </ul>

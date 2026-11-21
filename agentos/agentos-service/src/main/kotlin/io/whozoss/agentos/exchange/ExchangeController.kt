@@ -3,6 +3,7 @@ package io.whozoss.agentos.exchange
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.media.SchemaProperty
+import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.parameters.RequestBody as SwaggerRequestBody
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.exception.BadRequestException
@@ -14,6 +15,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.api.exchange.ExchangeApi
 import io.whozoss.agentos.sdk.api.exchange.ExchangeCapability
 import io.whozoss.agentos.sdk.api.exchange.ExchangeDeleteResponse
+import io.whozoss.agentos.sdk.api.exchange.ExchangeDirectoryEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeDirectoryListing
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
@@ -21,6 +23,7 @@ import io.whozoss.agentos.sdk.api.exchange.ExchangeManifest
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
+import jakarta.servlet.http.HttpServletResponse
 import mu.KLogging
 import org.springframework.http.ContentDisposition
 import org.springframework.http.HttpHeaders
@@ -142,7 +145,38 @@ class ExchangeController(
     fun uploadCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam("file") file: MultipartFile,
-    ): ExchangeFileEntry = withFileMutation(caseId) { root -> uploadTo(root, ExchangeScope.CASE, file, "case $caseId") }
+        @RequestParam(required = false, defaultValue = "") directory: String,
+    ): ExchangeFileEntry =
+        withFileMutation(caseId) { root -> uploadTo(root, ExchangeScope.CASE, file, directory, "case $caseId") }
+
+    /**
+     * Create a folder in a case's files. Additive, and not part of the [ExchangeApi] contract (see [browseCaseFiles]).
+     */
+    @PostMapping("/api/cases/{caseId}/files/directory", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    fun createCaseDirectory(
+        @PathVariable caseId: UUID,
+        @RequestParam path: String,
+    ): ExchangeDirectoryEntry = withFileMutation(caseId) { root -> createDirectoryIn(root, path, "case $caseId") }
+
+    /** Delete a folder of a case's files, with everything in it. */
+    @DeleteMapping("/api/cases/{caseId}/files/directory", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    fun deleteCaseDirectory(
+        @PathVariable caseId: UUID,
+        @RequestParam path: String,
+    ): ExchangeDeleteResponse = withFileMutation(caseId) { root -> deleteDirectoryFrom(root, path, "case $caseId") }
+
+    /** Download a folder of a case's files (empty path: all of them) as one ZIP. */
+    @GetMapping("/api/cases/{caseId}/files/archive", produces = [ZIP_MEDIA_TYPE])
+    @ApiResponse(responseCode = "200", description = "OK", content = [Content(mediaType = ZIP_MEDIA_TYPE, schema = Schema(type = "string", format = "binary"))])
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    @HideOnAccessDenied
+    fun downloadCaseArchive(
+        @PathVariable caseId: UUID,
+        @RequestParam(required = false, defaultValue = "") path: String,
+        response: HttpServletResponse,
+    ) = archiveFor(resolvedCase(caseId).requireUsable(), path, "case-files", response)
 
     @DeleteMapping("/api/cases/{caseId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
@@ -221,13 +255,44 @@ class ExchangeController(
     fun uploadNamespaceFile(
         @PathVariable namespaceId: UUID,
         @RequestParam("file") file: MultipartFile,
+        @RequestParam(required = false, defaultValue = "") directory: String,
     ): ExchangeFileEntry =
         uploadTo(
             exchangeStorageService.namespaceRoot(namespaceId),
             ExchangeScope.NAMESPACE,
             file,
+            directory,
             "namespace $namespaceId",
         )
+
+    /** Create a folder in a namespace's shared files. */
+    @PostMapping("/api/namespaces/{namespaceId}/files/directory", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun createNamespaceDirectory(
+        @PathVariable namespaceId: UUID,
+        @RequestParam path: String,
+    ): ExchangeDirectoryEntry =
+        createDirectoryIn(exchangeStorageService.namespaceRoot(namespaceId), path, "namespace $namespaceId")
+
+    /** Delete a folder of a namespace's shared files, with everything in it. */
+    @DeleteMapping("/api/namespaces/{namespaceId}/files/directory", produces = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun deleteNamespaceDirectory(
+        @PathVariable namespaceId: UUID,
+        @RequestParam path: String,
+    ): ExchangeDeleteResponse =
+        deleteDirectoryFrom(exchangeStorageService.namespaceRoot(namespaceId), path, "namespace $namespaceId")
+
+    /** Download a folder of a namespace's shared files (empty path: all of them) as one ZIP. */
+    @GetMapping("/api/namespaces/{namespaceId}/files/archive", produces = [ZIP_MEDIA_TYPE])
+    @ApiResponse(responseCode = "200", description = "OK", content = [Content(mediaType = ZIP_MEDIA_TYPE, schema = Schema(type = "string", format = "binary"))])
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    @HideOnAccessDenied
+    fun downloadNamespaceArchive(
+        @PathVariable namespaceId: UUID,
+        @RequestParam(required = false, defaultValue = "") path: String,
+        response: HttpServletResponse,
+    ) = archiveFor(exchangeStorageService.namespaceRoot(namespaceId), path, "namespace-files", response)
 
     @DeleteMapping("/api/namespaces/{namespaceId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
@@ -300,14 +365,21 @@ class ExchangeController(
     ): ResponseEntity<ByteArray> =
         downloadResponse(mapStorageErrors { exchangeStorageService.readBytes(root, path) }, path)
 
-    /** Validate the upload against the extension allow-list, then create the file under [root]. */
+    /**
+     * Validate the upload against the extension allow-list, then create the file under [root], inside
+     * [directory] (relative to the root; empty for the root itself).
+     */
     private fun uploadTo(
         root: Path,
         scope: ExchangeScope,
         file: MultipartFile,
+        directory: String,
         logTarget: String,
     ): ExchangeFileEntry {
-        val relativePath = uploadRelativePath(file)
+        val relativePath =
+            listOf(directory.trim().trim('/'), uploadRelativePath(file))
+                .filter { it.isNotEmpty() }
+                .joinToString("/")
         if (!exchangeStorageService.isUploadAllowed(relativePath)) {
             throw BadRequestException("File type not allowed for upload: '$relativePath'")
         }
@@ -324,6 +396,49 @@ class ExchangeController(
         mapStorageErrors { exchangeStorageService.delete(root, path) }
         logger.info { "Deleted file '$path' from $logTarget" }
         return ExchangeDeleteResponse(true, "Deleted $path")
+    }
+
+    /** Create a folder under [root], mapping storage failures to HTTP statuses. */
+    private fun createDirectoryIn(
+        root: Path,
+        path: String,
+        logTarget: String,
+    ): ExchangeDirectoryEntry {
+        val created = mapStorageErrors { exchangeStorageService.createDirectory(root, path) }
+        logger.info { "Created folder '${created.path}' in $logTarget" }
+        return created
+    }
+
+    /** Delete a folder and its content under [root], mapping storage failures to HTTP statuses. */
+    private fun deleteDirectoryFrom(
+        root: Path,
+        path: String,
+        logTarget: String,
+    ): ExchangeDeleteResponse {
+        mapStorageErrors { exchangeStorageService.deleteDirectory(root, path) }
+        logger.info { "Deleted folder '$path' from $logTarget" }
+        return ExchangeDeleteResponse(true, "Deleted $path")
+    }
+
+    /**
+     * One ZIP of the folder [path] under [root]. The folder is checked before the response starts, so a missing
+     * or invalid one is a regular HTTP error; the files are then streamed, never held in memory.
+     * [rootName] names the archive when [path] is the scope root.
+     *
+     * Written synchronously on the request thread, straight to [response]: a `StreamingResponseBody` would run
+     * as an async request and be cut by the servlet async timeout on a large tree, leaving a truncated ZIP.
+     */
+    private fun archiveFor(
+        root: Path,
+        path: String,
+        rootName: String,
+        response: HttpServletResponse,
+    ) {
+        mapStorageErrors { exchangeStorageService.assertArchivable(root, path) }
+        val folderName = path.trim().trim('/').let { if (it.isEmpty()) rootName else dispositionFilename(it) }
+        response.contentType = ZIP_MEDIA_TYPE
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, attachmentDisposition("$folderName.zip"))
+        exchangeStorageService.writeArchive(root, path, response.outputStream)
     }
 
     /**
@@ -405,6 +520,12 @@ class ExchangeController(
         } catch (e: ExchangeFileTooLargeException) {
             logger.warn(e) { "Exchange file too large: ${e.message}" }
             throw UnprocessableEntityException(e.message ?: "File is too large to read")
+        } catch (e: ReservedEntryConflictException) {
+            logger.info(e) { "Exchange conflict (ReservedEntryConflictException): ${e.message}" }
+            throw ConflictException("Folder contains protected entries", e)
+        } catch (e: NotDirectoryException) {
+            logger.warn(e) { "Exchange path is not a directory: ${e.message}" }
+            throw BadRequestException("Not a directory")
         } catch (e: IOException) {
             // Generic message on purpose: a raw FileSystemException carries the absolute server path.
             logger.warn(e) { "Exchange I/O error (${e::class.simpleName}): ${e.message}" }
@@ -423,19 +544,23 @@ class ExchangeController(
         val contentType =
             mimeType?.let { runCatching { MediaType.parseMediaType(it) }.getOrNull() }
                 ?: MediaType.APPLICATION_OCTET_STREAM
-        // Keep a clean `filename="report.txt"` for ASCII names (interoperable everywhere); only
-        // switch to RFC 5987 `filename*=UTF-8''...` for names with non-ASCII chars.
-        val filename = dispositionFilename(path)
-        val isAscii = filename.all { it.code in 0x20..0x7E }
-        val disposition =
-            ContentDisposition
-                .attachment()
-                .let { if (isAscii) it.filename(filename) else it.filename(filename, StandardCharsets.UTF_8) }
-                .build()
         return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+            .header(HttpHeaders.CONTENT_DISPOSITION, attachmentDisposition(dispositionFilename(path)))
             .contentType(contentType)
             .body(bytes)
+    }
+
+    /**
+     * `Content-Disposition: attachment` for [filename]. Keeps a clean `filename="report.txt"` for ASCII names
+     * (interoperable everywhere); only switches to RFC 5987 `filename*=UTF-8''...` for names with non-ASCII chars.
+     */
+    private fun attachmentDisposition(filename: String): String {
+        val isAscii = filename.all { it.code in 0x20..0x7E }
+        return ContentDisposition
+            .attachment()
+            .let { if (isAscii) it.filename(filename) else it.filename(filename, StandardCharsets.UTF_8) }
+            .build()
+            .toString()
     }
 
     /**
@@ -454,5 +579,7 @@ class ExchangeController(
     companion object : KLogging() {
         /** Upper bound on a requested page, so one call cannot ask for a whole repository. */
         private const val MAX_PAGE_SIZE = 500
+
+        private const val ZIP_MEDIA_TYPE = "application/zip"
     }
 }
