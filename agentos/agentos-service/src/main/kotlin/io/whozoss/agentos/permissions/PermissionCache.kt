@@ -3,7 +3,6 @@ package io.whozoss.agentos.permissions
 import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.Cache
 import mu.KLogging
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.stereotype.Component
 import java.time.Duration
 
@@ -15,10 +14,6 @@ import java.time.Duration
  * - Key format: `perm:{userId}:{entityType}:{entityId}:{action}`
  */
 @Component
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
-)
 class PermissionCache {
 
     companion object : KLogging() {
