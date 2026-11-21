@@ -54,6 +54,27 @@ describe('buildAgentosSpec (unmanaged profile)', () => {
   })
 })
 
+describe('buildAgentosSpec (FACTORY_URL)', () => {
+  it('tells AgentOS where the managed Factory is, on loopback', () => {
+    expect(agentos({ factoryPort: 3003 }).env['FACTORY_URL']).toBe('http://127.0.0.1:3003')
+    expect(agentos({ factoryPort: 3003, profile: 'managed' }).env['FACTORY_URL']).toBe('http://127.0.0.1:3003')
+  })
+
+  it('keeps an explicit FACTORY_URL', () => {
+    const spec = agentos({ factoryPort: 3003, baseEnv: { FACTORY_URL: 'https://factory.acme.com' } })
+    expect(spec.env['FACTORY_URL']).toBe('https://factory.acme.com')
+  })
+
+  it('sets nothing when the managed Factory is disabled', () => {
+    const spec = agentos({ factoryPort: 3003, baseEnv: { CODAY_NO_FACTORY: '1' } })
+    expect(spec.env['FACTORY_URL']).toBeUndefined()
+  })
+
+  it('sets nothing without a Factory port', () => {
+    expect(agentos().env['FACTORY_URL']).toBeUndefined()
+  })
+})
+
 describe('buildAgentosSpec (managed profile)', () => {
   it('keeps the pre-wizard behaviour: no loopback flag, no auth mode, no forced encryption', () => {
     const spec = agentos({ profile: 'managed' })
