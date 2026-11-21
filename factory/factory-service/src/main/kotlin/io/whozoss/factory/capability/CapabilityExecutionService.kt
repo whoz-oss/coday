@@ -12,6 +12,7 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepResultClaim
 import io.whozoss.factory.workflow.domain.WorkflowStepContract
 import io.whozoss.factory.workflow.domain.WorkflowDecision
+import io.whozoss.factory.workflow.domain.WorkflowTicket
 import io.whozoss.factory.sdk.spi.WorkspaceCaptureStatus
 import io.whozoss.factory.sdk.spi.NewFinding
 import io.whozoss.factory.sdk.spi.FindingSeverity
@@ -475,15 +476,11 @@ class CapabilityExecutionService(
         namespaceId: String,
         ticket: String?,
         workflowId: String,
-    ): String {
-        val trustedComponent = trustedWorkflowTicket(scope, namespaceId, workflowId)
-            ?.takeIf { TRUSTED_TICKET.matches(it) }
-            ?: ticket?.takeIf { TRUSTED_TICKET.matches(it) }
-            ?: workflowId
-        val normalized = GITHUB_ISSUE_SUFFIX.find(trustedComponent)?.groupValues?.get(1) ?: trustedComponent
-        val sanitized = normalized.replace(Regex("[^A-Za-z0-9._-]"), "-").trim('-', '.').take(100)
-        return "work/forge/$sanitized"
-    }
+    ): String = WorkflowTicket.branchName(
+        trustedTicket = trustedWorkflowTicket(scope, namespaceId, workflowId),
+        fallbackTicket = ticket,
+        workflowId = workflowId,
+    )
 
     /**
      * Builds the brief handed to the agent persona. It is assembled by Factory
@@ -2754,10 +2751,6 @@ class CapabilityExecutionService(
         private const val RUN_BRIEF_KIND = "run-brief"
         private const val GITAY_AGENT = "Gitay"
         private const val A11Y_REVIEWER_AGENT = "A11yReviewer"
-        private val TRUSTED_TICKET = Regex(
-            "^(?:[A-Z][A-Z0-9]{1,15}-[1-9][0-9]{0,11}|(?:#|[A-Za-z0-9][A-Za-z0-9._-]{0,38}/[A-Za-z0-9._-]{1,100}#)?[1-9][0-9]{0,11})$",
-        )
-        private val GITHUB_ISSUE_SUFFIX = Regex("^(?:#|[A-Za-z0-9][A-Za-z0-9._-]{0,38}/[A-Za-z0-9._-]{1,100}#)([1-9][0-9]{0,11})$")
 
         /** Evidence marker of an authoritative NEEDS_RESEARCH verdict (blocked, not failed). */
         const val NEEDS_RESEARCH_MARKER = "NEEDS_RESEARCH"
