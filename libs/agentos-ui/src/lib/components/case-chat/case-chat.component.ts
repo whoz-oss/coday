@@ -90,6 +90,7 @@ import {
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
@@ -249,6 +250,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
+  /** Width of the right drawer, resizable and shared with the case home. */
+  protected readonly drawerWidth = inject(ExchangeDrawerWidthService)
   /** Exchange files picked in the drawer: shown as chips, referenced (never uploaded) by the next message. */
   protected readonly referencedFiles = signal<ExchangeFileRef[]>([])
   protected readonly exchangeFileCount = this.exchangeState.fileCount

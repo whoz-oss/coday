@@ -1,0 +1,81 @@
+// Every selector is prefixed by the panel class: the component is not encapsulated (the dialog is attached to the
+// body, outside any view, so encapsulated styles would never match it), and nothing may leak to other dialogs.
+//
+// The app styles every dialog globally (apps/client/src/styles.scss): a cap of 80vh on the container and a rounded,
+// bordered, shadowed surface set with !important. The selectors below start from the overlay pane to be stronger
+// than those rules, and the surface ones are !important to beat theirs.
+.cdk-overlay-pane.exchange-html-full-view-panel {
+  --mat-dialog-container-shape: 0;
+  --mat-dialog-container-small-max-width: 100vw;
+  --mat-dialog-container-max-width: 100vw;
+  --mat-dialog-container-min-width: 0;
+  width: 100vw;
+  max-width: 100vw !important;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+
+  .mat-mdc-dialog-container,
+  .mat-mdc-dialog-inner-container {
+    width: 100%;
+    height: 100%;
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;
+    padding: 0;
+  }
+
+  .mat-mdc-dialog-surface,
+  .mdc-dialog__surface {
+    width: 100%;
+    height: 100%;
+    max-width: 100vw;
+    max-height: 100vh;
+    max-height: 100dvh;
+    padding: 0;
+    overflow: hidden;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  agentos-exchange-html-full-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: var(--color-bg, #ffffff);
+  }
+
+  .exchange-html-full-view__header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+    flex-shrink: 0;
+  }
+
+  .exchange-html-full-view__filename {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text, #1d1d1f);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .exchange-html-full-view__iframe {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+    // Reports and PDFs usually assume a white page.
+    background: #ffffff;
+  }
+}
