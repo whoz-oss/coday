@@ -43,7 +43,7 @@ interface AgentStepResultRepository {
         scope: TenantScope,
         identity: AgentStepResultCapabilityIdentity,
         now: Instant = Instant.now(),
-        ttlSeconds: Long = 15L * 60L,
+        ttlSeconds: Long = io.whozoss.factory.agentattempt.domain.AgentStepResultLimits.CAPABILITY_TTL_SECONDS,
     ): IssuedCapability
 
     /**
@@ -56,7 +56,7 @@ interface AgentStepResultRepository {
         runtimeId: String,
         refreshKey: String,
         now: Instant = Instant.now(),
-        ttlSeconds: Long = 15L * 60L,
+        ttlSeconds: Long = io.whozoss.factory.agentattempt.domain.AgentStepResultLimits.CAPABILITY_TTL_SECONDS,
     ): IssuedCapability
 
     /** Redeem a capability with a structured business result; replays are idempotent. */

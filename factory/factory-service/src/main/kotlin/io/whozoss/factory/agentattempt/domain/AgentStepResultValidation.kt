@@ -12,8 +12,10 @@ object AgentStepResultValidation {
     private val FINDING_FIELDS = setOf("severity", "code", "summary", "file", "line")
     private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH")
     private val CHANGE_TYPES = setOf("feature", "bugfix")
-    /** GitHub issue shorthand (#123) or a generic Jira-style project key (ABC-123). */
-    private val TICKET = Regex("^(?:#[1-9][0-9]*|[A-Z][A-Z0-9]{1,15}-[1-9][0-9]*)$")
+    /** GitHub issue reference (#123, 123, owner/repo#123) or a generic Jira-style project key (ABC-123). */
+    private val TICKET = Regex(
+        "^(?:(?:#|[A-Za-z0-9][A-Za-z0-9._-]{0,38}/[A-Za-z0-9._-]{1,100}#)?[1-9][0-9]*|[A-Z][A-Z0-9]{1,15}-[1-9][0-9]*)$",
+    )
 
     data class Violation(val path: String, val code: String, val message: String)
 

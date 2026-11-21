@@ -555,7 +555,7 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
         val brief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "G") }.brief
         assertThat(brief)
-            .contains("Expected branch (authoritative, selected by Factory): factory/WZ-35278")
+            .contains("Expected branch (authoritative, selected by Factory): work/forge/WZ-35278")
             .contains("GIT__git_status and GIT__git_create_branch")
             .contains("An initially detached HEAD is normal")
             .contains("create the expected branch from that commit")
@@ -567,6 +567,26 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
             .contains("Forbidden: file edits, add, commit, push, fetch, stash, reset, merge, branch deletion")
             .doesNotContain("choose a branch")
             .doesNotContain("Inputs:")
+    }
+
+    @Test
+    fun `Gitay receives a Factory-derived branch for a GitHub issue ticket`() {
+        val workflowId = isolatedWorkflowId("wf-gitay-gh-issue")
+        startSession(
+            "gitay-gh-issue",
+            workflowId,
+            listOf(
+                stepJson("A", "agent", "Architect", emptyList()),
+                stepJson("G", "agent", "Gitay", listOf("A")),
+            ),
+        )
+        val adapter = FakeAdapter(caseSteps(workflowId, "A", "G")) { AgentOsExecutionVerdict.Succeeded(emptyMap()) }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot, ticket = "#1731")
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        val brief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "G") }.brief
+        assertThat(brief).contains("Expected branch (authoritative, selected by Factory): work/forge/1731")
     }
 
     @Test
@@ -582,7 +602,7 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
         sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
 
         val brief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "G") }.brief
-        assertThat(brief).contains("Expected branch (authoritative, selected by Factory): factory/$workflowId")
+        assertThat(brief).contains("Expected branch (authoritative, selected by Factory): work/forge/$workflowId")
     }
 
     // ----- 3b. Reservation BEFORE case creation; caseId BEFORE the turn ----

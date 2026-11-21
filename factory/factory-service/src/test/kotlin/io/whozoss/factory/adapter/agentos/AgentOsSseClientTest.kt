@@ -387,6 +387,38 @@ class AgentOsSseClientTest {
     }
 
     @Test
+    fun `active events slide the observation deadline so long active turns do not time out prematurely`() {
+        server.enqueue(
+            FakeAgentOsSseServer.Script(
+                frames = FakeAgentOsSseServer.sseEvent(FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING")) +
+                    FakeAgentOsSseServer.sseEvent(
+                        FakeAgentOsSseServer.transientEvent("t1", "case-1", "ThinkingEvent"),
+                        delayAfterMs = 120,
+                    ) +
+                    FakeAgentOsSseServer.sseEvent(
+                        FakeAgentOsSseServer.transientEvent("t2", "case-1", "TextChunkEvent"),
+                        delayAfterMs = 120,
+                    ) +
+                    FakeAgentOsSseServer.sseEvent(
+                        FakeAgentOsSseServer.agentMessageEvent("m1", "case-1", "completed after active work", "2026-01-01T00:00:05Z"),
+                        delayAfterMs = 120,
+                    ) +
+                    FakeAgentOsSseServer.sseEvent(
+                        FakeAgentOsSseServer.statusEvent("e2", "case-1", "IDLE", "2026-01-01T00:00:06Z"),
+                    ),
+                holdAfterMs = 1_000,
+            ),
+        )
+
+        val verdict = client(stallTimeoutMs = 500).observe(caseId = "case-1", timeoutMs = 200)
+
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        verdict as AgentOsExecutionVerdict.Indeterminate
+        assertThat(verdict.reason).isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
+        assertThat(verdict.evidence["summary"]).isEqualTo("completed after active work")
+    }
+
+    @Test
     fun `a warm high-water mark dedups the replayed prefix without reprocessing`() {
         val (onEvent, counts) = processedIdsCounter()
         val checkpoint = EventCheckpoint()
