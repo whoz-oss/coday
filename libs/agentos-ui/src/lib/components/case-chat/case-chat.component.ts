@@ -1,9 +1,10 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { JsonPipe } from '@angular/common'
+import { JsonPipe, NgTemplateOutlet } from '@angular/common'
 import { firstValueFrom, Subscription } from 'rxjs'
 import {
   afterNextRender,
+  ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
@@ -19,27 +20,28 @@ import {
   signal,
   Signal,
   viewChild,
-  ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
   Actor,
+  AgentConfig,
   AgentFinishedEvent,
   AgentRunningEvent,
   AgentSelectedEvent,
   AnswerEvent,
   Audio as AudioContent,
+  Case,
   CaseEvent,
   CaseStatusEnum,
   CaseStatusEvent,
   CaseUpdatedEvent,
   Configuration,
-  EnrichmentPhaseTrace,
   ErrorEvent,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
+  Prompt,
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
   ToolRequestEvent,
@@ -47,7 +49,6 @@ import {
   ToolSelectedEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { AgentConfig, Case, Prompt } from '@whoz-oss/agentos-api-client'
 import {
   BlueprintDirective,
   ConfirmDialogComponent,
@@ -60,18 +61,14 @@ import {
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
-import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
+import { questionElementId, QuestionPanelComponent } from '../question-panel/question-panel.component'
 import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { IdeLinkService } from '../../services/ide-link.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
-import { AgentActivity, describeAgentActivity } from '../agent-activity/agent-activity.models'
-import {
-  buildDelegations,
-  DelegationPresentation,
-  isCorrelatedDelegateTool,
-} from '../delegation/models/delegation.models'
+import { AgentActivity, describeAgentActivity, toolActivityLabel } from '../agent-activity/agent-activity.models'
+import { buildDelegations, isCorrelatedDelegateTool } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EffortOption, messageEffortLabel, parseEffortCommand } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
@@ -124,6 +121,8 @@ import {
 import { FileChipComponent } from '../file-chip/file-chip.component'
 import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
+import { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
+import { groupToolCalls, summarizeToolGroup, ToolGroupSummary } from './tool-call-groups'
 import { CostPipe } from '../../pipes/cost.pipe'
 import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { AudioMessageComponent } from '../audio-message/audio-message.component'
@@ -133,6 +132,8 @@ import { VoiceCapabilityStateService } from '../../services/voice-capability-sta
 import { UserStateService } from '../../services/user-state.service'
 import { WizzCompletionObserver } from './wizz-completion-observer'
 
+// The timeline types live in case-chat.models.ts (tool-call-groups.ts needs them too); re-exported for existing importers.
+export type { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
 export interface ToolCall {
   requestId: string
   toolName: string
@@ -245,6 +246,7 @@ function hasActiveSelection(): boolean {
     KebabMenuComponent,
     CaseUsageComponent,
     JsonPipe,
+    NgTemplateOutlet,
     DrawerComponent,
     ExchangeShellComponent,
     CaseMembersComponent,
@@ -630,8 +632,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     isNamespaceTargeted(this.inputValue(), this.exchangeState.canWriteNamespace())
   )
 
-  /** Collapsed state per toolRequestId */
+  /** Ids of the tool calls the user expanded (collapsed by default). */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
+
+  /** Ids of the tool groups the user expanded (collapsed by default). */
+  protected readonly expandedToolGroups = signal<Set<string>>(new Set())
 
   /**
    * Whether the user is currently scrolled to (or near) the bottom of the messages area.
@@ -908,7 +913,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       item.isLastInGroup = next?.kind !== 'message' || next.event.actor.role !== item.event.actor.role
     }
 
-    return items
+    return groupToolCalls(items)
   })
 
   /** Id of the latest run stopped at its iteration limit, while no user message has followed it. */
@@ -990,6 +995,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         return item.event.id
       case 'tool':
         return item.call.requestId
+      case 'toolGroup':
+        return item.groupId
       case 'technical':
       case 'notice':
         return item.eventId
@@ -1722,6 +1729,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.confirmingDelete.set(false)
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
+    this.expandedToolGroups.set(new Set())
     this.isAtBottom.set(true)
     this.drawerPanel.set('files')
     this.isEditing.set(false)
@@ -2132,6 +2140,32 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Collapsed by default: a tool call is expanded only when its id is in the set */
   protected isToolCallExpanded(requestId: string): boolean {
     return this.collapsedTools().has(requestId)
+  }
+
+  protected toggleToolGroup(groupId: string): void {
+    this.expandedToolGroups.update((set) => {
+      const next = new Set(set)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      return next
+    })
+  }
+
+  /** Collapsed by default: a group is expanded only when its id is in the set. */
+  protected isToolGroupExpanded(groupId: string): boolean {
+    return this.expandedToolGroups().has(groupId)
+  }
+
+  /** Human sentence for a tool call ("Reading foo.ts"), shown instead of the raw tool name. */
+  protected toolCallLabel(call: ToolCall): string {
+    return toolActivityLabel(call.toolName, call.args)
+  }
+
+  protected toolGroupSummary(calls: ToolCall[]): ToolGroupSummary {
+    return summarizeToolGroup(calls)
   }
 
   /**

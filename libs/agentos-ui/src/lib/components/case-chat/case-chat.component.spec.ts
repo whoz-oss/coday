@@ -194,9 +194,10 @@ describe('CaseChatComponent — submit with attachments', () => {
           return animation
         }),
       }
-      ;(ref.instance as unknown as { conversationPanel: () => { nativeElement: typeof panel } }).conversationPanel = () => ({
-        nativeElement: panel,
-      })
+      ;(ref.instance as unknown as { conversationPanel: () => { nativeElement: typeof panel } }).conversationPanel =
+        () => ({
+          nativeElement: panel,
+        })
     }
 
     it('plays the selected cue once and removes its preference listener when it finishes or is cancelled', () => {
@@ -209,8 +210,12 @@ describe('CaseChatComponent — submit with attachments', () => {
           get matches() {
             return reduced
           },
-          addEventListener: jest.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.add(listener)),
-          removeEventListener: jest.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener)),
+          addEventListener: jest.fn((_type: string, listener: (event: MediaQueryListEvent) => void) =>
+            listeners.add(listener)
+          ),
+          removeEventListener: jest.fn((_type: string, listener: (event: MediaQueryListEvent) => void) =>
+            listeners.delete(listener)
+          ),
         })),
       })
       const ref = makeComponent()
@@ -1581,6 +1586,33 @@ describe('CaseChatComponent — submit with attachments', () => {
       })
     )
     expect(timeline.some((item) => item.kind === 'tool')).toBe(false)
+  })
+
+  it('folds two consecutive tool calls into one group, and keeps a lone call as a card', () => {
+    const ref = makeComponent()
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const request = (id: string): ToolRequestEvent => ({
+      id: `req-${id}`,
+      type: 'ToolRequestEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata,
+      toolName: 'FILES__readFile',
+      toolRequestId: id,
+      args: '{"filePath":"a.ts"}',
+    })
+
+    ref.instance['events'].set([request('t-1')])
+    expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['tool'])
+
+    ref.instance['events'].set([request('t-1'), request('t-2')])
+    const timeline = ref.instance['timeline']()
+    expect(timeline.map((item) => item.kind)).toEqual(['toolGroup'])
+    expect(timeline[0]).toEqual(expect.objectContaining({ groupId: 'group-t-1' }))
+    expect(ref.instance['isToolGroupExpanded']('group-t-1')).toBe(false)
+    ref.instance['toggleToolGroup']('group-t-1')
+    expect(ref.instance['isToolGroupExpanded']('group-t-1')).toBe(true)
   })
 
   describe('question timeline items', () => {
