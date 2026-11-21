@@ -114,7 +114,6 @@ import {
   isNamespaceTargeted,
   joinAttachmentMentions,
   joinMentionLines,
-  MentionedFile,
   resolveUploadScope,
   splitAttachmentMentions,
 } from '../composer-attachments/composer-attachments.utils'
@@ -131,67 +130,6 @@ import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
 import { WizzCompletionObserver } from './wizz-completion-observer'
-
-// The timeline types live in case-chat.models.ts (tool-call-groups.ts needs them too); re-exported for existing importers.
-export type { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
-export interface ToolCall {
-  requestId: string
-  toolName: string
-  args: string | null
-  /** ISO timestamp from the ToolRequestEvent. */
-  timestamp?: string
-  /** undefined = pending, defined = done */
-  response?: ToolResponseEvent
-  /** Enrichment phase traces from multi-step parameter generation (null when no enrichment). */
-  enrichmentPhases?: EnrichmentPhaseTrace[] | null
-}
-
-/** A technical event, displayed only when the technical logs preference is enabled. */
-export interface TechnicalItem {
-  label: string
-  detail?: string
-  /** ISO timestamp of the source event. */
-  timestamp?: string
-}
-
-export interface ExecutionNotice {
-  severity: 'warning' | 'error' | 'terminal'
-  title: string
-  detail?: string
-}
-
-export type TimelineItem =
-  | {
-      kind: 'message'
-      event: CaseMessageEvent
-      html: SafeHtml
-      /**
-       * The files the message carries, read from the lines the composer put at the end of its text (the text shown
-       * in [html] is what comes before them). Only a user message has any.
-       */
-      files: MentionedFile[]
-      isFirstInGroup: boolean
-      isLastInGroup: boolean
-      /**
-       * True while the message is being re-run: it shows the text that was sent, and what followed the
-       * message it replaces is already hidden, until the server's own re-run message comes back.
-       */
-      pending: boolean
-      /**
-       * What the agent turn this message closes cost, when the turn reported any usage.
-       *
-       * Set on the last agent message before the turn's `AgentFinishedEvent`, which is where the
-       * reader looks for it: the answer is on screen, the question "what did that cost" is about
-       * that answer.
-       */
-      metrics?: TurnMetrics
-    }
-  | { kind: 'tool'; call: ToolCall }
-  | { kind: 'streaming' }
-  | { kind: 'notice'; notice: ExecutionNotice; eventId: string }
-  | { kind: 'technical'; item: TechnicalItem; eventId: string }
-  | { kind: 'question'; event: QuestionEvent; answer?: AnswerEvent }
-  | { kind: 'delegation'; delegation: DelegationPresentation }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64

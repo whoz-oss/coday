@@ -32,6 +32,11 @@
                   <project path="$PROJECT_DIR$/agentos/agentos-git-plugin" />
                 </projects>
               </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-gradle-plugin" name="agentos-gradle-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-gradle-plugin" />
+                </projects>
+              </build>
               <build path="$PROJECT_DIR$/agentos/agentos-http-plugin" name="agentos-http-plugin">
                 <projects>
                   <project path="$PROJECT_DIR$/agentos/agentos-http-plugin" />
@@ -74,6 +79,7 @@
             <option value="$PROJECT_DIR$/agentos/agentos-file-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-git" />
             <option value="$PROJECT_DIR$/agentos/agentos-git-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-gradle-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-http-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-mcp-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-plugins-filesystem" />
