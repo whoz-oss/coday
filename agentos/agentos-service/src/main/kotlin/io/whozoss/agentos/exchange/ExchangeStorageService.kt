@@ -8,6 +8,7 @@ import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.io.IOException
+import java.io.OutputStream
 import java.net.URLConnection
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -25,6 +26,8 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Filesystem-backed storage for the AgentOS file exchange.
@@ -302,6 +305,170 @@ class ExchangeStorageService(
     ) {
         val resolved = resolveWithin(root, relativePath)
         Files.delete(resolved)
+    }
+
+    /**
+     * Create the directory [relativePath] under [root], along with any missing parent. Create-only:
+     * fails when the target already exists, whether it is a file or a folder.
+     *
+     * @throws FileExistsException if the target already exists.
+     * @throws InvalidExchangePathException if the path is blank, escapes the boundary or is reserved.
+     * @return the entry of the new directory.
+     */
+    fun createDirectory(
+        root: Path,
+        relativePath: String,
+    ): ExchangeDirectoryEntry {
+        Files.createDirectories(root)
+        val resolved = resolveWithin(root, relativePath.trim().trim('/'))
+        if (Files.exists(resolved, LinkOption.NOFOLLOW_LINKS)) {
+            throw FileExistsException("Already exists: $relativePath")
+        }
+        resolved.parent?.let { Files.createDirectories(it) }
+        try {
+            Files.createDirectory(resolved)
+        } catch (e: FileAlreadyExistsException) {
+            logger.warn(e) { "Directory '$relativePath' already exists" }
+            throw FileExistsException("Already exists: $relativePath")
+        }
+        return toDirectoryEntry(root.toRealPath(), resolved)
+            ?: throw IOException("Failed to read the created directory")
+    }
+
+    /**
+     * Delete the directory [relativePath] under [root] with everything it contains.
+     *
+     * The scope root can never be deleted (a blank path is refused). The subtree is checked first and
+     * nothing is deleted when it holds a reserved entry, so a worktree's `.git` is never removed by
+     * deleting a folder above it. Symbolic links are removed as links and never followed.
+     *
+     * @throws InvalidExchangePathException if the path is blank, escapes the scope or is reserved.
+     * @throws ReservedEntryConflictException if the subtree holds a reserved entry.
+     * @throws java.nio.file.NoSuchFileException if the directory does not exist.
+     * @throws java.nio.file.NotDirectoryException if the path denotes a file (or a link).
+     */
+    fun deleteDirectory(
+        root: Path,
+        relativePath: String,
+    ) {
+        val resolved = resolveWithin(root, relativePath.trim().trim('/'))
+        if (resolved == root.toRealPath()) {
+            throw InvalidExchangePathException("Invalid path: the scope root cannot be deleted")
+        }
+        if (!Files.exists(resolved, LinkOption.NOFOLLOW_LINKS)) throw NoSuchFileException(relativePath)
+        if (!Files.isDirectory(resolved, LinkOption.NOFOLLOW_LINKS)) throw NotDirectoryException(relativePath)
+
+        Files.walkFileTree(
+            resolved,
+            object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(
+                    dir: Path,
+                    attrs: BasicFileAttributes,
+                ): FileVisitResult {
+                    refuseReserved(dir)
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun visitFile(
+                    file: Path,
+                    attrs: BasicFileAttributes,
+                ): FileVisitResult {
+                    refuseReserved(file)
+                    return FileVisitResult.CONTINUE
+                }
+
+                private fun refuseReserved(path: Path) {
+                    if (reservedEntries.reserves(path.fileName?.toString())) {
+                        throw ReservedEntryConflictException("Folder contains protected entries: $relativePath")
+                    }
+                }
+            },
+        )
+
+        Files.walkFileTree(
+            resolved,
+            object : SimpleFileVisitor<Path>() {
+                override fun visitFile(
+                    file: Path,
+                    attrs: BasicFileAttributes,
+                ): FileVisitResult {
+                    Files.delete(file)
+                    return FileVisitResult.CONTINUE
+                }
+
+                override fun postVisitDirectory(
+                    dir: Path,
+                    exc: IOException?,
+                ): FileVisitResult {
+                    if (exc != null) throw exc
+                    Files.delete(dir)
+                    return FileVisitResult.CONTINUE
+                }
+            },
+        )
+    }
+
+    /**
+     * Check that [relativePath] under [root] can be archived, before anything is streamed.
+     *
+     * A streamed response cannot report an error once it has started, so a caller checks here first
+     * and gets the usual path and not-found failures as ordinary exceptions.
+     *
+     * @param relativePath the folder to archive; empty (or `/`) means the scope root.
+     * @return the canonical directory to archive, or null when the scope was never written to (an
+     *   empty archive, same contract as the manifest).
+     * @throws InvalidExchangePathException if the path escapes the scope or reaches a reserved entry.
+     * @throws java.nio.file.NoSuchFileException if the folder does not exist.
+     * @throws java.nio.file.NotDirectoryException if the path denotes a file.
+     */
+    fun requireArchivable(
+        root: Path,
+        relativePath: String,
+    ): Path? {
+        val normalized = relativePath.trim().trim('/')
+        if (normalized.isEmpty()) return if (Files.exists(root)) root.toRealPath() else null
+        val resolved = resolveWithin(root, normalized)
+        if (!Files.exists(resolved)) throw NoSuchFileException(normalized)
+        if (!Files.isDirectory(resolved)) throw NotDirectoryException(normalized)
+        return resolved.toRealPath()
+    }
+
+    /**
+     * Stream the files of the folder [relativePath] under [root] to [out] as a ZIP archive.
+     *
+     * Entry names are relative to the archived folder. The walk is the manifest's: reserved entries
+     * are skipped, symbolic links are not followed and the depth is capped. Each file is copied
+     * through a buffer, never loaded whole. [out] is left open.
+     *
+     * @throws InvalidExchangePathException see [requireArchivable].
+     * @throws java.nio.file.NoSuchFileException see [requireArchivable].
+     * @throws java.nio.file.NotDirectoryException see [requireArchivable].
+     */
+    fun writeArchive(
+        root: Path,
+        relativePath: String,
+        scope: ExchangeScope,
+        out: OutputStream,
+    ) {
+        val directory = requireArchivable(root, relativePath)
+        val zip = ZipOutputStream(out)
+        if (directory != null) {
+            for (entry in listManifest(directory, scope).sortedBy { it.path }) {
+                // A file deleted since the walk is skipped; the entry is only started once it is open.
+                val input =
+                    try {
+                        Files.newInputStream(directory.resolve(entry.path))
+                    } catch (e: NoSuchFileException) {
+                        continue
+                    }
+                input.use {
+                    zip.putNextEntry(ZipEntry(entry.path).apply { time = entry.lastModified.toEpochMilli() })
+                    it.copyTo(zip)
+                    zip.closeEntry()
+                }
+            }
+        }
+        zip.finish()
     }
 
     /**

@@ -82,18 +82,35 @@ sit under their owning resource:
 | `GET /api/cases/{caseId}/files/manifest` | case | Case `READ` |
 | `GET /api/cases/{caseId}/files/content?path=` | case | Case `READ` |
 | `GET /api/cases/{caseId}/files/download?path=` | case | Case `READ` |
-| `POST /api/cases/{caseId}/files` (multipart `file`) | case | Case `WRITE` |
+| `GET /api/cases/{caseId}/files/archive?path=` | case | Case `READ` |
+| `POST /api/cases/{caseId}/files?directory=` (multipart `file`) | case | Case `WRITE` |
 | `DELETE /api/cases/{caseId}/files?path=` | case | Case `WRITE` |
+| `POST /api/cases/{caseId}/files/directory?path=` | case | Case `WRITE` |
+| `DELETE /api/cases/{caseId}/files/directory?path=` | case | Case `WRITE` |
 | `GET /api/namespaces/{namespaceId}/files/manifest` | namespace | Namespace `READ` |
 | `GET /api/namespaces/{namespaceId}/files/content?path=` | namespace | Namespace `READ` |
 | `GET /api/namespaces/{namespaceId}/files/download?path=` | namespace | Namespace `READ` |
-| `POST /api/namespaces/{namespaceId}/files` (multipart `file`) | namespace | Namespace `WRITE` |
+| `GET /api/namespaces/{namespaceId}/files/archive?path=` | namespace | Namespace `READ` |
+| `POST /api/namespaces/{namespaceId}/files?directory=` (multipart `file`) | namespace | Namespace `WRITE` |
 | `DELETE /api/namespaces/{namespaceId}/files?path=` | namespace | Namespace `WRITE` |
+| `POST /api/namespaces/{namespaceId}/files/directory?path=` | namespace | Namespace `WRITE` |
+| `DELETE /api/namespaces/{namespaceId}/files/directory?path=` | namespace | Namespace `WRITE` |
 
 The manifest reports the caller's capability: `NONE`, `READ`, or `READ_WRITE`. Namespace writes
 (upload/delete) require Namespace `WRITE` (namespace admin / super-admin); plain members are read-only.
 Downloads emit a plain `filename="..."` for ASCII names and
 add RFC 5987 `filename*=UTF-8''...` only for non-ASCII names.
+
+The optional `directory` query parameter of an upload stores the file in that folder of the scope (the
+root when absent); the extension allow-list is still checked on the file name. The folder routes
+(`.../files/directory`, `.../files/archive`) live on the controller only, not on `ExchangeApi`, like
+browsing. Creating a folder answers 409 when the path already exists (file or folder). Deleting one
+removes it with everything it contains and answers 404 when it is missing, 400 when the path is a file
+or is the scope root, and 409 when the subtree holds a reserved entry (a worktree's `.git`): nothing is
+deleted then. Symbolic links are removed as links, never followed. The archive route streams a ZIP of
+the folder (the whole scope when `path` is empty), named `<folder>.zip`, `case-files.zip` or
+`namespace-files.zip`; entry names are relative to the folder, reserved entries are left out, and a
+missing or non-directory path is refused before streaming starts.
 
 ## Agent Tools
 
@@ -315,7 +332,8 @@ of every origin.
 The Files drawer browses one directory level at a time. Both case and namespace scopes expose
 `GET .../files/directory?path=&page=0&size=200`, with directories first and an explicit `hasMore`
 flag. The server caps pages at 500 entries. Existing manifest endpoints remain recursive for
-consumers that need the full list, including **Download all**.
+consumers that need the full list. **Download all** uses the archive route for the folder being browsed,
+so it produces one ZIP instead of one download per file.
 
 Opening the next page keeps previous entries visible. Background refreshes preserve the current
 folder and loaded pages; a missing subfolder returns to the authorized root, while revoked scope
