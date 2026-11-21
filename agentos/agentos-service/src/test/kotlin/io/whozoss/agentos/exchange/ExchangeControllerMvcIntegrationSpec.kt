@@ -26,20 +26,19 @@ import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
-import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
-import org.springframework.test.web.servlet.result.MockMvcResultMatchers.request
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.nio.file.DirectoryNotEmptyException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.NoSuchFileException
 import java.nio.file.NotDirectoryException
 import java.io.IOException
+import java.io.OutputStream
 import java.time.Instant
 import java.util.UUID
 
@@ -571,18 +570,23 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             verify(exactly = 1) { exchangeStorageService.deleteDirectory(any(), any()) }
         }
 
-        "GET case archive streams a zip named after the folder" {
+        "GET case archive writes a zip synchronously, named after the folder" {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { exchangeStorageService.writeArchive(any(), "docs/specs", any()) } answers {
+                thirdArg<OutputStream>().write("zip-bytes".toByteArray())
+            }
 
-            val started = mockMvc.perform(get("/api/cases/$caseId/files/archive").param("path", "docs/specs"))
-                .andExpect(request().asyncStarted())
-                .andReturn()
-            mockMvc.perform(asyncDispatch(started))
+            // not an async request: the archive is written on the request thread, so the servlet async timeout
+            // cannot cut a large one
+            val result = mockMvc.perform(get("/api/cases/$caseId/files/archive").param("path", "docs/specs"))
                 .andExpect(status().isOk)
                 .andExpect(header().string("Content-Type", "application/zip"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"specs.zip\""))
+                .andReturn()
+            result.request.isAsyncStarted shouldBe false
+            result.response.contentAsByteArray.decodeToString() shouldBe "zip-bytes"
             verify { exchangeStorageService.assertArchivable(any(), "docs/specs") }
             verify { exchangeStorageService.writeArchive(any(), "docs/specs", any()) }
         }
@@ -592,24 +596,23 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
 
-            val started = mockMvc.perform(get("/api/cases/$caseId/files/archive"))
-                .andExpect(request().asyncStarted())
-                .andReturn()
-            mockMvc.perform(asyncDispatch(started))
+            mockMvc.perform(get("/api/cases/$caseId/files/archive"))
                 .andExpect(status().isOk)
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"case-files.zip\""))
             verify { exchangeStorageService.writeArchive(any(), "", any()) }
         }
 
-        "GET case archive reports a missing folder or a file as an error before streaming" {
+        "GET case archive reports a missing folder or a file as an error before writing anything" {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.assertArchivable(any(), "gone") } throws NoSuchFileException("/srv/private/gone")
             every { exchangeStorageService.assertArchivable(any(), "file.txt") } throws NotDirectoryException("/srv/private/file.txt")
 
-            mockMvc.perform(get("/api/cases/$caseId/files/archive").param("path", "gone"))
+            val missing = mockMvc.perform(get("/api/cases/$caseId/files/archive").param("path", "gone"))
                 .andExpect(status().isNotFound)
+                .andReturn()
+            missing.response.getHeader("Content-Disposition") shouldBe null
             mockMvc.perform(get("/api/cases/$caseId/files/archive").param("path", "file.txt"))
                 .andExpect(status().isBadRequest)
             verify(exactly = 0) { exchangeStorageService.writeArchive(any(), any(), any()) }
@@ -626,15 +629,12 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             verify(exactly = 0) { exchangeStorageService.writeArchive(any(), any(), any()) }
         }
 
-        "GET namespace archive streams a zip, named namespace-files.zip at the root" {
+        "GET namespace archive writes a zip, named namespace-files.zip at the root" {
             val namespaceId = UUID.randomUUID()
             every { userService.getCurrentUser() } returns user
             every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns true
 
-            val started = mockMvc.perform(get("/api/namespaces/$namespaceId/files/archive"))
-                .andExpect(request().asyncStarted())
-                .andReturn()
-            mockMvc.perform(asyncDispatch(started))
+            mockMvc.perform(get("/api/namespaces/$namespaceId/files/archive"))
                 .andExpect(status().isOk)
                 .andExpect(header().string("Content-Type", "application/zip"))
                 .andExpect(header().string("Content-Disposition", "attachment; filename=\"namespace-files.zip\""))

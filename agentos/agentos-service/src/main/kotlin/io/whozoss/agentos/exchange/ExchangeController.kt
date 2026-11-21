@@ -23,6 +23,7 @@ import io.whozoss.agentos.sdk.api.exchange.ExchangeManifest
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
+import jakarta.servlet.http.HttpServletResponse
 import mu.KLogging
 import org.springframework.http.ContentDisposition
 import org.springframework.http.HttpHeaders
@@ -36,7 +37,6 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody
 import java.io.IOException
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.StandardCharsets
@@ -175,7 +175,8 @@ class ExchangeController(
     fun downloadCaseArchive(
         @PathVariable caseId: UUID,
         @RequestParam(required = false, defaultValue = "") path: String,
-    ): ResponseEntity<StreamingResponseBody> = archiveFor(resolvedCase(caseId).requireUsable(), path, "case-files")
+        response: HttpServletResponse,
+    ) = archiveFor(resolvedCase(caseId).requireUsable(), path, "case-files", response)
 
     @DeleteMapping("/api/cases/{caseId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
@@ -290,8 +291,8 @@ class ExchangeController(
     fun downloadNamespaceArchive(
         @PathVariable namespaceId: UUID,
         @RequestParam(required = false, defaultValue = "") path: String,
-    ): ResponseEntity<StreamingResponseBody> =
-        archiveFor(exchangeStorageService.namespaceRoot(namespaceId), path, "namespace-files")
+        response: HttpServletResponse,
+    ) = archiveFor(exchangeStorageService.namespaceRoot(namespaceId), path, "namespace-files", response)
 
     @DeleteMapping("/api/namespaces/{namespaceId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
@@ -423,19 +424,21 @@ class ExchangeController(
      * One ZIP of the folder [path] under [root]. The folder is checked before the response starts, so a missing
      * or invalid one is a regular HTTP error; the files are then streamed, never held in memory.
      * [rootName] names the archive when [path] is the scope root.
+     *
+     * Written synchronously on the request thread, straight to [response]: a `StreamingResponseBody` would run
+     * as an async request and be cut by the servlet async timeout on a large tree, leaving a truncated ZIP.
      */
     private fun archiveFor(
         root: Path,
         path: String,
         rootName: String,
-    ): ResponseEntity<StreamingResponseBody> {
+        response: HttpServletResponse,
+    ) {
         mapStorageErrors { exchangeStorageService.assertArchivable(root, path) }
         val folderName = path.trim().trim('/').let { if (it.isEmpty()) rootName else dispositionFilename(it) }
-        val body = StreamingResponseBody { out -> exchangeStorageService.writeArchive(root, path, out) }
-        return ResponseEntity.ok()
-            .header(HttpHeaders.CONTENT_DISPOSITION, attachmentDisposition("$folderName.zip"))
-            .contentType(MediaType.parseMediaType(ZIP_MEDIA_TYPE))
-            .body(body)
+        response.contentType = ZIP_MEDIA_TYPE
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, attachmentDisposition("$folderName.zip"))
+        exchangeStorageService.writeArchive(root, path, response.outputStream)
     }
 
     /**
