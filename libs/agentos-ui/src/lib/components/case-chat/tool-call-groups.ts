@@ -16,6 +16,14 @@ export interface ToolGroupSummary {
 }
 
 /**
+ * Identity of a run of tool calls, derived from its first call: a lone call and the group it grows into share it,
+ * so the timeline keeps the same entry when a second call arrives instead of destroying and recreating it.
+ */
+export function toolRunKey(requestId: string): string {
+  return `group-${requestId}`
+}
+
+/**
  * Collapses every run of two or more consecutive tool items into one `toolGroup` item.
  *
  * A lone tool call stays as it is, and any other item (message, delegation, notice...) ends a run. The group id
@@ -30,7 +38,7 @@ export function groupToolCalls(items: TimelineItem[]): TimelineItem[] {
     if (first && run.length === 1) {
       result.push({ kind: 'tool', call: first })
     } else if (first) {
-      result.push({ kind: 'toolGroup', groupId: `group-${first.requestId}`, calls: run })
+      result.push({ kind: 'toolGroup', groupId: toolRunKey(first.requestId), calls: run })
     }
     run = []
   }

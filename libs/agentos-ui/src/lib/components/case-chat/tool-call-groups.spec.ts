@@ -1,6 +1,6 @@
 import { ToolResponseEvent } from '@whoz-oss/agentos-api-client'
 import { TimelineItem, ToolCall } from './case-chat.models'
-import { groupToolCalls, summarizeToolGroup } from './tool-call-groups'
+import { groupToolCalls, summarizeToolGroup, toolRunKey } from './tool-call-groups'
 
 const call = (
   requestId: string,
@@ -74,6 +74,12 @@ describe('groupToolCalls', () => {
 
   it('returns an empty list for an empty timeline', () => {
     expect(groupToolCalls([])).toEqual([])
+  })
+
+  it('identifies a group by the key of its first call', () => {
+    expect(toolRunKey('t-1')).toBe('group-t-1')
+    const group = groupToolCalls([tool('t-1'), tool('t-2')])[0]
+    expect(group?.kind === 'toolGroup' && group.groupId).toBe(toolRunKey('t-1'))
   })
 })
 
