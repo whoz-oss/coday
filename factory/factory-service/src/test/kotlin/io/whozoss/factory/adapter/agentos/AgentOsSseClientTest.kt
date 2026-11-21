@@ -389,15 +389,15 @@ class AgentOsSseClientTest {
     @Test
     fun `active events slide the observation deadline and reset the reconnect counter`() {
         val fakeClock = java.util.concurrent.atomic.AtomicLong(1_000L)
-        // First connection: emits RUNNING + transient events that each advance the clock by 400ms
-        // (well past the 500ms timeout budget relative to start, but within 500ms of the previous event),
+        // First connection: emits RUNNING + transient events that each advance the clock by 200ms
+        // (total 600ms > 500ms initial timeout, but each step is <= 200ms < 500ms sliding window),
         // then drops.
         server.enqueueEvents(
             FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING"),
             FakeAgentOsSseServer.transientEvent("t1", "case-1", "ThinkingEvent"),
             FakeAgentOsSseServer.transientEvent("t2", "case-1", "TextChunkEvent"),
         )
-        // Second connection: emits another transient event, then completes.
+        // Second connection: replays e1 and completes with m1 + e2.
         server.enqueueEvents(
             FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING"),
             FakeAgentOsSseServer.agentMessageEvent("m1", "case-1", "completed after active work", "2026-01-01T00:00:05Z"),
@@ -411,11 +411,15 @@ class AgentOsSseClientTest {
             backoffMaxMs = 20,
             maxReconnects = 1,
             stallTimeoutMs = 500,
-            now = { fakeClock.addAndGet(150L) },
+            now = { fakeClock.get() },
             sleep = { delay -> fakeClock.addAndGet(delay) },
         )
 
-        val verdict = deterministicClient.observe(caseId = "case-1", timeoutMs = 500)
+        val verdict = deterministicClient.observe(
+            caseId = "case-1",
+            timeoutMs = 500,
+            onEvent = { fakeClock.addAndGet(300L) },
+        )
 
         assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
         verdict as AgentOsExecutionVerdict.Indeterminate
