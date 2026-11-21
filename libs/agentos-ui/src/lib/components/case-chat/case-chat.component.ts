@@ -121,7 +121,7 @@ import { FileChipComponent } from '../file-chip/file-chip.component'
 import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
 import { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
-import { groupToolCalls, summarizeToolGroup, ToolGroupSummary } from './tool-call-groups'
+import { groupToolCalls, summarizeToolGroup, ToolGroupSummary, toolRunKey } from './tool-call-groups'
 import { CostPipe } from '../../pipes/cost.pipe'
 import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { AudioMessageComponent } from '../audio-message/audio-message.component'
@@ -932,7 +932,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'message':
         return item.event.id
       case 'tool':
-        return item.call.requestId
+        // Same key as the group that starts with this call, so the entry survives the second call joining it.
+        return toolRunKey(item.call.requestId)
       case 'toolGroup':
         return item.groupId
       case 'technical':
@@ -2173,6 +2174,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'AnswerEvent':
       case 'CaseUpdatedEvent':
       case 'TextChunkEvent':
+        return true
+      case 'ThinkingEvent':
+        // Transient progress signal, already shown by the agent-activity line and never persisted: rendering it
+        // would make the live timeline differ from the replayed one and split the tool groups.
         return true
       default:
         return false
