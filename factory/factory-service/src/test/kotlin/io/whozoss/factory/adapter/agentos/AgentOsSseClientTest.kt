@@ -387,6 +387,47 @@ class AgentOsSseClientTest {
     }
 
     @Test
+    fun `active events slide the observation deadline and reset the reconnect counter`() {
+        val fakeClock = java.util.concurrent.atomic.AtomicLong(1_000L)
+        // First connection: emits RUNNING + transient events that each advance the clock by 200ms
+        // (total 600ms > 500ms initial timeout, but each step is <= 200ms < 500ms sliding window),
+        // then drops.
+        server.enqueueEvents(
+            FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING"),
+            FakeAgentOsSseServer.transientEvent("t1", "case-1", "ThinkingEvent"),
+            FakeAgentOsSseServer.transientEvent("t2", "case-1", "TextChunkEvent"),
+        )
+        // Second connection: replays e1 and completes with m1 + e2.
+        server.enqueueEvents(
+            FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING"),
+            FakeAgentOsSseServer.agentMessageEvent("m1", "case-1", "completed after active work", "2026-01-01T00:00:05Z"),
+            FakeAgentOsSseServer.statusEvent("e2", "case-1", "IDLE", "2026-01-01T00:00:06Z"),
+            holdAfterMs = 1_000,
+        )
+
+        val deterministicClient = AgentOsSseClient(
+            baseUrl = server.baseUrl,
+            backoffBaseMs = 5,
+            backoffMaxMs = 20,
+            maxReconnects = 1,
+            stallTimeoutMs = 500,
+            now = { fakeClock.get() },
+            sleep = { delay -> fakeClock.addAndGet(delay) },
+        )
+
+        val verdict = deterministicClient.observe(
+            caseId = "case-1",
+            timeoutMs = 500,
+            onEvent = { fakeClock.addAndGet(300L) },
+        )
+
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        verdict as AgentOsExecutionVerdict.Indeterminate
+        assertThat(verdict.reason).isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
+        assertThat(verdict.evidence["summary"]).isEqualTo("completed after active work")
+    }
+
+    @Test
     fun `a warm high-water mark dedups the replayed prefix without reprocessing`() {
         val (onEvent, counts) = processedIdsCounter()
         val checkpoint = EventCheckpoint()

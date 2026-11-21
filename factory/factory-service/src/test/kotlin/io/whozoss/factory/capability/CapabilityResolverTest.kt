@@ -207,4 +207,41 @@ class CapabilityResolverTest {
         assertThat(outcome).isInstanceOf(CapabilityOutcome.HumanCheckpointRequired::class.java)
         assertThat((outcome as CapabilityOutcome.HumanCheckpointRequired).role).isEqualTo("reviewer")
     }
+
+    @Test
+    fun `prepare work branch normalizes Jira and GitHub issue tickets into work forge branch names`() {
+        val capturedBranches = mutableListOf<String>()
+        val branchPreparation = io.mockk.mockk<FactoryBranchPreparation>()
+        io.mockk.every { branchPreparation.prepare(any(), any(), capture(capturedBranches)) } answers {
+            val branch = thirdArg<String>()
+            BranchPreparationResult.Prepared(
+                io.whozoss.factory.environment.port.EnvironmentGitFacts(
+                    providerId = "local-worktree",
+                    environmentId = "env-1",
+                    environmentRevision = 1,
+                    branch = branch,
+                    previousBranch = "main",
+                    startingHead = "a".repeat(40),
+                    baselineHash = "sha256:base",
+                    mutationApplied = true,
+                    failureStage = "branch_created_or_switched",
+                ),
+            )
+        }
+        val branchResolver = CapabilityResolver(branchPreparation = branchPreparation)
+        val scope = io.whozoss.factory.persistence.TenantScope("org", "ws")
+        val prepStep = step(ResponsibilityKind.CODE, PREPARE_WORK_BRANCH, "prep")
+
+        branchResolver.resolve(prepStep, repoRoot, workflowId = "wf-1", trustedTicket = "#1731", tenantScope = scope)
+        branchResolver.resolve(prepStep, repoRoot, workflowId = "wf-1", trustedTicket = "whoz-oss/coday#1731", tenantScope = scope)
+        branchResolver.resolve(prepStep, repoRoot, workflowId = "wf-1", trustedTicket = "WZ-33157", tenantScope = scope)
+        branchResolver.resolve(prepStep, repoRoot, workflowId = "wf-1", trustedTicket = "untrusted ticket", tenantScope = scope)
+
+        assertThat(capturedBranches).containsExactly(
+            "work/forge/1731",
+            "work/forge/1731",
+            "work/forge/WZ-33157",
+            "work/forge/wf-1",
+        )
+    }
 }

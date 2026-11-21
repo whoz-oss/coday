@@ -1,6 +1,7 @@
 package io.whozoss.factory.agentattempt.domain
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.factory.workflow.domain.WorkflowTicket
 
 /** Strict validation of the structured business result schema. */
 object AgentStepResultValidation {
@@ -12,8 +13,8 @@ object AgentStepResultValidation {
     private val FINDING_FIELDS = setOf("severity", "code", "summary", "file", "line")
     private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH")
     private val CHANGE_TYPES = setOf("feature", "bugfix")
-    /** GitHub issue shorthand (#123) or a generic Jira-style project key (ABC-123). */
-    private val TICKET = Regex("^(?:#[1-9][0-9]*|[A-Z][A-Z0-9]{1,15}-[1-9][0-9]*)$")
+    /** GitHub issue reference (#123, 123, owner/repo#123) or a generic Jira-style project key (ABC-123). */
+    private val TICKET = WorkflowTicket.PATTERN
 
     data class Violation(val path: String, val code: String, val message: String)
 
