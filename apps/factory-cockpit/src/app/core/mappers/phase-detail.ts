@@ -40,7 +40,7 @@ function evidenceToItems(evidenceItems: unknown[]): PhaseSectionItem[] {
   return evidenceItems.map((entry, index) => {
     const obj = asObject(entry) ?? {}
     const facts = asObject(obj['facts']) ?? {}
-    const kind = getString(obj, 'kind') ?? getString(obj, 'evidenceId') ?? `sortie-${index + 1}`
+    const kind = getString(obj, 'kind') ?? getString(obj, 'evidenceId') ?? `output-${index + 1}`
     const item: PhaseSectionItem = { title: kind }
     const outcome = getString(obj, 'outcome')
     if (outcome) item.status = outcome
@@ -61,7 +61,7 @@ export function buildRoutingSection(obj: Record<string, unknown>): PhaseSection 
   const items: PhaseSectionItem[] = []
   if (decision) {
     const mode = getString(decision, 'mode')
-    items.push({ title: 'Mode de choix', subtitle: mode === 'single' ? 'Une seule route' : 'Une ou plusieurs routes' })
+    items.push({ title: 'Selection mode', subtitle: mode === 'single' ? 'One route' : 'One or more routes' })
     const routes = Array.isArray(decision['routes']) ? decision['routes'] : []
     const selectedRoutes = accepted?.['selectedRoutes']
     const selected = Array.isArray(selectedRoutes) ? selectedRoutes : []
@@ -76,17 +76,17 @@ export function buildRoutingSection(obj: Record<string, unknown>): PhaseSection 
   if (activation) {
     items.push({
       title: 'Activation',
-      subtitle: activation === 'selected' ? 'Sélectionnée' : 'Non sélectionnée',
+      subtitle: activation === 'selected' ? 'Selected' : 'Not selected',
       status: getString(obj, 'status'),
     })
-    items.push({ title: 'Exécutée', subtitle: obj['executed'] === true ? 'oui' : 'non' })
+    items.push({ title: 'Executed', subtitle: obj['executed'] === true ? 'Yes' : 'No' })
   }
-  if (join) items.push({ title: 'Décision de convergence', subtitle: join })
+  if (join) items.push({ title: 'Convergence decision', subtitle: join })
   if (accepted) {
-    items.push({ title: 'Tentative retenue', subtitle: getString(accepted, 'attemptId') })
-    items.push({ title: 'Résultat retenu', subtitle: getString(accepted, 'resultId') })
+    items.push({ title: 'Selected attempt', subtitle: getString(accepted, 'attemptId') })
+    items.push({ title: 'Selected result', subtitle: getString(accepted, 'resultId') })
   }
-  return { label: 'Routage conditionnel', items }
+  return { label: 'Conditional routing', items }
 }
 
 /** Configured prose only; never reconstruct an attempt's dispatched mandate. */
@@ -95,8 +95,8 @@ export function stepContractSections(step: Record<string, unknown>): PhaseSectio
   if (!mission) {
     return [
       {
-        label: 'Préparation / Mission / Livrables',
-        body: 'Contrat historique : défauts de cadrage et de livrables Factory. Consulter le mandat de la tentative pour les consignes effectivement envoyées.',
+        label: 'Preparation / Mission / Deliverables',
+        body: 'No configured step contract is recorded. Consult the attempt mandate for instructions actually dispatched.',
       },
     ]
   }
@@ -105,12 +105,12 @@ export function stepContractSections(step: Record<string, unknown>): PhaseSectio
       ? value
           .filter((line): line is string => typeof line === 'string')
           .map((line) => `• ${line}`)
-          .join('\n') || 'Aucune obligation configurée.'
-      : 'Indisponible'
+          .join('\n') || 'No configured requirements.'
+      : 'Not recorded'
   return [
-    { label: 'Préparation (configurée)', body: lines(step['entry']) },
-    { label: 'Mission (configurée)', body: mission },
-    { label: 'Livrables (configurés)', body: lines(step['exit']) },
+    { label: 'Preparation (configured)', body: lines(step['entry']) },
+    { label: 'Mission (configured)', body: mission },
+    { label: 'Deliverables (configured)', body: lines(step['exit']) },
   ]
 }
 
@@ -131,24 +131,24 @@ export interface LaunchRequestDetailInput {
 /** Build the real run-creation request detail without borrowing step/attempt data. */
 export function buildLaunchRequestDetail(input: LaunchRequestDetailInput): PhaseDetail {
   const identityItems: PhaseSectionItem[] = [
-    { title: 'Type', subtitle: 'demande lancement' },
+    { title: 'Type', subtitle: 'launch request' },
     { title: 'Run', subtitle: input.title },
-    { title: 'Créée le', subtitle: input.createdAt },
-    { title: 'Namespace', subtitle: input.namespaceId ?? 'non renseigné' },
+    { title: 'Created', subtitle: input.createdAt },
+    { title: 'Namespace', subtitle: input.namespaceId ?? 'Not recorded' },
     { title: 'Workflow', subtitle: input.workflowType ?? input.workflowId },
-    { title: 'Auteur', subtitle: input.author ?? 'non renseigné' },
+    { title: 'Author', subtitle: input.author ?? 'Not recorded' },
   ]
   return {
     name: input.title,
     status: 'succeeded',
     stepStatus: 'completed',
     durationSec: 0,
-    owner: input.author ?? 'non renseigné',
-    kind: 'demande lancement',
+    owner: input.author ?? 'Not recorded',
+    kind: 'launch request',
     attempt: '—',
     sections: [
-      { label: 'Demande de lancement', items: identityItems },
-      { label: 'Commentaire initial', body: input.text ?? 'Aucun commentaire initial' },
+      { label: 'Launch request', items: identityItems },
+      { label: 'Initial comment', body: input.text ?? 'No initial comment recorded.' },
     ],
   }
 }
@@ -167,7 +167,8 @@ export function buildPhaseDetail(
   attempts: AgentAttempt[] = [],
   evidenceItems: unknown[] = [],
   targetStepId?: string,
-  targetAttemptId?: string
+  targetAttemptId?: string,
+  attemptsLoadError?: string
 ): PhaseDetail {
   // Resolve the target step
   let active: unknown
@@ -204,7 +205,8 @@ export function buildPhaseDetail(
     durationSec: Math.round(duration),
     owner,
     kind,
-    attempt: '1/1',
+    attempt: 'No agent attempt',
+    ...(attemptsLoadError ? { attemptsLoadError } : {}),
     sections: [],
   }
 
@@ -219,6 +221,12 @@ export function buildPhaseDetail(
     detail.attemptStatus = currentAttempt.status
     detail.caseId = currentAttempt.caseId
     if (currentAttempt.failureCode) detail.failureCode = currentAttempt.failureCode
+  } else if (kind === 'agent') {
+    detail.attempt = attemptsLoadError
+      ? 'Attempts unavailable'
+      : ['pending', 'ready'].includes(detail.stepStatus)
+        ? 'Not dispatched'
+        : 'No attempt recorded'
   }
 
   // Gates
@@ -228,7 +236,7 @@ export function buildPhaseDetail(
     count: stepInteractions.length,
     items: interactionToItems(stepInteractions),
   }
-  if (stepInteractions.length === 0) gates.body = "Aucune validation d'interaction pour cette phase."
+  if (stepInteractions.length === 0) gates.body = 'No interaction validation recorded for this phase.'
 
   // Sorties
   const stepEvidence = evidenceItems.filter((entry) => {
@@ -240,17 +248,17 @@ export function buildPhaseDetail(
       currentAttempt?.resultEvidenceId !== undefined && evidenceId === currentAttempt.resultEvidenceId
     return matchesStep || matchesAttempt
   })
-  const outputs: PhaseSection = { label: 'Sorties', count: stepEvidence.length, items: evidenceToItems(stepEvidence) }
-  if (stepEvidence.length === 0) outputs.body = 'Aucune sortie enregistr\u00e9e pour cette phase.'
+  const outputs: PhaseSection = { label: 'Outputs', count: stepEvidence.length, items: evidenceToItems(stepEvidence) }
+  if (stepEvidence.length === 0) outputs.body = 'No output recorded for this phase.'
 
-  // Configuration de l'agent
+  // Agent configuration
   const agentItems: PhaseSectionItem[] = []
   if (detail.agentName ?? owner) agentItems.push({ title: 'Agent', subtitle: detail.agentName ?? owner })
-  if (owner) agentItems.push({ title: 'R\u00f4le', subtitle: `${owner} (${kind})` })
+  if (owner) agentItems.push({ title: 'Role', subtitle: `${owner} (${kind})` })
   if (detail.caseId) agentItems.push({ title: 'Case', subtitle: detail.caseId })
-  if (detail.totalAttempts) agentItems.push({ title: 'Tentatives', subtitle: detail.attempt })
-  const agentConfig: PhaseSection = { label: "Configuration de l'agent", items: agentItems }
-  if (agentItems.length === 0) agentConfig.body = 'Information agent non disponible'
+  if (detail.totalAttempts) agentItems.push({ title: 'Attempts', subtitle: detail.attempt })
+  const agentConfig: PhaseSection = { label: 'Agent configuration', items: agentItems }
+  if (agentItems.length === 0) agentConfig.body = 'No agent configuration recorded.'
 
   detail.sections = [...stepContractSections(obj), gates, outputs, agentConfig]
   const routing = buildRoutingSection(obj)
@@ -258,16 +266,24 @@ export function buildPhaseDetail(
   if (description) detail.sections.push({ label: 'Description', body: description })
   detail.sections.push(
     {
-      label: 'Mandat effectif de la tentative',
+      label: 'Attempt mandate',
       notAvailable: !currentAttempt?.effectiveMandate,
-      body:
-        currentAttempt?.effectiveMandate ??
-        'Indisponible : tentative non envoyée ou ancien enregistrement sans mandat.',
+      body: currentAttempt
+        ? (currentAttempt.effectiveMandate ?? 'Not recorded for this attempt.')
+        : attemptsLoadError
+          ? 'Unavailable because attempts could not be loaded.'
+          : detail.attempt === 'Not dispatched'
+            ? 'No attempt has been dispatched for this step.'
+            : 'No attempt is recorded for this step.',
     },
     {
-      label: 'Mod\u00e8le LLM r\u00e9solu',
-      notAvailable: true,
-      body: 'Non disponible (nécessite une exposition par le serveur)',
+      label: 'Resolved LLM model',
+      notAvailable: !currentAttempt?.resolvedModel,
+      body: currentAttempt?.resolvedModel
+        ? `${currentAttempt.resolvedModel.provider} / ${currentAttempt.resolvedModel.model}`
+        : currentAttempt
+          ? 'Not recorded for this attempt.'
+          : 'No attempt is available to resolve a model.',
     }
   )
 
@@ -283,14 +299,15 @@ export function mapProjectionToPhaseByStepId(
   fallbackStatus: RunStatus,
   interactions: HumanInteraction[] = [],
   attempts: AgentAttempt[] = [],
-  evidenceItems: unknown[] = []
+  evidenceItems: unknown[] = [],
+  attemptsLoadError?: string
 ): Map<string, PhaseDetail> {
   const result = new Map<string, PhaseDetail>()
   for (const step of steps) {
     const obj = asObject(step)
     const stepId = getString(obj, 'id') ?? getString(obj, 'key')
     if (!stepId) continue
-    result.set(stepId, buildPhaseDetail(steps, fallbackStatus, interactions, attempts, evidenceItems, stepId))
+    result.set(stepId, buildPhaseDetail(steps, fallbackStatus, interactions, attempts, evidenceItems, stepId, undefined, attemptsLoadError))
   }
   return result
 }
@@ -301,14 +318,17 @@ export function mapProjectionToPhaseByAttemptId(
   fallbackStatus: RunStatus,
   interactions: HumanInteraction[] = [],
   attempts: AgentAttempt[] = [],
-  evidenceItems: unknown[] = []
+  evidenceItems: unknown[] = [],
+  attemptsLoadError?: string
 ): Map<string, PhaseDetail> {
   const result = new Map<string, PhaseDetail>()
   for (const attempt of attempts) {
     if (!attempt.attemptId || !attempt.stepId) continue
     result.set(
       attempt.attemptId,
-      buildPhaseDetail(steps, fallbackStatus, interactions, attempts, evidenceItems, attempt.stepId, attempt.attemptId)
+      buildPhaseDetail(
+        steps, fallbackStatus, interactions, attempts, evidenceItems, attempt.stepId, attempt.attemptId, attemptsLoadError
+      )
     )
   }
   return result
@@ -498,7 +518,7 @@ export function mapInteractionsToEvents(interactions: HumanInteraction[]): RunEv
   return interactions.map((interaction) => ({
     time: formatClock(interaction.createdAt),
     type: 'agent_message',
-    text: `[Validation humaine - ${interaction.interactionType}] ${interaction.prompt ?? interaction.status}`,
+    text: `[Human validation - ${interaction.interactionType}] ${interaction.prompt ?? interaction.status}`,
   }))
 }
 

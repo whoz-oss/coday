@@ -543,7 +543,7 @@ describe('FactoryStore', () => {
 
     const [workstream] = store.workstreams()
     expect(workstream?.namespaceId).toBe('unassigned')
-    expect(workstream?.title).toBe('Sans namespace')
+    expect(workstream?.title).toBe('No namespace')
     expect(workstream?.runs.map((run) => run.id)).toEqual(['wf-orphan'])
     expect(workstream?.runs[0]?.namespaceId).toBeUndefined()
   })
@@ -598,7 +598,110 @@ describe('FactoryStore', () => {
     const summary = store.runs()[0]?.run
     expect(summary?.cardState).toBe('blocked')
     expect(summary?.costUsd).toBe(2.5)
-    expect(summary?.tokens).toBe(321)
+    expect(summary?.tokens).toBeNull()
+  })
+
+  it('keeps a prior valid analytics result when the metrics read fails, but replaces it when analytics explicitly reports null', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({ workflowId: 'wf-1', realCost: { cost: 1.5, unknownCostCount: 0 } })
+    expect(store.session('wf-1')?.costUsd).toBe(1.5)
+
+    store.refresh()
+    flushInitialWorkflows([snapshot])
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush('unavailable', { status: 503, statusText: 'Unavailable' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
+    expect(store.session('wf-1')?.costUsd).toBe(1.5)
+
+    store.refresh()
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({ workflowId: 'wf-1', realCost: { cost: null, unknownCostCount: null } })
+    expect(store.session('wf-1')?.costUsd).toBeNull()
+    expect(store.costs().workflowsUsd).toBeNull()
+  })
+
+  it('keeps analytics unavailable through session, card, and dashboard totals', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({
+      workflowId: 'wf-1',
+      realCost: { cost: null, unknownCostCount: null, totalTokens: null, inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheWriteTokens: null, liveTokens: null },
+    })
+
+    expect(store.session('wf-1')?.costUsd).toBeNull()
+    expect(store.activeRuns()[0]?.run?.costUsd).toBeNull()
+    expect(store.costs()).toMatchObject({ workflowsUsd: null, totalUsd: null, unknownCostCount: null })
+  })
+
+  it('keeps the enriched card usage across an overview reload until fresh enrichment lands', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({
+      workflowId: 'wf-1',
+      realCost: { cost: 1.5, unknownCostCount: 0, totalTokens: 300, inputTokens: 200, outputTokens: 100 },
+    })
+    expect(store.runs()[0]?.run?.tokens).toBe(300)
+
+    store.refresh()
+    flushInitialWorkflows([snapshot])
+
+    // The rebuilt card must not flash back to an unavailable cost/usage.
+    expect(store.runs()[0]?.run?.costUsd).toBe(1.5)
+    expect(store.runs()[0]?.run?.tokens).toBe(300)
+    http.match((r) => r.url.includes('/wf-1/')).forEach((r) => r.flush({ data: {} }))
+  })
+
+  it('refreshes only the metrics of running runs while a namespace is selected, one pass at a time', () => {
+    flushInitialWorkflows([snapshot])
+    flushRunEnrichment('wf-1', false)
+    expect(store.selectedNamespaceId()).toBe('ns-1')
+    expect(store.runs()[0]?.run?.status).toBe('running')
+
+    store.refreshActiveUsage()
+    // A pass still in flight is never duplicated by the next tick.
+    store.refreshActiveUsage()
+    const request = http.expectOne((r) => r.url.endsWith('/wf-1/metrics'))
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    http.expectNone((r) => r.url.includes('/wf-1/') && !r.url.endsWith('/metrics'))
+    request.flush({
+      data: {
+        workflowId: 'wf-1',
+        realCost: { cost: 2.5, unknownCostCount: 1, totalTokens: 1200, inputTokens: 800, outputTokens: 400 },
+      },
+    })
+
+    expect(store.runs()[0]?.run?.costUsd).toBe(2.5)
+    expect(store.runs()[0]?.run?.unknownCostCount).toBe(1)
+    expect(store.runs()[0]?.run?.tokens).toBe(1200)
+
+    // Once the pass completed, the next one may start.
+    store.refreshActiveUsage()
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+  })
+
+  it('keeps the previous usage when a periodic metrics read fails and never refreshes without a namespace', () => {
+    flushInitialWorkflows([snapshot])
+    flushRunEnrichment('wf-1', false)
+    store.refreshActiveUsage()
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({
+      data: { workflowId: 'wf-1', realCost: { cost: 2.5, unknownCostCount: 0, totalTokens: 700 } },
+    })
+    expect(store.runs()[0]?.run?.costUsd).toBe(2.5)
+
+    store.refreshActiveUsage()
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/metrics'))
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    // The failed read neither fabricates a zero nor drops the last known usage.
+    expect(store.runs()[0]?.run?.costUsd).toBe(2.5)
+    expect(store.runs()[0]?.run?.tokens).toBe(700)
+
+    store.selectNamespace(null)
+    store.refreshActiveUsage()
+    http.expectNone((r) => r.url.endsWith('/metrics'))
+    http.match((r) => r.url === '/api/factory/workflows' || r.url === '/api/agentos/api/namespaces')
   })
 
   it('aggregates the real workflow costs and uncertainty into CostSummary', () => {
@@ -768,7 +871,8 @@ describe('FactoryStore', () => {
     const session = store.session('wf-1')
     expect(session?.id).toBe('wf-1')
     expect(session?.attempts).toEqual([])
-    expect(session?.phase.attempt).toBe('1/1')
+    expect(session?.phase.attempt).toBe('Attempts unavailable')
+    expect(session?.attemptsLoadError).toBe('Http failure response for /api/factory/workflows/wf-1/attempts: 500 Server Error')
     expect(session?.workflow).toBe('Real workflow')
   })
 
@@ -1081,6 +1185,9 @@ describe('FactoryStore', () => {
     )
 
     expect(store.researchResumptionFeedback()).toEqual(expect.objectContaining({ stepId: 'build', kind: 'conflict' }))
+    expect(store.researchResumptionFeedback()?.message).toBe(
+      'The workflow has changed. Allowed actions have been refreshed; review the new state.'
+    )
     flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
@@ -1169,6 +1276,96 @@ describe('FactoryStore', () => {
 
     expect(store.activeRuns()).toEqual([])
     expect(store.overviewError()?.code).toBe('BOOM')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Removed runs: lifetime usage from AgentOS (Factory refuses /metrics for removed workflows)
+  // ---------------------------------------------------------------------------
+
+  const removedSnapshot = {
+    workflowId: 'wf-removed',
+    namespaceId: 'ns-1',
+    revision: 4,
+    relations: { rootWorkflowId: 'wf-removed', ticket: 'ABC-9' },
+    controllerExecution: { caseId: 'case-ctl' },
+    projection: { schemaVersion: '2', title: 'Removed workflow', status: 'completed', steps: [] },
+  }
+
+  function flushRemovedAttempts(): void {
+    http
+      .expectOne((r) => r.url.endsWith('/wf-removed/attempts'))
+      .flush({
+        data: [
+          { attemptId: 'a-1', stepId: 's', attemptNumber: 1, agentName: 'x', status: 'failed', caseId: 'case-a' },
+          { attemptId: 'a-2', stepId: 's', attemptNumber: 2, agentName: 'x', status: 'completed', caseId: 'case-b' },
+          // Retry sharing the first attempt's case: counted once.
+          { attemptId: 'a-3', stepId: 's', attemptNumber: 3, agentName: 'x', status: 'completed', caseId: 'case-a' },
+        ],
+      })
+  }
+
+  it('reads the lifetime usage of a removed run once, over its attempt cases only (shared controller excluded)', () => {
+    flushInitialWorkflows([], [removedSnapshot])
+    expect(store.destroyedRuns()[0]?.costUsd).toBeNull()
+
+    store.enrichRemovedRunsUsage()
+    // The metrics endpoint refuses removed workflows: it is never called for them.
+    http.expectNone((r) => r.url.endsWith('/wf-removed/metrics'))
+    flushRemovedAttempts()
+    const usage = http.expectOne((r) => r.url === '/api/agentos/api/usage-records/aggregate/case-trees')
+    // Deduplicated attempt cases; the controller case (a root possibly shared by other Run
+    // fragments) must never be sent, or another workflow's usage would leak into this run.
+    const sent = usage.request.params.get('caseIds')?.split(',').sort()
+    expect(sent).toEqual(['case-a', 'case-b'])
+    expect(sent).not.toContain('case-ctl')
+    usage.flush({
+      cost: 3.5,
+      unknownCostCount: 2,
+      totalTokens: 9000,
+      inputTokens: 6000,
+      outputTokens: 3000,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      liveTokens: 0,
+    })
+
+    const removed = store.destroyedRuns()[0]
+    expect(removed?.status).toBe('destroyed')
+    expect(removed?.finalCostUsd).toBe(3.5)
+    expect(removed?.run?.costUsd).toBe(3.5)
+    expect(removed?.run?.unknownCostCount).toBe(2)
+    expect(removed?.run?.tokens).toBe(9000)
+
+    // Attempted once only: a later pass never re-reads, and a reload keeps the value.
+    store.enrichRemovedRunsUsage()
+    http.expectNone((r) => r.url.includes('/wf-removed/') || r.url.includes('usage-records'))
+    store.refresh()
+    flushInitialWorkflows([], [removedSnapshot])
+    expect(store.destroyedRuns()[0]?.run?.costUsd).toBe(3.5)
+    expect(store.destroyedRuns()[0]?.run?.unknownCostCount).toBe(2)
+  })
+
+  it('leaves a removed run unavailable (never zero) when the usage read fails or no attempt case exists, even with a controller case', () => {
+    // Controller case present but no durable attempt: it must NOT be used as a fallback.
+    const withoutAttempts = { ...removedSnapshot, workflowId: 'wf-nocase' }
+    flushInitialWorkflows([], [removedSnapshot, withoutAttempts])
+
+    store.enrichRemovedRunsUsage()
+    flushRemovedAttempts()
+    http.expectOne((r) => r.url.endsWith('/wf-nocase/attempts')).flush({ data: [] })
+    http
+      .expectOne((r) => r.url === '/api/agentos/api/usage-records/aggregate/case-trees')
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    http.expectNone((r) => r.url === '/api/agentos/api/usage-records/aggregate/case-trees')
+
+    for (const run of store.destroyedRuns()) {
+      expect(run.run?.costUsd).toBeNull()
+      expect(run.finalCostUsd).toBeUndefined()
+      expect(run.tokens).toBeNull()
+    }
+    // A failed read is not retried in a loop.
+    store.enrichRemovedRunsUsage()
+    http.expectNone((r) => r.url.includes('/attempts') || r.url.includes('usage-records'))
   })
 
   // ---------------------------------------------------------------------------

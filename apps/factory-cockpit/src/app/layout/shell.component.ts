@@ -38,7 +38,7 @@ export class ShellComponent {
 
   protected readonly nav: NavItem[] = [
     { label: 'Workstreams', icon: 'grid_view', link: '/workstreams' },
-    { label: 'History', icon: 'history', link: '/historique' },
+    { label: 'History', icon: 'history', link: '/history' },
     { label: 'Workflows', icon: 'account_tree', link: '/workflows' },
   ]
 }

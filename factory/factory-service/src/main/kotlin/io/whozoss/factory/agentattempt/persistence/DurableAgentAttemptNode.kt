@@ -73,6 +73,12 @@ data class DurableAgentAttemptNode(
     val leaseExpiresAt: Instant? = null,
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
+    val resolvedProvider: String? = null,
+    val resolvedModelName: String? = null,
+    /** Empty history is a valid captured baseline; distinguish it from legacy unknown. */
+    val modelBaselineCaptured: Boolean = false,
+    val modelBaselineTimestamp: String? = null,
+    val modelBaselineEventId: String? = null,
 ) {
     fun toDomain(): DurableAgentAttempt = DurableAgentAttempt(
         attemptId = attemptId,
@@ -83,6 +89,9 @@ data class DurableAgentAttemptNode(
         attemptNumber = attemptNumber,
         agentName = agentName,
         capabilityToken = capabilityToken,
+        resolvedModel = resolvedProvider?.let { provider -> resolvedModelName?.let {
+            io.whozoss.factory.agentattempt.domain.ResolvedModel(provider, it)
+        } },
         rootCaseId = rootCaseId,
         parentCaseId = parentCaseId,
         ownerToken = ownerToken,
@@ -148,6 +157,8 @@ data class DurableAgentAttemptNode(
                 status = attempt.status.dbValue,
                 revision = attempt.revision,
                 capabilityToken = attempt.capabilityToken,
+                resolvedProvider = attempt.resolvedModel?.provider,
+                resolvedModelName = attempt.resolvedModel?.model,
                 ownerToken = attempt.ownerToken,
                 turnCorrelation = attempt.turnCorrelation,
                 commandId = attempt.commandId,

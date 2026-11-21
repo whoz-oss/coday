@@ -117,6 +117,11 @@ describe('mapToAttemptMetrics', () => {
       const m = mapToAttemptMetrics('case-1', runCostDto({ unknownCostCount: 0 }), null)
       expect(m.runCostPartial).toBe(false)
     })
+
+    it('keeps completeness unknown when unknownCostCount is unavailable', () => {
+      const m = mapToAttemptMetrics('case-1', runCostDto({ unknownCostCount: null }), null)
+      expect(m.runCostPartial).toBeNull()
+    })
   })
 
   describe('duration mapping', () => {
@@ -167,7 +172,7 @@ describe('mapToAttemptMetrics', () => {
     it('all-null when both run and attempt are null', () => {
       const m = mapToAttemptMetrics('case-1', null, null)
       expect(m.runCost).toBeNull()
-      expect(m.runCostPartial).toBe(false)
+      expect(m.runCostPartial).toBeNull()
       expect(m.attemptDurationSec).toBeNull()
       expect(m.attemptStartedAt).toBeNull()
       expect(m.attemptCompletedAt).toBeNull()

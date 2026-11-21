@@ -51,13 +51,19 @@
         >
         <span class="sf-workflow">{{ s.workflow }}</span>
         <span class="sf-spacer"></span>
-        <sf-metric icon="paid" label="Cost" [unknownCostCount]="s.unknownCostCount ?? 0">{{
+        <sf-metric icon="paid" label="Cost" [unknownCostCount]="s.unknownCostCount">{{
           s.costUsd | usd: 2 : s.unknownCostCount
         }}</sf-metric>
         <sf-metric icon="timer" label="Active time">{{ s.durationSec | duration }}</sf-metric>
-        <sf-metric icon="link" label="Context tokens">{{ s.tokens | tokens }}</sf-metric>
-        <sf-metric icon="menu_book" label="Tokens read">{{ s.tokensRead | tokens }}</sf-metric>
-        <sf-metric icon="edit" label="Tokens written">{{ s.tokensWritten | tokens }}</sf-metric>
+        <sf-metric icon="link" label="Total tokens">{{ s.tokens | tokens }}</sf-metric>
+        <sf-metric icon="menu_book" label="Input tokens">{{ s.tokensRead | tokens }}</sf-metric>
+        <sf-metric icon="edit" label="Output tokens">{{ s.tokensWritten | tokens }}</sf-metric>
+        @if (s.cacheReadTokens != null) {
+          <sf-metric icon="cached" label="Cache read">{{ s.cacheReadTokens | tokens }}</sf-metric>
+        }
+        @if (s.cacheWriteTokens != null) {
+          <sf-metric icon="save" label="Cache write">{{ s.cacheWriteTokens | tokens }}</sf-metric>
+        }
       </div>
     </section>
 
@@ -231,6 +237,9 @@
             <span class="phase-tag"
               >attempt <b class="sf-mono">{{ phase.attempt }}</b></span
             >
+            @if (phase.attemptsLoadError) {
+              <span class="phase-tag phase-tag--failure">attempts may be stale: {{ phase.attemptsLoadError }}</span>
+            }
             @if (phase.failureCode) {
               <span class="phase-tag phase-tag--failure"
                 >failure <b class="sf-mono">{{ phase.failureCode }}</b></span

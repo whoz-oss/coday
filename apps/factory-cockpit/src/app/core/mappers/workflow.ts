@@ -28,7 +28,6 @@ import {
   mapProjectionToPhaseByAttemptId,
   mapEvidenceToEvents,
   mapInteractionsToEvents,
-  sumFacts,
 } from './phase-detail'
 
 // ---------------------------------------------------------------------------
@@ -119,7 +118,8 @@ export function mapProjectionToSessionDetail(
   interactions?: unknown,
   attempts?: unknown,
   actions?: unknown,
-  agentQuestions?: AgentQuestion[]
+  agentQuestions?: AgentQuestion[],
+  attemptsLoadError?: string
 ): SessionDetail {
   const snapshot = asObject(workflow) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
@@ -220,13 +220,16 @@ export function mapProjectionToSessionDetail(
   const activeDurationSec = Math.round(
     attemptsHaveAuthoritativeDuration ? authoritativeAttemptDurationSec : summedDuration + legacyRunningDuration
   )
-  const tokensRead = sumFacts(evidenceItems, 'tokensRead')
-  const tokensWritten = sumFacts(evidenceItems, 'tokensWritten')
-  const liveTokens = realCost?.liveTokens && realCost.liveTokens > 0 ? realCost.liveTokens : undefined
-  const tokens =
-    getNumber(projection, 'tokens') ?? liveTokens ?? getNumber(metricsObj, 'tokens') ?? tokensRead + tokensWritten
+  // Only the run-wide realCost counters are cumulative usage. `liveTokens`
+  // belongs to the live cost feed and is deliberately never shown as context
+  // or total tokens. Missing counters remain unknown, while zero is retained.
+  const tokens = realCost?.totalTokens ?? null
+  const tokensRead = realCost?.inputTokens ?? null
+  const tokensWritten = realCost?.outputTokens ?? null
 
-  const phaseByStepId = mapProjectionToPhaseByStepId(steps, status, mappedInteractions, mappedAttempts, evidenceItems)
+  const phaseByStepId = mapProjectionToPhaseByStepId(
+    steps, status, mappedInteractions, mappedAttempts, evidenceItems, attemptsLoadError
+  )
   const controllerRequest = readControllerRequest(snapshot, projection)
   const instance = asObject(snapshot['instance'])
   const createdAt =
@@ -249,7 +252,8 @@ export function mapProjectionToSessionDetail(
     status,
     mappedInteractions,
     mappedAttempts,
-    evidenceItems
+    evidenceItems,
+    attemptsLoadError
   )
 
   // Pre-compute per-step and per-attempt event slices so the UI can show
@@ -295,13 +299,10 @@ export function mapProjectionToSessionDetail(
       new Date().toISOString(),
     timelineOriginAt,
     workflow: getString(projection, 'title') ?? id,
-    costUsd:
-      realCost?.cost ??
-      getNumber(projection, 'costUsd') ??
-      getNumber(metricsObj, 'costUsd') ??
-      getNumber(snapshot, 'costUsd') ??
-      0,
-    unknownCostCount: realCost?.unknownCostCount ?? 0,
+    // Costs are analytics-owned. Do not revive legacy projection/budget values
+    // when analytics explicitly reports an unavailable value.
+    costUsd: realCost?.cost ?? null,
+    unknownCostCount: realCost?.unknownCostCount ?? null,
     durationSec: activeDurationSec,
     tokens,
     tokensRead,
@@ -312,12 +313,15 @@ export function mapProjectionToSessionDetail(
       activelyRunning ? Math.max(laneEnd, Math.max((Date.now() - timelineOriginMs) / 1000, 0)) : laneEnd
     ),
     events: [...mapEvidenceToEvents(evidenceItems, steps), ...mapInteractionsToEvents(mappedInteractions)],
-    phase: buildPhaseDetail(steps, status, mappedInteractions, mappedAttempts, evidenceItems),
+    phase: buildPhaseDetail(steps, status, mappedInteractions, mappedAttempts, evidenceItems, undefined, undefined, attemptsLoadError),
     launchRequest,
     phaseByStepId,
     phaseByAttemptId,
     interactions: mappedInteractions,
     attempts: mappedAttempts,
+    ...(attemptsLoadError ? { attemptsLoadError } : {}),
+    cacheReadTokens: realCost?.cacheReadTokens,
+    cacheWriteTokens: realCost?.cacheWriteTokens,
     allowedActions: mappedAllowedActions,
     blockers: mappedBlockers,
     agentQuestions: agentQuestions ?? [],
@@ -435,8 +439,8 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
     {
       realCost: {
         cost: detail.costUsd,
-        unknownCostCount: detail.unknownCostCount ?? 0,
-        liveTokens: detail.tokens,
+        unknownCostCount: detail.unknownCostCount,
+        totalTokens: detail.tokens ?? undefined,
       },
     },
     undefined,
@@ -446,7 +450,7 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
   summary.durationSec = detail.durationSec
   summary.tokens = detail.tokens
   summary.costUsd = detail.costUsd
-  summary.unknownCostCount = detail.unknownCostCount ?? 0
+  summary.unknownCostCount = detail.unknownCostCount
   summary.waitingHuman = detail.executionState === 'waiting_human'
   summary.cardState =
     detail.executionState === 'waiting_human'
