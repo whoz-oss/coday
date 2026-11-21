@@ -23,7 +23,8 @@ import kotlin.concurrent.thread
  *   the observed case is ignored (defensive — the endpoint is per-case but
  *   the adapter does not trust it).
  * - Transient events (`ThinkingEvent`, `TextChunkEvent`, `CaseUpdatedEvent`)
- *   are display-only: dropped before any verdict/checkpoint logic.
+ *   are display-only: they slide the active observation deadline while the case
+ *   is actively running, then are dropped before any verdict/checkpoint logic.
  * - Reconnection uses bounded exponential backoff; on **every** reconnection
  *   a REST catch-up (`reconcile` callback) runs first so no durable event is
  *   missed while the stream was down.
@@ -31,8 +32,8 @@ import kotlin.concurrent.thread
  *   `:keep-alive` within [stallTimeoutMs] is treated as dropped.
  * - A verdict is **never** derived from silence: when the reconnection budget
  *   is exhausted the result is
- *   `Indeterminate("SSE reconnection budget exhausted")`, and when the
- *   active-execution budget elapses it is
+ *   `Indeterminate("SSE reconnection budget exhausted")`, and when the sliding
+ *   active-execution inactivity budget elapses it is
  *   `Indeterminate("SSE observation timeout")`. Waiting for a human pauses
  *   that budget and uses the separate bounded [humanWaitTimeoutMs].
  */
@@ -80,8 +81,10 @@ class AgentOsSseClient(
         var activeBudgetMs = timeoutMs
         var deadline = now() + activeBudgetMs
         var phase: HumanWaitPhase = HumanWaitPhase.Active
+        var reconnects = 0
         fun recordActivity() {
-            if (phase !is HumanWaitPhase.WaitingHuman) {
+            reconnects = 0
+            if (phase is HumanWaitPhase.Active) {
                 activeBudgetMs = timeoutMs
                 deadline = now() + activeBudgetMs
             }
@@ -131,7 +134,6 @@ class AgentOsSseClient(
             }
         }
         observed.forEach(::applyLifecycleEvent)
-        var reconnects = 0
         var connectedOnce = false
         while (true) {
             if (connectedOnce) {

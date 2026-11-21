@@ -15,6 +15,7 @@ import io.whozoss.factory.web.factoryError
 import io.whozoss.factory.workflow.domain.WorkflowBlockerDto
 import io.whozoss.factory.workflow.domain.WorkflowActionTypes
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
+import io.whozoss.factory.workflow.domain.WorkflowTicket
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.service.CreateWorkflowRunService
 import io.whozoss.factory.workflow.service.WorkflowService
@@ -414,7 +415,7 @@ class WorkstreamServiceController(
         val ID_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
         val STEP_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$")
         val KEY_PATTERN = Regex("^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$")
-        val TICKET_PATTERN = Regex("^(?:#[1-9][0-9]{0,11}|[A-Za-z0-9][A-Za-z0-9._:/#-]{0,63})$")
+        val TICKET_PATTERN = WorkflowTicket.WORKSTREAM_START_PATTERN
         val DEFINITION_VERSION_PATTERN = Regex("""^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$""")
         val DEFINITION_HASH_PATTERN = Regex("^[0-9a-f]{64}$")
         val REASON_PATTERN = Regex("^[A-Za-z0-9._-]{1,64}$")

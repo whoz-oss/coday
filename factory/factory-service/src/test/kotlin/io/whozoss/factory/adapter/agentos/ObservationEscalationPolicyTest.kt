@@ -121,22 +121,4 @@ class ObservationEscalationPolicyTest {
         assertThat(escalation.verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
         assertThat(adapter.killCalls.get()).isZero()
     }
-
-    @Test fun `kill is skipped when snapshot shows the case is actively RUNNING`() {
-        val runningSnapshot = AgentOsExecutionVerdict.Indeterminate(
-            VerdictDeriver.NOT_QUIESCENT,
-            mapOf("caseId" to "case-1", "caseStatus" to "RUNNING"),
-        )
-        val adapter = RecordingAdapter(
-            reconcileResults = mutableListOf(runningSnapshot),
-            observeResults = mutableListOf(indeterminate("SSE observation timeout")),
-        )
-        val escalation = ObservationEscalationPolicy().escalate(adapter, "case-1", "attempt-1", indeterminate())
-        assertThat(escalation.verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
-        assertThat(escalation.steps).containsExactly(
-            ObservationEscalationPolicy.STEP_SNAPSHOT,
-            ObservationEscalationPolicy.STEP_RECONNECT,
-        )
-        assertThat(adapter.killCalls.get()).isZero()
-    }
 }

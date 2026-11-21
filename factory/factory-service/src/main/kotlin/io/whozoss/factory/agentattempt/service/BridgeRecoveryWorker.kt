@@ -663,7 +663,7 @@ class BridgeRecoveryWorker(
         )
 
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
-        const val DEFAULT_OBSERVATION_TIMEOUT_MS = 600_000L
+        const val DEFAULT_OBSERVATION_TIMEOUT_MS = AgentOsAdapterProperties.DEFAULT_OBSERVATION_TIMEOUT_MS
         const val DEFAULT_LEASE_TTL_MS = 3_600_000L
         private const val AGENTOS_RUNTIME_ID = "agentos-primary"
         private const val TERMINAL_RELEASE_SCAN_PAGE = 256

@@ -6,6 +6,7 @@ import io.whozoss.factory.verification.manifest.VerificationManifestException
 import io.whozoss.factory.verification.manifest.VerificationRunResult
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
+import io.whozoss.factory.workflow.domain.WorkflowTicket
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -72,10 +73,7 @@ class CapabilityResolver(
                 ?: return CapabilityOutcome.CodeRefused(step.id, PREPARE_WORK_BRANCH, BRANCH_PREPARATION_FAILED, "Workflow identity is required for branch preparation.")
             val scope = tenantScope
                 ?: return CapabilityOutcome.CodeRefused(step.id, PREPARE_WORK_BRANCH, BRANCH_PREPARATION_FAILED, "Tenant scope is required for environment binding.")
-            val rawComponent = trustedTicket?.takeIf { TRUSTED_TICKET.matches(it) } ?: stableWorkflowId
-            val normalizedComponent = GITHUB_ISSUE_SUFFIX.find(rawComponent)?.groupValues?.get(1) ?: rawComponent
-            val branchComponent = sanitizeBranchComponent(normalizedComponent)
-            val branchName = "work/forge/$branchComponent"
+            val branchName = WorkflowTicket.branchName(trustedTicket = trustedTicket, workflowId = stableWorkflowId)
             return when (val result = preparation.prepare(scope, stableWorkflowId, branchName)) {
                 is BranchPreparationResult.Prepared -> result.facts.let { facts -> CapabilityOutcome.BranchPrepared(
                     step.id, facts.branch ?: branchName, facts.startingHead ?: "", "environment:${facts.environmentId}",
@@ -244,13 +242,7 @@ class CapabilityResolver(
         }
     }
 
-    private fun sanitizeBranchComponent(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "-").trim('-', '.').take(100)
-
     private companion object {
-        val TRUSTED_TICKET = Regex(
-            "^(?:[A-Z][A-Z0-9]{1,15}-[1-9][0-9]{0,11}|(?:#|[A-Za-z0-9][A-Za-z0-9._-]{0,38}/[A-Za-z0-9._-]{1,100}#)?[1-9][0-9]{0,11})$",
-        )
-        val GITHUB_ISSUE_SUFFIX = Regex("^(?:#|[A-Za-z0-9][A-Za-z0-9._-]{0,38}/[A-Za-z0-9._-]{1,100}#)([1-9][0-9]{0,11})$")
         val GIT_SHA = Regex("^[0-9a-fA-F]{40}$")
     }
 }
