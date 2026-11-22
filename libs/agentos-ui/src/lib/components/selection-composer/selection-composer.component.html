@@ -1,4 +1,8 @@
-<div class="selection-composer" dsBlueprint>
+<div
+  class="selection-composer"
+  dsBlueprint
+  [class.selection-composer--suggestions-below]="suggestionsPlacement() === 'below'"
+>
   @if (autocomplete.atSuggestions().length > 0) {
     <div class="selection-composer__autocomplete">
       <agentos-agent-autocomplete

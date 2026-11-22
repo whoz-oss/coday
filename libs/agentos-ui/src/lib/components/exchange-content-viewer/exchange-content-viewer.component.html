@@ -175,85 +175,87 @@
       <pre #docRoot class="exchange-content-viewer__pre">{{ displayContent() }}</pre>
     }
 
-    <!-- The agent's proposal, as an annotation next to the highlighted passage: accepted or rejected in place. -->
-    @if (cardVisible() && request(); as req) {
-      <section
-        class="exchange-content-viewer__card"
-        dsBlueprint
-        [style.top.px]="anchorTop() ?? 8"
-        aria-label="Agent suggestion"
+    <!--
+      One popover, anchored under the end of the selected passage (see computePopoverPosition) and moving with the
+      content: the composer while the user writes, a slim waiting line while the agent works, then the annotation card
+      of its proposal. The selection itself is shown by its highlight in the document, never quoted here.
+    -->
+    @if (popoverVisible()) {
+      <div
+        #popoverBox
+        class="exchange-content-viewer__popover"
+        [class.exchange-content-viewer__popover--above]="popover()?.placement === 'above'"
+        [class.exchange-content-viewer__popover--hidden]="!popover() || popover()?.hidden"
+        [style.top.px]="popover()?.top ?? 0"
+        [style.left.px]="popover()?.left ?? 0"
+        [style.width.px]="popover()?.width"
+        [style.--caret-left]="(popover()?.caret ?? 16) + 'px'"
+        [attr.data-placement]="popover()?.placement ?? 'below'"
+        (focusin)="freeze()"
       >
-        @if (req.status === 'proposed') {
-          @if (req.answer) {
-            <p class="exchange-content-viewer__card-text">{{ req.answer }}</p>
-          }
-          <p class="exchange-content-viewer__diff" aria-label="Proposed change">
-            @for (part of proposalDiff(); track $index) {
-              @switch (part.type) {
-                @case ('delete') {
-                  <del class="exchange-content-viewer__del">{{ part.text }}</del>
-                }
-                @case ('insert') {
-                  <ins class="exchange-content-viewer__ins">{{ part.text }}</ins>
-                }
-                @default {
-                  <span>{{ part.text }}</span>
-                }
+        @if (composerShown()) {
+          <agentos-selection-composer
+            [namespaceId]="namespaceId()"
+            [initialValue]="prefill()"
+            [suggestionsPlacement]="popover()?.placement === 'above' ? 'below' : 'above'"
+            (sent)="onComposerSent($event)"
+            (closed)="closeComposer()"
+          />
+        } @else if (waitingShown()) {
+          <div class="exchange-content-viewer__waiting" dsBlueprint role="status" aria-live="polite">
+            <ds-spinner size="sm" label="Waiting for the agent" />
+            <span class="exchange-content-viewer__waiting-text">Waiting for {{ requestedAgent() }}…</span>
+            <ds-icon-button icon="close" variant="default" title="Dismiss the selection" (action)="dismiss()" />
+          </div>
+        } @else if (cardVisible() && request(); as req) {
+          <section class="exchange-content-viewer__card" dsBlueprint aria-label="Agent suggestion">
+            @if (req.status === 'proposed') {
+              @if (req.answer) {
+                <p class="exchange-content-viewer__card-text">{{ req.answer }}</p>
               }
+              <p class="exchange-content-viewer__diff" aria-label="Proposed change">
+                @for (part of proposalDiff(); track $index) {
+                  @switch (part.type) {
+                    @case ('delete') {
+                      <del class="exchange-content-viewer__del">{{ part.text }}</del>
+                    }
+                    @case ('insert') {
+                      <ins class="exchange-content-viewer__ins">{{ part.text }}</ins>
+                    }
+                    @default {
+                      <span>{{ part.text }}</span>
+                    }
+                  }
+                }
+              </p>
+              @if (acceptError()) {
+                <p class="exchange-content-viewer__card-error" role="alert">{{ acceptError() }}</p>
+              }
+              <div class="exchange-content-viewer__card-actions">
+                @if (editMode()) {
+                  <button type="button" class="exchange-content-viewer__cta" (click)="onAccept()">Accept</button>
+                }
+                <button type="button" class="exchange-content-viewer__secondary" (click)="onReject()">Reject</button>
+                <button type="button" class="exchange-content-viewer__secondary" (click)="onAskAgain()">
+                  Ask again
+                </button>
+              </div>
+            } @else if (req.status === 'answered') {
+              <p class="exchange-content-viewer__card-text">{{ req.answer }}</p>
+              <div class="exchange-content-viewer__card-actions">
+                <button type="button" class="exchange-content-viewer__secondary" (click)="dismiss()">Dismiss</button>
+              </div>
+            } @else {
+              <p class="exchange-content-viewer__card-error" role="alert">{{ req.answer || 'The agent failed' }}</p>
+              <div class="exchange-content-viewer__card-actions">
+                <button type="button" class="exchange-content-viewer__secondary" (click)="dismiss()">Dismiss</button>
+              </div>
             }
-          </p>
-          @if (acceptError()) {
-            <p class="exchange-content-viewer__card-error" role="alert">{{ acceptError() }}</p>
-          }
-          <div class="exchange-content-viewer__card-actions">
-            @if (editMode()) {
-              <button type="button" class="exchange-content-viewer__cta" (click)="onAccept()">Accept</button>
-            }
-            <button type="button" class="exchange-content-viewer__secondary" (click)="onReject()">Reject</button>
-            <button type="button" class="exchange-content-viewer__secondary" (click)="onAskAgain()">Ask again</button>
-          </div>
-        } @else if (req.status === 'answered') {
-          <p class="exchange-content-viewer__card-text">{{ req.answer }}</p>
-          <div class="exchange-content-viewer__card-actions">
-            <button type="button" class="exchange-content-viewer__secondary" (click)="dismiss()">Dismiss</button>
-          </div>
-        } @else {
-          <p class="exchange-content-viewer__card-error" role="alert">{{ req.answer || 'The agent failed' }}</p>
-          <div class="exchange-content-viewer__card-actions">
-            <button type="button" class="exchange-content-viewer__secondary" (click)="dismiss()">Dismiss</button>
-          </div>
+          </section>
         }
-      </section>
+      </div>
     }
   </div>
-
-  @if (dockVisible()) {
-    <!-- Frozen on mousedown / focus: moving the focus to the composer collapses the live selection. -->
-    <div class="exchange-content-viewer__dock" (mousedown)="freeze()" (focusin)="freeze()">
-      @if (activeSelection(); as quoted) {
-        <div class="exchange-content-viewer__quote">
-          <span class="exchange-content-viewer__quote-text">{{ quoted.text }}</span>
-          @if (frozen()) {
-            <ds-icon-button icon="close" variant="default" title="Dismiss the selection" (action)="dismiss()" />
-          }
-        </div>
-      }
-      @if (request(); as req) {
-        @if (req.status === 'waiting') {
-          <p class="exchange-content-viewer__waiting" role="status" aria-live="polite">
-            Waiting for {{ requestedAgent() }}…
-          </p>
-        }
-      } @else {
-        <agentos-selection-composer
-          [namespaceId]="namespaceId()"
-          [initialValue]="prefill()"
-          (sent)="onComposerSent($event)"
-          (closed)="closeComposer()"
-        />
-      }
-    </div>
-  }
 </div>
 
 <ds-confirm-dialog

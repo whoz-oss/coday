@@ -57,4 +57,10 @@
     box-shadow: var(--shadow-lg);
     z-index: 20;
   }
+
+  // Anchored under the selection: the suggestions open downwards, away from the passage.
+  &--suggestions-below &__autocomplete {
+    bottom: auto;
+    top: calc(100% + 0.5rem);
+  }
 }
