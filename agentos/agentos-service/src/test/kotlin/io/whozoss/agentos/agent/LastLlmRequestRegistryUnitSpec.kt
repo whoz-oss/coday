@@ -364,7 +364,7 @@ class LastLlmRequestRegistryUnitSpec :
             stored.isCurrentFor(listOf(answer)) shouldBe false
         }
 
-        "the stamp of a capture outlives it: through invalidate, expiry and eviction, refreshed by touch" {
+        "the stamp of a capture outlives it through expiry and eviction, refreshed by touch" {
             val clock = MovingClock(start)
             val registry = LastLlmRequestRegistry(clock, LlmRequestRegistryProperties(maxSize = 1))
             val stored = request().copy(prefixTokens = 1200)
@@ -372,16 +372,26 @@ class LastLlmRequestRegistryUnitSpec :
             // Evicted at once by the 1-character budget, the stamp stays.
             registry.get(stored.caseId).shouldBeNull()
             registry.stamp(stored.caseId) shouldBe
-                PromptCacheStamp(start, 1200, stored.modelId, stored.requestOptions, stored.promptCacheTtl)
+                PromptCacheStamp(start, 1200, stored.modelId, AiApiType.OpenAI, null, "model", stored.promptCacheTtl)
 
             val kept = LastLlmRequestRegistry(clock)
             kept.putCurrent(stored)
             clock.now = start.plusSeconds(200)
             kept.touch(stored.caseId, kept.get(stored.caseId)!!.capturedAt)
-            kept.invalidate(stored.caseId)
             clock.now = start.plus(LastLlmRequestRegistry.TTL).plusSeconds(300)
             kept.purgeExpired()
+            kept.get(stored.caseId).shouldBeNull()
             kept.stamp(stored.caseId)!!.lastUsedAt shouldBe start.plusSeconds(200)
+        }
+
+        "invalidate drops the stamp with the request: a turn that captures nothing shows no previous one" {
+            val registry = LastLlmRequestRegistry(MovingClock(start))
+            val stored = request()
+            registry.putCurrent(stored)
+
+            registry.invalidate(stored.caseId)
+
+            registry.stamp(stored.caseId).shouldBeNull()
         }
 
         "a stamp is dropped by forget, a week after its last use, or past the most recent cases" {
@@ -394,7 +404,10 @@ class LastLlmRequestRegistryUnitSpec :
             registry.forget(deleted.caseId)
             registry.stamp(deleted.caseId).shouldBeNull()
 
+            // Only the periodic purge drops an old stamp.
             clock.now = start.plus(LastLlmRequestRegistry.STAMP_TTL).plusSeconds(1)
+            registry.putCurrent(request())
+            registry.stamp(old.caseId).shouldNotBeNull()
             registry.purgeExpired()
             registry.stamp(old.caseId).shouldBeNull()
 

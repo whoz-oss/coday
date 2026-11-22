@@ -149,7 +149,7 @@ class PromptCacheStatusServiceUnitSpec :
         }
 
         "older GPT models and gpt-oss: nothing is known" {
-            for (name in listOf("openai/gpt-4o", "gpt-4.1", "gpt-5", "openai/gpt-5.5", "openai/gpt-oss-120b")) {
+            for (name in listOf("openai/gpt-4o", "gpt-4.1", "gpt-35-turbo", "gpt-5", "openai/gpt-5.5", "openai/gpt-oss-120b", "policy/gpt-oss")) {
                 val fixture = Fixture().apply { lastRequest(apiModelName = name) }
 
                 withClue(name) { fixture.status().expiresAt.shouldBeNull() }
@@ -179,11 +179,11 @@ class PromptCacheStatusServiceUnitSpec :
             fixture.status() shouldBe PromptCacheStatus(expiresAt = null, coldCostEstimate = null)
         }
 
-        "once the request itself is gone (a run started, it expired), its stamp still tells the cache is cold" {
+        "once the request itself has expired, its stamp still tells the cache is cold" {
             val fixture = Fixture().apply { lastRequest() }
-            fixture.registry.invalidate(fixture.caseId)
             fixture.clock.now = now.plus(Duration.ofHours(3))
             fixture.registry.purgeExpired()
+            fixture.registry.get(fixture.caseId).shouldBeNull()
 
             val status = fixture.status()
 

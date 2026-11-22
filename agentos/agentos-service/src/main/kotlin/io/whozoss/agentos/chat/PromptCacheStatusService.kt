@@ -47,15 +47,9 @@ class PromptCacheStatusService(
 ) {
     fun statusOf(caseId: UUID): PromptCacheStatus {
         val stamp = registry.stamp(caseId) ?: return PromptCacheStatus()
-        val options = stamp.requestOptions
         val oneHour =
-            chatModelFactory.appliesOneHourCache(
-                options.apiType,
-                options.baseUrl,
-                options.apiModelName,
-                stamp.promptCacheTtl,
-            )
-        val lifetime = lifetimeOf(options, oneHour) ?: return PromptCacheStatus()
+            chatModelFactory.appliesOneHourCache(stamp.apiType, stamp.baseUrl, stamp.apiModelName, stamp.promptCacheTtl)
+        val lifetime = lifetimeOf(stamp, oneHour) ?: return PromptCacheStatus()
         val pricing = aiModelService.findById(stamp.modelId)?.pricing
         return PromptCacheStatus(
             expiresAt = stamp.lastUsedAt.plus(lifetime),
@@ -71,15 +65,15 @@ class PromptCacheStatusService(
      * - OpenAI GPT: 30 minutes, the minimum default retention of GPT-5.6 and later ([GPT]).
      */
     internal fun lifetimeOf(
-        options: LlmRequestOptions,
+        stamp: PromptCacheStamp,
         oneHourApplied: Boolean,
     ): Duration? {
-        val name = options.apiModelName
+        val name = stamp.apiModelName
         val claude = CLAUDE.containsMatchIn(name) || requestyPromptCache.matchesModel(name)
         val cached =
-            when (options.apiType) {
+            when (stamp.apiType) {
                 AiApiType.Anthropic -> anthropicProperties.promptCachingEnabled
-                AiApiType.OpenAI -> RequestyPromptCache.isRequesty(options.baseUrl)
+                AiApiType.OpenAI -> RequestyPromptCache.isRequesty(stamp.baseUrl)
                 else -> false
             }
         return when {
@@ -95,9 +89,10 @@ class PromptCacheStatusService(
 
         /**
          * GPT-5.6 and later (`gpt-5.6`, `gpt-5.10`, `gpt-6.1-mini`, `openai/gpt-7`...), or a Requesty policy named
-         * `gpt-<word>` (`policy/gpt-sol`), which carries no version. Older GPT models and `gpt-oss` do not match.
+         * `gpt-<word>` (`policy/gpt-sol`), which carries no version. Older GPT models (`gpt-4o`, Azure's
+         * `gpt-35-turbo`) and `gpt-oss` do not match.
          */
-        private val GPT = Regex("(?i)gpt-(5\\.([6-9]|\\d{2,})|[6-9]|[1-9]\\d)|^policy/gpt-[a-z]")
+        private val GPT = Regex("(?i)gpt-(5\\.([6-9]|\\d{2,})|[6-9])|^policy/gpt-(?!oss)[a-z]")
         private val FIVE_MINUTES: Duration = Duration.ofMinutes(5)
         private val THIRTY_MINUTES: Duration = Duration.ofMinutes(30)
         private val ONE_HOUR: Duration = Duration.ofHours(1)

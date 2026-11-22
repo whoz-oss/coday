@@ -64,13 +64,10 @@ export class CaseUsageComponent {
   /** The clock of the cache countdown. */
   private readonly now = signal(Date.now())
 
-  /**
-   * `Warm (N min left)`, `Cold (~cost)` or `Cold`; null (hidden) when the cache lifetime is unknown, or while the case
-   * runs (its requests are using the cache, the status only follows once its turn is over).
-   */
+  /** `Warm (N min left)`, `Cold (~cost)` or `Cold`; null (hidden) when the cache lifetime is unknown. */
   readonly cacheLabel = computed((): string | null => {
     const status = this.promptCache()
-    if (!status?.expiresAt || this.running()) return null
+    if (!status?.expiresAt) return null
     const left = Date.parse(status.expiresAt) - this.now()
     if (left > 0) return left < MINUTE_MS ? 'Warm (<1 min left)' : `Warm (${Math.ceil(left / MINUTE_MS)} min left)`
     const cost = status.coldCostEstimate
@@ -97,6 +94,8 @@ export class CaseUsageComponent {
       if (!this.configuration.enabled()) return
       const caseId = this.caseId()
       const running = this.running()
+      // A running case is using its cache: its status is hidden, and read again once the run is over.
+      if (running) this.promptCache.set(null)
       // A decision owns its refresh; cancel polling so older snapshots cannot restore the pause.
       if (this.saving()) return
       const answers = this.caseState.agentMessageEvent$.pipe(
@@ -162,7 +161,7 @@ export class CaseUsageComponent {
     if (this.caseId() !== caseId || this.saving()) return
     this.run.set(usage.run)
     if (usage.total) this.total.set(usage.total)
-    if (usage.promptCache !== undefined) {
+    if (usage.promptCache !== undefined && !this.running()) {
       this.now.set(Date.now())
       this.promptCache.set(usage.promptCache)
     }

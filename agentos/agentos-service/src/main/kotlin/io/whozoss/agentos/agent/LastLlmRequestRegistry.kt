@@ -1,6 +1,7 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.chat.LlmRequestOptions
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -123,8 +124,11 @@ data class PromptCacheStamp(
     /** When the provider's cache last saw the prefix ([LastLlmRequest.lastUsedAt]). */
     val lastUsedAt: Instant,
     val prefixTokens: Long?,
+    /** For the model's pricing. */
     val modelId: UUID,
-    val requestOptions: LlmRequestOptions,
+    val apiType: AiApiType,
+    val baseUrl: String?,
+    val apiModelName: String,
     val promptCacheTtl: PromptCacheTtl,
 )
 
@@ -145,9 +149,10 @@ data class LlmRequestRegistryProperties(
  * cases, or past [LlmRequestRegistryProperties.maxSize], the oldest capture is evicted. Expired entries are also purged every
  * minute. Nothing survives a restart, which is fine: the provider's cache would be cold anyway. Thread-safe.
  *
- * A small [PromptCacheStamp] of each capture outlives it: it is kept through [invalidate], expiry and eviction, so
- * that a case idle for long can still be shown cold, and only dropped by [forget], past [MAX_STAMPS] cases (the
- * oldest use first) or [STAMP_TTL] after its last use.
+ * A small [PromptCacheStamp] of each capture outlives it through expiry and eviction, so that a case idle for long
+ * can still be shown cold. It is dropped with the request by [invalidate] (a turn that captures nothing must not show
+ * the previous one's) and [forget], past [MAX_STAMPS] cases (the oldest use first) or [STAMP_TTL] after its last use
+ * (by the periodic purge).
  */
 @Component
 class LastLlmRequestRegistry(
@@ -179,12 +184,13 @@ class LastLlmRequestRegistry(
     fun generation(caseId: UUID): Long = generations[caseId] ?: 0L
 
     /**
-     * The conversation of [caseId] moves on (a run starts) or ends (the case is killed or deleted): its request is
-     * forgotten, and the captures and uses started before are outdated. Returns the new generation.
+     * The conversation of [caseId] moves on (a run starts) or ends (the case is killed or deleted): its request and its
+     * stamp are forgotten, and the captures and uses started before are outdated. Returns the new generation.
      */
     @Synchronized
     fun invalidate(caseId: UUID): Long {
         removeEntry(caseId)
+        stamps.remove(caseId)
         return (++lastGeneration).also { generations[caseId] = it }
     }
 
@@ -214,7 +220,7 @@ class LastLlmRequestRegistry(
         entries[captured.caseId] = captured
         size += captured.estimatedSize()
         putStamp(captured)
-        purgeExpired()
+        purgeExpiredEntries()
         while (entries.isNotEmpty() && (entries.size > MAX_ENTRIES || size > properties.maxSize)) {
             removeEntry(entries.keys.first())
         }
@@ -262,9 +268,13 @@ class LastLlmRequestRegistry(
     @Scheduled(fixedDelay = PURGE_INTERVAL_MS, initialDelay = PURGE_INTERVAL_MS)
     @Synchronized
     fun purgeExpired() {
-        entries.values.filter(::isExpired).map { it.caseId }.forEach(::removeEntry)
+        purgeExpiredEntries()
         val oldestKept = clock.instant().minus(STAMP_TTL)
         stamps.values.removeIf { it.lastUsedAt.isBefore(oldestKept) }
+    }
+
+    private fun purgeExpiredEntries() {
+        entries.values.filter(::isExpired).map { it.caseId }.forEach(::removeEntry)
     }
 
     @Synchronized
@@ -273,7 +283,17 @@ class LastLlmRequestRegistry(
     private fun putStamp(request: LastLlmRequest) {
         stamps.remove(request.caseId)
         stamps[request.caseId] =
-            with(request) { PromptCacheStamp(lastUsedAt, prefixTokens, modelId, requestOptions, promptCacheTtl) }
+            with(request) {
+                PromptCacheStamp(
+                    lastUsedAt = lastUsedAt,
+                    prefixTokens = prefixTokens,
+                    modelId = modelId,
+                    apiType = requestOptions.apiType,
+                    baseUrl = requestOptions.baseUrl,
+                    apiModelName = requestOptions.apiModelName,
+                    promptCacheTtl = promptCacheTtl,
+                )
+            }
         while (stamps.size > MAX_STAMPS) stamps.remove(stamps.keys.first())
     }
 
@@ -284,7 +304,7 @@ class LastLlmRequestRegistry(
     /** Every request that has not expired, in capture order. */
     @Synchronized
     fun all(): List<LastLlmRequest> {
-        purgeExpired()
+        purgeExpiredEntries()
         return entries.values.toList()
     }
 

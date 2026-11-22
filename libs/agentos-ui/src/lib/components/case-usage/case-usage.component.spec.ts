@@ -587,6 +587,26 @@ describe('CaseUsageComponent', () => {
       fixture.destroy()
     }))
 
+    it('shows nothing from before the run once it is over, until the status is read again', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(300, 0.3)))
+      const fixture = render()
+      fixture.componentRef.setInput('running', true)
+      fixture.detectChanges()
+      tick(0)
+
+      const reread = new Subject<PromptCacheStatus>()
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(reread)
+      fixture.componentRef.setInput('running', false)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBeUndefined()
+
+      reread.next(cache(600, 0.3))
+      reread.complete()
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (10 min left)')
+      fixture.destroy()
+    }))
+
     it('is read again with the totals after an answer', fakeAsync(() => {
       const fixture = render()
       const calls = promptCaches.getPromptCacheStatusCasePromptCache.mock.calls.length
