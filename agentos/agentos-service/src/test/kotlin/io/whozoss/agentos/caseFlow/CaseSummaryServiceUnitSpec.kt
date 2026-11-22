@@ -119,7 +119,7 @@ class CaseSummaryServiceUnitSpec :
         }
 
         fun ChatClientProvider.stub(chatClient: ChatClient) {
-            every { getChatClient(any(), any(), any(), promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns chatClient
+            every { getChatClient(any(), any(), any(), promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClient
         }
 
         // -------------------------------------------------------------------------
@@ -234,7 +234,7 @@ class CaseSummaryServiceUnitSpec :
                     effortModel.copy(reasoningEffort = ReasoningEffort.LOW),
                     provider,
                     case.id.toString(),
-                    promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+                    promptCacheTtl = PromptCacheTtl.STANDARD,
                 )
             }
         }

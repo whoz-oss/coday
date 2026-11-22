@@ -6499,8 +6499,8 @@ components:
     PromptCacheTtl:
       type: string
       enum:
-      - FIVE_MINUTES
-      - ONE_HOUR
+      - STANDARD
+      - EXTENDED
     PromptEffectiveRequest:
       type: object
       properties:
@@ -7287,8 +7287,8 @@ components:
           type: string
           pattern: "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
         promptCacheTtl:
-          description: "Prompt cache duration for Claude models via Requesty. On update,\
-            \ null keeps the stored value."
+          description: "Prompt cache choice; EXTENDED only changes Claude models via\
+            \ Requesty. On update, null keeps the stored value."
           oneOf:
           - $ref: "#/components/schemas/PromptCacheTtl"
           - type: "null"

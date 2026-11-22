@@ -278,7 +278,7 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
         // PUT — promptCacheTtl (a non-admin edits their own preference)
         // -----------------------------------------------------------------
 
-        "PUT self with promptCacheTtl=ONE_HOUR (caller=non-admin) persists it and returns it" {
+        "PUT self with promptCacheTtl=EXTENDED (caller=non-admin) persists it and returns it" {
             val captured = slot<User>()
             every { userService.getCurrentUser() } returns regularUser
             every { userService.findByIds(listOf(regularUserId), false) } returns listOf(regularUser)
@@ -288,16 +288,16 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
                 .perform(
                     put("/api/users/$regularUserId")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""{ "id": "$regularUserId", "email": "alice@example.com", "promptCacheTtl": "ONE_HOUR" }"""),
+                        .content("""{ "id": "$regularUserId", "email": "alice@example.com", "promptCacheTtl": "EXTENDED" }"""),
                 ).andExpect(status().isOk)
-                .andExpect(jsonPath("$.promptCacheTtl").value("ONE_HOUR"))
+                .andExpect(jsonPath("$.promptCacheTtl").value("EXTENDED"))
 
-            captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+            captured.captured.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
         }
 
         "PUT self with an explicit null promptCacheTtl keeps the stored value" {
             val captured = slot<User>()
-            val oneHourUser = regularUser.copy(promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+            val oneHourUser = regularUser.copy(promptCacheTtl = PromptCacheTtl.EXTENDED)
             every { userService.getCurrentUser() } returns oneHourUser
             every { userService.findByIds(listOf(regularUserId), false) } returns listOf(oneHourUser)
             every { userService.update(capture(captured)) } answers { firstArg() }
@@ -308,9 +308,9 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""{ "id": "$regularUserId", "email": "alice@example.com", "promptCacheTtl": null }"""),
                 ).andExpect(status().isOk)
-                .andExpect(jsonPath("$.promptCacheTtl").value("ONE_HOUR"))
+                .andExpect(jsonPath("$.promptCacheTtl").value("EXTENDED"))
 
-            captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+            captured.captured.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
         }
 
         "PUT with an unknown promptCacheTtl returns 400" {
@@ -324,13 +324,13 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
                 ).andExpect(status().isBadRequest)
         }
 
-        "GET /me returns FIVE_MINUTES for a user who never chose a prompt cache duration" {
+        "GET /me returns STANDARD for a user who never chose a prompt cache option" {
             every { userService.getCurrentUser() } returns regularUser
 
             mockMvc
                 .perform(get("/api/users/me"))
                 .andExpect(status().isOk)
-                .andExpect(jsonPath("$.promptCacheTtl").value("FIVE_MINUTES"))
+                .andExpect(jsonPath("$.promptCacheTtl").value("STANDARD"))
         }
 
         // -----------------------------------------------------------------

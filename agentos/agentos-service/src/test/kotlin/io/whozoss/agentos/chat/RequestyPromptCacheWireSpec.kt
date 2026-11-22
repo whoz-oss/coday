@@ -243,7 +243,7 @@ class RequestyPromptCacheWireSpec :
             val mode = if (streaming) "streaming (WebClient)" else "blocking (RestClient)"
 
             "$mode, Requesty with 1h: the body carries 1h markers and turns automatic caching off" {
-                val sent = send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true), streaming)
+                val sent = send(chatClient(PromptCacheTtl.EXTENDED, requesty = true), streaming)
 
                 assertOneHourMarkers(sent.body)
                 (mapper.readTree(sent.body).get("stream")?.asBoolean() ?: false) shouldBe streaming
@@ -252,12 +252,12 @@ class RequestyPromptCacheWireSpec :
             }
 
             "$mode, Requesty with 1h and usage tracking disabled: the body carries 1h markers" {
-                assertOneHourMarkers(send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true, usageTracking = false), streaming).body)
+                assertOneHourMarkers(send(chatClient(PromptCacheTtl.EXTENDED, requesty = true, usageTracking = false), streaming).body)
             }
 
             "$mode, Requesty with 5m: the body is byte-for-byte the one sent before the setting existed" {
                 val baseline = send(originalChatClient(), streaming)
-                val fiveMinutes = send(chatClient(PromptCacheTtl.FIVE_MINUTES, requesty = true, usageTracking = false), streaming)
+                val fiveMinutes = send(chatClient(PromptCacheTtl.STANDARD, requesty = true, usageTracking = false), streaming)
 
                 fiveMinutes.body shouldBe baseline.body
                 fiveMinutes.framing shouldBe baseline.framing
@@ -269,7 +269,7 @@ class RequestyPromptCacheWireSpec :
 
             "$mode, another provider with 1h: the body is byte-for-byte the one sent before the setting existed" {
                 val baseline = send(originalChatClient(), streaming)
-                val otherProvider = send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = false, usageTracking = false), streaming)
+                val otherProvider = send(chatClient(PromptCacheTtl.EXTENDED, requesty = false, usageTracking = false), streaming)
 
                 otherProvider.body shouldBe baseline.body
                 otherProvider.framing shouldBe baseline.framing
@@ -281,7 +281,7 @@ class RequestyPromptCacheWireSpec :
                 val sent =
                     send(
                         chatClient(
-                            PromptCacheTtl.ONE_HOUR,
+                            PromptCacheTtl.EXTENDED,
                             requesty = true,
                             modelName = policy,
                             modelPattern = "(?i)claude|^policy/sonnet-with-fallback$",
@@ -296,7 +296,7 @@ class RequestyPromptCacheWireSpec :
                 val gpt = "openai/gpt-5"
                 val baseline = send(originalChatClient(gpt), streaming)
                 val otherModel =
-                    send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true, usageTracking = false, modelName = gpt), streaming)
+                    send(chatClient(PromptCacheTtl.EXTENDED, requesty = true, usageTracking = false, modelName = gpt), streaming)
 
                 otherModel.body shouldBe baseline.body
                 otherModel.framing shouldBe baseline.framing
@@ -306,7 +306,7 @@ class RequestyPromptCacheWireSpec :
             "$mode, Requesty with 1h and a body above the rewrite cap: the body is byte-for-byte the one sent before" {
                 val huge = Prompt(listOf(SystemMessage("System"), UserMessage("a".repeat(RequestyPromptCache.MAX_REWRITE_BYTES.toInt()))))
                 val baseline = send(originalChatClient(), streaming, huge)
-                val oneHour = send(chatClient(PromptCacheTtl.ONE_HOUR, requesty = true, usageTracking = false), streaming, huge)
+                val oneHour = send(chatClient(PromptCacheTtl.EXTENDED, requesty = true, usageTracking = false), streaming, huge)
 
                 (oneHour.body == baseline.body) shouldBe true
                 // Streaming keeps the encoder's Content-Length; blocking calls with the hook are buffered, so they

@@ -14,21 +14,35 @@ import java.util.UUID
 class UserNodeUnitSpec :
     StringSpec({
         "promptCacheTtl round-trips through the node as its enum name" {
-            val user = User(externalId = "alice@example.com", promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+            val user = User(externalId = "alice@example.com", promptCacheTtl = PromptCacheTtl.EXTENDED)
 
             val node = UserNode.fromDomain(user)
 
-            node.promptCacheTtl shouldBe "ONE_HOUR"
-            node.toDomain().promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+            node.promptCacheTtl shouldBe "EXTENDED"
+            node.toDomain().promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
         }
 
-        "a node stored before promptCacheTtl existed reads as FIVE_MINUTES" {
+        "a node stored before promptCacheTtl existed reads as STANDARD" {
             val node = UserNode(id = UUID.randomUUID().toString(), externalId = "bob@example.com", email = "bob@example.com")
 
-            node.toDomain().promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
+            node.toDomain().promptCacheTtl shouldBe PromptCacheTtl.STANDARD
         }
 
-        "an unknown stored promptCacheTtl reads as FIVE_MINUTES instead of making the user unreadable" {
+        "the former stored names read as their intent" {
+            fun node(stored: String) =
+                UserNode(
+                    id = UUID.randomUUID().toString(),
+                    externalId = "dan@example.com",
+                    email = "dan@example.com",
+                    promptCacheTtl = stored,
+                )
+
+            node("FIVE_MINUTES").toDomain().promptCacheTtl shouldBe PromptCacheTtl.STANDARD
+            node("ONE_HOUR").toDomain().promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
+            UserNode.fromDomain(node("ONE_HOUR").toDomain()).promptCacheTtl shouldBe "EXTENDED"
+        }
+
+        "an unknown stored promptCacheTtl reads as STANDARD instead of making the user unreadable" {
             val node =
                 UserNode(
                     id = UUID.randomUUID().toString(),
@@ -41,7 +55,7 @@ class UserNodeUnitSpec :
             val logs = ListAppender<ILoggingEvent>().also { it.start() }
             logger.addAppender(logs)
             try {
-                node.toDomain().promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
+                node.toDomain().promptCacheTtl shouldBe PromptCacheTtl.STANDARD
             } finally {
                 logger.detachAppender(logs)
             }

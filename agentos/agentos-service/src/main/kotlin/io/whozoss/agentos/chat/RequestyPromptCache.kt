@@ -31,7 +31,7 @@ import java.net.URI
  * calls, RestClient) and [filter] (streaming calls, WebClient) rewrite the outgoing `/chat/completions` JSON
  * body with [addOneHourCacheControl] instead.
  *
- * [ChatModelFactory] only installs the hooks when the user chose [PromptCacheTtl.ONE_HOUR], the base URL
+ * [ChatModelFactory] only installs the hooks when the user chose [PromptCacheTtl.EXTENDED], the base URL
  * [isRequesty] and the model matches [RequestyPromptCacheProperties.modelPattern]. Otherwise nothing is installed and the request stays the one
  * Spring AI builds.
  *
@@ -283,7 +283,7 @@ internal object RequestyPromptCache : KLogging() {
 }
 
 /**
- * Which models get the one-hour prompt cache markers when their user chose [PromptCacheTtl.ONE_HOUR] and they are
+ * Which models get the one-hour prompt cache markers when their user chose [PromptCacheTtl.EXTENDED] and they are
  * reached through Requesty.
  *
  * [modelPattern] is a regular expression searched in the API model name (a match anywhere counts). The default

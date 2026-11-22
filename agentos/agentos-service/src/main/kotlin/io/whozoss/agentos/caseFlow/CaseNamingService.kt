@@ -125,7 +125,7 @@ class CaseNamingService(
                     model.forUtilityCall(),
                     provider,
                     caseId.toString(),
-                    promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+                    promptCacheTtl = PromptCacheTtl.STANDARD,
                 )
             withContext(Dispatchers.IO) {
                 chatClient

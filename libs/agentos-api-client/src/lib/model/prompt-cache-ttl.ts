@@ -9,7 +9,7 @@
  */
 
 export enum PromptCacheTtl {
-  FIVE_MINUTES = 'FIVE_MINUTES',
+  STANDARD = 'STANDARD',
 
-  ONE_HOUR = 'ONE_HOUR',
+  EXTENDED = 'EXTENDED',
 }

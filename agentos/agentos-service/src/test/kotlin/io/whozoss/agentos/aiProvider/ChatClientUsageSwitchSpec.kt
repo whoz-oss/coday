@@ -136,7 +136,7 @@ class ChatClientUsageSwitchSpec : StringSpec({
                         }
                     }
                     val client = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled))
-                        .getChatClient(model, provider, accumulator = accumulator, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
+                        .getChatClient(model, provider, accumulator = accumulator, promptCacheTtl = PromptCacheTtl.STANDARD)
                     // AgentSimple attaches resolved tool callbacks to each prompt, not to model defaults.
                     val prompt = client.prompt("Hello")
                     if (withTool) prompt.toolCallbacks(callback)

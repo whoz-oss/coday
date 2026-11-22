@@ -70,7 +70,7 @@ class ProviderCostCaptureSpec :
                 apiKey = "test",
             ),
             accumulator = accumulator,
-            promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+            promptCacheTtl = PromptCacheTtl.STANDARD,
         )
 
         listOf(false, true).forEach { streaming ->
