@@ -30,6 +30,11 @@ describe('SelectionComposerComponent', () => {
     fixture.detectChanges()
   }
 
+  it('has a short placeholder, one line high by default', () => {
+    expect(input().placeholder).toBe('Ask an agent… (@ to pick one)')
+    expect(input().rows).toBe(1)
+  })
+
   it('does not take the focus on its own', () => {
     expect(document.activeElement).not.toBe(input())
   })

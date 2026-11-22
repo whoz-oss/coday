@@ -8,7 +8,10 @@ import { ExchangeFileRef } from '../../services/exchange-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeContentViewerComponent } from './exchange-content-viewer.component'
 
-jest.mock('../../services/exchange-markdown-convert', () => ({ htmlToMarkdown: jest.fn() }))
+jest.mock('../../services/exchange-markdown-convert', () => ({
+  ...jest.requireActual('../../services/exchange-markdown-convert'),
+  htmlToMarkdown: jest.fn(),
+}))
 
 interface Box {
   left: number
@@ -189,7 +192,7 @@ describe('ExchangeContentViewerComponent selection popover', () => {
       const style = popover()!.style
       expect(style.top).toBe('150px') // bottom of the last line + the gap
       expect(style.left).toBe('150px') // start of the first line
-      expect(style.width).toBe('420px')
+      expect(style.width).toBe('520px')
       expect(popover()!.getAttribute('data-placement')).toBe('below')
       expect(popover()!.classList.contains('exchange-content-viewer__popover--hidden')).toBe(false)
     })
@@ -277,8 +280,8 @@ describe('ExchangeContentViewerComponent selection popover', () => {
         bodyBox = { left: 0, top: 0, right: 500, bottom: 400 }
         observers.forEach((callback) => callback())
         flushFrames()
-        expect(popover()!.style.width).toBe('420px')
-        expect(popover()!.style.left).toBe('72px')
+        expect(popover()!.style.width).toBe('484px')
+        expect(popover()!.style.left).toBe('8px')
       } finally {
         delete globals.ResizeObserver
       }

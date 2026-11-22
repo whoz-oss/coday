@@ -55,6 +55,26 @@ describe('exchange-selection-message', () => {
     expect(message).toContain('````markdown\n```js\ncode\n```\n````')
   })
 
+  it('sends the markdown source of a selection made in the rendered document, and says the proposal is markdown', () => {
+    const message = build({ selection: 'Title paragraph', selectionMarkdown: '# Title\n\nparagraph' })
+    expect(message).toContain('```markdown\n# Title\n\nparagraph\n```')
+    expect(message).not.toContain('Title paragraph')
+    expect(message).toContain('the proposal must be markdown too')
+    expect(message).toContain('headings, lists')
+    expect(message).toBe(
+      [
+        'Translate this to French',
+        '[Selection from case:notes/todo.md]\n```markdown\n# Title\n\nparagraph\n```',
+        proposalInstructions('req1', true),
+        '[Files referenced: case:notes/todo.md]',
+      ].join('\n\n')
+    )
+  })
+
+  it('does not claim markdown for a selection without markdown source', () => {
+    expect(build()).not.toContain('must be markdown')
+  })
+
   it('trims the instruction', () => {
     expect(build({ instruction: '  fix  \n' }).startsWith('fix\n\n[Selection')).toBe(true)
   })

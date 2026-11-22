@@ -31,15 +31,21 @@
     font-family: var(--font-body);
     line-height: 1.55;
     outline: none;
-    min-height: 44px;
-    max-height: 40vh;
+    // One line by default (rows=1), auto-grown by the component up to about 6 lines, then it scrolls.
+    min-height: calc(1.55 * 14px + 20px);
+    max-height: calc(6 * 1.55 * 14px + 20px);
     overflow-y: auto;
 
+    // The placeholder stays on one line at the preferred popover width; the ellipsis is a last resort.
     &::placeholder {
       color: var(--color-neutral-700);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 
+  // The send button keeps its own size: the textarea (flex: 1, min-width: 0) is the one that gives way.
   &__actions {
     flex: none;
     padding: 0 6px 6px 0;

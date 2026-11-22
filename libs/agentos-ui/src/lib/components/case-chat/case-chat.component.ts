@@ -1489,6 +1489,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       from: action.from ?? 0,
       to: action.to ?? 0,
       selection: action.selection,
+      ...(action.selectionMarkdown !== undefined ? { selectionMarkdown: action.selectionMarkdown } : {}),
       instruction: action.instruction,
     })
     const message = buildSelectionMessage(action, request.id)
