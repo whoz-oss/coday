@@ -440,10 +440,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    */
   protected readonly keepAliveDisabled = computed(() => this.composerClosed() || !this.exchangeState.canWriteCase())
 
-  /** The refresh intervals; how long the server keeps refreshing is its own setting, so no duration is promised. */
+  /** No duration is promised: the cache TTL is set on the AI model, the refresh duration on the server. */
   protected readonly keepAliveHint =
     "Keeps this conversation's prompt cache warm while idle, for a limited time after the last reply. Each refresh " +
-    'costs a cache read. Works only if the AI model has a cache TTL (Settings → AI models).'
+    'costs a cache read. Works only if the AI model has a cache TTL (Namespace settings → AI models, or ' +
+    'Administration → Platform AI models).'
 
   /** Save the keep-alive checkbox; on failure the case state rolls the checkbox back. */
   protected onKeepAliveChange(event: Event): void {

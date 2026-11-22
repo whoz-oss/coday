@@ -11,7 +11,7 @@ import { AiModelFormComponent } from './ai-model-form.component'
 
 /** The protected members the tests drive. */
 interface Internals {
-  form: { invalid: boolean }
+  form: { valid: boolean; invalid: boolean }
   submit: () => void
 }
 
@@ -114,12 +114,22 @@ describe('AiModelFormComponent (prompt cache lifetimes)', () => {
     expect(payload.extendedCacheTtlMinutes).toBeUndefined()
   })
 
-  it('refuses a lifetime that is not positive', () => {
-    const element = render(null)
-    type(element, 'model-cache-ttl', '0')
+  it('refuses a lifetime that is not a positive whole number of minutes', () => {
+    const element = render('model-1')
+    for (const [id, value] of [
+      ['model-cache-ttl', '0'],
+      ['model-cache-ttl', '2.5'],
+      ['model-extended-cache-ttl', '1.5'],
+    ]) {
+      type(element, 'model-cache-ttl', '5')
+      type(element, 'model-extended-cache-ttl', '60')
+      expect(internals().form.valid).toBe(true)
 
-    expect(internals().form.invalid).toBe(true)
-    internals().submit()
-    expect(models.createAiModel).not.toHaveBeenCalled()
+      type(element, id, value)
+
+      expect(internals().form.invalid).toBe(true)
+      internals().submit()
+    }
+    expect(models.updateAiModel).not.toHaveBeenCalled()
   })
 })

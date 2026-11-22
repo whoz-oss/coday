@@ -33,6 +33,9 @@ const NO_REASONING_EFFORT_API_TYPES: readonly AiProviderApiTypeEnum[] = [
   AiProviderApiTypeEnum.Gemini,
 ]
 
+/** A cache TTL is a whole number of minutes, at least 1. */
+const CACHE_TTL_VALIDATORS = [Validators.min(1), Validators.pattern(/^\d+$/)]
+
 @Component({
   selector: 'agentos-ai-model-form',
   imports: [DS_PAGE_KIT, ReactiveFormsModule],
@@ -93,8 +96,8 @@ export class AiModelFormComponent implements OnInit {
     maxCompletionTokens: new FormControl<number | null>(null),
     reasoningEffort: new FormControl<ReasoningEffort | null>(null),
     supportsAdvancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
-    cacheTtlMinutes: new FormControl<number | null>(null, { validators: [Validators.min(1)] }),
-    extendedCacheTtlMinutes: new FormControl<number | null>(null, { validators: [Validators.min(1)] }),
+    cacheTtlMinutes: new FormControl<number | null>(null, { validators: CACHE_TTL_VALIDATORS }),
+    extendedCacheTtlMinutes: new FormControl<number | null>(null, { validators: CACHE_TTL_VALIDATORS }),
     pricing: new FormGroup({
       inputMTokens: new FormControl<number | null>(null),
       outputMTokens: new FormControl<number | null>(null),

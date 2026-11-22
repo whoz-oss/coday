@@ -1054,7 +1054,8 @@ describe('CaseChatComponent — submit with attachments', () => {
         expect(label.textContent?.trim()).toBe('Keep alive')
         expect(label.getAttribute('title')).toBe(
           "Keeps this conversation's prompt cache warm while idle, for a limited time after the last reply. Each refresh " +
-            'costs a cache read. Works only if the AI model has a cache TTL (Settings → AI models).'
+            'costs a cache read. Works only if the AI model has a cache TTL (Namespace settings → AI models, or ' +
+            'Administration → Platform AI models).'
         )
         expect(input.disabled).toBe(false)
         expect(label.nextElementSibling?.classList.contains('case-chat__actions-hint')).toBe(true)

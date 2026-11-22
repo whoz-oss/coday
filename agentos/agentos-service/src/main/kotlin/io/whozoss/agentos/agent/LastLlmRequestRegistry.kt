@@ -143,8 +143,8 @@ data class LlmRequestRegistryProperties(
  * conversation (side questions, cache keep-alive). Only the agents that make the request themselves
  * ([AgentSimple]) record one, and only when the exact request is known (a tracked chat model).
  *
- * Bounded: an entry expires [TTL] after its capture or the last refresh of its cache ([touch]), well beyond the
- * default 5-minute prompt cache lifetime (callers decide how old a request they still reuse; the keep-alive bounds
+ * Bounded: an entry expires [TTL] after its capture or the last refresh of its cache ([touch]), longer than the
+ * usual prompt cache lifetimes (callers decide how old a request they still reuse; the keep-alive bounds
  * how long it refreshes one, [io.whozoss.agentos.caseFlow.CaseKeepAliveProperties.maxIdle]); past [MAX_ENTRIES]
  * cases, or past [LlmRequestRegistryProperties.maxSize], the oldest capture is evicted. Expired entries are also purged every
  * minute. Nothing survives a restart, which is fine: the provider's cache would be cold anyway. Thread-safe.

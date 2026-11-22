@@ -276,6 +276,8 @@ class CaseKeepAliveWireSpec :
                     every { findById(caseId, false) } returns case
                 }
             val (usageRecords, records) = records()
+            // The cache TTLs of the Claude tiers.
+            val claudeTier = claude.copy(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 60)
             val scheduler =
                 CaseKeepAliveScheduler(
                     registry = turn.registry,
@@ -289,7 +291,7 @@ class CaseKeepAliveWireSpec :
                             UsageConfigProperties(enabled = true),
                             RequestyPromptCacheProperties(),
                         ) { true },
-                    aiModelService = mockk { every { findById(claude.id, any()) } returns claude.copy(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 60) },
+                    aiModelService = mockk { every { findById(claude.id, any()) } returns claudeTier },
                     properties = CaseKeepAliveProperties(),
                     clock = clock,
                     usageConfig = UsageConfigProperties(enabled = true),

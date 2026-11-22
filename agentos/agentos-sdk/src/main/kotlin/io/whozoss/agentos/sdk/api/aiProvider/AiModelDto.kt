@@ -57,11 +57,24 @@ data class AiModelDto(
      * for field semantics.
      */
     val pricing: io.whozoss.agentos.sdk.aiProvider.ModelPricing? = null,
-    /** Prompt cache lifetime after the last use, in minutes. Null = unknown: no cache indicator or keep-alive. */
+    /**
+     * How long the provider keeps a prompt cached after its last use, in minutes; null: no cache indicator nor
+     * keep-alive. The keep-alive only refreshes a cache whose TTL fits in the 65 minutes a request is kept for it.
+     */
     @field:Positive
+    @field:Schema(
+        description =
+            "Prompt cache TTL after the last use, in minutes; null: no cache indicator nor keep-alive. The keep-alive " +
+                "only refreshes a TTL of up to 65 minutes.",
+        minimum = "1",
+    )
     val cacheTtlMinutes: Int? = null,
-    /** The same when the request got the one-hour cache markers. */
+    /** The same when the request got the one-hour cache markers (the user chose Extended, Claude via Requesty). */
     @field:Positive
+    @field:Schema(
+        description = "cacheTtlMinutes when the request got the 1-hour cache markers (Extended, Claude via Requesty).",
+        minimum = "1",
+    )
     val extendedCacheTtlMinutes: Int? = null,
     /**
      * Reasoning effort sent to the provider. Null = provider default. Rejected with a 400 for

@@ -85,6 +85,9 @@ class CaseKeepAliveSchedulerUnitSpec :
         ) {
             val clock = MovingClock(start)
             val registry = LastLlmRequestRegistry(clock)
+
+            /** The request's model as configured now, read by the scheduler at every check. */
+            var currentModel: AiModel? = model
             val keepAliveIds = mockk<CaseKeepAliveIds> { every { current() } answers { if (case.keepAlive) setOf(case.id) else emptySet() } }
             var storedCase: Case? = case
             val pinged = CopyOnWriteArrayList<LastLlmRequest>()
@@ -118,7 +121,7 @@ class CaseKeepAliveSchedulerUnitSpec :
                             UsageConfigProperties(enabled = true),
                             RequestyPromptCacheProperties(),
                         ) { true },
-                    aiModelService = mockk { every { findById(any()) } returns model },
+                    aiModelService = mockk { every { findById(any()) } answers { currentModel } },
                     properties = CaseKeepAliveProperties(maxIdle = maxIdle),
                     clock = clock,
                     usageConfig = UsageConfigProperties(enabled = usageEnabled),
@@ -178,6 +181,23 @@ class CaseKeepAliveSchedulerUnitSpec :
                 tickAt(oneHourDue).shouldBeEmpty()
                 tickAt(Duration.ofMinutes(61).plusSeconds(20)) shouldBe listOf(case.id)
             }
+        }
+
+        "a cache TTL set on the model after the turn starts the pings without a new turn" {
+            val fixture = Fixture(model = aiModel())
+            fixture.tickAt(fiveMinuteDue).shouldBeEmpty()
+
+            fixture.currentModel = aiModel(cacheTtlMinutes = 5)
+
+            fixture.tickAt(fiveMinuteDue.plusSeconds(20)) shouldBe listOf(fixture.case.id)
+        }
+
+        "a cache TTL longer than the registry keeps the request is never pinged" {
+            val fixture = Fixture(ttl = PromptCacheTtl.EXTENDED, model = aiModel(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 70))
+
+            fixture.tickAt(Duration.ofMinutes(64)).shouldBeEmpty()
+            fixture.tickAt(Duration.ofMinutes(69).plusSeconds(20)).shouldBeEmpty()
+            fixture.pinged.shouldBeEmpty()
         }
 
         "a request without a cache TTL on its model (or with its model gone) is never pinged" {

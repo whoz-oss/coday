@@ -4643,6 +4643,10 @@ components:
         cacheTtlMinutes:
           type: integer
           format: int32
+          description: "Prompt cache TTL after the last use, in minutes; null: no\
+            \ cache indicator nor keep-alive. The keep-alive only refreshes a TTL\
+            \ of up to 65 minutes."
+          minimum: 1
         contextWindow:
           type: integer
           format: int64
@@ -4651,6 +4655,9 @@ components:
         extendedCacheTtlMinutes:
           type: integer
           format: int32
+          description: "cacheTtlMinutes when the request got the 1-hour cache markers\
+            \ (Extended, Claude via Requesty)."
+          minimum: 1
         id:
           type: string
           format: uuid

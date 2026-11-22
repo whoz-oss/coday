@@ -29,7 +29,7 @@ import java.util.concurrent.Executors
  * Every tick (`agentos.keep-alive.tick-interval-ms`, 20 s by default) it looks at the agent's last request
  * ([LastLlmRequestRegistry]) of the cases with keep-alive on ([CaseKeepAliveIds]: nothing is read while none is) and
  * has [CaseKeepAlivePinger] send it again when its cache is about to expire: the cache lifetime of its model
- * ([PromptCacheLifetime], read once per request) less [REFRESH_MARGIN] after the cache last saw the prefix
+ * ([PromptCacheLifetime], read at every check) less [REFRESH_MARGIN] after the cache last saw the prefix
  * ([LastLlmRequest.lastUsedAt]: when the request, or the last ping, was sent). A cache read refreshes the cache
  * lifetime, so the next real message of the user still finds the conversation cached. A successful ping
  * [LastLlmRequestRegistry.touch]es the request, which keeps it in the registry while the keep-alive runs.
@@ -42,9 +42,11 @@ import java.util.concurrent.Executors
  *   (the case or an ancestor ended, was stopped, waits for a confirmation or is at its threshold): checked again at
  *   the next interval only;
  * - more than [CaseKeepAliveProperties.maxIdle] has passed since the agent's last real request was captured;
+ * - its model has no cache TTL for it ([PromptCacheLifetime]), or one longer than the registry keeps the request
+ *   ([LastLlmRequestRegistry.TTL]): logged once, and checked again at every tick (a TTL set later applies);
  * - the request was sent with a reasoning effort (a 1-token answer is invalid with thinking), its provider is not
- *   OpenAI-compatible ([CaseKeepAlivePinger.supports]), its model has no cache TTL for it ([PromptCacheLifetime]), or
- *   its model or provider changed since: logged once, and left alone until the next agent turn;
+ *   OpenAI-compatible ([CaseKeepAlivePinger.supports]), or its model or provider changed since: logged once, and left
+ *   alone until the next agent turn;
  * - its last [MAX_CONSECUTIVE_FAILURES] pings failed (an error, or no cache read on a prompt long enough to be
  *   cached): left alone until the next agent turn.
  *
@@ -74,8 +76,6 @@ class CaseKeepAliveScheduler(
     /** What the scheduler knows of the request of a case, reset when a new turn replaces the request. */
     private class Tracking(
         val capturedAt: Instant,
-        /** When the request is due after the cache last saw its prefix, read once per request; null: never. */
-        val refreshInterval: Duration?,
     ) {
         @Volatile var failures = 0
 
@@ -86,7 +86,17 @@ class CaseKeepAliveScheduler(
         @Volatile var deferredUntil: Instant? = null
 
         @Volatile var costRefusalLogged = false
+
+        /** Why it has no refresh interval was logged, until it has one again. */
+        @Volatile var noIntervalLogged = false
     }
+
+    /** A request due now, with the interval it is due after. */
+    private data class Due(
+        val request: LastLlmRequest,
+        val state: Tracking,
+        val refreshInterval: Duration,
+    )
 
     private val tracking = ConcurrentHashMap<UUID, Tracking>()
     private val inFlight = ConcurrentHashMap.newKeySet<UUID>()
@@ -111,54 +121,56 @@ class CaseKeepAliveScheduler(
         if (ids.isEmpty()) return emptyList()
         val now = clock.instant()
         val due =
-            ids
-                .mapNotNull { id -> registry.get(id)?.let { it to trackingOf(it) } }
-                .filter { (request, state) -> isDue(request, state, now) }
+            ids.mapNotNull { id ->
+                val request = registry.get(id) ?: return@mapNotNull null
+                val state = trackingOf(request)
+                dueInterval(request, state, now)?.let { Due(request, state, it) }
+            }
         if (due.isEmpty()) return emptyList()
-        val cases = caseService.findByIds(due.map { it.first.caseId }, withRemoved = false).associateBy { it.id }
-        return due.mapNotNull { (request, state) ->
-            val case = cases[request.caseId]
-            if (!eligible(case, request, state, now) || !inFlight.add(request.caseId)) {
+        val cases = caseService.findByIds(due.map { it.request.caseId }, withRemoved = false).associateBy { it.id }
+        return due.mapNotNull { due ->
+            val caseId = due.request.caseId
+            if (!eligible(cases[caseId], due, now) || !inFlight.add(caseId)) {
                 null
             } else {
-                start(request, state)
-                request.caseId
+                start(due)
+                caseId
             }
         }
     }
 
-    private fun isDue(
+    /** The refresh interval of [request] when it is due now, null otherwise. */
+    private fun dueInterval(
         request: LastLlmRequest,
         state: Tracking,
         now: Instant,
-    ): Boolean =
-        !state.stopped &&
-            state.failures < MAX_CONSECUTIVE_FAILURES &&
-            state.deferredUntil?.let { now.isBefore(it) } != true &&
-            request.caseId !in inFlight &&
-            Duration.between(request.capturedAt, now) <= properties.maxIdle &&
-            state.refreshInterval?.let { !now.isBefore(request.lastUsedAt.plus(it)) } == true
+    ): Duration? {
+        val waiting =
+            state.stopped ||
+                state.failures >= MAX_CONSECUTIVE_FAILURES ||
+                state.deferredUntil?.let(now::isBefore) == true ||
+                request.caseId in inFlight ||
+                Duration.between(request.capturedAt, now) > properties.maxIdle
+        if (waiting) return null
+        return refreshIntervalOf(request, state)?.takeUnless { now.isBefore(request.lastUsedAt.plus(it)) }
+    }
 
     private fun trackingOf(request: LastLlmRequest): Tracking {
         val current = tracking[request.caseId]
         if (current != null && current.capturedAt == request.capturedAt) return current
-        val interval = refreshIntervalOf(request)
-        return Tracking(request.capturedAt, interval).also {
-            tracking[request.caseId] = it
-            if (interval == null) stop(request, it) { "model ${request.requestOptions.apiModelName} has no cache TTL" }
-        }
+        return Tracking(request.capturedAt).also { tracking[request.caseId] = it }
     }
 
-    /** Whether [request] may be pinged for [case] now; records why not when that lasts. */
+    /** Whether [due] may be pinged for [case] now; records why not when that lasts. */
     private fun eligible(
         case: Case?,
-        request: LastLlmRequest,
-        state: Tracking,
+        due: Due,
         now: Instant,
     ): Boolean {
+        val (request, state) = due
         if (case == null || !case.keepAlive) return false
         if (case.status != CaseStatus.IDLE) {
-            state.deferredUntil = state.refreshInterval?.let(now::plus)
+            state.deferredUntil = now.plus(due.refreshInterval)
             return false
         }
         // A run started, or the case was killed or deleted, since the request was read.
@@ -175,33 +187,29 @@ class CaseKeepAliveScheduler(
         return true
     }
 
-    private fun start(
-        request: LastLlmRequest,
-        state: Tracking,
-    ) {
+    private fun start(due: Due) {
+        val caseId = due.request.caseId
         try {
             executor.execute {
                 try {
-                    ping(request, state)
+                    ping(due)
                 } finally {
-                    inFlight.remove(request.caseId)
+                    inFlight.remove(caseId)
                 }
             }
         } catch (e: Exception) {
-            inFlight.remove(request.caseId)
-            logger.warn(e) { "[KeepAlive] could not start the refresh of case ${request.caseId}" }
+            inFlight.remove(caseId)
+            logger.warn(e) { "[KeepAlive] could not start the refresh of case $caseId" }
         }
     }
 
     /** In the worker: everything is checked again on fresh reads, then the ping is sent. */
-    private fun ping(
-        request: LastLlmRequest,
-        state: Tracking,
-    ) {
+    private fun ping(due: Due) {
+        val (request, state) = due
         try {
             val now = clock.instant()
             val case = caseService.findById(request.caseId, withRemoved = false)
-            if (!eligible(case, request, state, now) || case == null) return
+            if (!eligible(case, due, now) || case == null) return
             when (val result = pinger.ping(case, request)) {
                 is CaseKeepAlivePinger.Result.Sent -> {
                     if (isCacheMiss(result.usage)) {
@@ -214,7 +222,7 @@ class CaseKeepAliveScheduler(
                 }
 
                 is CaseKeepAlivePinger.Result.CostRefused -> {
-                    state.deferredUntil = state.refreshInterval?.let(now::plus)
+                    state.deferredUntil = now.plus(due.refreshInterval)
                     if (!state.costRefusalLogged) {
                         state.costRefusalLogged = true
                         logger.info { "[KeepAlive] case ${request.caseId} not refreshed: run cost guard (${result.reason})" }
@@ -258,11 +266,33 @@ class CaseKeepAliveScheduler(
         return false
     }
 
-    /** The cache lifetime [request] was actually sent with, less [REFRESH_MARGIN]; null without one. */
-    private fun refreshIntervalOf(request: LastLlmRequest): Duration? {
+    /**
+     * The cache lifetime [request] was actually sent with, less [REFRESH_MARGIN], read again at every check so that a
+     * TTL set on the model since applies. Null, logged once, without a TTL, or with one longer than the registry keeps
+     * the request ([LastLlmRequestRegistry.TTL]).
+     */
+    private fun refreshIntervalOf(
+        request: LastLlmRequest,
+        state: Tracking,
+    ): Duration? {
         val options = request.requestOptions
         val oneHour = chatModelFactory.appliesOneHourCache(options.apiType, options.baseUrl, options.apiModelName, request.promptCacheTtl)
-        return PromptCacheLifetime.of(aiModelService.findById(request.modelId), oneHour)?.minus(REFRESH_MARGIN)
+        val interval = PromptCacheLifetime.of(aiModelService.findById(request.modelId), oneHour)?.minus(REFRESH_MARGIN)
+        val why =
+            when {
+                interval == null -> "model ${options.apiModelName} has no cache TTL for it"
+                interval >= LastLlmRequestRegistry.TTL ->
+                    "its cache TTL exceeds the ${LastLlmRequestRegistry.TTL.toMinutes()} minutes a request is kept"
+                else -> {
+                    state.noIntervalLogged = false
+                    return interval
+                }
+            }
+        if (!state.noIntervalLogged) {
+            state.noIntervalLogged = true
+            logger.info { "[KeepAlive] case ${request.caseId} not refreshed: $why" }
+        }
+        return null
     }
 
     @PreDestroy
