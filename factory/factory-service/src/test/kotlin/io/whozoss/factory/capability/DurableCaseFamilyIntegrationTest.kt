@@ -6,6 +6,9 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseHandle
 import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
+import io.whozoss.factory.agentattempt.domain.AgentStepResultClaim
+import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
+import io.whozoss.factory.agentattempt.domain.AgentStepResultSubmitted
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
@@ -14,6 +17,7 @@ import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
+import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
@@ -23,6 +27,12 @@ import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.service.WorkflowService
+import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.sdk.spi.FactoryStepResultValidator
+import io.whozoss.factory.sdk.spi.StepValidationContext
+import io.whozoss.factory.sdk.spi.StepValidationVerdict
+import io.mockk.every
+import io.mockk.mockk
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -123,17 +133,18 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         )
     }
 
-    private fun service(adapter: AgentOsExecutionAdapter): CapabilityExecutionService =
-        CapabilityExecutionService(
-            CapabilityResolver(),
-            workflowRepository,
-            evidenceRepository,
-            interactionRepository,
-            attemptRepository,
-            durableAgentAttemptService = durableAgentAttemptService,
-            agentOsExecutionAdapter = adapter,
-            transactionManager = transactionManager,
-        )
+    private fun service(
+        adapter: AgentOsExecutionAdapter,
+        resultService: AgentStepResultService? = null,
+        validators: List<FactoryStepResultValidator> = emptyList(),
+    ): CapabilityExecutionService = CapabilityExecutionService(
+        CapabilityResolver(), workflowRepository, evidenceRepository, interactionRepository, attemptRepository,
+        durableAgentAttemptService = durableAgentAttemptService,
+        agentOsExecutionAdapter = adapter,
+        agentStepResultService = resultService,
+        transactionManager = transactionManager,
+        registeredStepResultValidators = validators,
+    )
 
     private fun rootCaseOf(workflowId: String): String? =
         workflowRepository.findInstance(scope, namespace, workflowId)?.rootCaseId
@@ -420,7 +431,100 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(legacy.parentCaseId).isNull()
     }
 
-    // ----- 7. Refusal ⇒ zero or several entry agent steps -----------------
+    // ----- 7. Governed workspace-proof terminal replay --------------------
+
+    @Test
+    fun `a governed terminal replay accepts only its exact accepted validator receipt without another turn`() {
+        val workflowId = isolatedWorkflowId("wf-workspace-receipt")
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        startSession("forge.delivery", workflowId, listOf(stepJson("A", "agent", "ForgeBackendWorker", emptyList())))
+        val accepted = acceptedResult(attemptId, workflowId, "A")
+        val evidenceId = seedSucceededProofAttempt(workflowId, attemptId, accepted, matchingReceipt = true)
+        val results = mockk<AgentStepResultService>()
+        every { results.acceptedResult(scope, namespace, workflowId, "A", attemptId) } returns accepted
+        val adapter = CaseFamilyAdapter()
+        val validator = workspaceProofValidator()
+
+        val execution = service(adapter, results, listOf(validator))
+            .resolveAndRecord(scope, namespace, workflowId, workspaceProofStep(), repoRoot)
+
+        assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
+        assertThat(execution.evidenceId).isEqualTo(evidenceId)
+        assertThat(adapter.startTurns).isEmpty()
+    }
+
+    @Test
+    fun `governed terminal replay fails closed for missing wrong or unaccepted receipt`() {
+        val cases = listOf("missing", "wrong-id", "wrong-hash", "validators-rejected", "wrong-scope")
+        for (mode in cases) {
+            val workflowId = isolatedWorkflowId("wf-workspace-receipt-$mode")
+            val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+            startSession("forge.delivery", workflowId, listOf(stepJson("A", "agent", "ForgeBackendWorker", emptyList())))
+            val accepted = acceptedResult(attemptId, workflowId, "A")
+            seedSucceededProofAttempt(workflowId, attemptId, accepted, matchingReceipt = mode != "missing", receiptMode = mode)
+            val results = mockk<AgentStepResultService>()
+            every { results.acceptedResult(scope, namespace, workflowId, "A", attemptId) } returns
+                if (mode == "wrong-scope") accepted.copy(namespaceId = "other") else accepted
+            val adapter = CaseFamilyAdapter()
+
+            val execution = service(adapter, results, listOf(workspaceProofValidator()))
+                .resolveAndRecord(scope, namespace, workflowId, workspaceProofStep(), repoRoot)
+
+            assertThat(execution.outcome).describedAs(mode).isInstanceOf(CapabilityOutcome.AgentFailed::class.java)
+            assertThat((execution.outcome as CapabilityOutcome.AgentFailed).code).isEqualTo("WORKSPACE_RESULT_EVIDENCE_UNBOUND")
+            assertThat(adapter.startTurns).describedAs(mode).isEmpty()
+        }
+    }
+
+    private fun workspaceProofStep() = WorkflowStepDefinition(
+        "A", "Step A", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "ForgeBackendWorker"), emptyList(),
+    )
+
+    private fun workspaceProofValidator() = object : FactoryStepResultValidator {
+        override fun supports(flowType: String, stepId: String, agentName: String) =
+            flowType == "forge.delivery" && stepId == "A" && agentName == "ForgeBackendWorker"
+
+        override fun requiresTrustedWorkspaceBaseline(flowType: String, stepId: String, agentName: String) =
+            supports(flowType, stepId, agentName)
+
+        override fun validate(context: StepValidationContext) = StepValidationVerdict.Accepted()
+    }
+
+    private fun acceptedResult(attemptId: String, workflowId: String, stepId: String) = AgentStepResultSubmitted(
+        "result-submitted", "result-1", attemptId, workflowId, stepId, namespace, "case-proof", "ForgeBackendWorker",
+        "brief-hash", AgentStepResultStatus.PASS, "done", emptyList(), AgentStepResultClaim(emptyList()), emptyList(),
+        "2026-01-01T00:00:00Z", "hash-1",
+    )
+
+    private fun seedSucceededProofAttempt(
+        workflowId: String,
+        attemptId: String,
+        accepted: AgentStepResultSubmitted,
+        matchingReceipt: Boolean,
+        receiptMode: String = "valid",
+    ): String {
+        val evidenceId = if (receiptMode == "wrong-id") "wrong-evidence-id" else "receipt-$attemptId"
+        val attempt = durableAgentAttemptService.register(scope, DurableAgentAttempt(
+            attemptId, "case-proof", namespace, workflowId, "A", 1, "ForgeBackendWorker",
+        ))
+        val owner = "owner-$attemptId"
+        durableAgentAttemptService.claim(scope, namespace, workflowId, "A", attemptId, owner)
+        durableAgentAttemptService.transition(scope, namespace, workflowId, "A", attemptId, owner, AgentAttemptStatus.STARTING)
+        durableAgentAttemptService.transition(scope, namespace, workflowId, "A", attemptId, owner, AgentAttemptStatus.RUNNING)
+        val evidenceFacts = mapOf(
+            "attemptId" to attemptId, "stepId" to "A", "validatorsAccepted" to (receiptMode != "validators-rejected"),
+            "resultId" to if (receiptMode == "wrong-id") "other-result" else accepted.resultId,
+            "resultHash" to if (receiptMode == "wrong-hash") "other-hash" else accepted.resultHash,
+        )
+        if (matchingReceipt) evidenceRepository.append(scope, namespace, workflowId,
+            WorkflowEvidenceItem(evidenceId, namespace, workflowId, "A", "agent-result", "pass",
+                mapOf("kind" to "agentos-adapter", "attemptId" to attemptId), evidenceFacts, null, null))
+        durableAgentAttemptService.finalize(scope, namespace, workflowId, "A", attemptId, owner,
+            AgentAttemptStatus.SUCCEEDED, resultEvidenceId = evidenceId)
+        return evidenceId
+    }
+
+    // ----- 8. Refusal ⇒ zero or several entry agent steps -----------------
 
     @Test
     fun `execution is refused when there is no entry agent step`() {

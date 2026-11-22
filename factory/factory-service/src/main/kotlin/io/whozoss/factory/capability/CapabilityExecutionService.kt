@@ -950,7 +950,11 @@ class CapabilityExecutionService(
         val matching = validators.filter {
             runCatching { it.supports(flowType, step.id, agentName) }.getOrDefault(false)
         }
-        if (matching.isEmpty()) return StepValidationVerdict.Accepted()
+        if (matching.isEmpty()) {
+            return if (requiresTrustedWorkspaceBaseline(workflowInstance, step.id, agentName)) {
+                StepValidationVerdict.Rejected("WORKSPACE_VALIDATOR_UNAVAILABLE")
+            } else StepValidationVerdict.Accepted()
+        }
 
         // §6.1 step 3: strict distinction between unavailable workspace evidence
         // and business/artifact rejection.
@@ -1654,10 +1658,13 @@ class CapabilityExecutionService(
             )
         }
         reservation.terminalStatus?.let {
-            // Replay of an already terminal attempt: if the crash happened between the durable
-            // finalization and the release, the accepted result lets us finish the release now.
-            releaseAgentWorktreeIfResultAccepted(scope, namespaceId, workflowId, step, attemptId, attempts)
-            return terminalAgentExecution(scope, namespaceId, workflowId, step, reservation)
+            // Replay of an already terminal attempt never dispatches another turn. Governed
+            // workspace-proof success releases occupancy only after its pinned receipt validates.
+            val replay = terminalAgentExecution(scope, namespaceId, workflowId, step, reservation)
+            if (replay.outcome is CapabilityOutcome.AgentCompleted ||
+                !requiresTrustedWorkspaceBaseline(workflowRepository.findInstance(scope, namespaceId, workflowId), step.id, agentId)
+            ) releaseAgentWorktreeIfResultAccepted(scope, namespaceId, workflowId, step, attemptId, attempts)
+            return replay
         }
         if (reservation.conflicted) {
             // A live competing lease owns the attempt: never start a duplicate turn.
@@ -2753,15 +2760,45 @@ class CapabilityExecutionService(
                         attemptId = reservation.attemptId,
                     )
                 } else {
-                    // Synchronous plugin step-result validation (Lot 2, §5.3 & §6.1)
-                    val validationVerdict = if (externalObservation is StepEvidenceObservation.Invalid) {
-                        StepValidationVerdict.Rejected(externalObservation.code, listOf(NewFinding(
-                            code = externalObservation.code,
-                            severity = FindingSeverity.MAJOR,
-                            message = externalObservation.message,
-                            stepId = step.id,
-                        )))
-                    } else evaluateStepResultValidators(
+                    // Governed workspace-proof success requires the structured result that
+                    // produced this exact verdict. Without its durable identity, a validator
+                    // receipt cannot be replayed or safely bound to this attempt.
+                    val requiresWorkspaceProof = requiresTrustedWorkspaceBaseline(
+                        workflowRepository.findInstance(scope, namespaceId, workflowId), step.id, agentId,
+                    )
+                    val acceptedResult = if (requiresWorkspaceProof) {
+                        acceptedStepResult(scope, namespaceId, workflowId, step.id, reservation.attemptId)
+                    } else null
+                    val boundAcceptedResult = acceptedResult?.takeIf {
+                        it.status == AgentStepResultStatus.PASS &&
+                            it.resultId == verdict.evidence["resultId"] &&
+                            it.resultHash.isNotBlank() &&
+                            it.attemptId == reservation.attemptId &&
+                            it.workflowId == workflowId && it.stepId == step.id &&
+                            it.namespaceId == namespaceId && it.caseId == reservation.caseId && it.agentName == agentId &&
+                            verdict.outputs["summary"] == it.summary && verdict.outputs["claims"] == it.claims &&
+                            verdict.outputs["findings"] == it.findings && verdict.outputs["artifacts"] == it.artifacts &&
+                            verdict.outputs["selectedRoutes"] == it.selectedRoutes
+                    }
+                    val validationVerdict = when {
+                        requiresWorkspaceProof && boundAcceptedResult == null -> StepValidationVerdict.Rejected(
+                            reasonCode = "WORKSPACE_RESULT_BINDING_UNAVAILABLE",
+                            findings = listOf(NewFinding(
+                                code = "WORKSPACE_RESULT_BINDING_UNAVAILABLE",
+                                severity = FindingSeverity.MAJOR,
+                                message = "The accepted structured result is not bound to this workspace-proof attempt.",
+                                stepId = step.id,
+                            )),
+                        )
+                        externalObservation is StepEvidenceObservation.Invalid -> StepValidationVerdict.Rejected(
+                            externalObservation.code, listOf(NewFinding(
+                                code = externalObservation.code,
+                                severity = FindingSeverity.MAJOR,
+                                message = externalObservation.message,
+                                stepId = step.id,
+                            )),
+                        )
+                        else -> evaluateStepResultValidators(
                         scope = scope,
                         namespaceId = namespaceId,
                         workflowId = workflowId,
@@ -2774,6 +2811,7 @@ class CapabilityExecutionService(
                         attemptId = reservation.attemptId,
                         externalEvidence = (externalObservation as? StepEvidenceObservation.Observed)?.facts.orEmpty(),
                     )
+                    }
                     if (validationVerdict is StepValidationVerdict.Rejected) {
                         val wfInst = workflowRepository.findInstance(scope, namespaceId, workflowId)
                         val parentRunId = parentRunIdOf(wfInst)
@@ -2832,7 +2870,9 @@ class CapabilityExecutionService(
                         mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence,
                             "externalEvidence" to (externalObservation as? StepEvidenceObservation.Observed)?.facts.orEmpty(),
                             "acceptedDomainState" to acceptedState,
-                            "validatorsAccepted" to true),
+                            "validatorsAccepted" to true) + boundAcceptedResult?.let {
+                                mapOf("resultId" to it.resultId, "resultHash" to it.resultHash)
+                            }.orEmpty(),
                     )
                     durableAgentAttemptService.finalize(
                         scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
@@ -2926,8 +2966,35 @@ class CapabilityExecutionService(
         val status = reservation.terminalStatus ?: AgentAttemptStatus.INDETERMINATE
         val results = evidenceRepository.list(scope, namespaceId, workflowId, step.id)
             .filter { it.kind == AGENT_RESULT_EVIDENCE_KIND }
-        val evidence = results.lastOrNull { it.facts["attemptId"] == reservation.attemptId }
-            ?: results.lastOrNull { it.facts["attemptId"] == null }
+        val attempt = durableAgentAttemptService.find(scope, namespaceId, workflowId, step.id, reservation.attemptId)
+        val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
+        val requiresWorkspaceProof = requiresTrustedWorkspaceBaseline(instance, step.id, step.responsibility.name ?: "agent")
+        val evidence = if (status == AgentAttemptStatus.SUCCEEDED && requiresWorkspaceProof) {
+            val evidenceId = attempt?.resultEvidenceId
+            val pinned = evidenceId?.let { id -> results.singleOrNull { it.evidenceId == id } }
+            val accepted = acceptedStepResult(scope, namespaceId, workflowId, step.id, reservation.attemptId)
+            val validReceipt = pinned != null && pinned.namespaceId == namespaceId && pinned.workflowId == workflowId &&
+                pinned.stepId == step.id && pinned.kind == AGENT_RESULT_EVIDENCE_KIND && pinned.outcome == "pass" &&
+                pinned.facts["attemptId"] == reservation.attemptId && pinned.facts["stepId"] == step.id &&
+                pinned.facts["validatorsAccepted"] == true && accepted != null &&
+                accepted.status == AgentStepResultStatus.PASS && accepted.resultId.isNotBlank() && accepted.resultHash.isNotBlank() &&
+                accepted.attemptId == reservation.attemptId && accepted.namespaceId == namespaceId &&
+                accepted.workflowId == workflowId && accepted.stepId == step.id &&
+                accepted.caseId == attempt?.caseId && accepted.agentName == attempt?.agentName &&
+                pinned.facts["resultId"] == accepted.resultId && pinned.facts["resultHash"] == accepted.resultHash
+            if (!validReceipt) {
+                return CapabilityExecution(
+                    CapabilityOutcome.AgentFailed(step.id, step.responsibility.name, "WORKSPACE_RESULT_EVIDENCE_UNBOUND",
+                        "Succeeded workspace-proof attempt has no exact accepted validator receipt."),
+                    evidenceId = evidenceId,
+                    attemptId = reservation.attemptId,
+                )
+            }
+            pinned
+        } else {
+            results.lastOrNull { it.facts["attemptId"] == reservation.attemptId }
+                ?: results.lastOrNull { it.facts["attemptId"] == null }
+        }
         if (evidence?.outcome == "technical_pause" && evidence.facts["code"] == WORKSPACE_RETRY_CODE) {
             return CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired(step.id, step.responsibility.name),
                 evidenceId = evidence.evidenceId, attemptId = reservation.attemptId)
