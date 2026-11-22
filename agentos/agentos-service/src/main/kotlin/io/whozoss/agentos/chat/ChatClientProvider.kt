@@ -44,7 +44,7 @@ class ChatClientProvider(
       caseId: String? = null,
       accumulator: UsageAccumulator? = null,
       maxToolRounds: Int? = null,
-      promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+      promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
     ): ChatClient {
         val trackedAccumulator = accumulator?.takeIf { usageConfig.enabled }
         val providerCost = trackedAccumulator?.let { ProviderReportedCost() }
