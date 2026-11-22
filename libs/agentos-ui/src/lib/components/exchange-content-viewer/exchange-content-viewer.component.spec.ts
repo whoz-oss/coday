@@ -86,7 +86,9 @@ describe('ExchangeContentViewerComponent html preview', () => {
 
   it('does not let Angular strip the scripts of the srcdoc', () => {
     const { el } = setup()
-    expect(el.querySelector('iframe')!.getAttribute('srcdoc')).toBe(REPORT)
+    const srcdoc = el.querySelector('iframe')!.getAttribute('srcdoc')!
+    expect(srcdoc).toContain(REPORT)
+    expect(srcdoc).toContain('<script>document.title')
   })
 
   it('offers the full view and the new tab next to the other actions, for a ready html file', () => {
@@ -388,12 +390,17 @@ describe('ExchangeContentViewerComponent editing and selection', () => {
   const editButton = (): HTMLButtonElement | null => el().querySelector('button[title^="Edit "]')
   const editor = (): HTMLTextAreaElement | null => el().querySelector('textarea.exchange-content-viewer__editor')
   const saveButton = (): HTMLButtonElement | null => button('Save (Ctrl+S)')
+  const revertButton = (): HTMLButtonElement | null => button('Revert changes')
   const askButton = (): HTMLButtonElement | null => el().querySelector('.exchange-content-viewer__ask')
   const instruction = (): HTMLTextAreaElement | null => el().querySelector('.exchange-content-viewer__instruction')
+  const toggle = (label: 'Source' | 'Preview'): HTMLButtonElement | undefined =>
+    Array.from(el().querySelectorAll<HTMLButtonElement>('.exchange-content-viewer__toggle button')).find(
+      (b) => b.textContent?.trim() === label
+    )
+  const iframe = (): HTMLIFrameElement | null => el().querySelector('iframe')
 
+  /** An editable file opens in its editor with no click: this only returns it. */
   function startEdit(): HTMLTextAreaElement {
-    editButton()!.click()
-    fixture.detectChanges()
     return editor()!
   }
 
@@ -413,31 +420,77 @@ describe('ExchangeContentViewerComponent editing and selection', () => {
 
   beforeEach(() => TestBed.configureTestingModule({ imports: [ExchangeContentViewerComponent] }))
 
-  describe('edit entry point', () => {
-    it('is offered on a text file the parent allows to write', () => {
-      create('notes/todo.md')
-      expect(editButton()).not.toBeNull()
+  describe('opens in the editor', () => {
+    it.each(['notes/todo.md', 'data.json', 'a.txt'])(
+      'shows the textarea for the editable file %s, with no Edit button',
+      (path) => {
+        create(path, 'x')
+        expect(editor()).not.toBeNull()
+        expect(editor()!.value).toBe('x')
+        expect(editButton()).toBeNull()
+        expect(el().querySelector('pre')).toBeNull()
+      }
+    )
+
+    it('shows the preview of a read-only file', () => {
+      create('notes/todo.md', 'hello', false)
+      expect(editor()).toBeNull()
+      expect(saveButton()).toBeNull()
+      expect(el().querySelector('.exchange-content-viewer__markdown')!.textContent).toContain('hello')
+      create('a.txt', 'plain', false)
+      expect(editor()).toBeNull()
+      expect(el().querySelector('pre')!.textContent).toBe('plain')
     })
 
-    it('is hidden when the parent does not allow editing', () => {
-      create('notes/todo.md', 'x', false)
-      expect(editButton()).toBeNull()
-    })
-
-    it.each(['logo.png', 'doc.pdf', 'archive.zip'])('is hidden for the binary file %s', (name) => {
+    it.each(['logo.png', 'doc.pdf', 'archive.zip'])('has no editor for the binary file %s', (name) => {
       create(name)
-      expect(editButton()).toBeNull()
+      expect(editor()).toBeNull()
     })
 
-    it('is hidden until the content is loaded, and when the file cannot be viewed', () => {
+    it('has no editor until the content is loaded, nor when the file cannot be viewed', () => {
       create('notes/todo.md')
       fixture.componentRef.setInput('status', 'loading')
       fixture.detectChanges()
-      expect(editButton()).toBeNull()
+      expect(editor()).toBeNull()
       fixture.componentRef.setInput('status', 'ready')
       fixture.componentRef.setInput('canView', false)
       fixture.detectChanges()
-      expect(editButton()).toBeNull()
+      expect(editor()).toBeNull()
+    })
+  })
+
+  describe('source / preview toggle', () => {
+    it('defaults to the source of an editable md, and toggles to its preview showing the draft', () => {
+      create('notes/todo.md', '# Title')
+      expect(toggle('Source')!.getAttribute('aria-pressed')).toBe('true')
+      expect(toggle('Preview')!.getAttribute('aria-pressed')).toBe('false')
+      type('# Draft')
+      toggle('Preview')!.click()
+      fixture.detectChanges()
+      expect(editor()).toBeNull()
+      expect(el().querySelector('.exchange-content-viewer__markdown')!.textContent).toContain('Draft')
+      expect(toggle('Preview')!.getAttribute('aria-pressed')).toBe('true')
+      toggle('Source')!.click()
+      fixture.detectChanges()
+      expect(editor()!.value).toBe('# Draft')
+    })
+
+    it('toggles an editable html between its source and a sandboxed preview of the draft', () => {
+      create('page.html', '<p>x</p>')
+      expect(iframe()).toBeNull()
+      type('<p>draft</p>')
+      toggle('Preview')!.click()
+      fixture.detectChanges()
+      expect(iframe()!.getAttribute('sandbox')).not.toContain('allow-same-origin')
+      expect(iframe()!.getAttribute('srcdoc')).toContain('<p>draft</p>')
+    })
+
+    it('has no toggle for a read-only file, nor for other formats', () => {
+      create('page.html', '<p>x</p>', false)
+      expect(toggle('Source')).toBeUndefined()
+      expect(iframe()).not.toBeNull()
+      create('data.json', '{}')
+      expect(toggle('Source')).toBeUndefined()
     })
   })
 
@@ -502,33 +555,38 @@ describe('ExchangeContentViewerComponent editing and selection', () => {
       expect(editor()!.value).toBe('changed')
     })
 
-    it('leaves the edit mode once the saved text is the content, and shows it', () => {
+    it('stays in the editor after a save, with the new content as its baseline', () => {
       create()
-      startEdit()
       type('changed')
+      expect(saveButton()!.disabled).toBe(false)
       fixture.componentRef.setInput('content', 'changed')
       fixture.detectChanges()
-      expect(editor()).toBeNull()
-      expect(el().querySelector('.exchange-content-viewer__markdown')!.textContent).toContain('changed')
+      expect(editor()!.value).toBe('changed')
+      expect(el().textContent).not.toContain('unsaved')
+      expect(saveButton()!.disabled).toBe(true)
+      expect(revertButton()).toBeNull()
     })
 
-    it('cancels a clean edit at once, and asks before dropping a dirty one', () => {
+    it('follows content that moves under an untouched editor, but keeps a dirty draft', () => {
       create()
-      startEdit()
-      const cancel = () => button('Cancel editing')!.click()
-      cancel()
+      fixture.componentRef.setInput('content', 'agent edit')
       fixture.detectChanges()
-      expect(editor()).toBeNull()
+      expect(editor()!.value).toBe('agent edit')
+      type('mine')
+      fixture.componentRef.setInput('content', 'another edit')
+      fixture.detectChanges()
+      expect(editor()!.value).toBe('mine')
+    })
 
-      startEdit()
+    it('reverts to the loaded content, only offering it when dirty', () => {
+      create()
+      expect(revertButton()).toBeNull()
       type('changed')
-      cancel()
+      revertButton()!.click()
       fixture.detectChanges()
-      expect(editor()!.value).toBe('changed')
-      expect(el().querySelector('.ds-confirm-dialog')).not.toBeNull()
-      ;(el().querySelector('.ds-confirm-dialog__button--confirm') as HTMLButtonElement).click()
-      fixture.detectChanges()
-      expect(editor()).toBeNull()
+      expect(editor()!.value).toBe('one\ntwo\nthree')
+      expect(el().textContent).not.toContain('unsaved')
+      expect(revertButton()).toBeNull()
     })
 
     it('asks before leaving the file with unsaved edits, and leaves when they are discarded', () => {
@@ -553,14 +611,14 @@ describe('ExchangeContentViewerComponent editing and selection', () => {
       expect(closed).toHaveBeenCalledTimes(1)
     })
 
-    it('resets the edit mode when another file is shown', () => {
+    it('loads another file from its own content, dropping the previous draft', () => {
       create()
       startEdit()
       type('changed')
       fixture.componentRef.setInput('file', ref('other.md'))
       fixture.componentRef.setInput('content', 'other')
       fixture.detectChanges()
-      expect(editor()).toBeNull()
+      expect(editor()!.value).toBe('other')
     })
 
     it('reports its dirty state to the parent', () => {
@@ -589,18 +647,108 @@ describe('ExchangeContentViewerComponent editing and selection', () => {
       ;(alert.querySelector('button') as HTMLButtonElement).click()
       fixture.detectChanges()
       expect(reload).toHaveBeenCalledTimes(1)
-      expect(editor()).toBeNull()
+      expect(editor()!.value).toBe('one\ntwo\nthree')
     })
 
-    it('keeps the sandboxed HTML preview when an html file is not being edited', () => {
-      create('page.html', '<p>x</p>', true)
-      expect(el().querySelector('iframe')!.getAttribute('sandbox')).not.toContain('allow-same-origin')
-      expect(startEdit().value).toBe('<p>x</p>')
-      expect(el().querySelector('iframe')).toBeNull()
+    it('keeps the sandboxed HTML preview without same-origin for a read-only html file', () => {
+      create('page.html', '<p>x</p>', false)
+      expect(iframe()!.getAttribute('sandbox')).not.toContain('allow-same-origin')
+      expect(editor()).toBeNull()
     })
   })
 
-  describe('selection to agent', () => {
+  describe('html preview selection bridge', () => {
+    const post = (data: unknown, source: MessageEventSource | null = iframe()!.contentWindow): void => {
+      window.dispatchEvent(new MessageEvent('message', { data, source }))
+      fixture.detectChanges()
+    }
+    const message = (text: unknown) => ({ type: 'agentos-exchange-selection', text })
+
+    function previewHtml(canEdit = false): void {
+      create('page.html', '<p>hello world</p>', canEdit)
+      if (canEdit) {
+        toggle('Preview')!.click()
+        fixture.detectChanges()
+      }
+    }
+
+    it('injects the bridge in the srcdoc of the preview only', () => {
+      previewHtml()
+      const srcdoc = iframe()!.getAttribute('srcdoc')!
+      expect(srcdoc).toContain('<p>hello world</p>')
+      expect(srcdoc).toContain('agentos-exchange-selection')
+    })
+
+    it('shows the action for a selection posted by the iframe, and emits it without lines', () => {
+      previewHtml()
+      const actions: ExchangeSelectionAction[] = []
+      fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
+      expect(askButton()).toBeNull()
+      post(message('  hello  '))
+      expect(askButton()).not.toBeNull()
+      askButton()!.click()
+      fixture.detectChanges()
+      // The selection collapses when the instruction is focused: it must not clear the captured one.
+      post(message(''))
+      instruction()!.value = 'Summarise'
+      instruction()!.dispatchEvent(new Event('input'))
+      fixture.detectChanges()
+      ;(el().querySelector('[title="Run the agent on the selection"]') as HTMLButtonElement).click()
+      expect(actions).toEqual([
+        { ref: ref('page.html'), selection: 'hello', instruction: 'Summarise', unsavedChanges: false },
+      ])
+    })
+
+    it('works from the preview of an editable html, flagging unsaved edits', () => {
+      create('page.html', '<p>x</p>')
+      type('<p>draft</p>')
+      toggle('Preview')!.click()
+      fixture.detectChanges()
+      const actions: ExchangeSelectionAction[] = []
+      fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
+      post(message('draft'))
+      askButton()!.click()
+      fixture.detectChanges()
+      instruction()!.value = 'Fix'
+      instruction()!.dispatchEvent(new Event('input'))
+      instruction()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      expect(actions[0]).toEqual(expect.objectContaining({ selection: 'draft', unsavedChanges: true }))
+    })
+
+    it('clears the selection on an empty text while the form is closed', () => {
+      previewHtml()
+      post(message('hello'))
+      expect(askButton()).not.toBeNull()
+      post(message(''))
+      expect(askButton()).toBeNull()
+    })
+
+    it('caps the length of the selection', () => {
+      previewHtml()
+      const actions: ExchangeSelectionAction[] = []
+      fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
+      post(message('a'.repeat(150_000)))
+      askButton()!.click()
+      fixture.detectChanges()
+      instruction()!.value = 'Go'
+      instruction()!.dispatchEvent(new Event('input'))
+      instruction()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      expect(actions[0]!.selection).toHaveLength(100_000)
+    })
+
+    it.each([
+      ['another source', () => message('hello'), window as MessageEventSource],
+      ['a wrong type', () => ({ type: 'other', text: 'hello' }), undefined],
+      ['a non-string text', () => message(42), undefined],
+      ['no data', () => null, undefined],
+    ])('ignores a message from %s', (_label, data, source) => {
+      previewHtml()
+      post(data(), source ?? iframe()!.contentWindow)
+      expect(askButton()).toBeNull()
+    })
+  })
+
+  describe('selection to agent (editor)', () => {
     it('offers the action for a selection in the editor and emits its lines', () => {
       create('notes/todo.md', 'one\ntwo\nthree')
       const actions: ExchangeSelectionAction[] = []

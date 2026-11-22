@@ -1137,7 +1137,8 @@ describe('ExchangeShellComponent filters', () => {
     el.querySelector<HTMLButtonElement>('agentos-exchange-item .exchange-item__main')!.click()
     fixture.detectChanges()
     expect(api.getCaseFileContentExchange).toHaveBeenCalledWith('c-1', 'deep/report.md')
-    expect(el.textContent).toContain('body')
+    // The case is writable: the file opens straight in the editor.
+    expect(el.querySelector<HTMLTextAreaElement>('textarea.exchange-content-viewer__editor')?.value).toBe('body')
     el.querySelector<HTMLButtonElement>('ds-icon-button[title="Back to files"] button')!.click()
     fixture.detectChanges()
     expect(el.querySelector<HTMLInputElement>('input[aria-label="Filter case files by name or path"]')?.value).toBe(
@@ -1492,8 +1493,8 @@ describe('ExchangeShellComponent editing', () => {
     })
 
     it('is false for a binary file', () => {
-      const { shell } = setup('READ_WRITE', [entry('t1', 'logo.png')])
-      shell['onFileSelected']({ scope: CASE, path: 'logo.png' })
+      const { shell } = setup('READ_WRITE', [entry('t1', 'archive.zip')])
+      shell['onFileSelected']({ scope: CASE, path: 'archive.zip' })
       expect(shell['canEditSelected']()).toBe(false)
     })
 

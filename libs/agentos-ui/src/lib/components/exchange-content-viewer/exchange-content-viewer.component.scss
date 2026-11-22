@@ -71,6 +71,39 @@
   color: var(--color-text-secondary, #6e6e73);
 }
 
+.exchange-content-viewer__toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.exchange-content-viewer__toggle-option {
+  appearance: none;
+  cursor: pointer;
+  padding: 0.2rem 0.6rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text, #1d1d1f);
+  font-size: 0.75rem;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+
+  &[aria-pressed='true'] {
+    background: var(--color-primary, #007aff);
+    color: var(--color-text-inverse, #ffffff);
+    font-weight: 600;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary, #007aff);
+    outline-offset: -2px;
+  }
+}
+
 .exchange-content-viewer__editor {
   flex: 1;
   width: 100%;

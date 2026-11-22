@@ -21,6 +21,33 @@ export function trustSandboxedSrcdoc(sanitizer: DomSanitizer, raw: string): Safe
   return sanitizer.bypassSecurityTrustHtml(raw)
 }
 
+/** Message type posted by the selection bridge of the viewer's HTML preview. */
+export const EXCHANGE_SELECTION_MESSAGE_TYPE = 'agentos-exchange-selection'
+
+const SELECTION_BRIDGE_SCRIPT =
+  '<script>(function(){try{var t;document.addEventListener("selectionchange",function(){' +
+  'clearTimeout(t);t=setTimeout(function(){try{parent.postMessage({type:"' +
+  EXCHANGE_SELECTION_MESSAGE_TYPE +
+  '",text:String(getSelection()||"")},"*")}catch(e){}},150)})}catch(e){}})()</script>'
+
+/**
+ * Adds to an HTML document a tiny script that reports the user's text selection to the parent window, which
+ * cannot read it itself (the preview iframe has an opaque origin). Used ONLY for the srcdoc of the viewer's
+ * preview iframe: the new tab and the full view keep the original document.
+ *
+ * Why this is safe: the sandbox invariant is unchanged (no `allow-same-origin`). The file's own scripts could
+ * post fake messages of this type, but the payload is plain text that only pre-fills a selection which the user
+ * must still confirm (instruction + Run); it is never inserted in the DOM as HTML. The script is wrapped in
+ * try/catch so that it can never break the scripts of the page.
+ *
+ * The script goes before the last `</body>` (case-insensitive), or at the end when there is none.
+ */
+export function withSelectionBridge(html: string): string {
+  const closing = [...html.matchAll(/<\/body\s*>/gi)].pop()
+  if (closing?.index === undefined) return html + SELECTION_BRIDGE_SCRIPT
+  return html.slice(0, closing.index) + SELECTION_BRIDGE_SCRIPT + html.slice(closing.index)
+}
+
 /**
  * Lets the object URL of a PDF be the `src` of an iframe, which Angular otherwise refuses (resource URL context).
  *

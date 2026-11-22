@@ -29,11 +29,31 @@
         • unsaved
       }
     </span>
-    @if (editing()) {
+    @if (editable() && hasRenderedView()) {
+      <div class="exchange-content-viewer__toggle" role="group" aria-label="View mode">
+        <button
+          type="button"
+          class="exchange-content-viewer__toggle-option"
+          [attr.aria-pressed]="viewMode() === 'source'"
+          (click)="onSetView('source')"
+        >
+          Source
+        </button>
+        <button
+          type="button"
+          class="exchange-content-viewer__toggle-option"
+          [attr.aria-pressed]="viewMode() === 'preview'"
+          (click)="onSetView('preview')"
+        >
+          Preview
+        </button>
+      </div>
+    }
+    @if (editable()) {
       <ds-icon-button icon="save" variant="primary" title="Save (Ctrl+S)" [disabled]="!canSave()" (action)="onSave()" />
-      <ds-icon-button icon="close" variant="default" title="Cancel editing" (action)="onCancelEdit()" />
-    } @else if (editable()) {
-      <ds-icon-button icon="edit" variant="default" [title]="'Edit ' + filename()" (action)="onEdit()" />
+      @if (dirty()) {
+        <ds-icon-button icon="undo" variant="default" title="Revert changes" (action)="onRevert()" />
+      }
     }
     <ds-icon-button icon="download" variant="default" [title]="'Download ' + filename()" (action)="onDownload()" />
   </header>
@@ -93,7 +113,7 @@
   <div
     #body
     class="exchange-content-viewer__body"
-    [class.exchange-content-viewer__body--editing]="editing() && status() === 'ready' && canView()"
+    [class.exchange-content-viewer__body--editing]="showEditor() && status() === 'ready'"
   >
     @if (!canView()) {
       <ds-empty-state
@@ -111,7 +131,7 @@
       <ds-empty-state icon="error_outline" title="Couldn't load this file" hint="The content could not be retrieved.">
         <button class="exchange-content-viewer__cta" type="button" (click)="onDownload()">Download instead</button>
       </ds-empty-state>
-    } @else if (editing()) {
+    } @else if (showEditor()) {
       <textarea
         #editor
         class="exchange-content-viewer__editor"
@@ -169,7 +189,10 @@
         </div>
       }
     } @else if (format() === 'markdown') {
-      <div class="exchange-content-viewer__markdown" [innerHTML]="content() | agentosMarkdown"></div>
+      <div
+        class="exchange-content-viewer__markdown"
+        [innerHTML]="(editable() ? draft() : content()) | agentosMarkdown"
+      ></div>
     } @else if (format() === 'html') {
       <!--
         The sandbox MUST stay a static attribute (Angular forbids binding it) and MUST NEVER contain
@@ -178,6 +201,7 @@
         (<img src="img/a.png">) do not resolve from a srcdoc.
       -->
       <iframe
+        #previewFrame
         class="exchange-content-viewer__iframe"
         [srcdoc]="htmlSrcdoc()"
         [title]="'Preview of ' + filename()"
@@ -190,7 +214,7 @@
 </div>
 
 <ds-confirm-dialog
-  [open]="pendingDiscard() !== null"
+  [open]="pendingDiscard()"
   title="Discard changes"
   message="You have unsaved changes to this file. Discard them?"
   confirmLabel="Discard"
