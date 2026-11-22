@@ -4,6 +4,8 @@ import {
   EXCHANGE_HIGHLIGHT_MESSAGE_TYPE,
   EXCHANGE_HIGHLIGHT_STYLE_ID,
   EXCHANGE_HTML_MESSAGE_TYPE,
+  EXCHANGE_RECT_SOURCE,
+  EXCHANGE_ANCHOR_MESSAGE_TYPE,
   EXCHANGE_REPLACE_MESSAGE_TYPE,
   EXCHANGE_SELECTION_MESSAGE_TYPE,
   EXCHANGE_SERIALIZE_SOURCE,
@@ -57,9 +59,46 @@ describe('withSelectionBridge', () => {
     expect(result).toContain('e.source!==parent')
   })
 
+  it('posts the rect of the selection with it, and again on scroll and resize, throttled by requestAnimationFrame', () => {
+    const result = withSelectionBridge('<p>x</p>')
+    expect(result).toContain('rect:cur?rectOf(cur):null')
+    expect(result).toContain(`type:"${EXCHANGE_ANCHOR_MESSAGE_TYPE}",rect:rectOf(r)`)
+    expect(result).toContain('addEventListener("scroll",queueAnchor,true)')
+    expect(result).toContain('addEventListener("resize",queueAnchor)')
+    expect(result).toContain('requestAnimationFrame(postAnchor)')
+  })
+
+  it('does not report while the mouse is still down, only on its release', () => {
+    const result = withSelectionBridge('<p>x</p>')
+    expect(result).toContain('if(!down)report()')
+    expect(result).toContain('"mouseup"')
+  })
+
   it('contains no closing script tag besides its own', () => {
     const script = withSelectionBridge('<p>x</p>').slice('<p>x</p>'.length)
     expect(script.match(/<\/script>/gi)).toHaveLength(1)
+  })
+})
+
+describe('bridge rect', () => {
+  const rectOf = new Function('r', EXCHANGE_RECT_SOURCE) as (r: unknown) => unknown
+
+  it('is the last client rect of the range', () => {
+    const range = {
+      getClientRects: () => [
+        { left: 1, top: 2, right: 3, bottom: 4, width: 2 },
+        { left: 5, top: 6, right: 7, bottom: 8, width: 2 },
+      ],
+      getBoundingClientRect: () => ({ left: 0, top: 0, right: 100, bottom: 100 }),
+    }
+    expect(rectOf(range)).toEqual({ left: 5, top: 6, right: 7, bottom: 8 })
+  })
+
+  it('falls back to the bounding rect, and to null when it cannot be measured', () => {
+    expect(
+      rectOf({ getClientRects: () => [], getBoundingClientRect: () => ({ left: 1, top: 2, right: 3, bottom: 4 }) })
+    ).toEqual({ left: 1, top: 2, right: 3, bottom: 4 })
+    expect(rectOf({})).toBeNull()
   })
 })
 

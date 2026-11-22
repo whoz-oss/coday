@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -44,6 +45,14 @@ import {
 import { htmlToMarkdown } from '../../services/exchange-markdown-convert'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { locatePassage, rangeFromTextOffsets, rangeTextOffsets, squash } from '../../services/exchange-passage'
+import {
+  anchorFromRects,
+  computePopoverPosition,
+  POPOVER_MARGIN,
+  PopoverRect,
+  popoverWidth,
+  POPOVER_MAX_WIDTH,
+} from '../../services/exchange-popover-position'
 import { ExchangeSelectionRequest } from '../../services/exchange-selection-request.service'
 import { ExchangeFileRef, ExchangeSaveStatus, ExchangeSelectionAction } from '../../services/exchange-state.service'
 import { diffWords } from '../../services/exchange-word-diff'
@@ -65,6 +74,43 @@ const HIGHLIGHT_NAME = 'agentos-selection'
 const HIGHLIGHT_STYLE_ID = 'agentos-selection-highlight-style'
 
 const PASSAGE_CHANGED = 'The passage changed, re-select it'
+
+/** Pause after the last key of a keyboard selection before the composer opens. */
+const KEY_SETTLE_MS = 300
+
+/** Gap between the selection and the popover under (or above) it, and height assumed before it is measured. */
+const POPOVER_GAP = 10
+const POPOVER_ESTIMATED_HEIGHT = 56
+/** Keeps the caret of the popover away from its rounded corners. */
+const CARET_INSET = 16
+
+/** Where the popover of the selection sits in the body of the viewer, and what it looks like there. */
+interface PopoverState {
+  top: number
+  left: number
+  width: number
+  placement: 'below' | 'above'
+  hidden: boolean
+  /** Offset of the caret from the left of the popover: it points at the start of the selection. */
+  caret: number
+}
+
+/** A rectangle posted by the bridge of the HTML preview, when it is made of finite numbers. */
+function toRect(value: unknown): PopoverRect | null {
+  if (!value || typeof value !== 'object') return null
+  const { left, top, right, bottom } = value as Record<string, unknown>
+  return [left, top, right, bottom].every((n) => typeof n === 'number' && Number.isFinite(n))
+    ? ({ left, top, right, bottom } as PopoverRect)
+    : null
+}
+
+/** The client rects of a Range or an element: one per line, or its bounding box when the browser gives none. */
+function rectsOf(source: Pick<Range, 'getBoundingClientRect' | 'getClientRects'>): PopoverRect[] {
+  const list = typeof source.getClientRects === 'function' ? Array.from(source.getClientRects()) : []
+  if (list.length) return list
+  const box = typeof source.getBoundingClientRect === 'function' ? source.getBoundingClientRect() : null
+  return box && (box.width || box.height) ? [box] : []
+}
 
 /** How the document is edited in place: the rendered markdown, the sandboxed HTML page, or a plain textarea. */
 type EditMode = 'markdown' | 'html' | 'text'
@@ -147,10 +193,12 @@ function unwrapMarks(root: Element): void {
  * - other text formats: a plain textarea styled as the document.
  * Nothing is written here: the parent saves and reports back through `saveStatus` / `saveError` / `content`.
  *
- * A selection offers a compact composer (same look as the chat composer, agent picked by typing `@`). The selection
- * is frozen and highlighted when the composer takes focus, and stays so, with a quote, until the agent's proposal
- * (the `request` input) is accepted or rejected, or the user dismisses it. The proposal is an annotation card with a
- * word diff; accepting replaces the passage in the draft, it never saves.
+ * A selection opens a small popover right under it (see `computePopoverPosition`), as soon as the selection is
+ * settled (mouse or key released): the composer, with the same look as the chat composer, the agent picked by typing
+ * `@`. The selection is not quoted: it is shown by its highlight in the document, frozen when the user clicks into
+ * the popover, and kept until the agent's proposal (the `request` input) is accepted or rejected, or the user
+ * dismisses it. While the agent works the popover becomes a waiting line at the same place, then the annotation card
+ * with a word diff; accepting replaces the passage in the draft, it never saves.
  *
  * I/O in signals (decision #8). The smart parent owns content loading, saving and the canView decision.
  */
@@ -170,9 +218,13 @@ function unwrapMarks(root: Element): void {
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '(document:selectionchange)': 'onDocumentSelectionChange()',
-    // Also on mouse / key release, so the composer does not wait for the next selectionchange.
-    '(mouseup)': 'onDocumentSelectionChange()',
-    '(keyup)': 'onDocumentSelectionChange()',
+    // The popover opens once the selection is settled: on mouse / key release, not while the user is dragging.
+    '(mouseup)': 'onSelectionSettled($event)',
+    '(keyup)': 'onSelectionSettled($event)',
+    '(document:mousedown)': 'onDocumentMousedown($event)',
+    '(document:keydown)': 'onDocumentKeydown($event)',
+    '(click)': 'onPopoverClick($event)',
+    '(window:resize)': 'schedulePosition()',
   },
 })
 export class ExchangeContentViewerComponent {
@@ -208,6 +260,9 @@ export class ExchangeContentViewerComponent {
   readonly dirtyChanged = output<boolean>()
 
   private readonly injector = inject(Injector)
+  private readonly destroyRef = inject(DestroyRef)
+  private readonly popoverEl = viewChild<ElementRef<HTMLElement>>('popoverBox')
+  private readonly composer = viewChild(SelectionComposerComponent)
   // read:ElementRef so the host element (not the ds-icon-button instance) is returned.
   private readonly backButton = viewChild('backButton', { read: ElementRef })
   private readonly editor = viewChild<ElementRef<HTMLTextAreaElement>>('editor')
@@ -232,15 +287,20 @@ export class ExchangeContentViewerComponent {
 
   /** Selection currently held in the document, null when there is none. */
   protected readonly selection = signal<ViewerSelection | null>(null)
-  /** Selection captured when the composer took the focus: moving the focus clears the live one. */
+  /** Selection captured when the composer opened: moving the focus clears the live one. */
   protected readonly frozen = signal<FrozenSelection | null>(null)
   protected readonly activeSelection = computed<ViewerSelection | null>(() => this.frozen() ?? this.selection())
   /** Text the composer reopens with ("Ask again"). */
   protected readonly prefill = signal('')
-  /** Where the passage ends in the page of the HTML preview, as reported by its bridge. */
-  private readonly frameAnchor = signal<number | null>(null)
-  /** Offset of the annotation card in the body. */
-  protected readonly anchorTop = signal<number | null>(null)
+  /** Where the passage ends in the page of the HTML preview, as its bridge reported it (iframe viewport). */
+  private readonly frameRect = signal<PopoverRect | null>(null)
+  /** The selection is settled (mouse or key released): the composer may open, with no extra click. */
+  protected readonly composerOpen = signal(false)
+  /** The live selection of the rendered document, to anchor the popover before the selection is frozen. */
+  private liveRange: Range | null = null
+  /** Where the popover sits, null until it is measured. */
+  protected readonly popover = signal<PopoverState | null>(null)
+  private frame: number | null = null
   /** Why the proposal cannot be applied, when it cannot. */
   protected readonly acceptError = signal<string | null>(null)
   /** Whether the confirmation to leave the file with unsaved changes is showing. */
@@ -279,6 +339,9 @@ export class ExchangeContentViewerComponent {
           this.render(content)
           this.selection.set(null)
           this.frozen.set(null)
+          this.composerOpen.set(false)
+          this.frameRect.set(null)
+          this.liveRange = null
           this.prefill.set('')
           this.acceptError.set(null)
           this.pendingDiscard.set(false)
@@ -334,6 +397,34 @@ export class ExchangeContentViewerComponent {
     })
 
     effect(() => this.dirtyChanged.emit(this.dirty()))
+
+    // The popover follows what it is about: it is placed again when the selection, the request or its card change.
+    effect(() => {
+      this.popoverVisible()
+      this.selection()
+      this.frozen()
+      this.frameRect()
+      this.request()
+      this.acceptError()
+      this.draft()
+      untracked(() => afterNextRender(() => this.updatePopover(), { injector: this.injector }))
+    })
+
+    // ... and when the body or the popover itself change size (the drawer is resized, the composer grows).
+    effect((onCleanup) => {
+      const body = this.body()?.nativeElement
+      const popover = this.popoverEl()?.nativeElement
+      if (typeof ResizeObserver === 'undefined' || (!body && !popover)) return
+      const observer = new ResizeObserver(() => this.schedulePosition())
+      if (body) observer.observe(body)
+      if (popover) observer.observe(popover)
+      onCleanup(() => observer.disconnect())
+    })
+
+    this.destroyRef.onDestroy(() => {
+      if (this.frame !== null) cancelAnimationFrame(this.frame)
+      if (this.settleTimer !== null) clearTimeout(this.settleTimer)
+    })
   }
 
   protected readonly filename = computed(() => {
@@ -520,8 +611,9 @@ export class ExchangeContentViewerComponent {
       event.preventDefault()
       void this.onSave()
     } else if (event.key === 'Escape') {
-      // Escape never closes the panel around unsaved edits.
+      // Escape never closes the panel around unsaved edits; it closes the composer, when there is one.
       event.stopPropagation()
+      if (this.composerShown()) this.closeComposer()
     }
   }
 
@@ -615,7 +707,82 @@ export class ExchangeContentViewerComponent {
     const offsets = root && range ? rangeTextOffsets(root, range) : null
     const next = text.trim() && offsets ? { text, ...offsets } : null
     // selectionchange fires for the whole document (the composer included): ignore what did not change.
-    if (next?.text !== this.selection()?.text || next?.from !== this.selection()?.from) this.selection.set(next)
+    if (next?.text !== this.selection()?.text || next?.from !== this.selection()?.from) {
+      this.selection.set(next)
+      this.liveRange = next && range ? range.cloneRange() : null
+    }
+  }
+
+  /** Whether [target] lies in the floating popover (composer, waiting line or proposal card). */
+  private inPopover(target: EventTarget | null): boolean {
+    const popover = this.popoverEl()?.nativeElement
+    return !!popover && target instanceof Node && popover.contains(target)
+  }
+
+  /**
+   * The selection is settled (mouse or key released, never while the user is still dragging): the composer opens
+   * under it, with no extra click and without taking the focus. The selection is frozen (highlighted) from then on.
+   * The HTML preview does the same from its bridge.
+   */
+  protected onSelectionSettled(event?: Event): void {
+    if (this.frozen() || this.status() !== 'ready' || !this.canView() || this.format() === 'html') return
+    if (event instanceof KeyboardEvent && event.key === 'Escape') return
+    if (this.inPopover(event?.target ?? null)) return
+    // Selecting with the keyboard goes on key after key: wait for a pause. A mouse release is final.
+    if (event?.type === 'keyup') {
+      if (this.settleTimer !== null) clearTimeout(this.settleTimer)
+      this.settleTimer = setTimeout(() => this.settle(), KEY_SETTLE_MS)
+      return
+    }
+    this.settle()
+  }
+
+  private settleTimer: ReturnType<typeof setTimeout> | null = null
+
+  private settle(): void {
+    this.settleTimer = null
+    if (this.frozen()) return
+    this.onDocumentSelectionChange()
+    if (this.selection()) {
+      this.composerOpen.set(true)
+      this.freeze()
+    }
+  }
+
+  /** A click elsewhere closes the composer when nothing is written in it (and clears the selection). */
+  protected onDocumentMousedown(event: MouseEvent): void {
+    if (!this.composerShown() || this.inPopover(event.target) || this.composer()?.hasText()) return
+    this.dismiss()
+  }
+
+  /** Escape closes the composer; a printable key, with nothing to type in, goes into it. */
+  protected onDocumentKeydown(event: KeyboardEvent): void {
+    if (!this.composerShown() || event.defaultPrevented) return
+    if (this.inPopover(event.target)) return
+    if (event.key === 'Escape') {
+      this.closeComposer()
+      return
+    }
+    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey || this.isTextEntry(event.target)) {
+      return
+    }
+    event.preventDefault()
+    this.freeze()
+    this.composer()?.type(event.key)
+  }
+
+  /** An element the user types in or presses: a key typed there is for it, not for the composer. */
+  private isTextEntry(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false
+    return target.isContentEditable || ['TEXTAREA', 'INPUT', 'SELECT', 'BUTTON', 'A'].includes(target.tagName)
+  }
+
+  /** A click on the popover itself (not on its input or a button) puts the caret in the composer. */
+  protected onPopoverClick(event: Event): void {
+    const target = event.target as HTMLElement | null
+    if (!this.composerShown() || !this.inPopover(target)) return
+    if (!target || target.closest('textarea, button, agentos-agent-autocomplete')) return
+    this.composer()?.focus()
   }
 
   /**
@@ -626,13 +793,34 @@ export class ExchangeContentViewerComponent {
   private onPreviewMessage(event: MessageEvent): void {
     const frame = this.previewFrame()?.nativeElement
     if (!frame || event.source !== frame.contentWindow) return
-    const data = event.data as { type?: unknown; text?: unknown; html?: unknown; ok?: unknown; bottom?: unknown } | null
+    const data = event.data as {
+      type?: unknown
+      text?: unknown
+      html?: unknown
+      ok?: unknown
+      rect?: unknown
+      click?: unknown
+    } | null
     if (!data || typeof data.type !== 'string') return
     switch (data.type) {
       case EXCHANGE_SELECTION_MESSAGE_TYPE: {
-        if (typeof data.text !== 'string' || this.frozen()) return
+        if (typeof data.text !== 'string') return
+        if (this.frozen()) {
+          // A click in the page, with nothing written in the composer, lets go of the frozen passage (the page moves
+          // its own selection when the composer takes the focus: only a pointer release counts).
+          if (data.click !== true || this.request() || this.composer()?.hasText()) return
+          this.dismiss()
+        }
         const text = data.text.trim().slice(0, MAX_PREVIEW_SELECTION)
-        this.selection.set(text ? { text, from: 0, to: 0 } : null)
+        if (text) {
+          // The bridge reports a settled selection: the popover opens under it, from the rect it sent.
+          this.frameRect.set(toRect(data.rect))
+          this.selection.set({ text, from: 0, to: 0 })
+          this.composerOpen.set(true)
+          this.freeze()
+        } else {
+          this.selection.set(null)
+        }
         return
       }
       case EXCHANGE_READY_MESSAGE_TYPE:
@@ -648,12 +836,12 @@ export class ExchangeContentViewerComponent {
       case EXCHANGE_SAVE_MESSAGE_TYPE:
         if (this.editMode() === 'html') void this.onSave()
         return
-      case EXCHANGE_ANCHOR_MESSAGE_TYPE:
-        if (typeof data.bottom === 'number' && Number.isFinite(data.bottom)) {
-          this.frameAnchor.set(data.bottom)
-          this.measureAnchor()
-        }
+      case EXCHANGE_ANCHOR_MESSAGE_TYPE: {
+        // The passage moved in the page (scroll, resize): the popover follows it.
+        const rect = toRect(data.rect)
+        if (rect) this.frameRect.set(rect)
         return
+      }
       case EXCHANGE_REPLACE_RESULT_MESSAGE_TYPE:
         if (data.ok === true) this.finishRequest()
         else if (data.ok === false) this.acceptError.set(PASSAGE_CHANGED)
@@ -700,6 +888,10 @@ export class ExchangeContentViewerComponent {
   /** Escape in the composer: nothing is asked, the selection and its highlight go. */
   protected closeComposer(): void {
     this.dismiss()
+    // The selection of the document goes too, or the next key release would open the composer again.
+    window.getSelection()?.removeAllRanges()
+    const editor = this.editor()?.nativeElement
+    if (editor) editor.setSelectionRange(editor.selectionEnd, editor.selectionEnd)
   }
 
   /** The user lets go of the selection (and of the request about it, if any). */
@@ -708,6 +900,8 @@ export class ExchangeContentViewerComponent {
     if (request) this.requestCleared.emit(request.id)
     this.frozen.set(null)
     this.selection.set(null)
+    this.composerOpen.set(false)
+    this.liveRange = null
     this.prefill.set('')
     this.acceptError.set(null)
   }
@@ -718,10 +912,23 @@ export class ExchangeContentViewerComponent {
     return mention ? `@${mention[1]}` : 'the agent'
   })
 
-  /** The dock (quote + composer or waiting line) shows with a selection or a request, on a loaded document. */
-  protected readonly dockVisible = computed(
-    () => this.status() === 'ready' && this.canView() && (this.activeSelection() !== null || this.request() !== null)
+  /** The composer is shown under the selection: there is one, no request about it, and the user did not close it. */
+  protected readonly composerShown = computed(
+    () =>
+      this.status() === 'ready' &&
+      this.canView() &&
+      this.request() === null &&
+      this.composerOpen() &&
+      this.activeSelection() !== null
   )
+
+  /** The waiting line: the agent is working on the request. */
+  protected readonly waitingShown = computed(
+    () => this.status() === 'ready' && this.canView() && this.request()?.status === 'waiting'
+  )
+
+  /** Whether the floating popover is there: the composer, the waiting line or the proposal card. */
+  protected readonly popoverVisible = computed(() => this.composerShown() || this.waitingShown() || this.cardVisible())
 
   // ── Proposal (annotation card) ─────────────────────────────────────────────────────────────────────
   protected readonly cardVisible = computed(() => {
@@ -745,6 +952,7 @@ export class ExchangeContentViewerComponent {
     if (!request) return
     this.prefill.set(request.instruction)
     this.acceptError.set(null)
+    this.composerOpen.set(true)
     this.requestCleared.emit(request.id)
   }
 
@@ -801,6 +1009,7 @@ export class ExchangeContentViewerComponent {
     if (request) this.requestCleared.emit(request.id)
     this.frozen.set(null)
     this.selection.set(null)
+    this.composerOpen.set(false)
     this.acceptError.set(null)
   }
 
@@ -844,32 +1053,113 @@ export class ExchangeContentViewerComponent {
         }
       }
     }
-    this.measureAnchor()
+    this.updatePopover()
   }
 
-  /** Where the annotation card goes: under the end of the highlighted passage. */
-  private measureAnchor(): void {
+  // ── Popover position ────────────────────────────────────────────────────────────────────────
+  /** Places the popover again on the next frame: scrolls, resizes and observers fire often, one measure is enough. */
+  protected schedulePosition(): void {
+    if (this.frame !== null || typeof requestAnimationFrame === 'undefined') return
+    this.frame = requestAnimationFrame(() => {
+      this.frame = null
+      this.updatePopover()
+    })
+  }
+
+  /**
+   * Rectangle, in viewport coordinates, of the end of the selection the popover is about: the last line of the
+   * highlighted range (rendered document), of the mirror layer's mark (textarea), or the rect the bridge posted,
+   * translated by the frame's own position (HTML preview).
+   */
+  private selectionAnchor(body: HTMLElement): PopoverRect | null {
+    if (this.format() === 'html') {
+      const frame = this.previewFrame()?.nativeElement.getBoundingClientRect()
+      const rect = this.frameRect()
+      if (!frame || !rect) return null
+      return {
+        left: rect.left + frame.left,
+        top: rect.top + frame.top,
+        right: rect.right + frame.left,
+        bottom: rect.bottom + frame.top,
+      }
+    }
+    if (this.textEditor()) {
+      const mark = body.querySelector('.exchange-content-viewer__mirror mark')
+      return mark ? anchorFromRects(rectsOf(mark)) : null
+    }
+    const marks = Array.from(body.querySelectorAll('mark.agentos-selection'))
+    const range = this.highlightRange ?? this.liveRange
+    const rects = marks.length ? marks.flatMap((mark) => rectsOf(mark)) : range ? rectsOf(range) : []
+    return anchorFromRects(rects)
+  }
+
+  /** The part of the body in which the anchor is visible: the body, and the frame or the textarea inside it. */
+  private visibleArea(bodyRect: PopoverRect): PopoverRect {
+    const inner =
+      this.format() === 'html'
+        ? this.previewFrame()?.nativeElement
+        : this.textEditor()
+          ? this.editor()?.nativeElement
+          : null
+    const rect = inner?.getBoundingClientRect()
+    if (!rect || !(rect.width || rect.height)) return bodyRect
+    return {
+      left: Math.max(bodyRect.left, rect.left),
+      top: Math.max(bodyRect.top, rect.top),
+      right: Math.min(bodyRect.right, rect.right),
+      bottom: Math.min(bodyRect.bottom, rect.bottom),
+    }
+  }
+
+  /**
+   * Positions the popover under (or above) the end of the selection, inside the body, with the one pure helper the
+   * composer, the waiting line and the annotation card share. It moves with the content: the body scroll offsets are
+   * part of the position, and a popover whose anchor scrolled out of view is hidden until it comes back.
+   */
+  private updatePopover(): void {
     const body = this.body()?.nativeElement
-    if (!body || !this.frozen()) {
-      this.anchorTop.set(null)
+    if (!body || !this.popoverVisible()) {
+      if (this.popover() !== null) this.popover.set(null)
       return
     }
-    const bodyTop = body.getBoundingClientRect().top
-    let bottom: number | null = null
-    if (this.format() === 'html') {
-      const frame = this.previewFrame()?.nativeElement
-      const anchor = this.frameAnchor()
-      if (frame && anchor !== null) bottom = frame.getBoundingClientRect().top + anchor
-    } else {
-      const mark = body.querySelector('mark.agentos-selection')
-      const rect =
-        mark?.getBoundingClientRect() ??
-        (typeof this.highlightRange?.getBoundingClientRect === 'function'
-          ? this.highlightRange.getBoundingClientRect()
-          : null)
-      if (rect && (rect.bottom || rect.top)) bottom = rect.bottom
+    const bodyRect = body.getBoundingClientRect()
+    const element = this.popoverEl()?.nativeElement
+    const width = popoverWidth(bodyRect)
+    const size = {
+      width: width || element?.offsetWidth || POPOVER_MAX_WIDTH,
+      height: element?.offsetHeight || POPOVER_ESTIMATED_HEIGHT,
     }
-    this.anchorTop.set(bottom === null ? null : Math.max(0, bottom - bodyTop + body.scrollTop + 6))
+    const anchor = this.selectionAnchor(body)
+    let next: PopoverState
+    if (!anchor) {
+      // Nothing to measure (no layout yet): the popover waits at the top of what is shown.
+      next = {
+        top: body.scrollTop + POPOVER_MARGIN,
+        left: body.scrollLeft + POPOVER_MARGIN,
+        width,
+        placement: 'below',
+        hidden: false,
+        caret: CARET_INSET,
+      }
+    } else {
+      const position = computePopoverPosition(anchor, bodyRect, size, POPOVER_GAP)
+      const area = this.visibleArea(bodyRect)
+      const hidden = position.hidden || anchor.bottom < area.top || anchor.top > area.bottom
+      const caretMax = Math.max(CARET_INSET, size.width - CARET_INSET)
+      const caret = Math.min(Math.max(anchor.left - bodyRect.left - position.left, CARET_INSET), caretMax)
+      next = {
+        top: position.top + body.scrollTop,
+        left: position.left + body.scrollLeft,
+        width,
+        placement: position.placement,
+        hidden,
+        caret,
+      }
+    }
+    const current = this.popover()
+    if (!current || (Object.keys(next) as (keyof PopoverState)[]).some((key) => current[key] !== next[key])) {
+      this.popover.set(next)
+    }
   }
 
   /** The textarea has no highlight of its own: this mirror layer, behind it, marks the passage in the same text. */
@@ -887,7 +1177,7 @@ export class ExchangeContentViewerComponent {
     const mirror = this.mirror()?.nativeElement
     const editor = this.editor()?.nativeElement
     if (mirror && editor) mirror.scrollTop = editor.scrollTop
-    this.measureAnchor()
+    this.schedulePosition()
   }
 }
 

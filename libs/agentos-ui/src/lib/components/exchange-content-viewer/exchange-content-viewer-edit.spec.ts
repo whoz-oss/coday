@@ -36,6 +36,8 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
   const iframe = (): HTMLIFrameElement | null => el().querySelector('iframe')
   const composerInput = (): HTMLTextAreaElement | null => el().querySelector('.selection-composer__input')
   const quote = (): HTMLElement | null => el().querySelector('.exchange-content-viewer__quote')
+  const popover = (): HTMLElement | null => el().querySelector('.exchange-content-viewer__popover')
+  const body = (): HTMLElement => el().querySelector('.exchange-content-viewer__body') as HTMLElement
   const card = (): HTMLElement | null => el().querySelector('.exchange-content-viewer__card')
   const cardButton = (label: string): HTMLButtonElement | undefined =>
     Array.from(card()?.querySelectorAll('button') ?? []).find((b) => b.textContent?.trim() === label)
@@ -50,8 +52,11 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
     ...overrides,
   })
 
-  /** Selects [text] inside the rendered markdown, the way the user does with the mouse. */
-  function selectInMarkdown(text: string): void {
+  /**
+   * Selects [text] inside the rendered markdown, the way the user does with the mouse: the selection changes while
+   * dragging, then the mouse is released, which settles it (that is when the popover opens).
+   */
+  function selectInMarkdown(text: string, release = true): void {
     const root = md()!
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -64,10 +69,19 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       selection.removeAllRanges()
       selection.addRange(range)
       document.dispatchEvent(new Event('selectionchange'))
+      if (release) root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
       fixture.detectChanges()
       return
     }
     throw new Error(`"${text}" not found`)
+  }
+
+  /** Selects a range of the textarea and releases the mouse. */
+  function selectInTextarea(start: number, end: number): void {
+    textarea()!.setSelectionRange(start, end)
+    textarea()!.dispatchEvent(new Event('select'))
+    textarea()!.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }))
+    fixture.detectChanges()
   }
 
   function typeInComposer(text: string): void {
@@ -427,9 +441,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       create('data.json', 'one\ntwo\nthree')
       const actions: ExchangeSelectionAction[] = []
       fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
-      textarea()!.setSelectionRange(4, 13)
-      textarea()!.dispatchEvent(new Event('select'))
-      fixture.detectChanges()
+      selectInTextarea(4, 13)
       typeInComposer('translate')
       composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
       expect(actions[0]).toEqual(
@@ -437,10 +449,16 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       )
     })
 
-    it('shows the selection in a quote above the composer', () => {
+    it('shows no quote of the selection: only its highlight tells what is selected', () => {
       create()
       selectInMarkdown('two')
-      expect(quote()!.textContent).toContain('two')
+      TestBed.flushEffects?.()
+      fixture.detectChanges()
+      expect(quote()).toBeNull()
+      expect(el().querySelector('.exchange-content-viewer__quote-text')).toBeNull()
+      expect(el().querySelector('.exchange-content-viewer__dock')).toBeNull()
+      expect(popover()!.textContent).not.toContain('two')
+      expect(md()!.querySelector('mark.agentos-selection')?.textContent).toBe('two')
     })
 
     it('relays the selection posted by the html frame', () => {
@@ -453,7 +471,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       )
       fixture.detectChanges()
       expect(composerInput()).not.toBeNull()
-      expect(quote()!.textContent).toContain('hello')
+      expect(quote()).toBeNull()
     })
   })
 
@@ -477,24 +495,30 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
     it('stays after focusing the composer, which collapses the live selection', () => {
       create()
       selectInMarkdown('two')
-      el()
-        .querySelector('.exchange-content-viewer__dock')!
-        .dispatchEvent(new Event('mousedown', { bubbles: true }))
+      composerInput()!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
       window.getSelection()!.removeAllRanges()
       document.dispatchEvent(new Event('selectionchange'))
       fixture.detectChanges()
+      TestBed.flushEffects?.()
+      fixture.detectChanges()
       expect(composerInput()).not.toBeNull()
-      expect(quote()!.textContent).toContain('two')
+      expect(md()!.querySelector('mark.agentos-selection')?.textContent).toBe('two')
     })
 
-    it('stays, with the quote and a waiting line, after sending', () => {
+    it('stays, with a waiting line and no quote, after sending', () => {
       create()
       selectInMarkdown('two')
       sendFromComposer()
       fixture.componentRef.setInput('request', request())
       fixture.detectChanges()
-      expect(quote()!.textContent).toContain('two')
-      expect(el().querySelector('.exchange-content-viewer__waiting')!.textContent).toContain('Waiting for @Writer')
+      TestBed.flushEffects?.()
+      fixture.detectChanges()
+      expect(quote()).toBeNull()
+      expect(md()!.querySelector('mark.agentos-selection')?.textContent).toBe('two')
+      expect(popover()!.querySelector('.exchange-content-viewer__waiting')!.textContent).toContain(
+        'Waiting for @Writer'
+      )
+      expect(popover()!.querySelector('ds-spinner')).not.toBeNull()
       expect(composerInput()).toBeNull()
     })
 
@@ -507,7 +531,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       expect(el().querySelector('.exchange-content-viewer__waiting')!.textContent).toContain('Waiting for the agent')
     })
 
-    it('is dismissed by the close button of the quote, clearing the request', () => {
+    it('is dismissed by the close button of the waiting line, clearing the request', () => {
       create()
       selectInMarkdown('two')
       sendFromComposer()
@@ -515,7 +539,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       fixture.detectChanges()
       const cleared = jest.fn()
       fixture.componentInstance.requestCleared.subscribe(cleared)
-      ;(el().querySelector('.exchange-content-viewer__quote ds-icon-button button') as HTMLButtonElement).click()
+      ;(el().querySelector('.exchange-content-viewer__waiting ds-icon-button button') as HTMLButtonElement).click()
       expect(cleared).toHaveBeenCalledWith('r1')
     })
   })
@@ -569,9 +593,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
 
     it('Accept replaces the passage in a text file at its offsets', () => {
       create('a.txt', 'one two three')
-      textarea()!.setSelectionRange(4, 7)
-      textarea()!.dispatchEvent(new Event('select'))
-      fixture.detectChanges()
+      selectInTextarea(4, 7)
       typeInComposer('fix')
       composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
       fixture.componentRef.setInput('request', proposed({ ref: ref('a.txt') }))
@@ -586,9 +608,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
 
     it('Accept searches the text when the passage moved', () => {
       create('a.txt', 'one two three')
-      textarea()!.setSelectionRange(4, 7)
-      textarea()!.dispatchEvent(new Event('select'))
-      fixture.detectChanges()
+      selectInTextarea(4, 7)
       typeInComposer('fix')
       composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
       textarea()!.value = 'zero one two three'
@@ -604,9 +624,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
 
     it('shows an error, and keeps the card, when the passage changed', () => {
       create('a.txt', 'one two three')
-      textarea()!.setSelectionRange(4, 7)
-      textarea()!.dispatchEvent(new Event('select'))
-      fixture.detectChanges()
+      selectInTextarea(4, 7)
       typeInComposer('fix')
       composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
       textarea()!.value = 'one 2 three'
@@ -692,7 +710,6 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       create()
       fixture.componentRef.setInput('request', request())
       fixture.detectChanges()
-      expect(quote()!.textContent).toContain('two')
       expect(el().querySelector('.exchange-content-viewer__waiting')).not.toBeNull()
     })
   })

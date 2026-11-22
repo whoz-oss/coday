@@ -2,6 +2,7 @@ import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   ElementRef,
   inject,
@@ -46,6 +47,8 @@ export class SelectionComposerComponent {
   readonly namespaceId = input<string>('')
   /** Text the composer opens with ("Ask again"): it then takes the focus. */
   readonly initialValue = input<string>('')
+  /** Where the agent suggestions open: away from the selection the composer is anchored to. */
+  readonly suggestionsPlacement = input<'above' | 'below'>('above')
 
   readonly sent = output<string>()
   readonly closed = output<void>()
@@ -59,6 +62,27 @@ export class SelectionComposerComponent {
   private readonly promptRef = signal<PromptAutocompleteComponent | undefined>(undefined)
 
   protected readonly value = signal('')
+  /** Whether an instruction is being written: the viewer keeps the composer open on a click elsewhere then. */
+  readonly hasText = computed(() => this.value().trim().length > 0)
+  /** Whether the composer holds the focus. */
+  isFocused(): boolean {
+    const element = this.textarea()?.nativeElement
+    return !!element && element.ownerDocument.activeElement === element
+  }
+
+  /** A key typed while nothing is focused: it goes into the composer, which takes the focus. */
+  type(text: string): void {
+    const element = this.textarea()?.nativeElement
+    if (!element) return
+    this.value.set(this.value() + text)
+    afterNextRender(
+      () => {
+        this.resize()
+        this.focus()
+      },
+      { injector: this.injector }
+    )
+  }
 
   constructor() {
     effect(() => {
