@@ -15,77 +15,162 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { MatDialog } from '@angular/material/dialog'
-import { DomSanitizer } from '@angular/platform-browser'
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import { fromEvent } from 'rxjs'
 import {
+  BlueprintDirective,
   ConfirmDialogComponent,
   EmptyStateComponent,
   IconButtonComponent,
   SpinnerComponent,
 } from '@whoz-oss/design-system'
-import { MarkdownPipe } from '../../pipes/markdown.pipe'
 import { detectFormat, isEditableFormat, reindentJson, selectionLineRange } from '../../services/exchange-content.utils'
 import { injectCopyFeedback } from '../../services/clipboard.utils'
 import { ExchangeHtmlPreviewService } from '../../services/exchange-html-preview.service'
 import {
+  EXCHANGE_ANCHOR_MESSAGE_TYPE,
+  EXCHANGE_EDIT_MESSAGE_TYPE,
+  EXCHANGE_HIGHLIGHT_MESSAGE_TYPE,
+  EXCHANGE_HTML_MESSAGE_TYPE,
+  EXCHANGE_READY_MESSAGE_TYPE,
+  EXCHANGE_REPLACE_MESSAGE_TYPE,
+  EXCHANGE_REPLACE_RESULT_MESSAGE_TYPE,
+  EXCHANGE_SAVE_MESSAGE_TYPE,
   EXCHANGE_SELECTION_MESSAGE_TYPE,
   trustPdfBlobUrl,
   trustSandboxedSrcdoc,
   withSelectionBridge,
 } from '../../services/exchange-html-srcdoc'
+import { htmlToMarkdown } from '../../services/exchange-markdown-convert'
+import { MarkdownRendererService } from '../../services/markdown-renderer.service'
+import { locatePassage, rangeFromTextOffsets, rangeTextOffsets, squash } from '../../services/exchange-passage'
+import { ExchangeSelectionRequest } from '../../services/exchange-selection-request.service'
 import { ExchangeFileRef, ExchangeSaveStatus, ExchangeSelectionAction } from '../../services/exchange-state.service'
+import { diffWords } from '../../services/exchange-word-diff'
 import {
   EXCHANGE_FULL_VIEW_PANEL_CLASS,
   EXCHANGE_HTML_FULL_VIEW_DOWNLOAD,
   ExchangeHtmlFullViewComponent,
   ExchangeHtmlFullViewData,
 } from '../exchange-html-full-view/exchange-html-full-view.component'
+import { SelectionComposerComponent } from '../selection-composer/selection-composer.component'
 
 /** Longest selection taken from the HTML preview, whatever the page posts. */
 const MAX_PREVIEW_SELECTION = 100_000
+/** Largest edited document accepted from the HTML preview (the file endpoint refuses more anyway). */
+const MAX_EDITED_HTML = 20 * 1024 * 1024
 
-/** Which side of a markdown / HTML file is shown while it is editable. */
-type ViewMode = 'source' | 'preview'
+/** Name of the CSS Custom Highlight of the frozen selection, and class of its `<mark>` fallback. */
+const HIGHLIGHT_NAME = 'agentos-selection'
+const HIGHLIGHT_STYLE_ID = 'agentos-selection-highlight-style'
 
-/** A non-empty selection of the document, with its position when it comes from the editor. */
+const PASSAGE_CHANGED = 'The passage changed, re-select it'
+
+/** How the document is edited in place: the rendered markdown, the sandboxed HTML page, or a plain textarea. */
+type EditMode = 'markdown' | 'html' | 'text'
+
+/** A non-empty selection of the document, with where it lies in the editable text. */
 interface ViewerSelection {
   text: string
+  /** Offsets in the editable text: textarea value, or text of the rendered document. 0 and 0 for the HTML page. */
+  from: number
+  to: number
   startLine?: number
   endLine?: number
+}
+
+/** A selection frozen when the composer was opened. */
+interface FrozenSelection extends ViewerSelection {
+  unsaved: boolean
+}
+
+interface CssHighlights {
+  set(name: string, highlight: unknown): void
+  delete(name: string): void
+}
+
+/** The CSS Custom Highlight registry, when the browser has it. */
+function cssHighlights(): CssHighlights | null {
+  const registry = (globalThis as { CSS?: { highlights?: CssHighlights } }).CSS?.highlights
+  return registry && typeof (globalThis as { Highlight?: unknown }).Highlight === 'function' ? registry : null
+}
+
+/** Wraps every text node of [range] (or the part of it inside the range) in `<mark class="agentos-selection">`. */
+function wrapRangeInMarks(range: Range): void {
+  const ancestor = range.commonAncestorContainer
+  const scope = ancestor.nodeType === Node.TEXT_NODE ? ancestor.parentNode : ancestor
+  if (!scope) return
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT)
+  const texts: Text[] = []
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (range.intersectsNode(node)) texts.push(node as Text)
+  }
+  for (const text of texts) {
+    const start = text === range.startContainer ? range.startOffset : 0
+    const end = text === range.endContainer ? range.endOffset : text.length
+    if (end <= start || !text.parentNode) continue
+    let target = text
+    if (end < target.length) target.splitText(end)
+    if (start > 0) target = target.splitText(start)
+    const mark = document.createElement('mark')
+    mark.className = HIGHLIGHT_NAME
+    target.parentNode?.insertBefore(mark, target)
+    mark.appendChild(target)
+  }
+}
+
+function unwrapMarks(root: Element): void {
+  const marks = Array.from(root.querySelectorAll('mark.agentos-selection'))
+  for (const mark of marks) {
+    const parent = mark.parentNode
+    if (!parent) continue
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark)
+    parent.removeChild(mark)
+  }
+  if (marks.length) root.normalize()
 }
 
 /**
  * ExchangeContentViewerComponent — presentational preview and editor pane for a single file.
  *
- * Renders markdown via the `agentosMarkdown` pipe, JSON re-indented, YAML/text in a <pre>,
- * and HTML in a sandboxed <iframe> (with a title — fixing the legacy a11y gap) that runs the file's scripts in
- * an opaque origin (see `trustSandboxedSrcdoc`), with a full-viewport view and an "open in new tab" action. Non-viewable
- * files (binary or > 20 MB) and load errors show a "Download instead" CTA. Images and PDFs are shown from an
- * object URL prepared by the parent (`blobUrl`, with its `blob`): an image is scaled to fit the pane, a PDF is
- * rendered by the browser's PDF viewer in an iframe. If the browser cannot decode an image, the same "Preview not
- * available" state is shown rather than a broken-image icon.
+ * Renders markdown, JSON re-indented, YAML/text in a <pre>, and HTML in a sandboxed <iframe> (with a title) that runs
+ * the file's scripts in an opaque origin (see `trustSandboxedSrcdoc`), with a full-viewport view and an "open in new
+ * tab" action. Non-viewable files (binary or > 20 MB) and load errors show a "Download instead" CTA. Images and PDFs
+ * are shown from an object URL prepared by the parent (`blobUrl`, with its `blob`).
  *
- * A text file the parent allows to write (`canEdit`) opens directly in a plain textarea on its RAW content
- * (not the re-indented JSON), saved through `saveRequested`. Markdown and HTML also have a rendered view,
- * switched with a Source / Preview toggle (Source by default when editable; the preview shows the draft).
+ * A file the parent allows to write (`canEdit`) is edited IN PLACE, in what it looks like:
+ * - markdown: the rendered document is `contenteditable`; it is converted back to markdown (turndown) on save only,
+ *   and is re-rendered when the file or its saved content changes, never on a keystroke (the caret must not jump);
+ * - HTML: the sandboxed iframe is edited through its bridge (`designMode`); the bridge posts the serialized page,
+ *   which is only saved on the user's explicit Save (the payload is the user's own file content, the sandbox is
+ *   unchanged, and nothing from it is ever injected in the DOM of the app);
+ * - other text formats: a plain textarea styled as the document.
  * Nothing is written here: the parent saves and reports back through `saveStatus` / `saveError` / `content`.
  *
- * A selection (in the editor, in a markdown / text preview, or in the HTML preview through a postMessage
- * bridge — the sandboxed iframe cannot be read directly) offers to run an agent on it:
- * `selectionActionRequested` carries the selection, its lines when known, and the user's instruction.
+ * A selection offers a compact composer (same look as the chat composer, agent picked by typing `@`). The selection
+ * is frozen and highlighted when the composer takes focus, and stays so, with a quote, until the agent's proposal
+ * (the `request` input) is accepted or rejected, or the user dismisses it. The proposal is an annotation card with a
+ * word diff; accepting replaces the passage in the draft, it never saves.
  *
  * I/O in signals (decision #8). The smart parent owns content loading, saving and the canView decision.
  */
 @Component({
   selector: 'agentos-exchange-content-viewer',
   standalone: true,
-  imports: [MarkdownPipe, SpinnerComponent, EmptyStateComponent, IconButtonComponent, ConfirmDialogComponent],
+  imports: [
+    SpinnerComponent,
+    EmptyStateComponent,
+    IconButtonComponent,
+    ConfirmDialogComponent,
+    BlueprintDirective,
+    SelectionComposerComponent,
+  ],
   templateUrl: './exchange-content-viewer.component.html',
   styleUrl: './exchange-content-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '(document:selectionchange)': 'onDocumentSelectionChange()',
-    // Also on mouse / key release, so the action bar does not wait for the next selectionchange.
+    // Also on mouse / key release, so the composer does not wait for the next selectionchange.
     '(mouseup)': 'onDocumentSelectionChange()',
     '(keyup)': 'onDocumentSelectionChange()',
   },
@@ -104,6 +189,10 @@ export class ExchangeContentViewerComponent {
   readonly canEdit = input<boolean>(false)
   readonly saveStatus = input<ExchangeSaveStatus>('idle')
   readonly saveError = input<string | null>(null)
+  /** Namespace whose agents the composer suggests on `@`. */
+  readonly namespaceId = input<string>('')
+  /** The agent request about this file, if any (from the shared request service, through the shell). */
+  readonly request = input<ExchangeSelectionRequest | null>(null)
 
   readonly closeRequested = output<void>()
   readonly downloadRequested = output<ExchangeFileRef>()
@@ -113,6 +202,8 @@ export class ExchangeContentViewerComponent {
   readonly reloadRequested = output<void>()
   /** The user asked an agent to act on a selection. */
   readonly selectionActionRequested = output<ExchangeSelectionAction>()
+  /** The request of this file was settled (accepted, rejected, dismissed): its id, to forget it. */
+  readonly requestCleared = output<string>()
   /** Whether the editor holds changes that are not saved: the parent must not replace the content then. */
   readonly dirtyChanged = output<boolean>()
 
@@ -120,24 +211,44 @@ export class ExchangeContentViewerComponent {
   // read:ElementRef so the host element (not the ds-icon-button instance) is returned.
   private readonly backButton = viewChild('backButton', { read: ElementRef })
   private readonly editor = viewChild<ElementRef<HTMLTextAreaElement>>('editor')
+  private readonly mirror = viewChild<ElementRef<HTMLElement>>('mirror')
   private readonly previewFrame = viewChild<ElementRef<HTMLIFrameElement>>('previewFrame')
   private readonly body = viewChild<ElementRef<HTMLElement>>('body')
-  private readonly instructionInput = viewChild<ElementRef<HTMLTextAreaElement>>('instructionInput')
+  /** The rendered markdown, or the <pre> of a read-only text file: where DOM selections and highlights live. */
+  private readonly docRoot = viewChild<ElementRef<HTMLElement>>('docRoot')
 
-  /** The text being edited, loaded from the raw content. */
+  /** The text being edited in a textarea, loaded from the raw content. */
   protected readonly draft = signal('')
-  /** The side chosen with the toggle; null follows the default (source when editable, preview otherwise). */
-  private readonly viewChoice = signal<ViewMode | null>(null)
+  /** The rendered markdown, replaced only when the file or its saved content changes (never on a keystroke). */
+  protected readonly mdHtml = signal<SafeHtml>('')
+  /** The user typed in the rendered markdown since it was rendered. */
+  private readonly mdEdited = signal(false)
+  /** The HTML source of the iframe, as an object so that rendering the same text again reloads the frame. */
+  private readonly htmlSource = signal({ html: '' })
+  /** The page as last serialized by the bridge after an edit, null until the user typed in it. */
+  private readonly htmlDraft = signal<string | null>(null)
+  /** What was last sent to be saved: the content that comes back is not a change to render again. */
+  private lastSaved: string | null = null
+
   /** Selection currently held in the document, null when there is none. */
   protected readonly selection = signal<ViewerSelection | null>(null)
-  /** Selection captured when the action form was opened: the focus move clears the live one. */
-  private readonly actionSelection = signal<(ViewerSelection & { unsaved: boolean }) | null>(null)
-  protected readonly actionOpen = computed(() => this.actionSelection() !== null)
-  protected readonly instruction = signal('')
+  /** Selection captured when the composer took the focus: moving the focus clears the live one. */
+  protected readonly frozen = signal<FrozenSelection | null>(null)
+  protected readonly activeSelection = computed<ViewerSelection | null>(() => this.frozen() ?? this.selection())
+  /** Text the composer reopens with ("Ask again"). */
+  protected readonly prefill = signal('')
+  /** Where the passage ends in the page of the HTML preview, as reported by its bridge. */
+  private readonly frameAnchor = signal<number | null>(null)
+  /** Offset of the annotation card in the body. */
+  protected readonly anchorTop = signal<number | null>(null)
+  /** Why the proposal cannot be applied, when it cannot. */
+  protected readonly acceptError = signal<string | null>(null)
   /** Whether the confirmation to leave the file with unsaved changes is showing. */
   protected readonly pendingDiscard = signal(false)
 
   constructor() {
+    ensureHighlightStyle()
+
     // A new image (or a new file) gets a fresh chance to decode.
     effect(() => {
       this.blobUrl()
@@ -152,32 +263,75 @@ export class ExchangeContentViewerComponent {
       host?.querySelector('button')?.focus()
     })
 
-    // The editor is loaded from the raw content. A different file starts from a clean view (no selection,
-    // half-typed instruction or chosen side). New content of the same file replaces the draft, unless the
-    // user edited it: a dirty draft is kept, and saving it is refused as stale by the parent.
+    // The document is loaded from the raw content. A different file starts from a clean view. New content of the
+    // same file replaces what is shown, unless the user edited it: an edited document is kept, and saving it is
+    // refused as stale by the parent. The content that comes back after our own save is not rendered again.
     let previous: { key: string; content: string | null } | null = null
     effect(() => {
       const key = this.fileKey()
       const content = this.content()
       untracked(() => {
         if (!previous || previous.key !== key) {
+          this.lastSaved = null
           this.draft.set(content ?? '')
-          this.viewChoice.set(null)
+          this.mdEdited.set(false)
+          this.htmlDraft.set(null)
+          this.render(content)
           this.selection.set(null)
-          this.actionSelection.set(null)
-          this.instruction.set('')
+          this.frozen.set(null)
+          this.prefill.set('')
+          this.acceptError.set(null)
           this.pendingDiscard.set(false)
-        } else if (content !== previous.content && this.draft() === (previous.content ?? '')) {
-          this.draft.set(content ?? '')
+        } else if (content !== previous.content) {
+          if (this.editMode() === 'markdown' || this.editMode() === 'html') {
+            if (content === this.lastSaved) {
+              // Our own save: the page already shows it.
+              this.mdEdited.set(false)
+              this.htmlDraft.set(null)
+              this.draft.set(content ?? '')
+            } else if (!this.mdEdited() && this.htmlDraft() === null) {
+              this.draft.set(content ?? '')
+              this.render(content)
+            }
+          } else {
+            if (this.draft() === (previous.content ?? '')) this.draft.set(content ?? '')
+            this.render(content)
+          }
         }
         previous = { key, content }
       })
     })
 
-    // The HTML preview reports its selection by message: only its own window is believed.
+    // A request that outlives the viewer (the file was closed and reopened) restores its frozen selection.
+    effect(() => {
+      const request = this.request()
+      untracked(() => {
+        if (request && !this.frozen()) {
+          this.frozen.set({ text: request.selection, from: request.from, to: request.to, unsaved: false })
+        }
+      })
+    })
+
+    // The highlight follows the frozen selection and the rendered document.
+    effect(() => {
+      this.frozen()
+      this.mdHtml()
+      this.status()
+      this.editMode()
+      untracked(() => afterNextRender(() => this.applyHighlight(), { injector: this.injector }))
+    })
+
+    // The HTML preview reports by message: only its own window is believed.
     fromEvent<MessageEvent>(window, 'message')
       .pipe(takeUntilDestroyed())
       .subscribe((event) => this.onPreviewMessage(event))
+
+    // The bridge is told whether to edit, and what to highlight, whenever that changes.
+    effect(() => {
+      const enabled = this.editMode() === 'html'
+      const text = this.frozen()?.text.trim() || null
+      untracked(() => this.postState(enabled, text))
+    })
 
     effect(() => this.dirtyChanged.emit(this.dirty()))
   }
@@ -208,21 +362,16 @@ export class ExchangeContentViewerComponent {
   private readonly sanitizer = inject(DomSanitizer)
   private readonly dialog = inject(MatDialog)
   private readonly htmlPreview = inject(ExchangeHtmlPreviewService)
+  private readonly markdown = inject(MarkdownRendererService)
 
   /**
-   * The HTML file as the `srcdoc` of the sandboxed iframe, with the selection bridge. Trusting it is safe ONLY
-   * because that iframe is sandboxed without `allow-same-origin` (static attribute in the template): see
-   * `trustSandboxedSrcdoc`. It shows the draft when the file is editable, so that the preview follows the edits.
+   * The HTML file as the `srcdoc` of the sandboxed iframe, with the bridge. Trusting it is safe ONLY because that
+   * iframe is sandboxed without `allow-same-origin` (static attribute in the template): see `trustSandboxedSrcdoc`.
+   * It follows the saved content, not the edits: the user types in the frame itself, which must not reload.
    */
   protected readonly htmlSrcdoc = computed(() =>
-    trustSandboxedSrcdoc(this.sanitizer, withSelectionBridge(this.previewSource()))
+    trustSandboxedSrcdoc(this.sanitizer, withSelectionBridge(this.htmlSource().html))
   )
-
-  /** What the rendered views show: the edited draft when the file is editable, else the loaded content. */
-  protected readonly previewSource = computed(() => {
-    const raw = this.editable() ? this.draft() : (this.content() ?? '')
-    return this.format() === 'json' ? reindentJson(raw) : raw
-  })
 
   /**
    * The PDF as the `src` of the (unsandboxed) iframe, from a `blob:` URL only: see `trustPdfBlobUrl`.
@@ -255,20 +404,41 @@ export class ExchangeContentViewerComponent {
     () => this.canEdit() && this.canView() && this.status() === 'ready' && isEditableFormat(this.filename())
   )
 
-  /** Markdown and HTML have a rendered view besides their source. */
-  protected readonly hasRenderedView = computed(() => this.format() === 'markdown' || this.format() === 'html')
+  protected readonly editMode = computed<EditMode | null>(() => {
+    if (!this.editable()) return null
+    const format = this.format()
+    return format === 'markdown' ? 'markdown' : format === 'html' ? 'html' : 'text'
+  })
 
-  protected readonly viewMode = computed<ViewMode>(() => this.viewChoice() ?? (this.editable() ? 'source' : 'preview'))
-  protected readonly showEditor = computed(
-    () => this.editable() && (!this.hasRenderedView() || this.viewMode() === 'source')
-  )
+  /** An editable file without a rendered view: a plain textarea, styled as the document. */
+  protected readonly textEditor = computed(() => this.editMode() === 'text')
 
-  protected readonly dirty = computed(() => this.editable() && this.draft() !== (this.content() ?? ''))
+  protected readonly dirty = computed(() => {
+    switch (this.editMode()) {
+      case 'markdown':
+        return this.mdEdited()
+      case 'html': {
+        const edited = this.htmlDraft()
+        return edited !== null && edited !== this.content()
+      }
+      case 'text':
+        return this.draft() !== (this.content() ?? '')
+      default:
+        return false
+    }
+  })
   protected readonly saving = computed(() => this.saveStatus() === 'saving')
   protected readonly canSave = computed(() => this.dirty() && !this.saving())
   protected readonly hasSaveProblem = computed(() => this.saveStatus() === 'error' || this.saveStatus() === 'conflict')
 
-  // ── Navigation / download ──────────────────────────────────────────────────────────────
+  // ── Rendering ────────────────────────────────────────────────────────────────────────
+  /** Renders [content] again in the views that do not follow the keystrokes (markdown and HTML page). */
+  private render(content: string | null): void {
+    this.mdHtml.set(this.markdown.render(content ?? ''))
+    this.htmlSource.set({ html: content ?? '' })
+  }
+
+  // ── Navigation / download ────────────────────────────────────────────────────────────────────────
   protected onClose(): void {
     if (this.dirty()) {
       this.pendingDiscard.set(true)
@@ -334,41 +504,68 @@ export class ExchangeContentViewerComponent {
     void this.copyFeedback.copy(this.file().path)
   }
 
-  // ── Editing ──────────────────────────────────────────────────────────────────
+  // ── Editing ────────────────────────────────────────────────────────────────────────
   protected onDraftInput(event: Event): void {
     this.draft.set((event.target as HTMLTextAreaElement).value)
     this.captureEditorSelection()
   }
 
+  /** The user typed in the rendered markdown: it is dirty from now on, and converted back when saved. */
+  protected onMarkdownInput(): void {
+    if (this.editMode() === 'markdown') this.mdEdited.set(true)
+  }
+
   protected onEditorKeydown(event: KeyboardEvent): void {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault()
-      this.onSave()
+      void this.onSave()
     } else if (event.key === 'Escape') {
       // Escape never closes the panel around unsaved edits.
       event.stopPropagation()
     }
   }
 
-  protected onSave(): void {
+  protected async onSave(): Promise<void> {
     if (!this.canSave()) return
-    this.saveRequested.emit({ ref: this.file(), content: this.draft() })
+    const ref = this.file()
+    let content: string | null = null
+    switch (this.editMode()) {
+      case 'markdown': {
+        const root = this.docRoot()?.nativeElement
+        if (!root) return
+        content = await htmlToMarkdown(root)
+        break
+      }
+      case 'html':
+        content = this.htmlDraft()
+        break
+      case 'text':
+        content = this.draft()
+        break
+    }
+    if (content === null) return
+    this.lastSaved = content
+    this.saveRequested.emit({ ref, content })
   }
 
   /** Restores the loaded content in the editor. */
   protected onRevert(): void {
-    this.draft.set(this.content() ?? '')
+    this.restoreContent()
     this.selection.set(null)
   }
 
-  protected onSetView(mode: ViewMode): void {
-    this.viewChoice.set(mode)
-    this.selection.set(null)
+  /** Drops the edits: the document is rendered again from the loaded content. */
+  private restoreContent(): void {
+    this.draft.set(this.content() ?? '')
+    this.mdEdited.set(false)
+    this.htmlDraft.set(null)
+    this.lastSaved = null
+    this.render(this.content())
   }
 
   protected onConfirmDiscard(): void {
     this.pendingDiscard.set(false)
-    this.draft.set(this.content() ?? '')
+    this.restoreContent()
     this.closeRequested.emit()
   }
 
@@ -378,29 +575,34 @@ export class ExchangeContentViewerComponent {
 
   /** Drops the stale draft, to see the file as the server has it. */
   protected onReload(): void {
-    this.draft.set(this.content() ?? '')
+    this.restoreContent()
     this.selection.set(null)
     this.reloadRequested.emit()
   }
 
-  // ── Selection → agent ────────────────────────────────────────────────────────────────
-  /** Selection made in the editor (textarea offsets are exact, so the lines are known). */
+  // ── Selection → composer ────────────────────────────────────────────────────────────────────────
+  /** Selection made in the textarea (offsets are exact, so the lines are known). */
   protected captureEditorSelection(): void {
     const element = this.editor()?.nativeElement
-    if (!element || this.actionOpen()) return
+    if (!element || this.frozen()) return
     const { selectionStart, selectionEnd, value } = element
     const text = value.slice(selectionStart, selectionEnd)
     if (!text.trim()) {
       if (this.selection()) this.selection.set(null)
       return
     }
-    this.selection.set({ text, ...selectionLineRange(value, selectionStart, selectionEnd) })
+    this.selection.set({
+      text,
+      from: selectionStart,
+      to: selectionEnd,
+      ...selectionLineRange(value, selectionStart, selectionEnd),
+    })
   }
 
-  /** Selection made in a markdown / text preview, when it lies within the viewer body. */
+  /** Selection made in the rendered markdown or a text preview, when it lies within the document. */
   protected onDocumentSelectionChange(): void {
-    if (this.actionOpen()) return
-    if (this.showEditor()) {
+    if (this.frozen()) return
+    if (this.textEditor()) {
       this.captureEditorSelection()
       return
     }
@@ -408,70 +610,294 @@ export class ExchangeContentViewerComponent {
     if (this.format() === 'html') return
     const selection = window.getSelection()
     const text = selection?.toString() ?? ''
-    const body = this.body()?.nativeElement
-    const anchor = selection?.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null
-    const next = text.trim() && body && anchor && body.contains(anchor) ? { text } : null
+    const root = this.docRoot()?.nativeElement
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    const offsets = root && range ? rangeTextOffsets(root, range) : null
+    const next = text.trim() && offsets ? { text, ...offsets } : null
     // selectionchange fires for the whole document (the composer included): ignore what did not change.
-    if (next?.text !== this.selection()?.text) this.selection.set(next)
+    if (next?.text !== this.selection()?.text || next?.from !== this.selection()?.from) this.selection.set(next)
   }
 
   /**
-   * Selection reported by the bridge of the HTML preview (see `withSelectionBridge`). Only a message from the
-   * preview's own window, with the expected shape, counts; an empty text clears the selection, except while the
-   * instruction form is open (focusing its input collapses the iframe selection).
+   * Messages of the bridge of the HTML preview (see `withSelectionBridge`). Only a message from the preview's own
+   * window, with the expected shape, counts. An empty selection clears the selection, except once it is frozen
+   * (focusing the composer collapses the iframe selection).
    */
   private onPreviewMessage(event: MessageEvent): void {
     const frame = this.previewFrame()?.nativeElement
     if (!frame || event.source !== frame.contentWindow) return
-    const data = event.data as { type?: unknown; text?: unknown } | null
-    if (data?.type !== EXCHANGE_SELECTION_MESSAGE_TYPE || typeof data.text !== 'string') return
-    if (this.actionOpen()) return
-    const text = data.text.trim().slice(0, MAX_PREVIEW_SELECTION)
-    this.selection.set(text ? { text } : null)
-  }
-
-  protected openAction(): void {
-    const selection = this.selection()
-    if (!selection) return
-    this.actionSelection.set({ ...selection, unsaved: this.dirty() })
-    this.instruction.set('')
-    afterNextRender(() => this.instructionInput()?.nativeElement.focus(), { injector: this.injector })
-  }
-
-  protected onInstructionInput(event: Event): void {
-    this.instruction.set((event.target as HTMLTextAreaElement).value)
-  }
-
-  protected onInstructionKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
-      event.preventDefault()
-      this.runAction()
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      event.stopPropagation()
-      this.closeAction()
+    const data = event.data as { type?: unknown; text?: unknown; html?: unknown; ok?: unknown; bottom?: unknown } | null
+    if (!data || typeof data.type !== 'string') return
+    switch (data.type) {
+      case EXCHANGE_SELECTION_MESSAGE_TYPE: {
+        if (typeof data.text !== 'string' || this.frozen()) return
+        const text = data.text.trim().slice(0, MAX_PREVIEW_SELECTION)
+        this.selection.set(text ? { text, from: 0, to: 0 } : null)
+        return
+      }
+      case EXCHANGE_READY_MESSAGE_TYPE:
+        this.postState(this.editMode() === 'html', this.frozen()?.text.trim() || null)
+        return
+      case EXCHANGE_HTML_MESSAGE_TYPE:
+        // SECURITY: the page is the user's own file; it is kept as a string, saved only on an explicit Save, and
+        // never inserted in the DOM of the app.
+        if (this.editMode() === 'html' && typeof data.html === 'string' && data.html.length <= MAX_EDITED_HTML) {
+          this.htmlDraft.set(data.html)
+        }
+        return
+      case EXCHANGE_SAVE_MESSAGE_TYPE:
+        if (this.editMode() === 'html') void this.onSave()
+        return
+      case EXCHANGE_ANCHOR_MESSAGE_TYPE:
+        if (typeof data.bottom === 'number' && Number.isFinite(data.bottom)) {
+          this.frameAnchor.set(data.bottom)
+          this.measureAnchor()
+        }
+        return
+      case EXCHANGE_REPLACE_RESULT_MESSAGE_TYPE:
+        if (data.ok === true) this.finishRequest()
+        else if (data.ok === false) this.acceptError.set(PASSAGE_CHANGED)
+        return
     }
   }
 
-  protected runAction(): void {
-    const selection = this.actionSelection()
-    const instruction = this.instruction().trim()
-    if (!selection || !instruction) return
+  /** Tells the bridge whether to edit the page and what to highlight. */
+  private postState(editEnabled: boolean, highlight: string | null): void {
+    this.postToFrame({ type: EXCHANGE_EDIT_MESSAGE_TYPE, enabled: editEnabled })
+    this.postToFrame({ type: EXCHANGE_HIGHLIGHT_MESSAGE_TYPE, text: highlight })
+  }
+
+  private postToFrame(message: Record<string, unknown>): void {
+    // The target origin is '*' because the sandboxed frame has an opaque origin; the message is meant for it alone.
+    this.previewFrame()?.nativeElement.contentWindow?.postMessage(message, '*')
+  }
+
+  /** Freezes the live selection: from now on it is the one the composer and the highlight are about. */
+  protected freeze(): void {
+    const selection = this.selection()
+    if (this.frozen() || !selection) return
+    this.frozen.set({ ...selection, unsaved: this.dirty() })
+  }
+
+  protected onComposerSent(instruction: string): void {
+    this.freeze()
+    const selection = this.frozen()
+    if (!selection) return
+    this.prefill.set('')
     this.selectionActionRequested.emit({
       ref: this.file(),
       selection: selection.text,
       ...(selection.startLine !== undefined && selection.endLine !== undefined
         ? { startLine: selection.startLine, endLine: selection.endLine }
         : {}),
+      from: selection.from,
+      to: selection.to,
       instruction,
       unsavedChanges: selection.unsaved,
     })
-    this.closeAction()
   }
 
-  protected closeAction(): void {
-    this.actionSelection.set(null)
-    this.instruction.set('')
-    this.selection.set(null)
+  /** Escape in the composer: nothing is asked, the selection and its highlight go. */
+  protected closeComposer(): void {
+    this.dismiss()
   }
+
+  /** The user lets go of the selection (and of the request about it, if any). */
+  protected dismiss(): void {
+    const request = this.request()
+    if (request) this.requestCleared.emit(request.id)
+    this.frozen.set(null)
+    this.selection.set(null)
+    this.prefill.set('')
+    this.acceptError.set(null)
+  }
+
+  /** Name of the agent the instruction mentions, for the waiting line. */
+  protected readonly requestedAgent = computed(() => {
+    const mention = /@([\w-]+)/.exec(this.request()?.instruction ?? '')
+    return mention ? `@${mention[1]}` : 'the agent'
+  })
+
+  /** The dock (quote + composer or waiting line) shows with a selection or a request, on a loaded document. */
+  protected readonly dockVisible = computed(
+    () => this.status() === 'ready' && this.canView() && (this.activeSelection() !== null || this.request() !== null)
+  )
+
+  // ── Proposal (annotation card) ─────────────────────────────────────────────────────────────────────
+  protected readonly cardVisible = computed(() => {
+    const status = this.request()?.status
+    return status === 'proposed' || status === 'answered' || status === 'failed'
+  })
+
+  /** Word-level diff of the selected passage against the proposal. */
+  protected readonly proposalDiff = computed(() => {
+    const request = this.request()
+    return request?.status === 'proposed' ? diffWords(request.selection, request.proposal ?? '') : []
+  })
+
+  protected onReject(): void {
+    this.dismiss()
+  }
+
+  /** "Ask again": the composer reopens with the instruction, on the same selection and highlight. */
+  protected onAskAgain(): void {
+    const request = this.request()
+    if (!request) return
+    this.prefill.set(request.instruction)
+    this.acceptError.set(null)
+    this.requestCleared.emit(request.id)
+  }
+
+  /** Replaces the frozen passage with the proposal in the current draft. It never saves. */
+  protected onAccept(): void {
+    const request = this.request()
+    const mode = this.editMode()
+    if (!request || request.status !== 'proposed' || request.proposal === undefined || !mode) return
+    this.acceptError.set(null)
+    const proposal = request.proposal
+    const frozen = this.frozen()
+    const from = frozen?.from ?? request.from
+    const to = frozen?.to ?? request.to
+    const text = frozen?.text ?? request.selection
+
+    if (mode === 'html') {
+      // The bridge finds the passage again by its text, replaces it and reports whether it could.
+      this.postToFrame({ type: EXCHANGE_REPLACE_MESSAGE_TYPE, from: text.trim(), to: proposal })
+      return
+    }
+    if (mode === 'text') {
+      const draft = this.draft()
+      const found = locatePassage(draft, from, to, [text])
+      if (!found) {
+        this.acceptError.set(PASSAGE_CHANGED)
+        return
+      }
+      this.draft.set(draft.slice(0, found.from) + proposal + draft.slice(found.to))
+      this.finishRequest()
+      return
+    }
+    // Rendered markdown: the passage is a range of the document, replaced by the proposal as text.
+    const root = this.docRoot()?.nativeElement
+    if (!root) return
+    this.clearHighlight()
+    const content = root.textContent ?? ''
+    const found = locatePassage(content, from, to, [text, text.trim()], (a, b) => squash(a) === squash(b))
+    const range = found ? rangeFromTextOffsets(root, found.from, found.to) : null
+    if (!range) {
+      this.acceptError.set(PASSAGE_CHANGED)
+      this.applyHighlight()
+      return
+    }
+    range.deleteContents()
+    range.insertNode(document.createTextNode(proposal))
+    root.normalize()
+    this.mdEdited.set(true)
+    this.finishRequest()
+  }
+
+  /** The request is settled: it and the highlight go away. */
+  private finishRequest(): void {
+    const request = this.request()
+    if (request) this.requestCleared.emit(request.id)
+    this.frozen.set(null)
+    this.selection.set(null)
+    this.acceptError.set(null)
+  }
+
+  // ── Highlight ────────────────────────────────────────────────────────────────────────
+  /** The range of the CSS highlight, kept to measure where the annotation card goes. */
+  private highlightRange: Range | null = null
+
+  private clearHighlight(): void {
+    cssHighlights()?.delete(HIGHLIGHT_NAME)
+    this.highlightRange = null
+    const root = this.docRoot()?.nativeElement
+    if (root) unwrapMarks(root)
+  }
+
+  /**
+   * Highlights the frozen passage in the document: a CSS Custom Highlight, or `<mark class="agentos-selection">`
+   * around its text when the browser has none. The textarea shows it through a mirror layer, the HTML page through
+   * its bridge (see `postState`).
+   */
+  private applyHighlight(): void {
+    this.clearHighlight()
+    const frozen = this.frozen()
+    const root = this.docRoot()?.nativeElement
+    if (frozen && root && this.editMode() !== 'text' && this.format() !== 'html') {
+      const found = locatePassage(
+        root.textContent ?? '',
+        frozen.from,
+        frozen.to,
+        [frozen.text, frozen.text.trim()],
+        (a, b) => squash(a) === squash(b)
+      )
+      const range = found ? rangeFromTextOffsets(root, found.from, found.to) : null
+      if (range) {
+        const registry = cssHighlights()
+        if (registry) {
+          const Highlight = (globalThis as unknown as { Highlight: new (...ranges: Range[]) => unknown }).Highlight
+          registry.set(HIGHLIGHT_NAME, new Highlight(range))
+          this.highlightRange = range
+        } else {
+          wrapRangeInMarks(range)
+        }
+      }
+    }
+    this.measureAnchor()
+  }
+
+  /** Where the annotation card goes: under the end of the highlighted passage. */
+  private measureAnchor(): void {
+    const body = this.body()?.nativeElement
+    if (!body || !this.frozen()) {
+      this.anchorTop.set(null)
+      return
+    }
+    const bodyTop = body.getBoundingClientRect().top
+    let bottom: number | null = null
+    if (this.format() === 'html') {
+      const frame = this.previewFrame()?.nativeElement
+      const anchor = this.frameAnchor()
+      if (frame && anchor !== null) bottom = frame.getBoundingClientRect().top + anchor
+    } else {
+      const mark = body.querySelector('mark.agentos-selection')
+      const rect =
+        mark?.getBoundingClientRect() ??
+        (typeof this.highlightRange?.getBoundingClientRect === 'function'
+          ? this.highlightRange.getBoundingClientRect()
+          : null)
+      if (rect && (rect.bottom || rect.top)) bottom = rect.bottom
+    }
+    this.anchorTop.set(bottom === null ? null : Math.max(0, bottom - bodyTop + body.scrollTop + 6))
+  }
+
+  /** The textarea has no highlight of its own: this mirror layer, behind it, marks the passage in the same text. */
+  protected readonly mirrorParts = computed(() => {
+    const frozen = this.frozen()
+    if (!frozen || !this.textEditor()) return null
+    const draft = this.draft()
+    const found = locatePassage(draft, frozen.from, frozen.to, [frozen.text])
+    return found
+      ? { before: draft.slice(0, found.from), mid: draft.slice(found.from, found.to), after: draft.slice(found.to) }
+      : null
+  })
+
+  protected onEditorScroll(): void {
+    const mirror = this.mirror()?.nativeElement
+    const editor = this.editor()?.nativeElement
+    if (mirror && editor) mirror.scrollTop = editor.scrollTop
+    this.measureAnchor()
+  }
+}
+
+/** The `::highlight()` rule must be global: the highlighted text nodes carry no encapsulation attribute. */
+function ensureHighlightStyle(): void {
+  if (typeof document === 'undefined' || document.getElementById(HIGHLIGHT_STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = HIGHLIGHT_STYLE_ID
+  style.textContent =
+    `::highlight(${HIGHLIGHT_NAME}){background-color:#ffd84d;color:#1d1d1f}` +
+    `mark.${HIGHLIGHT_NAME}{background-color:#ffd84d;color:#1d1d1f}`
+  document.head.appendChild(style)
 }

@@ -30,6 +30,7 @@ import {
 } from '../../services/exchange-state.service'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
+import { ExchangeSelectionRequest } from '../../services/exchange-selection-request.service'
 import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-list.component'
 import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
 import { ExchangeFileRow, ExchangeItemComponent } from '../exchange-item/exchange-item.component'
@@ -117,6 +118,10 @@ export class ExchangeDrawerComponent {
   readonly canEditSelected = input<boolean>(false)
   readonly saveStatus = input<ExchangeSaveStatus>('idle')
   readonly saveError = input<string | null>(null)
+  /** Namespace of the case, for the agents the viewer's composer suggests on `@`. */
+  readonly namespaceId = input<string>('')
+  /** The agent request about the open file, if any. */
+  readonly request = input<ExchangeSelectionRequest | null>(null)
 
   readonly fileSelected = output<ExchangeFileRef>()
   readonly referenceToggled = output<ExchangeReferenceToggle>()
@@ -125,6 +130,8 @@ export class ExchangeDrawerComponent {
   readonly reloadRequested = output<void>()
   /** The viewer's selection to run an agent on. */
   readonly selectionActionRequested = output<ExchangeSelectionAction>()
+  /** The request about the open file was settled in the viewer. */
+  readonly requestCleared = output<string>()
   /** Whether the viewer holds unsaved edits. */
   readonly dirtyChanged = output<boolean>()
   /** A directory was opened, or a breadcrumb level was clicked. Empty path means the scope root. */

@@ -1,4 +1,5 @@
 import { detectFormat } from '../../services/exchange-content.utils'
+import { selectionRequestMarker } from '../../services/exchange-selection-request.service'
 import type { ExchangeSelectionAction } from '../../services/exchange-state.service'
 
 /**
@@ -6,9 +7,12 @@ import type { ExchangeSelectionAction } from '../../services/exchange-state.serv
  * (no Angular, no HTTP).
  *
  * The message holds the instruction first (so an `@agent` mention in it still routes the message), then the
- * selection in a code fence, then the `[Files referenced: scope:path]` line that tells the agent which file
- * to open or edit with its exchange tools. The path is scope-qualified the way the exchange tools read it
- * (`case:notes/todo.md`).
+ * selection in a code fence, then the request marker with the rules of the answer, then the
+ * `[Files referenced: scope:path]` line that tells the agent which file to read for context. The path is
+ * scope-qualified the way the exchange tools read it (`case:notes/todo.md`).
+ *
+ * The agent must NOT edit the file: it answers with an explanation and ONE `proposal` block holding the full
+ * replacement of the selected passage, which the user then accepts or rejects in the viewer.
  */
 
 /** Language tag of the code fence, empty when the format has no specific one. */
@@ -34,8 +38,19 @@ function lineLabel(action: ExchangeSelectionAction): string {
   return startLine === endLine ? `, line ${startLine}` : `, lines ${startLine}-${endLine}`
 }
 
-/** The message to send to the agent for a selection action. */
-export function buildSelectionMessage(action: ExchangeSelectionAction): string {
+/** What the agent is told about the answer it must give. */
+export function proposalInstructions(requestId: string): string {
+  return [
+    selectionRequestMarker(requestId),
+    'Do NOT modify the file and do not call any tool that writes it: read it only if you need context.',
+    'Answer with a short explanation, followed by exactly one fenced block whose info string is `proposal` and that holds ' +
+      'the full replacement text for the selected passage (the passage only, not the whole file).',
+    'If no change is appropriate, answer without that block.',
+  ].join('\n')
+}
+
+/** The message to send to the agent for a selection action; [requestId] ties its answer back to the request. */
+export function buildSelectionMessage(action: ExchangeSelectionAction, requestId: string): string {
   const fence = fenceFor(action.selection)
   const parts = [
     action.instruction.trim(),
@@ -44,6 +59,7 @@ export function buildSelectionMessage(action: ExchangeSelectionAction): string {
   if (action.unsavedChanges) {
     parts.push('(The selection comes from unsaved edits in the editor: the file may not contain it yet.)')
   }
+  parts.push(proposalInstructions(requestId))
   parts.push(`[Files referenced: ${qualifiedPath(action)}]`)
   return parts.join('\n\n')
 }

@@ -66,6 +66,9 @@ export interface ExchangeSelectionAction {
   selection: string
   startLine?: number
   endLine?: number
+  /** Offsets of the frozen selection in the editable text, to apply a proposal there later. */
+  from?: number
+  to?: number
   instruction: string
   unsavedChanges: boolean
 }
