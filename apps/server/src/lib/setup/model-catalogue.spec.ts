@@ -107,6 +107,19 @@ describe('transcription model', () => {
   })
 })
 
+describe('model cache TTLs', () => {
+  it('gives the Claude models 5 minutes, or 60 with the 1-hour markers, and the OpenAI ones 30', () => {
+    for (const id of ['anthropic', 'requesty'] as const) {
+      for (const model of Object.values(MODEL_CATALOGUE[id].models)) {
+        expect([model.cacheTtlMinutes, model.extendedCacheTtlMinutes]).toEqual([5, 60])
+      }
+    }
+    for (const model of Object.values(MODEL_CATALOGUE.openai.models)) {
+      expect([model.cacheTtlMinutes, model.extendedCacheTtlMinutes]).toEqual([30, undefined])
+    }
+  })
+})
+
 describe('model pricing', () => {
   it.each(CATALOGUE_PROVIDER_IDS)('%s prices every model, with a cache read cheaper than a fresh input', (id) => {
     for (const { pricing } of Object.values(MODEL_CATALOGUE[id].models)) {

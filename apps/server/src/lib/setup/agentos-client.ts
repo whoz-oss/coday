@@ -39,6 +39,8 @@ export interface AgentosModel {
   contextWindow?: number
   maxCompletionTokens?: number
   pricing?: AgentosModelPricing | null
+  cacheTtlMinutes?: number | null
+  extendedCacheTtlMinutes?: number | null
 }
 
 export interface AgentosNamespace {

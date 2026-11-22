@@ -22,6 +22,10 @@
  * with Requesty. Policies omit maxCompletionTokens to leave the output limit to the backing model.
  * Keep policy mappings and estimates aligned with the active ai-models/*.yaml catalogue.
  *
+ * Cache TTLs, in minutes (the `cacheTtlMinutes` / `extendedCacheTtlMinutes` of an AgentOS model, read by its prompt
+ * cache indicator and keep-alive): Claude 5, or 60 with the 1-hour cache markers (Requesty); OpenAI 30. Same values
+ * as the ai-models/*.yaml tiers.
+ *
  * Transcription (voice messages) is NOT a chat model, so it lives next to `models` in the optional `transcription` of a
  * provider, with the fixed alias WHISPER: no context window, no token pricing (Whisper is billed per audio minute, cost
  * tracking is out of scope). Only providers with a transcription API have one (Anthropic has none). Sources:
@@ -60,6 +64,8 @@ export interface CatalogueModel {
   contextWindow?: number
   maxCompletionTokens?: number
   pricing: CatalogueModelPricing
+  cacheTtlMinutes?: number
+  extendedCacheTtlMinutes?: number
 }
 
 /** The speech-to-text model of a provider: not a chat model, so neither limits nor pricing. */
@@ -105,6 +111,9 @@ const OPENAI_PRICING: Record<ModelAlias, CatalogueModelPricing> = {
   SMALL: { inputMTokens: 0.1, outputMTokens: 0.5, cacheRead: 0.01 },
 }
 
+const CLAUDE_CACHE_TTLS = { cacheTtlMinutes: 5, extendedCacheTtlMinutes: 60 }
+const OPENAI_CACHE_TTLS = { cacheTtlMinutes: 30 }
+
 const anthropicModels = (
   prefix: string,
   fableName: string,
@@ -116,6 +125,7 @@ const anthropicModels = (
     contextWindow: 1_000_000,
     maxCompletionTokens: 128_000,
     pricing: pricing.FRONTIER,
+    ...CLAUDE_CACHE_TTLS,
   },
   BIGGEST: {
     apiModelName: `${prefix}claude-opus-5-5`,
@@ -123,6 +133,7 @@ const anthropicModels = (
     contextWindow: 1_000_000,
     maxCompletionTokens: 128_000,
     pricing: pricing.BIGGEST,
+    ...CLAUDE_CACHE_TTLS,
   },
   BIG: {
     apiModelName: `${prefix}claude-sonnet-5-5`,
@@ -130,6 +141,7 @@ const anthropicModels = (
     contextWindow: 1_000_000,
     maxCompletionTokens: 128_000,
     pricing: pricing.BIG,
+    ...CLAUDE_CACHE_TTLS,
   },
   SMALL: {
     apiModelName: `${prefix}claude-haiku-5-5`,
@@ -137,6 +149,7 @@ const anthropicModels = (
     contextWindow: 1_000_000,
     maxCompletionTokens: 128_000,
     pricing: pricing.SMALL,
+    ...CLAUDE_CACHE_TTLS,
   },
 })
 
@@ -147,6 +160,7 @@ const openaiModels = (prefix: string): CatalogueProvider['models'] => ({
     contextWindow: 1_050_000,
     maxCompletionTokens: 128_000,
     pricing: OPENAI_PRICING.FRONTIER,
+    ...OPENAI_CACHE_TTLS,
   },
   BIGGEST: {
     apiModelName: `${prefix}gpt-6.1-sol`,
@@ -154,6 +168,7 @@ const openaiModels = (prefix: string): CatalogueProvider['models'] => ({
     contextWindow: 1_050_000,
     maxCompletionTokens: 128_000,
     pricing: OPENAI_PRICING.BIGGEST,
+    ...OPENAI_CACHE_TTLS,
   },
   BIG: {
     apiModelName: `${prefix}gpt-6.1-terra`,
@@ -161,6 +176,7 @@ const openaiModels = (prefix: string): CatalogueProvider['models'] => ({
     contextWindow: 1_050_000,
     maxCompletionTokens: 128_000,
     pricing: OPENAI_PRICING.BIG,
+    ...OPENAI_CACHE_TTLS,
   },
   SMALL: {
     apiModelName: `${prefix}gpt-6-luna`,
@@ -168,6 +184,7 @@ const openaiModels = (prefix: string): CatalogueProvider['models'] => ({
     contextWindow: 1_050_000,
     maxCompletionTokens: 128_000,
     pricing: OPENAI_PRICING.SMALL,
+    ...OPENAI_CACHE_TTLS,
   },
 })
 
@@ -178,6 +195,7 @@ const requestySmall: CatalogueModel = {
   description: 'Claude Haiku tier via your Requesty policy; backing model may change',
   contextWindow: 200_000,
   pricing: REQUESTY_PRICING.SMALL,
+  ...CLAUDE_CACHE_TTLS,
 }
 
 const requestyModels: CatalogueProvider['models'] = {
@@ -186,18 +204,21 @@ const requestyModels: CatalogueProvider['models'] = {
     description: 'Claude Fable tier via your Requesty policy; backing model may change',
     contextWindow: 1_000_000,
     pricing: REQUESTY_PRICING.FRONTIER,
+    ...CLAUDE_CACHE_TTLS,
   },
   BIGGEST: {
     apiModelName: 'policy/claude-opus',
     description: 'Claude Opus tier via your Requesty policy; backing model may change',
     contextWindow: 1_000_000,
     pricing: REQUESTY_PRICING.BIGGEST,
+    ...CLAUDE_CACHE_TTLS,
   },
   BIG: {
     apiModelName: 'policy/claude-sonnet',
     description: 'Claude Sonnet tier via your Requesty policy; backing model may change',
     contextWindow: 1_000_000,
     pricing: REQUESTY_PRICING.BIG,
+    ...CLAUDE_CACHE_TTLS,
   },
   SMALL: requestySmall,
   default: requestySmall,

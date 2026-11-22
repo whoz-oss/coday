@@ -161,6 +161,12 @@ const PRICING_KEYS = ['inputMTokens', 'outputMTokens', 'cacheRead', 'cacheWrite'
 const samePricing = (a: AgentosModelPricing | null | undefined, b: AgentosModelPricing | undefined): boolean =>
   PRICING_KEYS.every((key) => (a?.[key] ?? null) === (b?.[key] ?? null))
 
+const CACHE_TTL_KEYS = ['cacheTtlMinutes', 'extendedCacheTtlMinutes'] as const
+
+/** Compared like the rates: unset (null or absent) is "no TTL". */
+const sameCacheTtls = (a: AgentosModel, b: Pick<AgentosModel, (typeof CACHE_TTL_KEYS)[number]>): boolean =>
+  CACHE_TTL_KEYS.every((key) => (a[key] ?? null) === (b[key] ?? null))
+
 const findByAlias = (models: AgentosModel[], alias: string): AgentosModel | undefined =>
   models.find((m) => m.alias?.toLowerCase() === alias.toLowerCase())
 
@@ -181,6 +187,8 @@ async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, provi
       pricing: wanted.pricing,
       ...(wanted.contextWindow ? { contextWindow: wanted.contextWindow } : {}),
       ...(wanted.maxCompletionTokens ? { maxCompletionTokens: wanted.maxCompletionTokens } : {}),
+      ...(wanted.cacheTtlMinutes ? { cacheTtlMinutes: wanted.cacheTtlMinutes } : {}),
+      ...(wanted.extendedCacheTtlMinutes ? { extendedCacheTtlMinutes: wanted.extendedCacheTtlMinutes } : {}),
     }
     const match = findByAlias(existing, alias)
     if (!match) {
@@ -189,7 +197,8 @@ async function ensureModels(deps: ApplyDeps, catalogue: CatalogueProvider, provi
       match.id &&
       (match.apiModelName !== body.apiModelName ||
         match.priority !== priority ||
-        !samePricing(match.pricing, body.pricing))
+        !samePricing(match.pricing, body.pricing) ||
+        !sameCacheTtls(match, body))
     ) {
       await deps.client.updateModel(match.id, body)
     }
