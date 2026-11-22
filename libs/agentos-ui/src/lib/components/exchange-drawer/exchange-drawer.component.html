@@ -7,8 +7,15 @@
       [blob]="blob()"
       [status]="contentStatus()"
       [canView]="canViewSelected()"
+      [canEdit]="canEditSelected()"
+      [saveStatus]="saveStatus()"
+      [saveError]="saveError()"
       (closeRequested)="onViewerClose()"
       (downloadRequested)="downloadRequested.emit($event)"
+      (saveRequested)="saveRequested.emit($event)"
+      (reloadRequested)="reloadRequested.emit()"
+      (selectionActionRequested)="selectionActionRequested.emit($event)"
+      (dirtyChanged)="dirtyChanged.emit($event)"
     />
   } @else {
     <header class="exchange-drawer__header">

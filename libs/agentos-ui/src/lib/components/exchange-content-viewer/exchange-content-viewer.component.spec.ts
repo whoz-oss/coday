@@ -1,9 +1,10 @@
-import { fakeAsync, TestBed, tick } from '@angular/core/testing'
+import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { MatDialog } from '@angular/material/dialog'
 import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { of } from 'rxjs'
 import { COPY_FEEDBACK_MS } from '../../services/clipboard.utils'
 import { ExchangeHtmlPreviewService } from '../../services/exchange-html-preview.service'
+import { ExchangeFileRef, ExchangeSelectionAction } from '../../services/exchange-state.service'
 import {
   EXCHANGE_FULL_VIEW_PANEL_CLASS,
   EXCHANGE_HTML_FULL_VIEW_DOWNLOAD,
@@ -365,5 +366,361 @@ describe('ExchangeContentViewerComponent images', () => {
     fixture.detectChanges()
     expect(fixture.nativeElement.querySelector('img')).toBeNull()
     expect(fixture.nativeElement.querySelector('pre')?.textContent).toBe('hello')
+  })
+})
+
+describe('ExchangeContentViewerComponent editing and selection', () => {
+  let fixture: ComponentFixture<ExchangeContentViewerComponent>
+  const ref = (path: string): ExchangeFileRef => ({ scope: ExchangeFileEntryScopeEnum.CASE, path })
+
+  function create(path = 'notes/todo.md', content: string | null = 'one\ntwo\nthree', canEdit = true): void {
+    fixture = TestBed.createComponent(ExchangeContentViewerComponent)
+    fixture.componentRef.setInput('file', ref(path))
+    fixture.componentRef.setInput('content', content)
+    fixture.componentRef.setInput('status', 'ready')
+    fixture.componentRef.setInput('canEdit', canEdit)
+    fixture.detectChanges()
+  }
+
+  const el = (): HTMLElement => fixture.nativeElement
+  // ds-icon-button renders its title on the inner <button>, not on the host element.
+  const button = (title: string): HTMLButtonElement | null => el().querySelector(`button[title="${title}"]`)
+  const editButton = (): HTMLButtonElement | null => el().querySelector('button[title^="Edit "]')
+  const editor = (): HTMLTextAreaElement | null => el().querySelector('textarea.exchange-content-viewer__editor')
+  const saveButton = (): HTMLButtonElement | null => button('Save (Ctrl+S)')
+  const askButton = (): HTMLButtonElement | null => el().querySelector('.exchange-content-viewer__ask')
+  const instruction = (): HTMLTextAreaElement | null => el().querySelector('.exchange-content-viewer__instruction')
+
+  function startEdit(): HTMLTextAreaElement {
+    editButton()!.click()
+    fixture.detectChanges()
+    return editor()!
+  }
+
+  function type(text: string): void {
+    const area = editor()!
+    area.value = text
+    area.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+  }
+
+  function select(start: number, end: number): void {
+    const area = editor()!
+    area.setSelectionRange(start, end)
+    area.dispatchEvent(new Event('select'))
+    fixture.detectChanges()
+  }
+
+  beforeEach(() => TestBed.configureTestingModule({ imports: [ExchangeContentViewerComponent] }))
+
+  describe('edit entry point', () => {
+    it('is offered on a text file the parent allows to write', () => {
+      create('notes/todo.md')
+      expect(editButton()).not.toBeNull()
+    })
+
+    it('is hidden when the parent does not allow editing', () => {
+      create('notes/todo.md', 'x', false)
+      expect(editButton()).toBeNull()
+    })
+
+    it.each(['logo.png', 'doc.pdf', 'archive.zip'])('is hidden for the binary file %s', (name) => {
+      create(name)
+      expect(editButton()).toBeNull()
+    })
+
+    it('is hidden until the content is loaded, and when the file cannot be viewed', () => {
+      create('notes/todo.md')
+      fixture.componentRef.setInput('status', 'loading')
+      fixture.detectChanges()
+      expect(editButton()).toBeNull()
+      fixture.componentRef.setInput('status', 'ready')
+      fixture.componentRef.setInput('canView', false)
+      fixture.detectChanges()
+      expect(editButton()).toBeNull()
+    })
+  })
+
+  describe('editing', () => {
+    it('opens a textarea on the raw content, not the re-indented JSON', () => {
+      create('data.json', '{"a":1}')
+      expect(startEdit().value).toBe('{"a":1}')
+    })
+
+    it('is clean until the text changes, and Save is disabled', () => {
+      create()
+      startEdit()
+      expect(el().textContent).not.toContain('unsaved')
+      expect(saveButton()!.disabled).toBe(true)
+      type('changed')
+      expect(el().textContent).toContain('unsaved')
+      expect(saveButton()!.disabled).toBe(false)
+      type('one\ntwo\nthree')
+      expect(el().textContent).not.toContain('unsaved')
+    })
+
+    it('emits the raw edited content on save', () => {
+      create('data.json', '{"a":1}')
+      const saved: { ref: ExchangeFileRef; content: string }[] = []
+      fixture.componentInstance.saveRequested.subscribe((event) => saved.push(event))
+      startEdit()
+      type('{"a":2}')
+      saveButton()!.click()
+      expect(saved).toEqual([{ ref: ref('data.json'), content: '{"a":2}' }])
+    })
+
+    it.each([
+      ['Ctrl', { ctrlKey: true }],
+      ['Cmd', { metaKey: true }],
+    ])('saves on %s+S, and prevents the browser save', (_name, modifier) => {
+      create()
+      const saved = jest.fn()
+      fixture.componentInstance.saveRequested.subscribe(saved)
+      startEdit()
+      type('changed')
+      const event = new KeyboardEvent('keydown', { key: 's', cancelable: true, ...modifier })
+      editor()!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(saved).toHaveBeenCalledWith({ ref: ref('notes/todo.md'), content: 'changed' })
+    })
+
+    it('does not save a clean editor on Ctrl+S', () => {
+      create()
+      const saved = jest.fn()
+      fixture.componentInstance.saveRequested.subscribe(saved)
+      startEdit()
+      editor()!.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }))
+      expect(saved).not.toHaveBeenCalled()
+    })
+
+    it('does not drop edits on Escape', () => {
+      create()
+      startEdit()
+      type('changed')
+      editor()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      fixture.detectChanges()
+      expect(editor()!.value).toBe('changed')
+    })
+
+    it('leaves the edit mode once the saved text is the content, and shows it', () => {
+      create()
+      startEdit()
+      type('changed')
+      fixture.componentRef.setInput('content', 'changed')
+      fixture.detectChanges()
+      expect(editor()).toBeNull()
+      expect(el().querySelector('.exchange-content-viewer__markdown')!.textContent).toContain('changed')
+    })
+
+    it('cancels a clean edit at once, and asks before dropping a dirty one', () => {
+      create()
+      startEdit()
+      const cancel = () => button('Cancel editing')!.click()
+      cancel()
+      fixture.detectChanges()
+      expect(editor()).toBeNull()
+
+      startEdit()
+      type('changed')
+      cancel()
+      fixture.detectChanges()
+      expect(editor()!.value).toBe('changed')
+      expect(el().querySelector('.ds-confirm-dialog')).not.toBeNull()
+      ;(el().querySelector('.ds-confirm-dialog__button--confirm') as HTMLButtonElement).click()
+      fixture.detectChanges()
+      expect(editor()).toBeNull()
+    })
+
+    it('asks before leaving the file with unsaved edits, and leaves when they are discarded', () => {
+      create()
+      const closed = jest.fn()
+      fixture.componentInstance.closeRequested.subscribe(closed)
+      startEdit()
+      type('changed')
+      button('Back to files')!.click()
+      fixture.detectChanges()
+      expect(closed).not.toHaveBeenCalled()
+      ;(el().querySelector('.ds-confirm-dialog__button--confirm') as HTMLButtonElement).click()
+      fixture.detectChanges()
+      expect(closed).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves a clean file without asking', () => {
+      create()
+      const closed = jest.fn()
+      fixture.componentInstance.closeRequested.subscribe(closed)
+      button('Back to files')!.click()
+      expect(closed).toHaveBeenCalledTimes(1)
+    })
+
+    it('resets the edit mode when another file is shown', () => {
+      create()
+      startEdit()
+      type('changed')
+      fixture.componentRef.setInput('file', ref('other.md'))
+      fixture.componentRef.setInput('content', 'other')
+      fixture.detectChanges()
+      expect(editor()).toBeNull()
+    })
+
+    it('reports its dirty state to the parent', () => {
+      create()
+      const states: boolean[] = []
+      fixture.componentInstance.dirtyChanged.subscribe((dirty) => states.push(dirty))
+      fixture.detectChanges()
+      startEdit()
+      type('changed')
+      expect(states[states.length - 1]).toBe(true)
+      type('one\ntwo\nthree')
+      expect(states[states.length - 1]).toBe(false)
+    })
+
+    it('shows a conflict with a way to reload the latest version', () => {
+      create()
+      startEdit()
+      type('changed')
+      fixture.componentRef.setInput('saveStatus', 'conflict')
+      fixture.componentRef.setInput('saveError', 'The file was modified since it was opened.')
+      fixture.detectChanges()
+      const alert = el().querySelector('[role="alert"]')!
+      expect(alert.textContent).toContain('modified since it was opened')
+      const reload = jest.fn()
+      fixture.componentInstance.reloadRequested.subscribe(reload)
+      ;(alert.querySelector('button') as HTMLButtonElement).click()
+      fixture.detectChanges()
+      expect(reload).toHaveBeenCalledTimes(1)
+      expect(editor()).toBeNull()
+    })
+
+    it('keeps the sandboxed HTML preview when an html file is not being edited', () => {
+      create('page.html', '<p>x</p>', true)
+      expect(el().querySelector('iframe')!.getAttribute('sandbox')).not.toContain('allow-same-origin')
+      expect(startEdit().value).toBe('<p>x</p>')
+      expect(el().querySelector('iframe')).toBeNull()
+    })
+  })
+
+  describe('selection to agent', () => {
+    it('offers the action for a selection in the editor and emits its lines', () => {
+      create('notes/todo.md', 'one\ntwo\nthree')
+      const actions: ExchangeSelectionAction[] = []
+      fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
+      startEdit()
+      expect(askButton()).toBeNull()
+      select(4, 13) // "two\nthree"
+      expect(askButton()).not.toBeNull()
+
+      askButton()!.click()
+      fixture.detectChanges()
+      const area = instruction()!
+      area.value = '  Translate  '
+      area.dispatchEvent(new Event('input'))
+      fixture.detectChanges()
+      ;(el().querySelector('[title="Run the agent on the selection"]') as HTMLButtonElement).click()
+      fixture.detectChanges()
+
+      expect(actions).toEqual([
+        {
+          ref: ref('notes/todo.md'),
+          selection: 'two\nthree',
+          startLine: 2,
+          endLine: 3,
+          instruction: 'Translate',
+          unsavedChanges: false,
+        },
+      ])
+      expect(instruction()).toBeNull()
+    })
+
+    it('flags a selection taken from unsaved edits', () => {
+      create('notes/todo.md', 'one\ntwo')
+      const actions: ExchangeSelectionAction[] = []
+      fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
+      startEdit()
+      type('one\ntwo\nthree')
+      select(8, 13)
+      askButton()!.click()
+      fixture.detectChanges()
+      instruction()!.value = 'Fix'
+      instruction()!.dispatchEvent(new Event('input'))
+      instruction()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+
+      expect(actions[0]).toEqual(expect.objectContaining({ selection: 'three', startLine: 3, unsavedChanges: true }))
+    })
+
+    it('keeps the selection captured when the action opened, and runs nothing without an instruction', () => {
+      create('notes/todo.md', 'one\ntwo\nthree')
+      const run = jest.fn()
+      fixture.componentInstance.selectionActionRequested.subscribe(run)
+      startEdit()
+      select(0, 3)
+      askButton()!.click()
+      fixture.detectChanges()
+      // The focus move to the instruction clears the live selection: the captured one must survive.
+      editor()!.setSelectionRange(0, 0)
+      expect((el().querySelector('[title="Run the agent on the selection"]') as HTMLButtonElement).disabled).toBe(true)
+      instruction()!.value = 'Go'
+      instruction()!.dispatchEvent(new Event('input'))
+      instruction()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      expect(run).toHaveBeenCalledWith(expect.objectContaining({ selection: 'one', startLine: 1, endLine: 1 }))
+    })
+
+    it('cancels the action on Escape without emitting', () => {
+      create('notes/todo.md', 'one\ntwo')
+      const run = jest.fn()
+      fixture.componentInstance.selectionActionRequested.subscribe(run)
+      startEdit()
+      select(0, 3)
+      askButton()!.click()
+      fixture.detectChanges()
+      instruction()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', cancelable: true }))
+      fixture.detectChanges()
+      expect(instruction()).toBeNull()
+      expect(run).not.toHaveBeenCalled()
+    })
+
+    it('offers the action for a selection in the preview, without lines', () => {
+      create('notes/todo.md', 'hello world', false)
+      const actions: ExchangeSelectionAction[] = []
+      fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
+      const paragraph = el().querySelector('.exchange-content-viewer__markdown p, .exchange-content-viewer__markdown')!
+      const range = document.createRange()
+      range.selectNodeContents(paragraph)
+      const selection = window.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new Event('selectionchange'))
+      fixture.detectChanges()
+      expect(askButton()).not.toBeNull()
+
+      askButton()!.click()
+      fixture.detectChanges()
+      instruction()!.value = 'Summarise'
+      instruction()!.dispatchEvent(new Event('input'))
+      instruction()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+
+      expect(actions).toHaveLength(1)
+      expect(actions[0]!.selection).toContain('hello world')
+      expect(actions[0]!.startLine).toBeUndefined()
+      expect(actions[0]!.unsavedChanges).toBe(false)
+      selection.removeAllRanges()
+    })
+
+    it('ignores a selection made outside the viewer', () => {
+      create('notes/todo.md', 'hello world', false)
+      const outside = document.createElement('p')
+      outside.textContent = 'elsewhere'
+      document.body.appendChild(outside)
+      const range = document.createRange()
+      range.selectNodeContents(outside)
+      const selection = window.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new Event('selectionchange'))
+      fixture.detectChanges()
+      expect(askButton()).toBeNull()
+      selection.removeAllRanges()
+      outside.remove()
+    })
   })
 })

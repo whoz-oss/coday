@@ -18,9 +18,16 @@ import {
   canViewFile,
   ensureTypedBlob,
   isBlobPreviewFile,
+  isEditableFormat,
   isFormatViewable,
 } from '../../services/exchange-content.utils'
-import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
+import {
+  ExchangeFileRef,
+  ExchangeSaveStatus,
+  ExchangeScope,
+  ExchangeSelectionAction,
+  ExchangeStateService,
+} from '../../services/exchange-state.service'
 import {
   ExchangeDrawerComponent,
   ExchangeManifestStatus,
@@ -38,7 +45,8 @@ export const FILTER_REFRESH_INTERVAL_MS = 30000
  * ExchangeShellComponent — smart container for the file-exchange drawer panel.
  *
  * Owns the ExchangeStateService lifecycle (initializeForCase / clear from the `?ns`/`?case` query params),
- * loads file content on selection, and routes upload (always CASE) / download / delete
+ * loads file content on selection, saves edits of a text file the user may write, relays "ask an agent about
+ * this selection" upward, and routes upload (always CASE) / download / delete
  * (behind ds-confirm-dialog) / retry. Rendered inside the right ds-drawer hosted by
  * case-chat; closing is delegated upward via `closeRequested`.
  *
@@ -64,6 +72,8 @@ export class ExchangeShellComponent {
   readonly referenced = input<ExchangeFileRef[]>([])
   readonly closeRequested = output<void>()
   readonly referenceToggled = output<ExchangeReferenceToggle>()
+  /** The user asked an agent to act on a selection of the previewed document. */
+  readonly selectionActionRequested = output<ExchangeSelectionAction>()
 
   // ── Current selection / viewer content ────────────────────────────────────────
   protected readonly selectedFile = signal<ExchangeFileRef | null>(null)
@@ -74,6 +84,8 @@ export class ExchangeShellComponent {
    */
   protected readonly selectedBlobUrl = signal<string | null>(null)
   protected readonly selectedBlob = signal<Blob | null>(null)
+  /** Etag of the loaded content: the save is refused by the server if the file changed since. */
+  protected readonly selectedEtag = signal<string | null>(null)
   protected readonly contentStatus = signal<'loading' | 'ready' | 'error'>('loading')
   protected readonly canViewSelected = signal<boolean>(true)
   protected readonly actionError = signal<string | null>(null)
@@ -86,6 +98,30 @@ export class ExchangeShellComponent {
   private readonly caseRetry = signal(0)
   private readonly namespaceRetry = signal(0)
   private readonly contextGeneration = signal(0)
+
+  // ── Editing ───────────────────────────────────────────────────────────────────
+  protected readonly saveStatus = signal<ExchangeSaveStatus>('idle')
+  protected readonly saveError = signal<string | null>(null)
+  /** The viewer holds unsaved edits: the content must not be replaced under them. */
+  private readonly viewerDirty = signal(false)
+
+  /** The selected file is a text file of a scope the user may write (fail-closed on anything not ready). */
+  protected readonly canEditSelected = computed(() => {
+    const ref = this.selectedFile()
+    if (!ref || !this.canViewSelected() || this.contentStatus() !== 'ready') return false
+    const isCase = ref.scope === ExchangeFileEntryScopeEnum.CASE
+    const scopeReady = (isCase ? this.state.caseStatus() : this.state.namespaceStatus()) === 'ready'
+    const canWrite = isCase ? this.state.canWriteCase() : this.state.canWriteNamespace()
+    return scopeReady && canWrite && isEditableFormat(ref.path.split('/').pop() ?? ref.path)
+  })
+
+  /**
+   * Every content request and every deselection bumps it: only the answer to the latest one is
+   * applied, so a slow reply can neither resurrect a closed file nor overwrite a newer content.
+   */
+  private selectionGeneration = 0
+  /** Size and modification time of the file in the listing when its content was last requested. */
+  private loadedStamp: string | null = null
 
   // ── Delete confirmation ─────────────────────────────────────────────────────
   protected readonly pendingDelete = signal<ExchangeFileRef | null>(null)
@@ -100,7 +136,6 @@ export class ExchangeShellComponent {
   /** The case currently initialised, so an unrelated query-param change does not re-init. */
   private activeCaseId: string | null = null
   private activeNamespaceId: string | null = null
-  private selectionGeneration = 0
 
   protected readonly environmentCaseId = signal<string | null>(null)
 
@@ -235,6 +270,21 @@ export class ExchangeShellComponent {
         onCleanup(() => clearInterval(timer))
       })
     }
+    // The agent edits files during a turn: when the listing reports a new version of the previewed
+    // text file, show it. Never under unsaved edits or a save in flight; the change is picked up as
+    // soon as they end (the stamp still differs then).
+    effect(() => {
+      const ref = this.selectedFile()
+      const stamp = ref ? this.stampOf(ref) : null
+      const blocked = this.viewerDirty() || this.saveStatus() === 'saving'
+      untracked(() => {
+        if (!ref || stamp === null || blocked || stamp === this.loadedStamp) return
+        // Only the text endpoint is reloaded here; images and PDFs keep their object URL.
+        if (!this.canViewSelected() || isBlobPreviewFile(ref.path) || this.scopeForbidden(ref.scope)) return
+        this.loadedStamp = stamp
+        this.fetchContent(ref, true)
+      })
+    })
   }
 
   protected onFilterChanged(event: { scope: ExchangeScope; query: string }): void {
@@ -263,12 +313,15 @@ export class ExchangeShellComponent {
     this.selectedFile.set(ref)
     this.selectedContent.set(null)
     this.revokeBlobUrl()
+    this.selectedEtag.set(null)
+    this.resetEditing()
     const file = this.findFile(ref)
     // A file reached through the filter lives deeper than the directory being browsed: judge it by its
     // manifest entry, or by its name alone when even that is unknown.
     const viewable = file ? canViewFile(file) : this.canViewUnlisted(ref)
     this.canViewSelected.set(viewable)
     if (!viewable) {
+      this.selectionGeneration++
       this.contentStatus.set('ready')
       return
     }
@@ -277,6 +330,16 @@ export class ExchangeShellComponent {
       this.loadBlob(ref, generation)
       return
     }
+    this.loadedStamp = this.stampOf(ref)
+    this.fetchContent(ref, false)
+  }
+
+  /**
+   * Load the text content of [ref]. A [background] load (the file changed in the listing, or a reload after
+   * a conflict) keeps what is shown until the answer comes, and drops it when it is the version already shown.
+   */
+  private fetchContent(ref: ExchangeFileRef, background: boolean): void {
+    const generation = ++this.selectionGeneration
     this.state
       .getContent(ref.scope, ref.path)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -284,15 +347,62 @@ export class ExchangeShellComponent {
         next: (content) => {
           if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope))
             return
+          if (background && content.etag != null && content.etag === this.selectedEtag()) return
           this.selectedContent.set(content.content)
+          this.selectedEtag.set(content.etag ?? null)
           this.contentStatus.set('ready')
         },
         error: () => {
           if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope))
             return
-          this.contentStatus.set('error')
+          // A failed background reload keeps what is shown.
+          if (!background) this.contentStatus.set('error')
         },
       })
+  }
+
+  /** Version of a file in the listing being browsed, null when it is not listed. */
+  private stampOf(ref: ExchangeFileRef): string | null {
+    const file = this.findFile(ref)
+    return file ? `${file.size ?? ''}:${file.lastModified ?? ''}` : null
+  }
+
+  // ── Edit ──────────────────────────────────────────────────────────────────────
+  protected async onSaveRequested(event: { ref: ExchangeFileRef; content: string }): Promise<void> {
+    const { ref, content } = event
+    if (this.saveStatus() === 'saving' || !this.isStillSelected(ref)) return
+    this.saveStatus.set('saving')
+    this.saveError.set(null)
+    const result = await this.state.saveContent(ref.scope, ref.path, content, this.selectedEtag() ?? undefined)
+    if (!this.isStillSelected(ref)) return
+    if (result.success) {
+      // The viewer leaves its edit mode once the content it is given is the text it saved.
+      this.selectedContent.set(content)
+      this.selectedEtag.set(result.etag ?? null)
+      this.saveStatus.set('idle')
+    } else {
+      this.saveStatus.set(result.conflict ? 'conflict' : 'error')
+      this.saveError.set(result.error ?? 'Save failed')
+    }
+  }
+
+  /** After a conflict: drop the stale edits and load the file as the server now has it. */
+  protected onReloadRequested(): void {
+    const ref = this.selectedFile()
+    this.resetEditing()
+    if (!ref) return
+    this.loadedStamp = this.stampOf(ref)
+    this.fetchContent(ref, false)
+  }
+
+  protected onDirtyChanged(dirty: boolean): void {
+    this.viewerDirty.set(dirty)
+  }
+
+  private resetEditing(): void {
+    this.saveStatus.set('idle')
+    this.saveError.set(null)
+    this.viewerDirty.set(false)
   }
 
   // ── Upload (case or namespace, per the drawer section's scope) ────────────────
@@ -416,6 +526,9 @@ export class ExchangeShellComponent {
     this.selectedFile.set(null)
     this.selectedContent.set(null)
     this.revokeBlobUrl()
+    this.selectedEtag.set(null)
+    this.loadedStamp = null
+    this.resetEditing()
     this.contentStatus.set('loading')
     this.canViewSelected.set(true)
   }
@@ -427,7 +540,9 @@ export class ExchangeShellComponent {
     this.actionError.set(null)
   }
 
-  private findFile(ref: ExchangeFileRef): { name?: string; filename?: string; size?: number } | undefined {
+  private findFile(
+    ref: ExchangeFileRef
+  ): { name?: string; filename?: string; size?: number; lastModified?: string } | undefined {
     const isCase = ref.scope === ExchangeFileEntryScopeEnum.CASE
     const files = isCase ? this.state.caseFiles() : this.state.namespaceFiles()
     const manifest = isCase ? this.caseManifest() : this.namespaceManifest()
