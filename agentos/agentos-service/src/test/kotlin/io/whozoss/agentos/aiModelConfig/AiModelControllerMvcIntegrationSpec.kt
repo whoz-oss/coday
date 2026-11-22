@@ -1,6 +1,7 @@
 package io.whozoss.agentos.aiModelConfig
 
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
@@ -90,6 +91,45 @@ class AiModelControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
                         .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "gpt-6-astra", "reasoningEffort": "XHIGH" }"""),
                 ).andExpect(status().isCreated)
                 .andExpect(jsonPath("$.reasoningEffort").value("XHIGH"))
+        }
+
+        "POST then PUT /api/ai-models store the prompt cache lifetimes, and an omitted value clears them" {
+            val parent = createParentAiProvider()
+            mockMvc
+                .perform(
+                    post("/api/ai-models")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                            """{ "aiProviderId": "${parent.id}", "apiModelName": "policy/claude-sonnet", "cacheTtlMinutes": 5, "extendedCacheTtlMinutes": 60 }""",
+                        ),
+                ).andExpect(status().isCreated)
+                .andExpect(jsonPath("$.cacheTtlMinutes").value(5))
+                .andExpect(jsonPath("$.extendedCacheTtlMinutes").value(60))
+            val id = aiModelService.findByParent(parent.id).single().id
+
+            mockMvc
+                .perform(
+                    put("/api/ai-models/$id")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "$id", "aiProviderId": "${parent.id}", "apiModelName": "policy/claude-sonnet", "cacheTtlMinutes": 30 }"""),
+                ).andExpect(status().isOk)
+            aiModelService.findById(id)!!.run {
+                cacheTtlMinutes shouldBe 30
+                extendedCacheTtlMinutes shouldBe null
+            }
+        }
+
+        "POST /api/ai-models with a prompt cache lifetime that is not positive returns 400" {
+            val parent = createParentAiProvider()
+            for (body in listOf(""""cacheTtlMinutes": 0""", """"extendedCacheTtlMinutes": -5""")) {
+                mockMvc
+                    .perform(
+                        post("/api/ai-models")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""{ "aiProviderId": "${parent.id}", "apiModelName": "claude-haiku-4-5", $body }"""),
+                    ).andExpect(status().isBadRequest)
+            }
+            aiModelService.findByParent(parent.id).shouldBeEmpty()
         }
 
         "POST /api/ai-models with an unknown reasoning effort returns 400" {

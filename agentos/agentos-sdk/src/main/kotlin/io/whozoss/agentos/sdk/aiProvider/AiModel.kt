@@ -70,6 +70,16 @@ data class AiModel(
      */
     val pricing: ModelPricing? = null,
     /**
+     * How long the provider keeps a prompt cached after its last use, in minutes. Null = 5 minutes. Read by the
+     * prompt cache status of a case and its keep-alive, never sent to the provider.
+     */
+    val cacheTtlMinutes: Int? = null,
+    /**
+     * The same when the request got the one-hour cache markers (the user chose Extended, Claude via Requesty), in
+     * minutes. Null = 60 minutes. It does not decide whether the markers are sent.
+     */
+    val extendedCacheTtlMinutes: Int? = null,
+    /**
      * Reasoning effort sent to the provider. Null = provider default. Rejected when the model is
      * saved under an API type without [AiApiType.supportsReasoningEffort] (Anthropic, Gemini).
      */

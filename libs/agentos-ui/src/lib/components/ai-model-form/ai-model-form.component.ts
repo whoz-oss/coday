@@ -93,6 +93,8 @@ export class AiModelFormComponent implements OnInit {
     maxCompletionTokens: new FormControl<number | null>(null),
     reasoningEffort: new FormControl<ReasoningEffort | null>(null),
     supportsAdvancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
+    cacheTtlMinutes: new FormControl<number | null>(null, { validators: [Validators.min(1)] }),
+    extendedCacheTtlMinutes: new FormControl<number | null>(null, { validators: [Validators.min(1)] }),
     pricing: new FormGroup({
       inputMTokens: new FormControl<number | null>(null),
       outputMTokens: new FormControl<number | null>(null),
@@ -139,6 +141,14 @@ export class AiModelFormComponent implements OnInit {
 
   protected get supportsAdvancedExecutionControl() {
     return this.form.controls.supportsAdvancedExecution
+  }
+
+  protected get cacheTtlMinutesControl() {
+    return this.form.controls.cacheTtlMinutes
+  }
+
+  protected get extendedCacheTtlMinutesControl() {
+    return this.form.controls.extendedCacheTtlMinutes
   }
 
   protected get pricingGroup() {
@@ -232,6 +242,8 @@ export class AiModelFormComponent implements OnInit {
           this.maxCompletionTokensControl.setValue(model.maxCompletionTokens ?? null)
           this.reasoningEffortControl.setValue(model.reasoningEffort ?? null)
           this.supportsAdvancedExecutionControl.setValue(model.supportsAdvancedExecution ?? false)
+          this.cacheTtlMinutesControl.setValue(model.cacheTtlMinutes ?? null)
+          this.extendedCacheTtlMinutesControl.setValue(model.extendedCacheTtlMinutes ?? null)
           this.pricingGroup.setValue({
             inputMTokens: model.pricing?.inputMTokens ?? null,
             outputMTokens: model.pricing?.outputMTokens ?? null,
@@ -287,6 +299,8 @@ export class AiModelFormComponent implements OnInit {
       maxCompletionTokens: raw.maxCompletionTokens ?? undefined,
       reasoningEffort: raw.reasoningEffort ?? undefined,
       supportsAdvancedExecution: raw.supportsAdvancedExecution,
+      cacheTtlMinutes: raw.cacheTtlMinutes ?? undefined,
+      extendedCacheTtlMinutes: raw.extendedCacheTtlMinutes ?? undefined,
       pricing,
     }
 

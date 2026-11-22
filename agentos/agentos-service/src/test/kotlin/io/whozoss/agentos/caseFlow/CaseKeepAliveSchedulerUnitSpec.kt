@@ -17,6 +17,7 @@ import io.whozoss.agentos.chat.LlmRequestOptions
 import io.whozoss.agentos.chat.RequestyPromptCacheProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -69,6 +70,8 @@ class CaseKeepAliveSchedulerUnitSpec :
             usageEnabled: Boolean = true,
             /** How long the agent's final request streamed before the turn ended and the request was captured. */
             streamDuration: Duration = Duration.ZERO,
+            /** The configuration of the request's model, null for a model without one (or gone). */
+            model: AiModel? = null,
         ) {
             val clock = MovingClock(start)
             val registry = LastLlmRequestRegistry(clock)
@@ -105,6 +108,7 @@ class CaseKeepAliveSchedulerUnitSpec :
                             UsageConfigProperties(enabled = true),
                             RequestyPromptCacheProperties(),
                         ) { true },
+                    aiModelService = mockk { every { findById(any()) } returns model },
                     properties = CaseKeepAliveProperties(maxIdle = maxIdle),
                     clock = clock,
                     usageConfig = UsageConfigProperties(enabled = usageEnabled),
@@ -151,12 +155,34 @@ class CaseKeepAliveSchedulerUnitSpec :
             }
         }
 
-        val fiveMinuteDue = CaseKeepAliveScheduler.FIVE_MINUTE_INTERVAL
-        val oneHourDue = CaseKeepAliveScheduler.ONE_HOUR_INTERVAL
+        // Without a cache lifetime on the model: 5 minutes, 60 with the one-hour markers, less the margins.
+        val fiveMinuteDue: Duration = Duration.ofMinutes(4).plusSeconds(20)
+        val oneHourDue: Duration = Duration.ofMinutes(58)
 
-        "the refresh intervals leave room for a late tick and the provider's latency: 4:20 and 58:00" {
-            fiveMinuteDue shouldBe Duration.ofSeconds(260)
-            oneHourDue shouldBe Duration.ofMinutes(58)
+        fun model(
+            cacheTtlMinutes: Int? = null,
+            extendedCacheTtlMinutes: Int? = null,
+        ) = AiModel(
+            aiProviderId = UUID.randomUUID(),
+            apiModelName = "anthropic/claude-sonnet-4-5",
+            cacheTtlMinutes = cacheTtlMinutes,
+            extendedCacheTtlMinutes = extendedCacheTtlMinutes,
+        )
+
+        "the cache lifetime configured on the model sets the due time, less the same margins" {
+            Fixture(model = model(cacheTtlMinutes = 30)).run {
+                tickAt(Duration.ofMinutes(29).plusSeconds(19)).shouldBeEmpty()
+                tickAt(Duration.ofMinutes(29).plusSeconds(20)) shouldBe listOf(case.id)
+            }
+            Fixture(ttl = PromptCacheTtl.EXTENDED, model = model(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 62)).run {
+                tickAt(oneHourDue).shouldBeEmpty()
+                tickAt(Duration.ofMinutes(60)) shouldBe listOf(case.id)
+            }
+            // A lifetime shorter than the margin is still not pinged at every tick.
+            Fixture(ttl = PromptCacheTtl.EXTENDED, model = model(extendedCacheTtlMinutes = 1)).run {
+                tickAt(Duration.ofSeconds(29)).shouldBeEmpty()
+                tickAt(Duration.ofSeconds(30)) shouldBe listOf(case.id)
+            }
         }
 
         "a 5-minute cache is not pinged before 4:20 after the agent's request, and is at 4:20" {

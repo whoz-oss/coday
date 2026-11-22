@@ -64,7 +64,7 @@ export class CaseUsageComponent {
   /** The clock of the cache countdown. */
   private readonly now = signal(Date.now())
 
-  /** `Warm (N min left)`, `Cold (~cost)` or `Cold`; null (hidden) when the cache lifetime is unknown. */
+  /** `Warm (N min left)`, `Cold (~cost)` or `Cold`; null (hidden) when the case has no recent request. */
   readonly cacheLabel = computed((): string | null => {
     const status = this.promptCache()
     if (!status?.expiresAt) return null

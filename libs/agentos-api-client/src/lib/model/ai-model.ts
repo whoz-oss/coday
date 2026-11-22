@@ -14,8 +14,10 @@ export interface AiModel {
   aiProviderId: string
   alias?: string
   apiModelName: string
+  cacheTtlMinutes?: number
   contextWindow?: number
   description?: string
+  extendedCacheTtlMinutes?: number
   id?: string
   maxCompletionTokens?: number
   namespaceId?: string

@@ -289,8 +289,8 @@ class CaseController(
         description =
             "PUT /api/cases/{id}/keep-alive — while the case is idle, keep the provider's prompt cache of its " +
                 "conversation warm by re-sending the agent's last request with a 1-token answer before the cache " +
-                "expires (4:20 after its last use, or 58:00 when a 1-hour cache applies), for up to the platform's " +
-                "maximum idle duration after the last agent turn. Each refresh is recorded as usage of the case; " +
+                "expires (its model's cache lifetime less a margin: 4:20 or 58:00 by default), for up to the " +
+                "platform's maximum idle duration after the last agent turn. Each refresh is recorded as usage of the case; " +
                 "no refresh is sent while usage tracking is off. 400 when keepAlive is missing. " +
                 "Returns the updated Case DTO.",
     )

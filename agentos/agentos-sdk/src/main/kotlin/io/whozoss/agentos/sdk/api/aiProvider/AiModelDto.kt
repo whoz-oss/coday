@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Positive
 import java.util.UUID
 
 /**
@@ -56,6 +57,12 @@ data class AiModelDto(
      * for field semantics.
      */
     val pricing: io.whozoss.agentos.sdk.aiProvider.ModelPricing? = null,
+    /** Prompt cache lifetime after the last use, in minutes. Null = 5 minutes. */
+    @field:Positive
+    val cacheTtlMinutes: Int? = null,
+    /** Prompt cache lifetime when the request got the one-hour cache markers, in minutes. Null = 60 minutes. */
+    @field:Positive
+    val extendedCacheTtlMinutes: Int? = null,
     /**
      * Reasoning effort sent to the provider. Null = provider default. Rejected with a 400 for
      * Anthropic and Gemini providers, where the service cannot send it reliably yet.

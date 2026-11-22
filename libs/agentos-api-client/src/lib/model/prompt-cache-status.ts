@@ -14,7 +14,7 @@ export interface PromptCacheStatus {
    */
   coldCostEstimate?: number
   /**
-   * When the provider\'s prompt cache of the case\'s last request expires; in the past once it is cold. Null when unknown: no recent request of the case, or a model whose cache lifetime is unknown.
+   * When the provider\'s prompt cache of the case\'s last request expires; in the past once it is cold. Null when the case has no recent request.
    */
   expiresAt?: string
 }
