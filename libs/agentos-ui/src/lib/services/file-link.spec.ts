@@ -17,6 +17,9 @@ describe('parseFileReference', () => {
     ['./x/y.md', { path: './x/y.md' }],
     ['../lib/z.ts:3', { path: '../lib/z.ts', line: 3 }],
     ['@scope/pkg/index.ts', { path: '@scope/pkg/index.ts' }],
+    ['package.json', { path: 'package.json' }],
+    ['build.gradle', { path: 'build.gradle' }],
+    ['README.md', { path: 'README.md' }],
   ])('reads %s as a file reference', (text, expected) => {
     expect(parseFileReference(text)).toEqual(expected)
   })
@@ -25,6 +28,8 @@ describe('parseFileReference', () => {
     ['user.name'],
     ['foo'],
     ['foo.bar'],
+    ['Node.js'],
+    ['config.properties'],
     ['https://x.com/a.ts'],
     ['a b.ts'],
     ['npm run build'],
