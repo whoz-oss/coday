@@ -30,6 +30,8 @@ import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeSelectionRequestService } from '../../services/exchange-selection-request.service'
+import { proposalInstructions } from '../exchange-content-viewer/exchange-selection-message'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { IdeLinkService } from '../../services/ide-link.service'
@@ -1341,11 +1343,16 @@ describe('CaseChatComponent — submit with attachments', () => {
       instruction: '@Writer translate this',
       unsavedChanges: false,
     }
-    const expectedMessage = [
-      '@Writer translate this',
-      '[Selection from case:notes/todo.md, line 2]\n```markdown\nBuy milk\n```',
-      '[Files referenced: case:notes/todo.md]',
-    ].join('\n\n')
+    /** The message the chat posts: the marker carries the id of the request the service registered. */
+    const expectedMessage = (): string => {
+      const request = TestBed.inject(ExchangeSelectionRequestService).requests()[0]!
+      return [
+        '@Writer translate this',
+        '[Selection from case:notes/todo.md, line 2]\n```markdown\nBuy milk\n```',
+        proposalInstructions(request.id),
+        '[Files referenced: case:notes/todo.md]',
+      ].join('\n\n')
+    }
 
     it('runs the agent directly when the composer could send now', () => {
       const ref = makeComponent()
@@ -1354,7 +1361,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.instance['onSelectionAction'](action)
 
       expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
-        content: expectedMessage,
+        content: expectedMessage(),
         userId: 'default-user',
       })
       expect(ref.instance['isRunning']()).toBe(true)
@@ -1374,7 +1381,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.instance['onSelectionAction'](action)
 
       expect(http.post).not.toHaveBeenCalled()
-      expect(ref.instance['inputValue']()).toBe(expectedMessage)
+      expect(ref.instance['inputValue']()).toBe(expectedMessage())
     })
 
     it('appends to the draft of the composer rather than replacing it', () => {
@@ -1384,7 +1391,111 @@ describe('CaseChatComponent — submit with attachments', () => {
 
       ref.instance['onSelectionAction'](action)
 
-      expect(ref.instance['inputValue']()).toBe(`my draft\n\n${expectedMessage}`)
+      expect(ref.instance['inputValue']()).toBe(`my draft\n\n${expectedMessage()}`)
+    })
+
+    it('registers a waiting request for the selection, with its offsets', () => {
+      const ref = makeComponent()
+
+      ref.instance['onSelectionAction']({ ...action, from: 4, to: 12 })
+
+      expect(TestBed.inject(ExchangeSelectionRequestService).requests()).toEqual([
+        expect.objectContaining({
+          ref: action.ref,
+          from: 4,
+          to: 12,
+          selection: 'Buy milk',
+          instruction: '@Writer translate this',
+          status: 'waiting',
+        }),
+      ])
+    })
+
+    describe('the answer of the agent, from the event stream', () => {
+      const metadata = { id: '', created: '', modified: '', removed: false }
+      let source: EventTarget & { close: jest.Mock }
+      let original: typeof EventSource
+      let ref: ComponentRef<CaseChatComponent>
+      let requestId: string
+
+      const message = (id: string, role: 'USER' | 'AGENT', text: string) => ({
+        type: 'MessageEvent',
+        id,
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T00:00:00Z',
+        metadata,
+        actor: { id: role === 'USER' ? 'u-1' : 'a-1', role, displayName: role },
+        content: [{ type: 'Text', content: text }],
+      })
+      const emit = (type: string, event: object) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, ...event }) }))
+      const current = () => TestBed.inject(ExchangeSelectionRequestService).get(requestId)!
+      const postedMarker = () => `[selection-request:${requestId}]`
+
+      beforeEach(() => {
+        original = globalThis.EventSource
+        source = Object.assign(new EventTarget(), { close: jest.fn() })
+        globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+        jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        ref = makeComponent()
+        ref.instance['connectSse']()
+        ref.instance['onSelectionAction'](action)
+        requestId = TestBed.inject(ExchangeSelectionRequestService).requests()[0]!.id
+      })
+
+      afterEach(() => {
+        ref.destroy()
+        globalThis.EventSource = original
+        jest.restoreAllMocks()
+      })
+
+      it('moves the request to proposed when the first agent message after the marked one has a proposal block', () => {
+        emit('MessageEvent', message('m-1', 'USER', `ask\n${postedMarker()}`))
+        expect(current().status).toBe('waiting')
+
+        emit('MessageEvent', message('m-2', 'AGENT', 'Better wording.\n```proposal\nAcheter du lait\n```'))
+
+        expect(current()).toEqual(
+          expect.objectContaining({ status: 'proposed', proposal: 'Acheter du lait', answer: 'Better wording.' })
+        )
+      })
+
+      it('moves it to answered, with the text, when the agent gives no proposal block', () => {
+        emit('MessageEvent', message('m-1', 'USER', postedMarker()))
+        emit('MessageEvent', message('m-2', 'AGENT', 'Nothing to change here.'))
+        expect(current()).toEqual(expect.objectContaining({ status: 'answered', answer: 'Nothing to change here.' }))
+      })
+
+      it('only settles it with the first agent message, not the hand-offs that follow', () => {
+        emit('MessageEvent', message('m-1', 'USER', postedMarker()))
+        emit('MessageEvent', message('m-2', 'AGENT', 'Done.\n```proposal\nfirst\n```'))
+        emit('MessageEvent', message('m-3', 'AGENT', 'Handing back.\n```proposal\nsecond\n```'))
+        expect(current().proposal).toBe('first')
+      })
+
+      it('ignores an agent message that comes before the marked user message', () => {
+        emit('MessageEvent', message('m-0', 'AGENT', '```proposal\nold\n```'))
+        expect(current().status).toBe('waiting')
+      })
+
+      it('ignores a user message without the marker of a known request', () => {
+        emit('MessageEvent', message('m-1', 'USER', 'hello [selection-request:unknown]'))
+        emit('MessageEvent', message('m-2', 'AGENT', '```proposal\nx\n```'))
+        expect(current().status).toBe('waiting')
+      })
+
+      it('fails the request on an ErrorEvent', () => {
+        emit('MessageEvent', message('m-1', 'USER', postedMarker()))
+        emit('ErrorEvent', { id: 'e-1', caseId: 'c-1', metadata, timestamp: '', message: 'Model unavailable' })
+        expect(current()).toEqual(expect.objectContaining({ status: 'failed', answer: 'Model unavailable' }))
+      })
+
+      it('fails the request when the case is killed', () => {
+        emit('MessageEvent', message('m-1', 'USER', postedMarker()))
+        emit('CaseStatusEvent', { id: 's-1', caseId: 'c-1', metadata, timestamp: '', status: 'KILLED' })
+        expect(current().status).toBe('failed')
+      })
     })
   })
 

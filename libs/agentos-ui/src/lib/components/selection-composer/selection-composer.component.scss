@@ -1,0 +1,60 @@
+// Same look as the composer of the case chat (.case-chat__composer / .case-chat__input), through the shared design
+// tokens: opaque surface, divider border, radius and shadow tokens. Never translucent, never blurred.
+:host {
+  display: block;
+}
+
+.selection-composer {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg, 0);
+
+  &:focus-within {
+    border-color: var(--color-accent);
+  }
+
+  &__input {
+    flex: 1;
+    min-width: 0;
+    resize: none;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    font-size: 14px;
+    font-family: var(--font-body);
+    line-height: 1.55;
+    outline: none;
+    min-height: 44px;
+    max-height: 40vh;
+    overflow-y: auto;
+
+    &::placeholder {
+      color: var(--color-neutral-700);
+    }
+  }
+
+  &__actions {
+    flex: none;
+    padding: 0 6px 6px 0;
+  }
+
+  &__autocomplete {
+    position: absolute;
+    bottom: calc(100% + 0.5rem);
+    left: 0;
+    right: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+    z-index: 20;
+  }
+}

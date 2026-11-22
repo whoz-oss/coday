@@ -21,6 +21,7 @@ import {
   isEditableFormat,
   isFormatViewable,
 } from '../../services/exchange-content.utils'
+import { ExchangeSelectionRequestService } from '../../services/exchange-selection-request.service'
 import {
   ExchangeFileRef,
   ExchangeSaveStatus,
@@ -64,6 +65,9 @@ export class ExchangeShellComponent {
   private readonly route = inject(ActivatedRoute)
   private readonly destroyRef = inject(DestroyRef)
   protected readonly state = inject(ExchangeStateService)
+  protected readonly selectionRequests = inject(ExchangeSelectionRequestService)
+  /** The agent request about the open file: the viewer shows its highlight, waiting line and proposal. */
+  protected readonly request = computed(() => this.selectionRequests.forFile(this.selectedFile()))
 
   readonly active = input(false)
   /** Lets the user check files to put them in the message being written (relayed to the drawer). */
@@ -138,6 +142,8 @@ export class ExchangeShellComponent {
   private activeNamespaceId: string | null = null
 
   protected readonly environmentCaseId = signal<string | null>(null)
+  /** Namespace of the case (`?ns`): the viewer's composer suggests the agents of that namespace on `@`. */
+  protected readonly activeNamespace = signal<string | null>(null)
 
   constructor() {
     // An object URL keeps its blob in memory until revoked.
@@ -151,6 +157,7 @@ export class ExchangeShellComponent {
       const namespaceId = params['ns'] as string | undefined
       const caseId = params['case'] as string | undefined
       this.environmentCaseId.set(caseId ?? null)
+      this.activeNamespace.set(namespaceId ?? null)
       if (namespaceId && caseId) {
         // Guard on the case actually changing (like case-chat): a re-emission for some other query
         // param must not wipe the open file and double-refetch both manifests.
@@ -271,12 +278,14 @@ export class ExchangeShellComponent {
       })
     }
     // The agent edits files during a turn: when the listing reports a new version of the previewed
-    // text file, show it. Never under unsaved edits or a save in flight; the change is picked up as
+    // text file, show it. Never under unsaved edits, a save in flight, or while a selection request about the file
+    // is pending (the highlighted passage and the proposal must not move under the user); the change is picked up as
     // soon as they end (the stamp still differs then).
     effect(() => {
       const ref = this.selectedFile()
       const stamp = ref ? this.stampOf(ref) : null
-      const blocked = this.viewerDirty() || this.saveStatus() === 'saving'
+      const blocked =
+        this.viewerDirty() || this.saveStatus() === 'saving' || this.selectionRequests.hasPending(ref ?? null)
       untracked(() => {
         if (!ref || stamp === null || blocked || stamp === this.loadedStamp) return
         // Only the text endpoint is reloaded here; images and PDFs keep their object URL.

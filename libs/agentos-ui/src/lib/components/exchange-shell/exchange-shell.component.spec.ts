@@ -1137,8 +1137,11 @@ describe('ExchangeShellComponent filters', () => {
     el.querySelector<HTMLButtonElement>('agentos-exchange-item .exchange-item__main')!.click()
     fixture.detectChanges()
     expect(api.getCaseFileContentExchange).toHaveBeenCalledWith('c-1', 'deep/report.md')
-    // The case is writable: the file opens straight in the editor.
-    expect(el.querySelector<HTMLTextAreaElement>('textarea.exchange-content-viewer__editor')?.value).toBe('body')
+    // The case is writable: the markdown file opens straight in place, in its rendered document.
+    const document_ = el.querySelector<HTMLElement>('.exchange-content-viewer__markdown')
+    expect(document_?.getAttribute('contenteditable')).toBe('true')
+    expect(document_?.textContent).toContain('body')
+    expect(el.querySelector('.exchange-content-viewer__toggle')).toBeNull()
     el.querySelector<HTMLButtonElement>('ds-icon-button[title="Back to files"] button')!.click()
     fixture.detectChanges()
     expect(el.querySelector<HTMLInputElement>('input[aria-label="Filter case files by name or path"]')?.value).toBe(

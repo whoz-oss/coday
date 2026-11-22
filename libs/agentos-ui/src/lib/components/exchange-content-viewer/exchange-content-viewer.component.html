@@ -29,26 +29,6 @@
         • unsaved
       }
     </span>
-    @if (editable() && hasRenderedView()) {
-      <div class="exchange-content-viewer__toggle" role="group" aria-label="View mode">
-        <button
-          type="button"
-          class="exchange-content-viewer__toggle-option"
-          [attr.aria-pressed]="viewMode() === 'source'"
-          (click)="onSetView('source')"
-        >
-          Source
-        </button>
-        <button
-          type="button"
-          class="exchange-content-viewer__toggle-option"
-          [attr.aria-pressed]="viewMode() === 'preview'"
-          (click)="onSetView('preview')"
-        >
-          Preview
-        </button>
-      </div>
-    }
     @if (editable()) {
       <ds-icon-button icon="save" variant="primary" title="Save (Ctrl+S)" [disabled]="!canSave()" (action)="onSave()" />
       @if (dirty()) {
@@ -69,51 +49,11 @@
     </p>
   }
 
-  @if (selection() || actionOpen()) {
-    <div class="exchange-content-viewer__selection-bar">
-      @if (!actionOpen()) {
-        <!-- mousedown is held back so the click does not clear the selection it is about to capture. -->
-        <button
-          type="button"
-          class="exchange-content-viewer__ask"
-          title="Ask an agent about the selection"
-          (mousedown)="$event.preventDefault()"
-          (click)="openAction()"
-        >
-          <span class="material-icons" aria-hidden="true">auto_awesome</span>
-          Ask an agent about the selection
-        </button>
-      } @else {
-        <textarea
-          #instructionInput
-          class="exchange-content-viewer__instruction"
-          rows="2"
-          aria-label="Instruction for the agent"
-          placeholder="What should the agent do with this selection? (you can @mention an agent)"
-          [value]="instruction()"
-          (input)="onInstructionInput($event)"
-          (keydown)="onInstructionKeydown($event)"
-        ></textarea>
-        <div class="exchange-content-viewer__selection-actions">
-          <button
-            type="button"
-            class="exchange-content-viewer__cta"
-            title="Run the agent on the selection"
-            [disabled]="!instruction().trim()"
-            (click)="runAction()"
-          >
-            Run
-          </button>
-          <button type="button" class="exchange-content-viewer__secondary" (click)="closeAction()">Cancel</button>
-        </div>
-      }
-    </div>
-  }
-
   <div
     #body
     class="exchange-content-viewer__body"
-    [class.exchange-content-viewer__body--editing]="showEditor() && status() === 'ready'"
+    [class.exchange-content-viewer__body--editing]="textEditor() && status() === 'ready'"
+    (scroll)="onEditorScroll()"
   >
     @if (!canView()) {
       <ds-empty-state
@@ -131,19 +71,29 @@
       <ds-empty-state icon="error_outline" title="Couldn't load this file" hint="The content could not be retrieved.">
         <button class="exchange-content-viewer__cta" type="button" (click)="onDownload()">Download instead</button>
       </ds-empty-state>
-    } @else if (showEditor()) {
-      <textarea
-        #editor
-        class="exchange-content-viewer__editor"
-        spellcheck="false"
-        [attr.aria-label]="'Edit ' + filename()"
-        [value]="draft()"
-        (input)="onDraftInput($event)"
-        (keydown)="onEditorKeydown($event)"
-        (select)="captureEditorSelection()"
-        (keyup)="captureEditorSelection()"
-        (mouseup)="captureEditorSelection()"
-      ></textarea>
+    } @else if (textEditor()) {
+      <!-- Edited in place, as the document: no inner box. The mirror layer behind it paints the selection highlight. -->
+      <div class="exchange-content-viewer__editor-wrap">
+        @if (mirrorParts(); as parts) {
+          <div #mirror class="exchange-content-viewer__mirror" aria-hidden="true">
+            {{ parts.before }}<mark class="agentos-selection">{{ parts.mid }}</mark
+            >{{ parts.after }}
+          </div>
+        }
+        <textarea
+          #editor
+          class="exchange-content-viewer__editor"
+          spellcheck="false"
+          [attr.aria-label]="'Edit ' + filename()"
+          [value]="draft()"
+          (input)="onDraftInput($event)"
+          (keydown)="onEditorKeydown($event)"
+          (scroll)="onEditorScroll()"
+          (select)="captureEditorSelection()"
+          (keyup)="captureEditorSelection()"
+          (mouseup)="captureEditorSelection()"
+        ></textarea>
+      </div>
     } @else if (format() === 'image') {
       @if (blobUrl(); as url) {
         @if (imageFailed()) {
@@ -189,9 +139,23 @@
         </div>
       }
     } @else if (format() === 'markdown') {
+      <!--
+        The rendered markdown, through the sanitized pipeline. When the file is editable the user types right in it
+        (contenteditable); it is converted back to markdown on save only, and re-rendered only when the file or its
+        saved content changes, never on a keystroke, so the caret does not jump.
+      -->
       <div
+        #docRoot
         class="exchange-content-viewer__markdown"
-        [innerHTML]="(editable() ? draft() : content()) | agentosMarkdown"
+        [class.exchange-content-viewer__markdown--editable]="editMode() === 'markdown'"
+        [attr.contenteditable]="editMode() === 'markdown' ? 'true' : null"
+        [attr.role]="editMode() === 'markdown' ? 'textbox' : null"
+        [attr.aria-multiline]="editMode() === 'markdown' ? 'true' : null"
+        [attr.aria-label]="editMode() === 'markdown' ? 'Edit ' + filename() : null"
+        [attr.tabindex]="editMode() === 'markdown' ? 0 : null"
+        [innerHTML]="mdHtml()"
+        (input)="onMarkdownInput()"
+        (keydown)="editMode() === 'markdown' && onEditorKeydown($event)"
       ></div>
     } @else if (format() === 'html') {
       <!--
@@ -208,9 +172,88 @@
         sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
       ></iframe>
     } @else {
-      <pre class="exchange-content-viewer__pre">{{ displayContent() }}</pre>
+      <pre #docRoot class="exchange-content-viewer__pre">{{ displayContent() }}</pre>
+    }
+
+    <!-- The agent's proposal, as an annotation next to the highlighted passage: accepted or rejected in place. -->
+    @if (cardVisible() && request(); as req) {
+      <section
+        class="exchange-content-viewer__card"
+        dsBlueprint
+        [style.top.px]="anchorTop() ?? 8"
+        aria-label="Agent suggestion"
+      >
+        @if (req.status === 'proposed') {
+          @if (req.answer) {
+            <p class="exchange-content-viewer__card-text">{{ req.answer }}</p>
+          }
+          <p class="exchange-content-viewer__diff" aria-label="Proposed change">
+            @for (part of proposalDiff(); track $index) {
+              @switch (part.type) {
+                @case ('delete') {
+                  <del class="exchange-content-viewer__del">{{ part.text }}</del>
+                }
+                @case ('insert') {
+                  <ins class="exchange-content-viewer__ins">{{ part.text }}</ins>
+                }
+                @default {
+                  <span>{{ part.text }}</span>
+                }
+              }
+            }
+          </p>
+          @if (acceptError()) {
+            <p class="exchange-content-viewer__card-error" role="alert">{{ acceptError() }}</p>
+          }
+          <div class="exchange-content-viewer__card-actions">
+            @if (editMode()) {
+              <button type="button" class="exchange-content-viewer__cta" (click)="onAccept()">Accept</button>
+            }
+            <button type="button" class="exchange-content-viewer__secondary" (click)="onReject()">Reject</button>
+            <button type="button" class="exchange-content-viewer__secondary" (click)="onAskAgain()">Ask again</button>
+          </div>
+        } @else if (req.status === 'answered') {
+          <p class="exchange-content-viewer__card-text">{{ req.answer }}</p>
+          <div class="exchange-content-viewer__card-actions">
+            <button type="button" class="exchange-content-viewer__secondary" (click)="dismiss()">Dismiss</button>
+          </div>
+        } @else {
+          <p class="exchange-content-viewer__card-error" role="alert">{{ req.answer || 'The agent failed' }}</p>
+          <div class="exchange-content-viewer__card-actions">
+            <button type="button" class="exchange-content-viewer__secondary" (click)="dismiss()">Dismiss</button>
+          </div>
+        }
+      </section>
     }
   </div>
+
+  @if (dockVisible()) {
+    <!-- Frozen on mousedown / focus: moving the focus to the composer collapses the live selection. -->
+    <div class="exchange-content-viewer__dock" (mousedown)="freeze()" (focusin)="freeze()">
+      @if (activeSelection(); as quoted) {
+        <div class="exchange-content-viewer__quote">
+          <span class="exchange-content-viewer__quote-text">{{ quoted.text }}</span>
+          @if (frozen()) {
+            <ds-icon-button icon="close" variant="default" title="Dismiss the selection" (action)="dismiss()" />
+          }
+        </div>
+      }
+      @if (request(); as req) {
+        @if (req.status === 'waiting') {
+          <p class="exchange-content-viewer__waiting" role="status" aria-live="polite">
+            Waiting for {{ requestedAgent() }}…
+          </p>
+        }
+      } @else {
+        <agentos-selection-composer
+          [namespaceId]="namespaceId()"
+          [initialValue]="prefill()"
+          (sent)="onComposerSent($event)"
+          (closed)="closeComposer()"
+        />
+      }
+    </div>
+  }
 </div>
 
 <ds-confirm-dialog

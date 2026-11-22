@@ -1,12 +1,24 @@
-import { EXCHANGE_SELECTION_MESSAGE_TYPE, withSelectionBridge } from './exchange-html-srcdoc'
+import {
+  EXCHANGE_BRIDGE_SCRIPT_ID,
+  EXCHANGE_EDIT_MESSAGE_TYPE,
+  EXCHANGE_HIGHLIGHT_MESSAGE_TYPE,
+  EXCHANGE_HIGHLIGHT_STYLE_ID,
+  EXCHANGE_HTML_MESSAGE_TYPE,
+  EXCHANGE_REPLACE_MESSAGE_TYPE,
+  EXCHANGE_SELECTION_MESSAGE_TYPE,
+  EXCHANGE_SERIALIZE_SOURCE,
+  withSelectionBridge,
+} from './exchange-html-srcdoc'
 
 describe('withSelectionBridge', () => {
-  const BRIDGE = /<script>\(function\(\)\{try\{[^]*postMessage[^]*<\/script>/
+  const BRIDGE = new RegExp(
+    `<script id="${EXCHANGE_BRIDGE_SCRIPT_ID}">\\(function\\(\\)\\{try\\{[^]*postMessage[^]*</script>`
+  )
 
   it('injects the bridge before the closing body tag and keeps the original markup', () => {
     const html = '<html><body><h1>Report</h1><script>run()</script></body></html>'
     const result = withSelectionBridge(html)
-    const at = result.indexOf('</body>')
+    const at = result.lastIndexOf('</body>')
     expect(result.slice(0, at)).toContain('<h1>Report</h1><script>run()</script>')
     expect(result.slice(0, at)).toMatch(BRIDGE)
     expect(result.slice(at)).toBe('</body></html>')
@@ -17,7 +29,7 @@ describe('withSelectionBridge', () => {
     const html = '<body>a</BODY ><pre>&lt;/body&gt;</pre></BODY>'
     const result = withSelectionBridge(html)
     expect(result.endsWith('</BODY>')).toBe(true)
-    expect(result.indexOf('<script>')).toBeGreaterThan(result.indexOf('</BODY >'))
+    expect(result.indexOf(`<script id="${EXCHANGE_BRIDGE_SCRIPT_ID}"`)).toBeGreaterThan(result.indexOf('</BODY >'))
   })
 
   it('appends the bridge when there is no body tag', () => {
@@ -33,5 +45,64 @@ describe('withSelectionBridge', () => {
     expect(result).toContain('selectionchange')
     expect(result).toContain('150')
     expect(result).toContain('catch')
+  })
+
+  it('speaks the edit, highlight, replace and html messages, and only listens to its parent', () => {
+    const result = withSelectionBridge('<p>x</p>')
+    expect(result).toContain(EXCHANGE_EDIT_MESSAGE_TYPE)
+    expect(result).toContain(EXCHANGE_HIGHLIGHT_MESSAGE_TYPE)
+    expect(result).toContain(EXCHANGE_REPLACE_MESSAGE_TYPE)
+    expect(result).toContain(EXCHANGE_HTML_MESSAGE_TYPE)
+    expect(result).toContain('designMode')
+    expect(result).toContain('e.source!==parent')
+  })
+
+  it('contains no closing script tag besides its own', () => {
+    const script = withSelectionBridge('<p>x</p>').slice('<p>x</p>'.length)
+    expect(script.match(/<\/script>/gi)).toHaveLength(1)
+  })
+})
+
+describe('bridge serializer', () => {
+  const serialize = new Function('doc', EXCHANGE_SERIALIZE_SOURCE) as (doc: Document) => string
+
+  function documentOf(html: string): Document {
+    return new DOMParser().parseFromString(html, 'text/html')
+  }
+
+  it('serializes the document with a doctype', () => {
+    const result = serialize(documentOf('<html><head><title>T</title></head><body><p>Hi</p></body></html>'))
+    expect(result.startsWith('<!DOCTYPE html>\n<html>')).toBe(true)
+    expect(result).toContain('<p>Hi</p>')
+  })
+
+  it('removes its own script and highlight style, and keeps the scripts of the page', () => {
+    const html = withSelectionBridge('<html><head></head><body><p>Hi</p><script>page()</script></body></html>')
+    const doc = documentOf(html)
+    const style = doc.createElement('style')
+    style.id = EXCHANGE_HIGHLIGHT_STYLE_ID
+    doc.head.appendChild(style)
+    expect(doc.getElementById(EXCHANGE_BRIDGE_SCRIPT_ID)).not.toBeNull()
+    const result = serialize(doc)
+    expect(result).not.toContain(EXCHANGE_BRIDGE_SCRIPT_ID)
+    expect(result).not.toContain(EXCHANGE_HIGHLIGHT_STYLE_ID)
+    expect(result).not.toContain('postMessage')
+    expect(result).toContain('<script>page()</script>')
+    // The live document is left untouched: the serialization works on a clone.
+    expect(doc.getElementById(EXCHANGE_BRIDGE_SCRIPT_ID)).not.toBeNull()
+  })
+
+  it('unwraps the marks of the highlighted selection', () => {
+    const doc = documentOf(
+      '<body><p>Say <mark data-agentos-selection="" style="background:#ffe14d">hello <b>big</b></mark> world</p></body>'
+    )
+    const result = serialize(doc)
+    expect(result).not.toContain('<mark')
+    expect(result).toContain('<p>Say hello <b>big</b> world</p>')
+    expect(doc.querySelector('mark')).not.toBeNull()
+  })
+
+  it('keeps a mark of the page that is not the selection', () => {
+    expect(serialize(documentOf('<body><mark>keep</mark></body>'))).toContain('<mark>keep</mark>')
   })
 })
