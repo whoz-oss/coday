@@ -1150,7 +1150,7 @@ export class CaseControllerService extends BaseService {
 
   /**
    * Turn the prompt cache keep-alive of a case on or off
-   * PUT /api/cases/{id}/keep-alive — while the case is idle, keep the provider\&#39;s prompt cache of its conversation warm by re-sending the agent\&#39;s last request with a 1-token answer before the cache expires (its model\&#39;s cache lifetime less a margin: 4:20 or 58:00 by default), for up to the platform\&#39;s maximum idle duration after the last agent turn. Each refresh is recorded as usage of the case; no refresh is sent while usage tracking is off. 400 when keepAlive is missing. Returns the updated Case DTO.
+   * PUT /api/cases/{id}/keep-alive — while the case is idle, keep the provider\&#39;s prompt cache of its conversation warm by re-sending the agent\&#39;s last request with a 1-token answer before the cache expires (its model\&#39;s cache TTL less 40 s; never without a TTL), for up to the platform\&#39;s maximum idle duration after the last agent turn. Each refresh is recorded as usage of the case; no refresh is sent while usage tracking is off. 400 when keepAlive is missing. Returns the updated Case DTO.
    * @param id
    * @param caseKeepAliveRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.

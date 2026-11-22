@@ -6,12 +6,16 @@ import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
 import io.whozoss.agentos.agent.LastLlmRequest
 import io.whozoss.agentos.agent.LastLlmRequestRegistry
+import io.whozoss.agentos.aiModel.AiModelService
+import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.LlmRequestOptions
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
@@ -44,6 +48,10 @@ class CasePromptCacheEndpointIntegrationSpec : StringSpec() {
 
     @Autowired lateinit var registry: LastLlmRequestRegistry
 
+    @Autowired lateinit var aiProviderService: AiProviderService
+
+    @Autowired lateinit var aiModelService: AiModelService
+
     @MockkBean(relaxed = true) lateinit var userService: UserService
 
     @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
@@ -63,8 +71,21 @@ class CasePromptCacheEndpointIntegrationSpec : StringSpec() {
         every { permissionService.hasPermission(member.id.toString(), EntityType.CASE, caseId.toString(), Action.READ) } returns granted
     }
 
-    /** The case's last request: a Claude model via Requesty, of an unknown model (so no pricing). */
+    /** The case's last request: a Claude model via Requesty with a 5-minute cache TTL and no pricing. */
     private fun recordLastRequest(caseId: UUID): LastLlmRequest {
+        val provider =
+            aiProviderService.create(
+                AiProvider(metadata = EntityMetadata(id = UUID.randomUUID()), name = "requesty-${UUID.randomUUID()}", apiType = AiApiType.OpenAI),
+            )
+        val model =
+            aiModelService.create(
+                AiModel(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    aiProviderId = provider.id,
+                    apiModelName = "anthropic/claude-sonnet-4-5",
+                    cacheTtlMinutes = 5,
+                ),
+            )
         registry.put(
             LastLlmRequest(
                 caseId = caseId,
@@ -72,8 +93,8 @@ class CasePromptCacheEndpointIntegrationSpec : StringSpec() {
                 userId = member.id,
                 messages = listOf(UserMessage("question")),
                 toolDefinitions = emptyList(),
-                modelId = UUID.randomUUID(),
-                providerId = UUID.randomUUID(),
+                modelId = model.id,
+                providerId = provider.id,
                 requestOptions =
                     LlmRequestOptions(AiApiType.OpenAI, "https://router.requesty.ai/v1", "anthropic/claude-sonnet-4-5", null, null, null, null, "digest"),
                 finalText = "Done",

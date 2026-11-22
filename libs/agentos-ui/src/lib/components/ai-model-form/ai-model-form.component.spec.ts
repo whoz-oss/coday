@@ -83,9 +83,9 @@ describe('AiModelFormComponent (prompt cache lifetimes)', () => {
     expect(element.querySelector('label[for="model-extended-cache-ttl"]')?.textContent?.trim()).toBe(
       'Cache TTL, extended (min)'
     )
-    expect(input(element, 'model-cache-ttl').closest('ds-fieldset')?.textContent).toContain(
-      'How long the provider keeps a prompt cached after its last use.'
-    )
+    const section = input(element, 'model-cache-ttl').closest('ds-fieldset')?.textContent
+    expect(section).toContain('How long the provider keeps a prompt cached after its last use.')
+    expect(section).toContain('Empty: no cache indicator or keep-alive.')
     expect(input(element, 'model-cache-ttl').value).toBe('5')
     expect(input(element, 'model-extended-cache-ttl').value).toBe('60')
   })

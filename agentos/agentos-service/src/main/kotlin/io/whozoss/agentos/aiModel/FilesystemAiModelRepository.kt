@@ -157,8 +157,8 @@ class FilesystemAiModelRepository(
  * provider: requesty
  * priority: 10
  * contextWindow: 1000000
- * cacheTtlMinutes: 5           # optional, default 5: how long the provider keeps a prompt cached after its last use
- * extendedCacheTtlMinutes: 60  # optional, default 60: the same with the one-hour cache markers (Claude via Requesty)
+ * cacheTtlMinutes: 5           # optional: how long the provider keeps a prompt cached after its last use
+ * extendedCacheTtlMinutes: 60  # optional: the same with the one-hour cache markers (Claude via Requesty)
  * pricing:
  *   inputMTokens: 2
  *   outputMTokens: 10

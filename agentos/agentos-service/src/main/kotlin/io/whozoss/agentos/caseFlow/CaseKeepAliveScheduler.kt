@@ -29,11 +29,10 @@ import java.util.concurrent.Executors
  * Every tick (`agentos.keep-alive.tick-interval-ms`, 20 s by default) it looks at the agent's last request
  * ([LastLlmRequestRegistry]) of the cases with keep-alive on ([CaseKeepAliveIds]: nothing is read while none is) and
  * has [CaseKeepAlivePinger] send it again when its cache is about to expire: the cache lifetime of its model
- * ([PromptCacheLifetime], read once per request) less [REFRESH_MARGIN] (or [ONE_HOUR_REFRESH_MARGIN]) after the cache
- * last saw the prefix ([LastLlmRequest.lastUsedAt]: when the request, or the last ping, was sent). A cache read
- * refreshes the cache lifetime, so the next real message of the user still finds the conversation cached. A
- * successful ping [LastLlmRequestRegistry.touch]es the request, which keeps it in the registry while the keep-alive
- * runs.
+ * ([PromptCacheLifetime], read once per request) less [REFRESH_MARGIN] after the cache last saw the prefix
+ * ([LastLlmRequest.lastUsedAt]: when the request, or the last ping, was sent). A cache read refreshes the cache
+ * lifetime, so the next real message of the user still finds the conversation cached. A successful ping
+ * [LastLlmRequestRegistry.touch]es the request, which keeps it in the registry while the keep-alive runs.
  *
  * A case is not pinged when:
  * - usage tracking is off (a ping must be accounted for);
@@ -44,8 +43,8 @@ import java.util.concurrent.Executors
  *   the next interval only;
  * - more than [CaseKeepAliveProperties.maxIdle] has passed since the agent's last real request was captured;
  * - the request was sent with a reasoning effort (a 1-token answer is invalid with thinking), its provider is not
- *   OpenAI-compatible ([CaseKeepAlivePinger.supports]), or its model or provider changed since: logged once, and left
- *   alone until the next agent turn;
+ *   OpenAI-compatible ([CaseKeepAlivePinger.supports]), its model has no cache TTL for it ([PromptCacheLifetime]), or
+ *   its model or provider changed since: logged once, and left alone until the next agent turn;
  * - its last [MAX_CONSECUTIVE_FAILURES] pings failed (an error, or no cache read on a prompt long enough to be
  *   cached): left alone until the next agent turn.
  *
@@ -75,8 +74,8 @@ class CaseKeepAliveScheduler(
     /** What the scheduler knows of the request of a case, reset when a new turn replaces the request. */
     private class Tracking(
         val capturedAt: Instant,
-        /** When the request is due after the cache last saw its prefix, read once per request. */
-        val refreshInterval: Duration,
+        /** When the request is due after the cache last saw its prefix, read once per request; null: never. */
+        val refreshInterval: Duration?,
     ) {
         @Volatile var failures = 0
 
@@ -138,12 +137,16 @@ class CaseKeepAliveScheduler(
             state.deferredUntil?.let { now.isBefore(it) } != true &&
             request.caseId !in inFlight &&
             Duration.between(request.capturedAt, now) <= properties.maxIdle &&
-            !now.isBefore(request.lastUsedAt.plus(state.refreshInterval))
+            state.refreshInterval?.let { !now.isBefore(request.lastUsedAt.plus(it)) } == true
 
     private fun trackingOf(request: LastLlmRequest): Tracking {
         val current = tracking[request.caseId]
         if (current != null && current.capturedAt == request.capturedAt) return current
-        return Tracking(request.capturedAt, refreshIntervalOf(request)).also { tracking[request.caseId] = it }
+        val interval = refreshIntervalOf(request)
+        return Tracking(request.capturedAt, interval).also {
+            tracking[request.caseId] = it
+            if (interval == null) stop(request, it) { "model ${request.requestOptions.apiModelName} has no cache TTL" }
+        }
     }
 
     /** Whether [request] may be pinged for [case] now; records why not when that lasts. */
@@ -155,7 +158,7 @@ class CaseKeepAliveScheduler(
     ): Boolean {
         if (case == null || !case.keepAlive) return false
         if (case.status != CaseStatus.IDLE) {
-            state.deferredUntil = now.plus(state.refreshInterval)
+            state.deferredUntil = state.refreshInterval?.let(now::plus)
             return false
         }
         // A run started, or the case was killed or deleted, since the request was read.
@@ -211,7 +214,7 @@ class CaseKeepAliveScheduler(
                 }
 
                 is CaseKeepAlivePinger.Result.CostRefused -> {
-                    state.deferredUntil = now.plus(state.refreshInterval)
+                    state.deferredUntil = state.refreshInterval?.let(now::plus)
                     if (!state.costRefusalLogged) {
                         state.costRefusalLogged = true
                         logger.info { "[KeepAlive] case ${request.caseId} not refreshed: run cost guard (${result.reason})" }
@@ -255,13 +258,11 @@ class CaseKeepAliveScheduler(
         return false
     }
 
-    /** The cache lifetime [request] was actually sent with, less the margin of a ping (never under half of it). */
-    private fun refreshIntervalOf(request: LastLlmRequest): Duration {
+    /** The cache lifetime [request] was actually sent with, less [REFRESH_MARGIN]; null without one. */
+    private fun refreshIntervalOf(request: LastLlmRequest): Duration? {
         val options = request.requestOptions
         val oneHour = chatModelFactory.appliesOneHourCache(options.apiType, options.baseUrl, options.apiModelName, request.promptCacheTtl)
-        val lifetime = PromptCacheLifetime.of(aiModelService.findById(request.modelId), oneHour)
-        val margin = if (oneHour) ONE_HOUR_REFRESH_MARGIN else REFRESH_MARGIN
-        return maxOf(lifetime.minus(margin), lifetime.dividedBy(2))
+        return PromptCacheLifetime.of(aiModelService.findById(request.modelId), oneHour)?.minus(REFRESH_MARGIN)
     }
 
     @PreDestroy
@@ -277,13 +278,10 @@ class CaseKeepAliveScheduler(
         private const val PING_THREADS = 4
 
         /**
-         * A ping is due this long before the cache expires (4:20 for the default 5 minutes). A due ping waits for the
-         * next tick (up to 20 s), then for a worker and the provider's answer (a few seconds): the margin covers both.
+         * A ping is due this long before the cache expires. A due ping waits for the next tick (up to 20 s), then for
+         * a worker and the provider's answer (a few seconds): the margin covers both.
          */
         val REFRESH_MARGIN: Duration = Duration.ofSeconds(40)
-
-        /** The margin when the one-hour markers apply (58:00 for the default 60 minutes), for the same reasons. */
-        val ONE_HOUR_REFRESH_MARGIN: Duration = Duration.ofMinutes(2)
 
         /** A prompt long enough to be cached that read nothing from the cache: the ping refreshed nothing. */
         internal fun isCacheMiss(usage: LlmUsage): Boolean = usage.cacheReadTokens == 0L && usage.promptTokens() >= MIN_CACHEABLE_PROMPT_TOKENS

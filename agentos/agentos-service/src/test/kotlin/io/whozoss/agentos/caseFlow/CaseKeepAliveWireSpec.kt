@@ -290,16 +290,16 @@ class CaseKeepAliveWireSpec :
                             UsageConfigProperties(enabled = true),
                             RequestyPromptCacheProperties(),
                         ) { true },
-                    aiModelService = mockk { every { findById(claude.id, any()) } returns claude },
+                    aiModelService = mockk { every { findById(claude.id, any()) } returns claude.copy(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 60) },
                     properties = CaseKeepAliveProperties(),
                     clock = clock,
                     usageConfig = UsageConfigProperties(enabled = true),
                 ).apply { executor = Executor { it.run() } }
 
-            // A 1-hour cache, no lifetime on the model: not due at 4:20, due at 58:00.
+            // A 1-hour cache of the Claude tiers' 60 minutes: not due at 4:20, due at 59:20.
             clock.now = turn.request.lastUsedAt.plus(Duration.ofMinutes(4).plusSeconds(20))
             scheduler.refreshDue() shouldBe emptyList()
-            clock.now = turn.request.lastUsedAt.plus(Duration.ofMinutes(58))
+            clock.now = turn.request.lastUsedAt.plus(Duration.ofMinutes(59).plusSeconds(20))
             scheduler.refreshDue() shouldBe listOf(caseId)
 
             val bodies = stub.requestBodies(ProviderStubServer.OPENAI_PATH)

@@ -33,8 +33,8 @@ class PromptCacheStatusServiceUnitSpec :
 
         class Fixture(
             pricing: ModelPricing? = claudePricing,
-            cacheTtlMinutes: Int? = null,
-            extendedCacheTtlMinutes: Int? = null,
+            cacheTtlMinutes: Int? = 5,
+            extendedCacheTtlMinutes: Int? = 60,
             modelGone: Boolean = false,
         ) {
             val clock = MovingClock(now)
@@ -99,27 +99,31 @@ class PromptCacheStatusServiceUnitSpec :
             Fixture().status() shouldBe PromptCacheStatus(expiresAt = null, coldCostEstimate = null)
         }
 
-        "without a lifetime on the model: 5 minutes, re-written at the cache write rate" {
+        "the standard lifetime of the model, re-written at the cache write rate" {
             val status = Fixture().apply { lastRequest() }.status()
 
             status.expiresAt shouldBe sentAt.plus(Duration.ofMinutes(5))
             status.coldCostEstimate.shouldNotBeNull() shouldBe (0.375 plusOrMinus 1e-9)
         }
 
-        "the standard lifetime of the model, whatever the model name" {
+        "the lifetime of the model, whatever its name" {
             val status = Fixture(cacheTtlMinutes = 30).apply { lastRequest(apiModelName = "google/gemini-2.5-pro") }.status()
 
             status.expiresAt shouldBe sentAt.plus(Duration.ofMinutes(30))
         }
 
-        "with the one-hour markers: the extended lifetime of the model, else 60 minutes, re-written at twice the input rate" {
-            Fixture(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 90).apply { lastRequest(ttl = PromptCacheTtl.EXTENDED) }.status().let {
-                it.expiresAt shouldBe sentAt.plus(Duration.ofMinutes(90))
-                it.coldCostEstimate.shouldNotBeNull() shouldBe (0.6 plusOrMinus 1e-9)
-            }
-            Fixture(cacheTtlMinutes = 5).apply { lastRequest(ttl = PromptCacheTtl.EXTENDED) }.status().let {
-                it.expiresAt shouldBe sentAt.plus(Duration.ofHours(1))
-            }
+        "with the one-hour markers: the extended lifetime of the model, re-written at twice the input rate" {
+            val status = Fixture().apply { lastRequest(ttl = PromptCacheTtl.EXTENDED) }.status()
+
+            status.expiresAt shouldBe sentAt.plus(Duration.ofHours(1))
+            status.coldCostEstimate.shouldNotBeNull() shouldBe (0.6 plusOrMinus 1e-9)
+        }
+
+        "no cache TTL on the model for the request, or the model gone: nothing is known" {
+            val unknown = PromptCacheStatus(expiresAt = null, coldCostEstimate = null)
+            Fixture(cacheTtlMinutes = null).apply { lastRequest() }.status() shouldBe unknown
+            Fixture(extendedCacheTtlMinutes = null).apply { lastRequest(ttl = PromptCacheTtl.EXTENDED) }.status() shouldBe unknown
+            Fixture(modelGone = true).apply { lastRequest() }.status() shouldBe unknown
         }
 
         "the extended choice without the markers (a model they never reach) keeps the standard lifetime" {
@@ -137,14 +141,10 @@ class PromptCacheStatusServiceUnitSpec :
             fixture.status().coldCostEstimate.shouldNotBeNull() shouldBe (0.125 plusOrMinus 1e-9)
         }
 
-        "without pricing, a known prompt size or the model itself, the lifetime is still given but not the cost" {
+        "without pricing or a known prompt size, the lifetime is still given but not the cost" {
             for (fixture in listOf(Fixture(pricing = null).apply { lastRequest() }, Fixture().apply { lastRequest(prefixTokens = null) })) {
                 fixture.status().expiresAt shouldBe sentAt.plus(Duration.ofMinutes(5))
                 fixture.status().coldCostEstimate.shouldBeNull()
-            }
-            Fixture(cacheTtlMinutes = 30, modelGone = true).apply { lastRequest() }.status().let {
-                it.expiresAt shouldBe sentAt.plus(Duration.ofMinutes(5))
-                it.coldCostEstimate.shouldBeNull()
             }
         }
 

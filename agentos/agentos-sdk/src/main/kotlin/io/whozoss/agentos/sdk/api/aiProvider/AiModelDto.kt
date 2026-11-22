@@ -57,10 +57,10 @@ data class AiModelDto(
      * for field semantics.
      */
     val pricing: io.whozoss.agentos.sdk.aiProvider.ModelPricing? = null,
-    /** Prompt cache lifetime after the last use, in minutes. Null = 5 minutes. */
+    /** Prompt cache lifetime after the last use, in minutes. Null = unknown: no cache indicator or keep-alive. */
     @field:Positive
     val cacheTtlMinutes: Int? = null,
-    /** Prompt cache lifetime when the request got the one-hour cache markers, in minutes. Null = 60 minutes. */
+    /** The same when the request got the one-hour cache markers. */
     @field:Positive
     val extendedCacheTtlMinutes: Int? = null,
     /**

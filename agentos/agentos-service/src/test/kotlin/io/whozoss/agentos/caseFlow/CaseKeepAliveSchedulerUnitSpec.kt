@@ -62,6 +62,16 @@ class CaseKeepAliveSchedulerUnitSpec :
         /** A prompt of 2000 tokens, 1900 read from the cache. */
         val cacheHit = LlmUsage(inputTokens = 100, cacheReadTokens = 1900, outputTokens = 1, totalTokens = 2001)
 
+        fun aiModel(
+            cacheTtlMinutes: Int? = null,
+            extendedCacheTtlMinutes: Int? = null,
+        ) = AiModel(
+            aiProviderId = UUID.randomUUID(),
+            apiModelName = "anthropic/claude-sonnet-4-5",
+            cacheTtlMinutes = cacheTtlMinutes,
+            extendedCacheTtlMinutes = extendedCacheTtlMinutes,
+        )
+
         class Fixture(
             ttl: PromptCacheTtl = PromptCacheTtl.STANDARD,
             val case: Case = idleCase(),
@@ -70,8 +80,8 @@ class CaseKeepAliveSchedulerUnitSpec :
             usageEnabled: Boolean = true,
             /** How long the agent's final request streamed before the turn ended and the request was captured. */
             streamDuration: Duration = Duration.ZERO,
-            /** The configuration of the request's model, null for a model without one (or gone). */
-            model: AiModel? = null,
+            /** The request's model, as configured now; null when it is gone. */
+            model: AiModel? = aiModel(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 60),
         ) {
             val clock = MovingClock(start)
             val registry = LastLlmRequestRegistry(clock)
@@ -155,33 +165,30 @@ class CaseKeepAliveSchedulerUnitSpec :
             }
         }
 
-        // Without a cache lifetime on the model: 5 minutes, 60 with the one-hour markers, less the margins.
+        // With the Claude tiers' 5 and 60 minutes, less the margin.
         val fiveMinuteDue: Duration = Duration.ofMinutes(4).plusSeconds(20)
-        val oneHourDue: Duration = Duration.ofMinutes(58)
+        val oneHourDue: Duration = Duration.ofMinutes(59).plusSeconds(20)
 
-        fun model(
-            cacheTtlMinutes: Int? = null,
-            extendedCacheTtlMinutes: Int? = null,
-        ) = AiModel(
-            aiProviderId = UUID.randomUUID(),
-            apiModelName = "anthropic/claude-sonnet-4-5",
-            cacheTtlMinutes = cacheTtlMinutes,
-            extendedCacheTtlMinutes = extendedCacheTtlMinutes,
-        )
-
-        "the cache lifetime configured on the model sets the due time, less the same margins" {
-            Fixture(model = model(cacheTtlMinutes = 30)).run {
+        "the cache lifetime configured on the model sets the due time, less the margin" {
+            Fixture(model = aiModel(cacheTtlMinutes = 30)).run {
                 tickAt(Duration.ofMinutes(29).plusSeconds(19)).shouldBeEmpty()
                 tickAt(Duration.ofMinutes(29).plusSeconds(20)) shouldBe listOf(case.id)
             }
-            Fixture(ttl = PromptCacheTtl.EXTENDED, model = model(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 62)).run {
+            Fixture(ttl = PromptCacheTtl.EXTENDED, model = aiModel(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 62)).run {
                 tickAt(oneHourDue).shouldBeEmpty()
-                tickAt(Duration.ofMinutes(60)) shouldBe listOf(case.id)
+                tickAt(Duration.ofMinutes(61).plusSeconds(20)) shouldBe listOf(case.id)
             }
-            // A lifetime shorter than the margin is still not pinged at every tick.
-            Fixture(ttl = PromptCacheTtl.EXTENDED, model = model(extendedCacheTtlMinutes = 1)).run {
-                tickAt(Duration.ofSeconds(29)).shouldBeEmpty()
-                tickAt(Duration.ofSeconds(30)) shouldBe listOf(case.id)
+        }
+
+        "a request without a cache TTL on its model (or with its model gone) is never pinged" {
+            for (fixture in listOf(
+                Fixture(model = aiModel(extendedCacheTtlMinutes = 60)),
+                Fixture(ttl = PromptCacheTtl.EXTENDED, model = aiModel(cacheTtlMinutes = 5)),
+                Fixture(model = null),
+            )) {
+                fixture.tickAt(fiveMinuteDue).shouldBeEmpty()
+                fixture.tickAt(oneHourDue).shouldBeEmpty()
+                fixture.pinged.shouldBeEmpty()
             }
         }
 
@@ -203,7 +210,7 @@ class CaseKeepAliveSchedulerUnitSpec :
             fixture.tickAt(fiveMinuteDue) shouldBe listOf(fixture.case.id)
         }
 
-        "a 1-hour cache (Claude via Requesty) is not pinged at 4:20 nor before 58:00, and is at 58:00" {
+        "a 1-hour cache (Claude via Requesty) is not pinged at 4:20 nor before 59:20, and is at 59:20" {
             val fixture = Fixture(ttl = PromptCacheTtl.EXTENDED)
 
             fixture.tickAt(fiveMinuteDue).shouldBeEmpty()
@@ -213,7 +220,7 @@ class CaseKeepAliveSchedulerUnitSpec :
             fixture.tickAt(oneHourDue) shouldBe listOf(fixture.case.id)
         }
 
-        "a 1-hour choice the request did not get (not a Claude model) keeps the 5-minute interval" {
+        "a 1-hour choice the request did not get (not a Claude model) keeps the standard lifetime" {
             val fixture = Fixture(ttl = PromptCacheTtl.EXTENDED, requestOptions = options(apiModelName = "openai/gpt-4.1"))
 
             fixture.tickAt(fiveMinuteDue) shouldBe listOf(fixture.case.id)

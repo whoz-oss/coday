@@ -15,7 +15,7 @@ data class PromptCacheStatus(
     @field:Schema(
         description =
             "When the provider's prompt cache of the case's last request expires; in the past once it is cold. " +
-                "Null when the case has no recent request.",
+                "Null when unknown: no recent request of the case, or no cache TTL on its model.",
     )
     val expiresAt: Instant? = null,
     @field:Schema(
@@ -46,8 +46,9 @@ class PromptCacheStatusService(
         val oneHour =
             chatModelFactory.appliesOneHourCache(stamp.apiType, stamp.baseUrl, stamp.apiModelName, stamp.promptCacheTtl)
         val model = aiModelService.findById(stamp.modelId)
+        val lifetime = PromptCacheLifetime.of(model, oneHour) ?: return PromptCacheStatus()
         return PromptCacheStatus(
-            expiresAt = stamp.lastUsedAt.plus(PromptCacheLifetime.of(model, oneHour)),
+            expiresAt = stamp.lastUsedAt.plus(lifetime),
             coldCostEstimate = coldCost(stamp.prefixTokens, model?.pricing, oneHour),
         )
     }
