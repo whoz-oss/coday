@@ -29,7 +29,7 @@ import java.util.concurrent.Executors
  * Every tick (`agentos.keep-alive.tick-interval-ms`, 20 s by default) it looks at the agent's last request
  * ([LastLlmRequestRegistry]) of the cases with keep-alive on ([CaseKeepAliveIds]: nothing is read while none is) and
  * has [CaseKeepAlivePinger] send it again when its cache is about to expire: the cache lifetime of its model
- * ([PromptCacheLifetime], read at every check) less [REFRESH_MARGIN] after the cache last saw the prefix
+ * ([PromptCacheLifetime], read again when it may be due) less [REFRESH_MARGIN] after the cache last saw the prefix
  * ([LastLlmRequest.lastUsedAt]: when the request, or the last ping, was sent). A cache read refreshes the cache
  * lifetime, so the next real message of the user still finds the conversation cached. A successful ping
  * [LastLlmRequestRegistry.touch]es the request, which keeps it in the registry while the keep-alive runs.
@@ -42,8 +42,8 @@ import java.util.concurrent.Executors
  *   (the case or an ancestor ended, was stopped, waits for a confirmation or is at its threshold): checked again at
  *   the next interval only;
  * - more than [CaseKeepAliveProperties.maxIdle] has passed since the agent's last real request was captured;
- * - its model has no cache TTL for it ([PromptCacheLifetime]), or one longer than the registry keeps the request
- *   ([LastLlmRequestRegistry.TTL]): logged once, and checked again at every tick (a TTL set later applies);
+ * - its model has no cache TTL for it ([PromptCacheLifetime]), or one too long for the registry to keep the request
+ *   until a ping ([LastLlmRequestRegistry.TTL]): logged once, and read again at later checks (a TTL set later applies);
  * - the request was sent with a reasoning effort (a 1-token answer is invalid with thinking), its provider is not
  *   OpenAI-compatible ([CaseKeepAlivePinger.supports]), or its model or provider changed since: logged once, and left
  *   alone until the next agent turn;
@@ -86,6 +86,9 @@ class CaseKeepAliveScheduler(
         @Volatile var deferredUntil: Instant? = null
 
         @Volatile var costRefusalLogged = false
+
+        /** The refresh interval last read for it; null before the first read, or without one. */
+        @Volatile var knownInterval: Duration? = null
 
         /** Why it has no refresh interval was logged, until it has one again. */
         @Volatile var noIntervalLogged = false
@@ -152,6 +155,8 @@ class CaseKeepAliveScheduler(
                 request.caseId in inFlight ||
                 Duration.between(request.capturedAt, now) > properties.maxIdle
         if (waiting) return null
+        // The model is only read again once the request may be due, or while no interval is known.
+        if (state.knownInterval?.let { now.isBefore(request.lastUsedAt.plus(it)) } == true) return null
         return refreshIntervalOf(request, state)?.takeUnless { now.isBefore(request.lastUsedAt.plus(it)) }
     }
 
@@ -267,9 +272,9 @@ class CaseKeepAliveScheduler(
     }
 
     /**
-     * The cache lifetime [request] was actually sent with, less [REFRESH_MARGIN], read again at every check so that a
-     * TTL set on the model since applies. Null, logged once, without a TTL, or with one longer than the registry keeps
-     * the request ([LastLlmRequestRegistry.TTL]).
+     * The cache lifetime [request] was actually sent with, less [REFRESH_MARGIN], read again when it may be due so that
+     * a TTL set on the model since applies. Null, logged once, without a TTL, or with one that a late tick could miss
+     * before the registry drops the request ([LastLlmRequestRegistry.TTL]).
      */
     private fun refreshIntervalOf(
         request: LastLlmRequest,
@@ -278,10 +283,11 @@ class CaseKeepAliveScheduler(
         val options = request.requestOptions
         val oneHour = chatModelFactory.appliesOneHourCache(options.apiType, options.baseUrl, options.apiModelName, request.promptCacheTtl)
         val interval = PromptCacheLifetime.of(aiModelService.findById(request.modelId), oneHour)?.minus(REFRESH_MARGIN)
+        state.knownInterval = interval
         val why =
             when {
                 interval == null -> "model ${options.apiModelName} has no cache TTL for it"
-                interval >= LastLlmRequestRegistry.TTL ->
+                interval.plusMillis(properties.tickIntervalMs) >= LastLlmRequestRegistry.TTL ->
                     "its cache TTL exceeds the ${LastLlmRequestRegistry.TTL.toMinutes()} minutes a request is kept"
                 else -> {
                     state.noIntervalLogged = false

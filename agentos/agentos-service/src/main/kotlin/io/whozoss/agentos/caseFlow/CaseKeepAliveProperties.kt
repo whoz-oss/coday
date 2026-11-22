@@ -6,8 +6,7 @@ import java.time.Duration
 /**
  * Configuration of the prompt cache keep-alive of the cases ([CaseKeepAliveScheduler]).
  *
- * Bound from the `agentos.keep-alive` prefix. The interval between two checks,
- * `agentos.keep-alive.tick-interval-ms` (default 20 000), is read by `@Scheduled` directly, not through this class.
+ * Bound from the `agentos.keep-alive` prefix.
  *
  * ```yaml
  * agentos:
@@ -24,4 +23,6 @@ data class CaseKeepAliveProperties(
      * Defaults to 2 hours.
      */
     val maxIdle: Duration = Duration.ofHours(2),
+    /** The interval between two checks (`tick-interval-ms`), also read by the `@Scheduled` of the scheduler. */
+    val tickIntervalMs: Long = 20_000,
 )

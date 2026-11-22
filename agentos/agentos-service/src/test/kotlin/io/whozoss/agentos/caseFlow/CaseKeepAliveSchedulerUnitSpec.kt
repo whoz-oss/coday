@@ -11,6 +11,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.LastLlmRequest
 import io.whozoss.agentos.agent.LastLlmRequestRegistry
+import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatModelFactory
 import io.whozoss.agentos.chat.LlmRequestOptions
@@ -86,8 +87,9 @@ class CaseKeepAliveSchedulerUnitSpec :
             val clock = MovingClock(start)
             val registry = LastLlmRequestRegistry(clock)
 
-            /** The request's model as configured now, read by the scheduler at every check. */
+            /** The request's model as configured now. */
             var currentModel: AiModel? = model
+            val aiModelService = mockk<AiModelService> { every { findById(any()) } answers { currentModel } }
             val keepAliveIds = mockk<CaseKeepAliveIds> { every { current() } answers { if (case.keepAlive) setOf(case.id) else emptySet() } }
             var storedCase: Case? = case
             val pinged = CopyOnWriteArrayList<LastLlmRequest>()
@@ -121,7 +123,7 @@ class CaseKeepAliveSchedulerUnitSpec :
                             UsageConfigProperties(enabled = true),
                             RequestyPromptCacheProperties(),
                         ) { true },
-                    aiModelService = mockk { every { findById(any()) } answers { currentModel } },
+                    aiModelService = aiModelService,
                     properties = CaseKeepAliveProperties(maxIdle = maxIdle),
                     clock = clock,
                     usageConfig = UsageConfigProperties(enabled = usageEnabled),
@@ -192,12 +194,26 @@ class CaseKeepAliveSchedulerUnitSpec :
             fixture.tickAt(fiveMinuteDue.plusSeconds(20)) shouldBe listOf(fixture.case.id)
         }
 
-        "a cache TTL longer than the registry keeps the request is never pinged" {
-            val fixture = Fixture(ttl = PromptCacheTtl.EXTENDED, model = aiModel(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 70))
+        "the model is read again only once the request may be due" {
+            val fixture = Fixture()
+            fixture.tickAt(Duration.ofMinutes(1)).shouldBeEmpty()
+            fixture.tickAt(Duration.ofMinutes(2)).shouldBeEmpty()
+            fixture.tickAt(Duration.ofMinutes(4)).shouldBeEmpty()
+            verify(exactly = 1) { fixture.aiModelService.findById(any()) }
 
-            fixture.tickAt(Duration.ofMinutes(64)).shouldBeEmpty()
-            fixture.tickAt(Duration.ofMinutes(69).plusSeconds(20)).shouldBeEmpty()
-            fixture.pinged.shouldBeEmpty()
+            fixture.tickAt(fiveMinuteDue) shouldBe listOf(fixture.case.id)
+            verify(exactly = 2) { fixture.aiModelService.findById(any()) }
+        }
+
+        "a cache TTL a late tick could miss before the registry drops the request is never pinged" {
+            Fixture(ttl = PromptCacheTtl.EXTENDED, model = aiModel(extendedCacheTtlMinutes = 65)).run {
+                tickAt(Duration.ofMinutes(64).plusSeconds(20)) shouldBe listOf(case.id)
+            }
+            Fixture(ttl = PromptCacheTtl.EXTENDED, model = aiModel(extendedCacheTtlMinutes = 66)).run {
+                tickAt(Duration.ofMinutes(64)).shouldBeEmpty()
+                tickAt(Duration.ofMinutes(65).plusSeconds(20)).shouldBeEmpty()
+                pinged.shouldBeEmpty()
+            }
         }
 
         "a request without a cache TTL on its model (or with its model gone) is never pinged" {
