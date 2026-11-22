@@ -16,7 +16,7 @@
         } @else {
           <span class="usage__title">Usage</span>
         }
-        <!-- A readout, not a sentence: four figures, each under the word that says what it is. -->
+        <!-- A readout, not a sentence: figures, each under the word that says what it is. -->
         <!--
           Spans, not a definition list: `summary` is the disclosure control of `details` and its
           content model is phrasing content, so a `dl` there is non-conforming and leaves the
@@ -48,6 +48,12 @@
               <span class="usage__figure-value" [title]="all.totalTokens.toLocaleString() + ' recorded tokens'">
                 {{ all.totalTokens | agentosTokens }}
               </span>
+            </span>
+          }
+          @if (cacheLabel(); as cache) {
+            <span class="usage__figure">
+              <span class="usage__figure-label">cache</span>
+              <span class="usage__figure-value">{{ cache }}</span>
             </span>
           }
         </span>

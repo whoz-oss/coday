@@ -124,7 +124,9 @@ class UsageTrackingChatModel(
         exchangeRecorder?.requestSent(prompt)
         providerCost?.clear()
         return delegate.call(prompt).also {
-            accumulator.record(withProviderCost(CostCalculator.extract(it, apiType, model)))
+            val usage = CostCalculator.extract(it, apiType, model)
+            accumulator.record(withProviderCost(usage))
+            exchangeRecorder?.usageReceived(usage)
             exchangeRecorder?.responseReceived(it.result?.output?.text)
         }
     }
@@ -233,7 +235,10 @@ class UsageTrackingChatModel(
     }
 
     private fun recordLast(lastUsage: AtomicReference<LlmUsage?>) {
-        lastUsage.getAndSet(null)?.let { accumulator.record(withProviderCost(it)) }
+        lastUsage.getAndSet(null)?.let {
+            accumulator.record(withProviderCost(it))
+            exchangeRecorder?.usageReceived(it)
+        }
     }
 
     /** The provider's own figure is authoritative; the estimate remains the fallback. */

@@ -4,6 +4,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.usage.LlmUsage
 import org.springframework.ai.chat.messages.Message
 import org.springframework.ai.chat.prompt.Prompt
 import java.security.MessageDigest
@@ -17,6 +18,8 @@ data class LlmExchange(
     val responseText: String? = null,
     /** When the request was sent: when the provider's prompt cache saw its prefix. */
     val sentAt: Instant? = null,
+    /** The prompt size the provider reported (input, cache read and cache write tokens); null until reported. */
+    val promptTokens: Long? = null,
 )
 
 /**
@@ -35,6 +38,12 @@ class LlmExchangeRecorder(
 
     fun responseReceived(text: String?) {
         last.updateAndGet { it?.copy(responseText = text.orEmpty()) }
+    }
+
+    /** A response without usage (0 prompt tokens) leaves the prompt size unknown. */
+    fun usageReceived(usage: LlmUsage) {
+        val promptTokens = usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+        if (promptTokens > 0) last.updateAndGet { it?.copy(promptTokens = promptTokens) }
     }
 }
 

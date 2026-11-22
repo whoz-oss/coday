@@ -68,6 +68,8 @@ data class LastLlmRequest(
      * answer ([capturedAt], which a long answer can make minutes later). Null when unknown.
      */
     val requestSentAt: Instant? = null,
+    /** The prompt size of the request as the provider reported it (input, cache read and write tokens), if known. */
+    val promptTokens: Long? = null,
     /** Set by [LastLlmRequestRegistry.put]. */
     val capturedAt: Instant = Instant.EPOCH,
     /** The generation of the case it was captured in ([LastLlmRequestRegistry.generation]), set by `put`. */

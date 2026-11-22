@@ -567,6 +567,23 @@ class UsageTrackingChatModelSpec :
                 exchange.messages.map { it.messageType.name } shouldBe listOf("USER", "ASSISTANT", "TOOL")
                 // Only the answer to the last request, not the text of the tool round.
                 exchange.responseText shouldBe "Round 2"
+                // Its prompt size as reported by the provider: input, cache read and cache write tokens.
+                exchange.promptTokens shouldBe 10L
+            }
+
+            "a ${if (streaming) "streamed" else "synchronous"} response without usage leaves the recorded prompt size unknown" {
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                every { raw.call(any<Prompt>()) } returns response(withUsage = false)
+                every { raw.stream(any<Prompt>()) } returns Flux.just(response(withUsage = false))
+                val recorder = LlmExchangeRecorder()
+                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, exchangeRecorder = recorder)
+                val prompt = Prompt(listOf(UserMessage("Hello")))
+
+                if (streaming) tracked.stream(prompt).blockLast(Duration.ofSeconds(2)) else tracked.call(prompt)
+
+                recorder.lastExchange!!.responseText shouldBe "Done"
+                recorder.lastExchange!!.promptTokens shouldBe null
             }
         }
     })

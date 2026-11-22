@@ -86,6 +86,8 @@ data class FinalLlmRequest(
     val lastCoveredEventId: UUID,
     /** When the request was sent, null when unknown. */
     val sentAt: Instant? = null,
+    /** The prompt size of the request as the provider reported it, null when unknown. */
+    val promptTokens: Long? = null,
 )
 
 /**
@@ -353,6 +355,7 @@ class AgentSimple(
                     coveredEventCount = turnEvents.count { it.isConversationEvent() },
                     lastCoveredEventId = answer.id,
                     sentAt = exchange.sentAt,
+                    promptTokens = exchange.promptTokens,
                 ),
             )
         }.onFailure { logger.warn(it) { "[AgentSimple] agent=$name could not report the final request of case $caseId" } }

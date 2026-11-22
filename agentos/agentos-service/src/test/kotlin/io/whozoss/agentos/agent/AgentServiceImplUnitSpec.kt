@@ -2970,10 +2970,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     .getDeclaredField("onFinalRequest")
                     .apply { isAccessible = true }
                     .get(agent) as (FinalLlmRequest) -> Unit
-            onFinalRequest(FinalLlmRequest(caseId, emptyList(), emptyList(), "Done", 1, UUID.randomUUID()))
+            onFinalRequest(FinalLlmRequest(caseId, emptyList(), emptyList(), "Done", 1, UUID.randomUUID(), promptTokens = 1200))
 
             val recorded = registry.get(caseId)!!
             recorded.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
+            recorded.promptTokens shouldBe 1200L
             recorded.userId shouldBe userId
             recorded.modelId shouldBe model.id
             recorded.providerId shouldBe model.aiProviderId

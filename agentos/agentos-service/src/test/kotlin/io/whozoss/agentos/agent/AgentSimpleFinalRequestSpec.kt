@@ -25,11 +25,14 @@ import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.SystemMessage
+import org.springframework.ai.chat.metadata.ChatResponseMetadata
+import org.springframework.ai.chat.metadata.DefaultUsage
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.ai.model.tool.ToolCallingChatOptions
+import org.springframework.ai.openai.api.OpenAiApi
 import org.springframework.ai.tool.definition.ToolDefinition
 import reactor.core.publisher.Flux
 import java.util.UUID
@@ -146,6 +149,17 @@ class AgentSimpleFinalRequestSpec :
             // The answer to the last request only: "Let me look." is already in its messages.
             reported.finalText shouldBe "All green."
             reported.caseId shouldBe input.caseId
+        }
+
+        "reports the prompt size the provider reported for the last request" {
+            val result =
+                run(tracked = true) { request ->
+                    val usage = DefaultUsage(1200 + request, 5, 1205 + request, OpenAiApi.Usage(5, 1200 + request, 1205 + request, null, null))
+                    val response = if (request == 0) toolCall() else answer("All green.")
+                    ChatResponse(response.results, ChatResponseMetadata.builder().usage(usage).build())
+                }
+
+            result.reported.single().promptTokens shouldBe 1201L
         }
 
         "covers the conversation up to the recorded answer, the events of the turn included" {
