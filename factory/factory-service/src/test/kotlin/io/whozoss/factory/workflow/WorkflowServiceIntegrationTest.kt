@@ -10,6 +10,8 @@ import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowException
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
+import io.whozoss.factory.workflow.domain.WorkflowStatuses
+import io.whozoss.factory.workflow.domain.WorkflowStepStateRecord
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
@@ -167,6 +169,124 @@ class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
             .isInstanceOf(WorkflowException::class.java)
             .extracting("errorCode")
             .isEqualTo(WorkflowErrorCodes.REVISION_CONFLICT)
+    }
+
+    // ------------------------------------------------------------------
+    // Retry eligibility: legacy request route may open only live, retryable blocked steps.
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `failed step has blocker but no advertised retry and command refuses`() {
+        //given
+        registerDefinition(steps = listOf(linkedMapOf(
+            "id" to "gate", "name" to "Gate",
+            "responsibility" to linkedMapOf("kind" to "agent", "name" to "builder"),
+            "dependsOn" to emptyList<String>(),
+            "entry" to emptyList<String>(), "mission" to "Run gate", "exit" to emptyList<String>(),
+        )))
+        startWorkflow("wf-failed-retry")
+        setStepStatus("wf-failed-retry", "gate", WorkflowStatuses.FAILED, runStatus = WorkflowStatuses.BLOCKED)
+
+        //when
+        val actions = service.workflowActions(organizationScope, namespace, "wf-failed-retry", canReply = true)
+
+        //then
+        assertThat(actions.blockers.map { it.code }).contains("ATTEMPT_FAILED")
+        assertThat(actions.allowedActions).noneMatch { it.type == io.whozoss.factory.workflow.domain.WorkflowActionTypes.RETRY }
+        assertThatThrownBy { service.openRetry(organizationScope, namespace, "wf-failed-retry", "gate", 2, "manual") }
+            .isInstanceOf(WorkflowException::class.java)
+            .extracting("errorCode").isEqualTo("STEP_RETRY_UNSUPPORTED")
+    }
+
+    @Test
+    fun `sealed workflow refuses retry with sealed reason`() {
+        //given
+        registerDefinition(steps = listOf(linkedMapOf(
+            "id" to "gate", "name" to "Gate",
+            "responsibility" to linkedMapOf("kind" to "agent", "name" to "builder"),
+            "dependsOn" to emptyList<String>(),
+            "entry" to emptyList<String>(), "mission" to "Run gate", "exit" to emptyList<String>(),
+        )))
+        startWorkflow("wf-sealed-retry")
+        setStepStatus("wf-sealed-retry", "gate", WorkflowStatuses.FAILED, runStatus = WorkflowStatuses.FAILED)
+
+        //when / then
+        assertThat(service.workflowActions(organizationScope, namespace, "wf-sealed-retry", canReply = true)
+            .allowedActions).noneMatch { it.type == io.whozoss.factory.workflow.domain.WorkflowActionTypes.RETRY }
+        assertThatThrownBy { service.openRetry(organizationScope, namespace, "wf-sealed-retry", "gate", 2, "manual") }
+            .isInstanceOf(WorkflowException::class.java)
+            .extracting("errorCode").isEqualTo(WorkflowErrorCodes.WORKFLOW_SEALED)
+    }
+
+    @Test
+    fun `dependency blocked descendant is not a retry target`() {
+        //given
+        registerDefinition(steps = listOf(
+            linkedMapOf("id" to "root", "name" to "Root", "responsibility" to linkedMapOf("kind" to "agent", "name" to "builder"), "dependsOn" to emptyList<String>(), "entry" to emptyList<String>(), "mission" to "Run root", "exit" to emptyList<String>()),
+            linkedMapOf("id" to "child", "name" to "Child", "responsibility" to linkedMapOf("kind" to "agent", "name" to "builder"), "dependsOn" to listOf("root"), "entry" to emptyList<String>(), "mission" to "Run child", "exit" to emptyList<String>()),
+        ))
+        startWorkflow("wf-dependency-retry")
+        setStepStatus("wf-dependency-retry", "root", WorkflowStatuses.FAILED, runStatus = WorkflowStatuses.BLOCKED)
+        setStepStatus("wf-dependency-retry", "child", WorkflowStatuses.BLOCKED)
+        repository.upsertStepState(organizationScope, WorkflowStepStateRecord(
+            namespaceId = namespace, workflowId = "wf-dependency-retry", stepId = "child", revision = 1,
+            status = WorkflowStatuses.BLOCKED,
+            payload = mapOf("cause" to "dependency_non_success", "rootStepId" to "root"),
+        ))
+
+        //when / then
+        assertThat(service.workflowActions(organizationScope, namespace, "wf-dependency-retry", canReply = true)
+            .allowedActions).noneMatch { it.type == io.whozoss.factory.workflow.domain.WorkflowActionTypes.RETRY }
+        assertThatThrownBy { service.openRetry(organizationScope, namespace, "wf-dependency-retry", "child", 3, "manual") }
+            .isInstanceOf(WorkflowException::class.java)
+            .extracting("errorCode").isEqualTo(WorkflowErrorCodes.STEP_RETRY_INELIGIBLE)
+    }
+
+    @Test
+    fun `live blocked non-descendant still opens existing human retry request`() {
+        //given
+        registerDefinition(steps = listOf(linkedMapOf(
+            "id" to "gate", "name" to "Gate",
+            "responsibility" to linkedMapOf("kind" to "agent", "name" to "builder"),
+            "dependsOn" to emptyList<String>(),
+            "entry" to emptyList<String>(), "mission" to "Run gate", "exit" to emptyList<String>(),
+        )))
+        startWorkflow("wf-blocked-retry")
+        setStepStatus("wf-blocked-retry", "gate", WorkflowStatuses.BLOCKED)
+        repository.upsertStepState(organizationScope, WorkflowStepStateRecord(
+            namespaceId = namespace, workflowId = "wf-blocked-retry", stepId = "gate", revision = 1,
+            status = WorkflowStatuses.BLOCKED,
+            payload = mapOf("cause" to "agent_retryable_failure", "executed" to true),
+        ))
+
+        //when
+        val opened = service.openRetry(organizationScope, namespace, "wf-blocked-retry", "gate", 2, "manual")
+
+        //then
+        assertThat(opened.status).isEqualTo(201)
+        assertThat(interactionRepository.list(organizationScope, namespace, "wf-blocked-retry", openOnly = true))
+            .singleElement().extracting("interactionType").isEqualTo("retry")
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun setStepStatus(workflowId: String, stepId: String, status: String, runStatus: String? = null) {
+        val current = repository.findInstance(organizationScope, namespace, workflowId)!!
+        val steps = (current.instance["steps"] as List<Map<String, Any?>>).map { step ->
+            if (step["id"] == stepId) step + ("status" to status) else step
+        }
+        val nextInstance = current.instance + mapOf("steps" to steps) + (runStatus?.let { mapOf("status" to it) } ?: emptyMap())
+        val projectionSteps = (current.projection["steps"] as List<Map<String, Any?>>).map { step ->
+            if (step["id"] == stepId) step + ("status" to status) else step
+        }
+        val nextProjection = current.projection + mapOf("steps" to projectionSteps) + (runStatus?.let { mapOf("status" to it) } ?: emptyMap())
+        val next = current.copy(revision = current.revision + 1,
+            instance = nextInstance + ("revision" to current.revision + 1), projection = nextProjection)
+        assertThat(repository.updateInstance(organizationScope, namespace, workflowId, current.revision, next)).isTrue()
+        val projectionRecord = repository.findProjection(organizationScope, namespace, workflowId)
+        if (projectionRecord != null) assertThat(repository.publishProjection(organizationScope,
+            projectionRecord.copy(revision = 0, status = nextProjection["status"] as String, projection = nextProjection,
+                instance = next.instance, projectionHash = io.whozoss.factory.workflow.domain.CanonicalHash.workflowProjectionHash(nextProjection)),
+            projectionRecord.revision)).isNotNull
     }
 
     // ------------------------------------------------------------------

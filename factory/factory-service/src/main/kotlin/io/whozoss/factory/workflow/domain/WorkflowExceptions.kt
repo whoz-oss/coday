@@ -66,6 +66,8 @@ object WorkflowErrorCodes {
     const val INVALID_INTERACTION = "INVALID_INTERACTION"
     const val INVALID_REPLY = "INVALID_REPLY"
     const val INVALID_RETRY_REQUEST = "INVALID_RETRY_REQUEST"
+    const val STEP_RETRY_UNSUPPORTED = "STEP_RETRY_UNSUPPORTED"
+    const val STEP_RETRY_INELIGIBLE = "STEP_RETRY_INELIGIBLE"
     const val ACTION_NOT_ALLOWED = "ACTION_NOT_ALLOWED"
     const val UNAUTHENTICATED_ACTOR = "UNAUTHENTICATED_ACTOR"
     const val TRUST_CONTEXT_UNAVAILABLE = "TRUST_CONTEXT_UNAVAILABLE"
@@ -137,7 +139,9 @@ fun workflowStatusCode(code: String): Int = when (code) {
     WorkflowErrorCodes.METRICS_DATA_INCOMPLETE -> 422
     // Explicit: a sealed (terminal-run) workflow rejects any further mutation
     // as a conflict, like every other optimistic-locking / state-machine code.
-    WorkflowErrorCodes.WORKFLOW_SEALED -> 409
+    WorkflowErrorCodes.WORKFLOW_SEALED,
+    WorkflowErrorCodes.STEP_RETRY_UNSUPPORTED,
+    WorkflowErrorCodes.STEP_RETRY_INELIGIBLE -> 409
     else -> 409
 }
 

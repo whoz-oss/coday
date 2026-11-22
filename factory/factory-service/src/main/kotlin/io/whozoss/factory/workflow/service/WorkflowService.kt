@@ -1415,14 +1415,26 @@ class WorkflowService(
     ): WorkflowHttpResult {
         val instance = activeInstance(scope, namespaceId, workflowId)
         val snapshot = instance.toSnapshot()
+        assertNotSealed(instance)
         if (instance.projection.containsKey("stepExecutions")) {
             throw workflowException(WorkflowErrorCodes.ACTION_NOT_ALLOWED, "Outcome-managed executions cannot use legacy step retry; create an explicitly authorized successor run.")
         }
-        if (snapshot.stepStatus(stepId) != "blocked") {
-            throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "Only a blocked step can be retried.")
+        val stepStatus = snapshot.stepStatus(stepId)
+        if (stepStatus == WorkflowStatuses.FAILED) {
+            throw workflowException(WorkflowErrorCodes.STEP_RETRY_UNSUPPORTED, "Failed steps cannot use the blocked-step retry request.")
         }
         if (snapshot.revision != expectedRevision) {
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
+        }
+        if (stepStatus != WorkflowStatuses.BLOCKED) {
+            throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "Only a blocked step can be retried.")
+        }
+        if (!isRetryEligibleBlockedStep(scope, namespaceId, workflowId, instance, stepId)) {
+            val cause = repository.findStepStates(scope, namespaceId, workflowId).singleOrNull { it.stepId == stepId }
+                ?.payload?.get("cause")
+            val eligibility = if (cause == "dependency_non_success") "dependency_blocked_descendant" else "step_not_retryable"
+            throw workflowException(WorkflowErrorCodes.STEP_RETRY_INELIGIBLE,
+                "Only an executed, retry-eligible blocked agent step can be retried.", mapOf("stepId" to stepId, "eligibility" to eligibility))
         }
         val interactionId = UUID.randomUUID().toString()
         val interaction = interactionRepository.insert(
@@ -1438,6 +1450,7 @@ class WorkflowService(
                 payload = linkedMapOf(
                     "stepId" to stepId,
                     "prompt" to "Retry step $stepId ($reasonCode)",
+                    "reasonCode" to reasonCode,
                     "actions" to listOf(
                         mapOf("id" to "approve", "label" to "Retry"),
                         mapOf("id" to "reject", "label" to "Keep blocked"),
@@ -1445,7 +1458,7 @@ class WorkflowService(
                 ),
             ),
         )
-        return WorkflowHttpResult(201, mapOf("workflowId" to workflowId, "interaction" to interaction.toJson()))
+        return WorkflowHttpResult(201, mapOf("workflowId" to workflowId, "interaction" to interaction.toJson(), "idempotent" to false))
     }
 
     @Transactional
@@ -1875,8 +1888,20 @@ class WorkflowService(
         steps.forEach { step ->
             val stepId = step["id"] as? String ?: return@forEach
             when (step["status"] as? String) {
-                WorkflowStatuses.BLOCKED ->
+                WorkflowStatuses.BLOCKED -> {
                     blocker(WorkflowBlockerCodes.STEP_BLOCKED, stepId, "Step '$stepId' is blocked by a dependency.")
+                    val instance = governedInstance
+                    if (!runSealed && instance != null && isRetryEligibleBlockedStep(scope, namespaceId, workflowId, instance, stepId)) {
+                        actions.add(
+                            AllowedActionDto(
+                                type = WorkflowActionTypes.RETRY,
+                                stepId = stepId,
+                                expectedRevision = instanceRevision,
+                                label = "Request retry for blocked step '$stepId'",
+                            ),
+                        )
+                    }
+                }
 
                 WorkflowStatuses.WAITING_HUMAN -> blocker(
                     WorkflowBlockerCodes.WAITING_HUMAN_INTERACTION,
@@ -1899,17 +1924,8 @@ class WorkflowService(
                     }
                 }
 
-                WorkflowStatuses.FAILED -> {
+                WorkflowStatuses.FAILED ->
                     blocker(WorkflowBlockerCodes.ATTEMPT_FAILED, stepId, "Step '$stepId' failed.")
-                    actions.add(
-                        AllowedActionDto(
-                            type = WorkflowActionTypes.RETRY,
-                            stepId = stepId,
-                            expectedRevision = revision,
-                            label = "Retry failed step '$stepId'",
-                        ),
-                    )
-                }
 
                 else -> Unit
             }
@@ -2121,6 +2137,19 @@ class WorkflowService(
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    /** Eligibility for existing human-approved retry request; never broadens retry to failures. */
+    private fun isRetryEligibleBlockedStep(
+        scope: TenantScope, namespaceId: String, workflowId: String, instance: WorkflowInstanceRecord, stepId: String,
+    ): Boolean {
+        val step = runCatching { resolveDefinition(scope, instance).steps.singleOrNull { it.id == stepId } }.getOrNull()
+            ?: return false
+        if (step.responsibility.kind != ResponsibilityKind.AGENT) return false
+        val state = repository.findStepStates(scope, namespaceId, workflowId).singleOrNull { it.stepId == stepId }
+            ?: return false
+        return state.status == WorkflowStatuses.BLOCKED &&
+            state.payload["cause"] != "dependency_non_success" && state.payload["executed"] == true
+    }
 
     private fun activeInstance(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowInstanceRecord {
         val instance = repository.findInstance(scope, namespaceId, workflowId)

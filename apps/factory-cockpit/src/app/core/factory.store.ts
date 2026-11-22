@@ -768,7 +768,12 @@ export class FactoryStore implements OnDestroy {
       metrics: optional(this.api.getMetrics(id, namespaceId)),
       interactions: optional(this.api.getInteractions(id, namespaceId)),
       attempts: optional(this.api.getAttempts(id, namespaceId)),
-      actions: optional(this.api.getActions(id, namespaceId)),
+      // `null` distinguishes an authoritative actions-read failure from a successful
+      // empty response. Keep cached blockers/other actions, but fail closed for Retry.
+      actions: this.api.getActions(id, namespaceId).pipe(
+        map((actions) => actions as GetActionsResponse | null),
+        catchError(() => of(null))
+      ),
       agentQuestions: this.api.getAgentQuestions(id, namespaceId).pipe(
         catchError((error: FactoryApiError) => {
           if (error.code === 'AGENT_QUESTIONS_UNAVAILABLE') {
@@ -782,12 +787,22 @@ export class FactoryStore implements OnDestroy {
         // One atomic merge prevents partial/late response combinations and the
         // outer switchMap guarantees an obsolete A request cannot overwrite B.
         const partial = Object.fromEntries(
-          Object.entries(result).filter(([, value]) => value !== undefined)
+          Object.entries(result).filter(([, value]) => value !== undefined && value !== null)
         ) as Parameters<typeof merge>[0]
+        if (result.actions === null) {
+          const cachedActions = this.enrichment.get(id)?.actions
+          if (cachedActions) {
+            partial.actions = {
+              ...cachedActions,
+              allowedActions: cachedActions.allowedActions.filter((action) => action.type !== 'retry'),
+            }
+          }
+        }
         merge(partial)
         const conflict = this.retryConflict()
         if (
           result.actions !== undefined &&
+          result.actions !== null &&
           generation === this.namespaceGeneration &&
           retryConflictGeneration === this.retryConflictGeneration &&
           conflict?.workflowId === id &&

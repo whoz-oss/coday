@@ -162,11 +162,13 @@ paths:
       - $ref: '#/components/parameters/NamespaceId'
     post:
       operationId: request_agent_retry
-      summary: Request a governed retry of a blocked step.
+      summary: Request a human-approved retry for an eligible blocked agent step.
       description: >-
-        Only opens a retry request that a human approves in Factory. A repeated call for the same step
-        returns the existing open request instead of opening another. Requires an existing namespace
-        mapping; never initializes a missing workstream (WORKFLOW_NOT_FOUND).
+        Only opens a retry request for an executed agent step blocked by its own failure; it does not dispatch
+        a retry. Dependency-blocked descendants, failed steps, ineligible steps and sealed workflows are refused.
+        A human approves the request in Factory. A repeated call for the same step returns the existing open
+        request instead of opening another. Requires an existing namespace mapping; never initializes a missing
+        workstream (WORKFLOW_NOT_FOUND).
       parameters:
         - name: workflowId
           in: path
@@ -187,7 +189,7 @@ paths:
       responses:
         '200': { description: An open retry request already existed for this step. }
         '201': { description: Retry requested; awaiting human approval in Factory. }
-        '409': { description: Stale revision or the step is not blocked. }
+        '409': { description: 'WORKFLOW_SEALED for sealed runs, STEP_RETRY_UNSUPPORTED for failed steps, STEP_RETRY_INELIGIBLE for dependency-blocked/ineligible blocked agent steps, or existing revision/state conflicts.' }
   /api/factory/workstream-service/workstreams/{workstreamId}:
     parameters:
       - $ref: '#/components/parameters/NamespaceId'

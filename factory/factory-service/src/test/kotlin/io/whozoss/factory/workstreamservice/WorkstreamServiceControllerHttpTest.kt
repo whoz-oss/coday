@@ -100,7 +100,7 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     private fun errorCode(body: Map<String, Any?>?): String? =
         (body?.get("error") as? Map<String, Any?>)?.get("code") as? String
 
-    private fun registerDefinition(type: String = "wf-svc") {
+    private fun registerDefinition(type: String = "wf-svc", agentStep: Boolean = false) {
         val raw = linkedMapOf<String, Any?>(
             "schemaVersion" to "1",
             "workflowType" to type,
@@ -110,9 +110,10 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
                 linkedMapOf(
                     "id" to "gate",
                     "name" to "Gate",
-                    "responsibility" to linkedMapOf("kind" to "human", "name" to "reviewer"),
+                    "responsibility" to if (agentStep) linkedMapOf("kind" to "agent", "name" to "builder")
+                        else linkedMapOf("kind" to "human", "name" to "reviewer"),
                     "dependsOn" to emptyList<String>(),
-                ),
+                ) + if (agentStep) mapOf("entry" to emptyList<String>(), "mission" to "Run agent step", "exit" to emptyList<String>()) else emptyMap(),
             ),
         )
         val validated = WorkflowDefinitionValidator.validate(raw) as WorkflowDefinitionValidation.Valid
@@ -179,22 +180,36 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `get_workflow exposes blockers and advertises the retry of a failed step`() {
-        publish("wf-svc-failed", namespace, stepStatus = "failed")
+    fun `get_workflow keeps failed blocker but does not advertise unsupported generic retry`() {
+        registerDefinition(type = "wf-svc", agentStep = true)
+        val started = post("$base/workflows", mapOf("workflowType" to "wf-svc"), key = "failed-action-start")
+        val workflowId = data(started.body)["workflowId"] as String
+        setStepStatus(workflowId, "failed", "blocked")
 
-        val response = get("$base/workflows/wf-svc-failed")
+        val response = get("$base/workflows/$workflowId")
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
         val payload = data(response.body)
         assertThat(payload["state"]).isEqualTo("existing")
         assertThat(payload.toString()).contains("ATTEMPT_FAILED")
-        // The domain allows a retry of a root failure: the facade advertises it (and only it).
+        assertThat(payload["allowedActions"] as List<*>).isEmpty()
+    }
+
+    @Test
+    fun `get_workflow advertises retry only for eligible executed blocked agent step`() {
+        registerDefinition(agentStep = true)
+        val started = post("$base/workflows", mapOf("workflowType" to "wf-svc"), key = "eligible-retry-start")
+        assertThat(started.statusCode).isEqualTo(HttpStatus.CREATED)
+        val workflowId = data(started.body)["workflowId"] as String
+        blockGate(workflowId)
+
+        val payload = data(get("$base/workflows/$workflowId").body)
+
         @Suppress("UNCHECKED_CAST")
         val actions = payload["allowedActions"] as List<Map<String, Any?>>
         assertThat(actions).hasSize(1)
         assertThat(actions.single()["type"]).isEqualTo("retry")
         assertThat(actions.single()["stepId"]).isEqualTo("gate")
-        assertThat(actions.single()["expectedRevision"]).isEqualTo(1)
     }
 
     @Test
@@ -564,7 +579,7 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `request_agent_retry opens one retry request per blocked step and replays it idempotently`() {
-        registerDefinition()
+        registerDefinition(agentStep = true)
         val started = post("$base/workflows", mapOf("workflowType" to "wf-svc"), key = "retry-start")
         assertThat(started.statusCode).isEqualTo(HttpStatus.CREATED)
         val workflowId = data(started.body)["workflowId"] as String
@@ -584,8 +599,25 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `request_agent_retry refuses failed step without creating interaction`() {
+        registerDefinition(type = "wf-failed-command", agentStep = true)
+        val started = post("$base/workflows", mapOf("workflowType" to "wf-failed-command"), key = "failed-retry-start")
+        assertThat(started.statusCode).isEqualTo(HttpStatus.CREATED)
+        val workflowId = data(started.body)["workflowId"] as String
+        setStepStatus(workflowId, "failed", "blocked")
+
+        val response = post("$base/workflows/$workflowId/retries",
+            mapOf("stepId" to "gate", "expectedRevision" to 2, "reasonCode" to "manual"))
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(errorCode(response.body)).isEqualTo("STEP_RETRY_UNSUPPORTED")
+        assertThat(workflowService.listInteractions(scope, namespace, workflowId, openOnly = true).data.toString())
+            .doesNotContain("retry")
+    }
+
+    @Test
     fun `request_agent_retry refuses a step that is not blocked and an invalid request`() {
-        registerDefinition()
+        registerDefinition(agentStep = true)
         val started = post("$base/workflows", mapOf("workflowType" to "wf-svc"), key = "retry-start-2")
         val workflowId = data(started.body)["workflowId"] as String
 
@@ -602,20 +634,82 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(errorCode(invalid.body)).isEqualTo("INVALID_RETRY_REQUEST")
     }
 
-    /**
-     * Moves the `gate` step of the started governed instance to `blocked` and returns the new
-     * workflow revision (the one a retry request must be fenced on).
-     */
+    private fun publishGovernedInstance(workflowId: String, workflowType: String, stepStatus: String, runStatus: String) {
+        val step = linkedMapOf<String, Any?>(
+            "id" to "gate", "name" to "Gate", "status" to stepStatus,
+            "responsibility" to mapOf("kind" to "agent", "name" to "builder"),
+            "dependsOn" to emptyList<String>(),
+            "entry" to emptyList<String>(), "mission" to "Run gate", "exit" to emptyList<String>(),
+        )
+        val validated = WorkflowDefinitionValidator.validate(mapOf(
+            "schemaVersion" to "1", "workflowType" to workflowType, "version" to "1.0.0",
+            "title" to "Service workflow", "steps" to listOf(step),
+        )) as WorkflowDefinitionValidation.Valid
+        val definition = validated.definition
+        val definitionHash = hashWorkflowDefinition(definition)
+        workflowRepository.saveDefinition(scope, WorkflowDefinitionRecord(
+            workflowType, "1.0.0", definitionHash, definition,
+        ))
+        val projection = mapOf<String, Any?>("schemaVersion" to "2", "workflowId" to workflowId,
+            "workflowType" to workflowType, "title" to workflowId, "status" to runStatus, "steps" to listOf(step))
+        workflowRepository.insertInstance(scope, io.whozoss.factory.workflow.domain.WorkflowInstanceRecord(
+            namespaceId = namespace, workflowId = workflowId, revision = 1, status = "active",
+            creationCommandHash = "fixture-$workflowId",
+            instance = mapOf("workflowId" to workflowId, "workflowType" to workflowType, "definitionVersion" to "1.0.0",
+                "definitionHash" to definitionHash, "governanceMode" to "governed", "status" to runStatus,
+                "revision" to 1, "steps" to listOf(step), "controllerExecution" to mapOf("caseId" to "case-$workflowId")),
+            projection = projection,
+        ))
+        workflowService.publishProjection(scope, namespace, workflowId, projection, 0, null)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun setStepStatus(workflowId: String, stepStatus: String, runStatus: String) {
+        val current = workflowRepository.findInstance(scope, namespace, workflowId)!!
+        val steps = (current.instance["steps"] as List<Map<String, Any?>>).map { step ->
+            if (step["id"] == "gate") step + ("status" to stepStatus) else step
+        }
+        val nextProjection = current.projection + mapOf("status" to runStatus, "steps" to steps)
+        val next = current.copy(revision = current.revision + 1,
+            instance = current.instance + mapOf("revision" to current.revision + 1, "status" to runStatus, "steps" to steps),
+            projection = nextProjection)
+        check(workflowRepository.updateInstance(scope, namespace, workflowId, current.revision, next))
+        val oldProjection = workflowRepository.findProjection(scope, namespace, workflowId)!!
+        workflowRepository.publishProjection(scope, oldProjection.copy(revision = 0, status = runStatus,
+            projection = nextProjection, instance = next.instance,
+            projectionHash = io.whozoss.factory.workflow.domain.CanonicalHash.workflowProjectionHash(nextProjection)), oldProjection.revision)
+        workflowRepository.upsertStepState(scope, io.whozoss.factory.workflow.domain.WorkflowStepStateRecord(
+            namespaceId = namespace, workflowId = workflowId, stepId = "gate", revision = 1,
+            status = stepStatus, payload = mapOf("cause" to "agent_failure", "executed" to true),
+        ))
+    }
+
+    /** Moves gate into retryable blocked state and returns newly persisted workflow revision. */
     @Suppress("UNCHECKED_CAST")
     private fun blockGate(workflowId: String): Int {
         val current = workflowRepository.findInstance(scope, namespace, workflowId)!!
         val steps = (current.instance["steps"] as List<Map<String, Any?>>).map { step ->
             if (step["id"] == "gate") step + ("status" to "blocked") else step
         }
-        val next = current.copy(revision = current.revision + 1, instance = current.instance + ("steps" to steps))
+        val nextProjection = current.projection + mapOf("status" to "blocked", "steps" to steps)
+        val next = current.copy(revision = current.revision + 1,
+            instance = current.instance + mapOf("revision" to current.revision + 1, "status" to "blocked", "steps" to steps),
+            projection = nextProjection)
         check(workflowRepository.updateInstance(scope, namespace, workflowId, current.revision, next)) {
             "the test fixture could not block the step"
         }
+        val priorState = workflowRepository.findStepStates(scope, namespace, workflowId).singleOrNull { it.stepId == "gate" }
+        if (priorState == null) workflowRepository.upsertStepState(scope, io.whozoss.factory.workflow.domain.WorkflowStepStateRecord(
+            namespaceId = namespace, workflowId = workflowId, stepId = "gate", revision = 1,
+            status = "blocked", payload = mapOf("cause" to "agent_retryable_failure", "executed" to true),
+        ))
+        else workflowRepository.upsertStepState(scope, priorState.copy(status = "blocked",
+            payload = mapOf("cause" to "agent_retryable_failure", "executed" to true)))
+        val projectionRecord = workflowRepository.findProjection(scope, namespace, workflowId)
+        if (projectionRecord != null) workflowRepository.publishProjection(scope,
+            projectionRecord.copy(revision = 0, status = "blocked", projection = nextProjection, instance = next.instance,
+                projectionHash = io.whozoss.factory.workflow.domain.CanonicalHash.workflowProjectionHash(nextProjection)),
+            projectionRecord.revision)
         return next.revision
     }
 }
