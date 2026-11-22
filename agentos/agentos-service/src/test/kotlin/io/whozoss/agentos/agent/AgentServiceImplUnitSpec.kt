@@ -2980,7 +2980,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             recorded.providerId shouldBe model.aiProviderId
         }
 
-                "an agent run without a known user keeps the default prompt cache choice" {
+        "an agent run without a known user keeps the default prompt cache choice" {
             val config = agentConfig(name = "ttl-anonymous").copy(executionMode = ExecutionMode.SIMPLE)
             val model = stubAgentOnModel(config, modelFlag = false)
             every {

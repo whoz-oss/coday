@@ -36,6 +36,12 @@ describe('UserProfileComponent (prompt cache)', () => {
     return fixture.nativeElement as HTMLElement
   }
 
+  /** The read-mode value under the "Prompt cache" term, undefined when there is no such term. */
+  function readValue(element: HTMLElement): string | undefined {
+    const term = Array.from(element.querySelectorAll('dt')).find((dt) => dt.textContent?.trim() === 'Prompt cache')
+    return term?.nextElementSibling?.textContent?.trim()
+  }
+
   beforeEach(() => {
     currentUser = signal<User | null>(user())
     userState = {
@@ -64,19 +70,13 @@ describe('UserProfileComponent (prompt cache)', () => {
   })
 
   it('shows Standard in read mode for a user who never chose', () => {
-    const element = render()
-
-    expect(element.textContent).toContain('Prompt cache')
-    expect(element.textContent).toContain('Standard')
+    expect(readValue(render())).toBe('Standard')
   })
 
   it('shows the stored choice in read mode', () => {
     currentUser.set(user({ promptCacheTtl: PromptCacheTtl.EXTENDED }))
 
-    const element = render()
-
-    expect(element.textContent).toContain('Extended')
-    expect(element.textContent).not.toContain('Standard')
+    expect(readValue(render())).toBe('Extended')
   })
 
   it('offers both choices with a hint in edit mode, preselecting the stored one', () => {
@@ -87,12 +87,11 @@ describe('UserProfileComponent (prompt cache)', () => {
     const element = render()
     const select = element.querySelector('#up-promptCacheTtl') as HTMLSelectElement
 
-    expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual([
-      'Standard',
-      'Extended',
-    ])
+    expect(element.querySelector('label[for="up-promptCacheTtl"]')?.textContent?.trim()).toBe('Prompt cache')
+
+    expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual(['Standard', 'Extended'])
     expect(select.value).toBe(PromptCacheTtl.EXTENDED)
-    expect(element.textContent).toContain(
+    expect(element.querySelector('#up-promptCacheTtl-hint')?.textContent?.trim()).toBe(
       "Extended keeps the conversation cached through longer pauses (Claude models via Requesty: 1 hour instead of 5 minutes; each cache write costs more). Other models keep their provider's default."
     )
   })
@@ -114,7 +113,7 @@ describe('UserProfileComponent (prompt cache)', () => {
     expect(userState.updateMe).toHaveBeenCalledWith(
       expect.objectContaining({ firstname: 'Alice', promptCacheTtl: PromptCacheTtl.EXTENDED })
     )
-    expect(render().textContent).toContain('Extended')
+    expect(readValue(render())).toBe('Extended')
   })
 
   it('sends Standard back when switching from Extended', () => {
