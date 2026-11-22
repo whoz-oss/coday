@@ -66,7 +66,7 @@ class PromptTranslationServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "translateContent returns translated list with one entry per source element" {
-            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns chatClientReturning("Bonjour")
+            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClientReturning("Bonjour")
 
             val result = service.translateContent(
                 content = listOf("Hello"),
@@ -80,7 +80,7 @@ class PromptTranslationServiceImplSpec : StringSpec() {
 
         "translateContent translates each element independently" {
             val responses = mutableListOf("Bonjour", "Au revoir")
-            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns chatClientReturningSequence(responses)
+            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClientReturningSequence(responses)
 
             val result = service.translateContent(
                 content = listOf("Hello", "Goodbye"),
@@ -102,13 +102,13 @@ class PromptTranslationServiceImplSpec : StringSpec() {
                 row("blank",          ""),
                 row("whitespace only", "   "),
             ).forAll { _, llmResponse ->
-                every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns chatClientReturning(llmResponse)
+                every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClientReturning(llmResponse)
                 service.translateContent(listOf("Hello"), "en", "fr", namespaceId) shouldBe listOf("Hello")
             }
         }
 
         "translateContent falls back to original element when LLM call throws" {
-            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns
+            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD) } returns
                 chatClientThrowing(RuntimeException("LLM unavailable"))
             service.translateContent(listOf("Hello"), "en", "fr", namespaceId) shouldBe listOf("Hello")
         }
@@ -118,7 +118,7 @@ class PromptTranslationServiceImplSpec : StringSpec() {
         // -------------------------------------------------------------------------
 
         "translateTitle returns translated string" {
-            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns chatClientReturning("Revoir le profil")
+            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClientReturning("Revoir le profil")
 
             val result = service.translateTitle(
                 title = "Review profile",
@@ -140,13 +140,13 @@ class PromptTranslationServiceImplSpec : StringSpec() {
                 row("blank",          ""),
                 row("whitespace only", "   "),
             ).forAll { _, llmResponse ->
-                every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns chatClientReturning(llmResponse)
+                every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClientReturning(llmResponse)
                 service.translateTitle("Review profile", "en", "fr", namespaceId) shouldBe "Review profile"
             }
         }
 
         "translateTitle falls back to original when LLM call throws" {
-            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns
+            every { chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD) } returns
                 chatClientThrowing(RuntimeException("timeout"))
             service.translateTitle("Review profile", "en", "fr", namespaceId) shouldBe "Review profile"
         }

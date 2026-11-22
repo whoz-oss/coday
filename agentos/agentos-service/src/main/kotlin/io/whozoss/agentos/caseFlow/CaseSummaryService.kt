@@ -145,7 +145,7 @@ class CaseSummaryService(
                         model.forUtilityCall(),
                         provider,
                         caseId.toString(),
-                        promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+                        promptCacheTtl = PromptCacheTtl.STANDARD,
                     )
                     .prompt(Prompt(UserMessage(prompt)))
                     .call()

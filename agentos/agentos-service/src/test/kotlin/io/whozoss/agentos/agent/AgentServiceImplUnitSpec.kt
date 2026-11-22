@@ -2892,7 +2892,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             (agentService.findAgentByName("advanced-with-support", context) is AgentAdvanced) shouldBe true
         }
 
-        // One test per mode and duration, ONE_HOUR included: the resolved user's choice reaches getChatClient.
+        // One test per mode and choice, EXTENDED included: the resolved user's choice reaches getChatClient.
         listOf(ExecutionMode.SIMPLE, ExecutionMode.ADVANCED).forEach { mode ->
             PromptCacheTtl.entries.forEach { ttl ->
                 "a $mode agent run for a user who chose $ttl builds its chat client with promptCacheTtl = $ttl" {
@@ -2933,7 +2933,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             }
         }
 
-        "an agent run without a known user keeps the default prompt cache duration" {
+        "an agent run without a known user keeps the default prompt cache choice" {
             val config = agentConfig(name = "ttl-anonymous").copy(executionMode = ExecutionMode.SIMPLE)
             val model = stubAgentOnModel(config, modelFlag = false)
             every {
@@ -2943,7 +2943,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.findAgentByName(config.name, context)
 
             verify(exactly = 1) {
-                chatClientProvider.getChatClient(model, any(), any(), any(), any(), PromptCacheTtl.FIVE_MINUTES)
+                chatClientProvider.getChatClient(model, any(), any(), any(), any(), PromptCacheTtl.STANDARD)
             }
         }
 

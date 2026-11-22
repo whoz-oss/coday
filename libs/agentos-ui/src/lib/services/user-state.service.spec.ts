@@ -13,7 +13,7 @@ describe('UserStateService.updateMe', () => {
     externalId: 'alice@example.com',
     firstname: 'Alice',
     isAdmin: false,
-    promptCacheTtl: PromptCacheTtl.FIVE_MINUTES,
+    promptCacheTtl: PromptCacheTtl.STANDARD,
   }
 
   beforeEach(() => {
@@ -26,19 +26,19 @@ describe('UserStateService.updateMe', () => {
     service.loadMe().subscribe()
   })
 
-  it('sends the full user with the chosen prompt cache duration and stores the result', () => {
+  it('sends the full user with the chosen prompt cache and stores the result', () => {
     service
       .updateMe({
         firstname: 'Alice',
         lastname: undefined,
         bio: undefined,
         preferredLanguage: undefined,
-        promptCacheTtl: PromptCacheTtl.ONE_HOUR,
+        promptCacheTtl: PromptCacheTtl.EXTENDED,
       })
       .subscribe()
 
-    expect(controller.updateUser).toHaveBeenCalledWith('u-1', { ...me, promptCacheTtl: PromptCacheTtl.ONE_HOUR })
-    expect(service.currentUser()?.promptCacheTtl).toBe(PromptCacheTtl.ONE_HOUR)
+    expect(controller.updateUser).toHaveBeenCalledWith('u-1', { ...me, promptCacheTtl: PromptCacheTtl.EXTENDED })
+    expect(service.currentUser()?.promptCacheTtl).toBe(PromptCacheTtl.EXTENDED)
   })
 
   it('throws when the current user is not loaded', () => {
@@ -50,7 +50,7 @@ describe('UserStateService.updateMe', () => {
         lastname: undefined,
         bio: undefined,
         preferredLanguage: undefined,
-        promptCacheTtl: PromptCacheTtl.ONE_HOUR,
+        promptCacheTtl: PromptCacheTtl.EXTENDED,
       })
     ).toThrow('Cannot update: current user not loaded')
   })

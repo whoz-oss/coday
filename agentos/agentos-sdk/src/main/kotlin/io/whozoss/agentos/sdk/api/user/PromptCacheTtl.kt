@@ -3,23 +3,21 @@ package io.whozoss.agentos.sdk.api.user
 import io.swagger.v3.oas.annotations.media.Schema
 
 /**
- * How long the provider keeps a user's conversation prompt cached between two LLM calls.
+ * How long a user wants their conversation prompt kept cached between two LLM calls, as an intent: the
+ * effective lifetime depends on the model and provider.
  *
- * Only applied to Claude models via Requesty today; other models and providers keep their own caching
- * behaviour.
+ * - [STANDARD]: the provider's default caching, nothing extra is sent (Claude via Requesty: 5 minutes; OpenAI
+ *   GPT: about 30 minutes).
+ * - [EXTENDED]: keep the cache through longer pauses. Today only Claude models via Requesty get it (explicit
+ *   1-hour cache markers, each cache write costs 2x input instead of 1.25x); other models behave as [STANDARD].
  *
- * Cost trade-off, Anthropic list prices relative to the base input token price: 5m writes 1.25x, 1h writes 2x
- * input; reads are much cheaper (0.05x-0.1x depending on model) and refresh the TTL.
- * - [FIVE_MINUTES]: the router's default automatic caching, unchanged.
- * - [ONE_HOUR]: each new prefix costs more to cache, but the conversation stays cached through pauses longer
- *   than five minutes.
- *
- * Since every read refreshes the entry's lifetime, the TTL only matters for the idle time between two calls.
+ * Since every cache read refreshes the entry's lifetime, the choice only matters for the idle time between two
+ * calls.
  *
  * Published as one shared OpenAPI schema, so the generated clients have a single enum.
  */
 @Schema(enumAsRef = true)
 enum class PromptCacheTtl {
-    FIVE_MINUTES,
-    ONE_HOUR,
+    STANDARD,
+    EXTENDED,
 }

@@ -89,7 +89,7 @@ class ProviderOptionsWireSpec :
                     model,
                     provider,
                     accumulator = if (usageTracking) UsageAccumulator() else null,
-                    promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+                    promptCacheTtl = PromptCacheTtl.STANDARD,
                 )
         }
 

@@ -87,8 +87,8 @@ class ChatModelFactory internal constructor(
         headers: Map<String, String> = emptyMap(),
         /** Null keeps the provider default; ignored for Anthropic and Gemini, where it is rejected at save time. */
         reasoningEffort: ReasoningEffort? = null,
-        /** The calling user's choice; only changes the request for Claude models via Requesty (OpenAI API type). */
-        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+        /** The calling user's choice; EXTENDED only changes the request for Claude models via Requesty. */
+        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
         /** Receives the cost reported in OpenAI-compatible responses (e.g. Requesty `usage.cost`). */
         providerCost: ProviderReportedCost? = null,
     ): ChatModel {
@@ -169,7 +169,7 @@ class ChatModelFactory internal constructor(
             webClientBuilder.filter(ProviderCostCapture.filter(providerCost))
         }
         val oneHourRequestyCache =
-            promptCacheTtl == PromptCacheTtl.ONE_HOUR && isRequestyBaseUrl(baseUrl) && requestyPromptCache.matchesModel(model)
+            promptCacheTtl == PromptCacheTtl.EXTENDED && isRequestyBaseUrl(baseUrl) && requestyPromptCache.matchesModel(model)
         if (oneHourRequestyCache) {
             // Rewrites the outgoing request body; independent of the response-side cost hooks above.
             restClientBuilder.requestInterceptor(RequestyPromptCache.interceptor())

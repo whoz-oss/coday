@@ -710,7 +710,7 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
         // Anonymous and system runs keep the default.
-        val promptCacheTtl = resolvedUser?.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES
+        val promptCacheTtl = resolvedUser?.promptCacheTtl ?: PromptCacheTtl.STANDARD
 
         return when (executionMode) {
             ExecutionMode.LOOP -> {

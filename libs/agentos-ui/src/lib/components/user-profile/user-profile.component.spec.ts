@@ -16,10 +16,10 @@ interface Internals {
 }
 
 /**
- * Focused on the prompt cache duration: shown in read mode, offered as a select in edit mode, and sent through
+ * Focused on the prompt cache choice: shown in read mode, offered as a select in edit mode, and sent through
  * UserStateService.updateMe on save.
  */
-describe('UserProfileComponent (prompt cache duration)', () => {
+describe('UserProfileComponent (prompt cache)', () => {
   let currentUser: ReturnType<typeof signal<User | null>>
   let userState: { currentUser: typeof currentUser; loadMe: jest.Mock; updateMe: jest.Mock }
   let fixture: ComponentFixture<UserProfileComponent>
@@ -63,24 +63,24 @@ describe('UserProfileComponent (prompt cache duration)', () => {
     component = fixture.componentInstance
   })
 
-  it('shows the default duration in read mode for a user who never chose one', () => {
+  it('shows Standard in read mode for a user who never chose', () => {
     const element = render()
 
-    expect(element.textContent).toContain('Prompt cache duration (Claude models via Requesty)')
-    expect(element.textContent).toContain('5 minutes (Requesty default)')
+    expect(element.textContent).toContain('Prompt cache')
+    expect(element.textContent).toContain('Standard')
   })
 
-  it('shows the stored duration in read mode', () => {
-    currentUser.set(user({ promptCacheTtl: PromptCacheTtl.ONE_HOUR }))
+  it('shows the stored choice in read mode', () => {
+    currentUser.set(user({ promptCacheTtl: PromptCacheTtl.EXTENDED }))
 
     const element = render()
 
-    expect(element.textContent).toContain('1 hour')
-    expect(element.textContent).not.toContain('5 minutes (Requesty default)')
+    expect(element.textContent).toContain('Extended')
+    expect(element.textContent).not.toContain('Standard')
   })
 
-  it('offers both durations with a hint in edit mode, preselecting the stored one', () => {
-    currentUser.set(user({ promptCacheTtl: PromptCacheTtl.ONE_HOUR }))
+  it('offers both choices with a hint in edit mode, preselecting the stored one', () => {
+    currentUser.set(user({ promptCacheTtl: PromptCacheTtl.EXTENDED }))
     render()
     internals().startEditing()
 
@@ -88,45 +88,45 @@ describe('UserProfileComponent (prompt cache duration)', () => {
     const select = element.querySelector('#up-promptCacheTtl') as HTMLSelectElement
 
     expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual([
-      '5 minutes (Requesty default)',
-      '1 hour',
+      'Standard',
+      'Extended',
     ])
-    expect(select.value).toBe(PromptCacheTtl.ONE_HOUR)
+    expect(select.value).toBe(PromptCacheTtl.EXTENDED)
     expect(element.textContent).toContain(
-      '1 hour sends explicit 1-hour cache markers for Claude models: each cache write costs more, but the conversation stays cached during longer pauses. 5 minutes leaves the request as is (Requesty automatic caching).'
+      "Extended keeps the conversation cached through longer pauses (Claude models via Requesty: 1 hour instead of 5 minutes; each cache write costs more). Other models keep their provider's default."
     )
   })
 
-  it('preselects the default when the user never chose a duration', () => {
+  it('preselects Standard when the user never chose', () => {
     render()
     internals().startEditing()
 
-    expect(internals().form.controls.promptCacheTtl.value).toBe(PromptCacheTtl.FIVE_MINUTES)
+    expect(internals().form.controls.promptCacheTtl.value).toBe(PromptCacheTtl.STANDARD)
   })
 
-  it('sends the chosen duration through updateMe on save', () => {
+  it('sends the chosen value through updateMe on save', () => {
     render()
     internals().startEditing()
-    internals().form.controls.promptCacheTtl.setValue(PromptCacheTtl.ONE_HOUR)
+    internals().form.controls.promptCacheTtl.setValue(PromptCacheTtl.EXTENDED)
 
     internals().save()
 
     expect(userState.updateMe).toHaveBeenCalledWith(
-      expect.objectContaining({ firstname: 'Alice', promptCacheTtl: PromptCacheTtl.ONE_HOUR })
+      expect.objectContaining({ firstname: 'Alice', promptCacheTtl: PromptCacheTtl.EXTENDED })
     )
-    expect(render().textContent).toContain('1 hour')
+    expect(render().textContent).toContain('Extended')
   })
 
-  it('sends the default back when switching from one hour to five minutes', () => {
-    currentUser.set(user({ promptCacheTtl: PromptCacheTtl.ONE_HOUR }))
+  it('sends Standard back when switching from Extended', () => {
+    currentUser.set(user({ promptCacheTtl: PromptCacheTtl.EXTENDED }))
     render()
     internals().startEditing()
-    internals().form.controls.promptCacheTtl.setValue(PromptCacheTtl.FIVE_MINUTES)
+    internals().form.controls.promptCacheTtl.setValue(PromptCacheTtl.STANDARD)
 
     internals().save()
 
     expect(userState.updateMe).toHaveBeenCalledWith(
-      expect.objectContaining({ promptCacheTtl: PromptCacheTtl.FIVE_MINUTES })
+      expect.objectContaining({ promptCacheTtl: PromptCacheTtl.STANDARD })
     )
   })
 })

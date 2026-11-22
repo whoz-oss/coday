@@ -60,7 +60,7 @@ class UserControllerSpec : StringSpec({
         bio: String? = null,
         isAdmin: Boolean = false,
         preferredLanguage: String? = null,
-        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
     ) = User(
         metadata = EntityMetadata(id = id),
         externalId = externalId,
@@ -101,11 +101,11 @@ class UserControllerSpec : StringSpec({
         val id = UUID.randomUUID()
         val u = user(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev")
         val result = toDto(u)
-        result shouldBe UserDto(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false, preferredLanguage = null, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
+        result shouldBe UserDto(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false, preferredLanguage = null, promptCacheTtl = PromptCacheTtl.STANDARD)
     }
 
     "toDto maps promptCacheTtl from User to UserDto" {
-        toDto(user(promptCacheTtl = PromptCacheTtl.ONE_HOUR)).promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        toDto(user(promptCacheTtl = PromptCacheTtl.EXTENDED)).promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
     }
 
     "toDto maps preferredLanguage from User to UserDto" {
@@ -354,20 +354,20 @@ class UserControllerSpec : StringSpec({
         val captured = slot<User>()
         every { userService.create(capture(captured)) } answers { firstArg() }
 
-        val result = controller.create(resource(id = null, promptCacheTtl = PromptCacheTtl.ONE_HOUR))
+        val result = controller.create(resource(id = null, promptCacheTtl = PromptCacheTtl.EXTENDED))
 
-        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
-        result.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
+        result.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
     }
 
-    "create without promptCacheTtl defaults to FIVE_MINUTES" {
+    "create without promptCacheTtl defaults to STANDARD" {
         val captured = slot<User>()
         every { userService.create(capture(captured)) } answers { firstArg() }
 
         val result = controller.create(resource(id = null, promptCacheTtl = null))
 
-        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
-        result.promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.STANDARD
+        result.promptCacheTtl shouldBe PromptCacheTtl.STANDARD
     }
 
     "update self sets promptCacheTtl, and getMe returns it" {
@@ -380,33 +380,33 @@ class UserControllerSpec : StringSpec({
 
         val result =
             withAuthContext(auth) {
-                controller.update(selfId, resource(id = selfId, email = self.email, promptCacheTtl = PromptCacheTtl.ONE_HOUR))
+                controller.update(selfId, resource(id = selfId, email = self.email, promptCacheTtl = PromptCacheTtl.EXTENDED))
             }
 
-        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
-        result.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
+        result.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
         every { userService.getCurrentUser() } returns captured.captured
-        controller.getMe().promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        controller.getMe().promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
     }
 
-    "update self can switch promptCacheTtl back to FIVE_MINUTES" {
+    "update self can switch promptCacheTtl back to STANDARD" {
         val selfId = UUID.randomUUID()
-        val self = user(id = selfId, promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+        val self = user(id = selfId, promptCacheTtl = PromptCacheTtl.EXTENDED)
         val auth = mockk<Authentication> { every { name } returns selfId.toString() }
         val captured = slot<User>()
         every { userService.findByIds(listOf(selfId), false) } returns listOf(self)
         every { userService.update(capture(captured)) } answers { firstArg() }
 
         withAuthContext(auth) {
-            controller.update(selfId, resource(id = selfId, email = self.email, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES))
+            controller.update(selfId, resource(id = selfId, email = self.email, promptCacheTtl = PromptCacheTtl.STANDARD))
         }
 
-        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.FIVE_MINUTES
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.STANDARD
     }
 
     "update without promptCacheTtl keeps the stored value" {
         val selfId = UUID.randomUUID()
-        val self = user(id = selfId, promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+        val self = user(id = selfId, promptCacheTtl = PromptCacheTtl.EXTENDED)
         val auth = mockk<Authentication> { every { name } returns selfId.toString() }
         val captured = slot<User>()
         every { userService.findByIds(listOf(selfId), false) } returns listOf(self)
@@ -417,8 +417,8 @@ class UserControllerSpec : StringSpec({
                 controller.update(selfId, resource(id = selfId, email = self.email, firstname = "Renamed", promptCacheTtl = null))
             }
 
-        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
-        result.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+        captured.captured.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
+        result.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
     }
 
     // -------------------------------------------------------------------------

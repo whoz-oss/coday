@@ -128,7 +128,7 @@ class CaseNamingServiceUnitSpec :
          * Stubs [ChatClientProvider.getChatClient] to return the given [chatClient].
          */
         fun ChatClientProvider.stub(chatClient: ChatClient) {
-            every { getChatClient(any(), any(), any(), promptCacheTtl = PromptCacheTtl.FIVE_MINUTES) } returns chatClient
+            every { getChatClient(any(), any(), any(), promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClient
         }
 
         // -------------------------------------------------------------------------
@@ -270,7 +270,7 @@ class CaseNamingServiceUnitSpec :
             service.nameCase(case, listOf(messageEvent("Plan the migration", case.id))) {}
 
             verify(exactly = 1) {
-                chatClientProvider.getChatClient(effortModel.copy(reasoningEffort = ReasoningEffort.LOW), provider, case.id.toString(), promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
+                chatClientProvider.getChatClient(effortModel.copy(reasoningEffort = ReasoningEffort.LOW), provider, case.id.toString(), promptCacheTtl = PromptCacheTtl.STANDARD)
             }
         }
 

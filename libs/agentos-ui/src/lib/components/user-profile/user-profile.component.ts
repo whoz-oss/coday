@@ -38,7 +38,7 @@ interface UserGlobalRecap {
  *
  * Two modes in one component, toggled by isEditing():
  *   - Read mode: displays all user fields (email, externalId read-only + firstname, lastname, bio)
- *   - Edit mode: reactive form for firstname, lastname, bio, language and prompt cache duration
+ *   - Edit mode: reactive form for firstname, lastname, bio, language and prompt cache
  *
  * Story 6.6 also adds a "My global user configurations" section that recaps the user's
  * user-global overrides (`namespaceId IS NULL`) for Integrations and AI Providers.
@@ -137,12 +137,12 @@ export class UserProfileComponent implements OnInit {
   ]
 
   /**
-   * How long Claude models via Requesty keep the conversation cached between two calls. Anthropic list prices: 5m
-   * writes 1.25x, 1h writes 2x input; reads are much cheaper (0.05x-0.1x depending on model) and refresh the TTL.
+   * Prompt cache choice. Extended only changes Claude models via Requesty (1 hour instead of 5 minutes). Anthropic
+   * list prices: 5m writes 1.25x, 1h writes 2x input; reads are much cheaper (0.05x-0.1x) and refresh the TTL.
    */
   protected readonly promptCacheTtlOptions: ReadonlyArray<{ value: PromptCacheTtl; label: string }> = [
-    { value: PromptCacheTtl.FIVE_MINUTES, label: '5 minutes (Requesty default)' },
-    { value: PromptCacheTtl.ONE_HOUR, label: '1 hour' },
+    { value: PromptCacheTtl.STANDARD, label: 'Standard' },
+    { value: PromptCacheTtl.EXTENDED, label: 'Extended' },
   ]
 
   protected readonly form = new FormGroup({
@@ -150,12 +150,12 @@ export class UserProfileComponent implements OnInit {
     lastname: new FormControl<string>('', { nonNullable: true }),
     bio: new FormControl<string>('', { nonNullable: true }),
     preferredLanguage: new FormControl<string>('', { nonNullable: true }),
-    promptCacheTtl: new FormControl<PromptCacheTtl>(PromptCacheTtl.FIVE_MINUTES, { nonNullable: true }),
+    promptCacheTtl: new FormControl<PromptCacheTtl>(PromptCacheTtl.STANDARD, { nonNullable: true }),
   })
 
-  /** Label of the current user's prompt cache duration, for the read mode. */
+  /** Label of the current user's prompt cache choice, for the read mode. */
   protected readonly promptCacheTtlLabel = computed(() => {
-    const value = this.currentUser()?.promptCacheTtl ?? PromptCacheTtl.FIVE_MINUTES
+    const value = this.currentUser()?.promptCacheTtl ?? PromptCacheTtl.STANDARD
     return this.promptCacheTtlOptions.find((option) => option.value === value)?.label ?? value
   })
 
@@ -362,7 +362,7 @@ export class UserProfileComponent implements OnInit {
       lastname: user.lastname ?? '',
       bio: user.bio ?? '',
       preferredLanguage: user.preferredLanguage ?? '',
-      promptCacheTtl: user.promptCacheTtl ?? PromptCacheTtl.FIVE_MINUTES,
+      promptCacheTtl: user.promptCacheTtl ?? PromptCacheTtl.STANDARD,
     })
   }
 }

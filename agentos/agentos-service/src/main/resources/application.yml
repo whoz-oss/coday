@@ -375,7 +375,7 @@ agentos:
   requesty:
     prompt-cache:
       # Models that get explicit 1-hour cache markers (cache_control ttl 1h, requesty.auto_cache false) when
-      # their user chose the 1-hour prompt cache duration and the provider's base URL is Requesty (requesty.ai).
+      # their user chose the Extended prompt cache and the provider's base URL is Requesty (requesty.ai).
       # A regular expression searched in the API model name. The default matches every Claude model name;
       # Requesty policy names do not always tell the backing model, so extend it for policies backed by Claude,
       # e.g. "(?i)claude|^policy/sonnet-with-fallback$". Only Anthropic models accept these markers.
