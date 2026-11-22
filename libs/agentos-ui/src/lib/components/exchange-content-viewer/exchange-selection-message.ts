@@ -1,6 +1,6 @@
 import { detectFormat } from '../../services/exchange-content.utils'
 import { selectionRequestMarker } from '../../services/exchange-selection-request.service'
-import type { ExchangeSelectionAction } from '../../services/exchange-state.service'
+import type { ExchangeSelectionAction, ExchangeSelectionContextEntry } from '../../services/exchange-state.service'
 
 /**
  * Pure builder of the chat message sent when the user asks an agent to act on a part of an exchange document
@@ -39,12 +39,19 @@ function lineLabel(action: ExchangeSelectionAction): string {
 }
 
 /** What the agent is told about the answer it must give. */
-export function proposalInstructions(requestId: string, markdown = false): string {
+export function proposalInstructions(requestId: string, markdown = false, html = false): string {
   return [
     selectionRequestMarker(requestId),
     'Do NOT modify the file and do not call any tool that writes it: read it only if you need context.',
     'Answer with a short explanation, followed by exactly one fenced block whose info string is `proposal` and that holds ' +
       'the full replacement text for the selected passage (the passage only, not the whole file).',
+    ...(html
+      ? [
+          'The selection is given as HTML, and the proposal must be an HTML fragment (not a whole document): keep the ' +
+            'existing tags, classes, inline styles and attributes unless the instruction asks to change them. Do not add ' +
+            '`<script>`, event handler attributes (`onclick`...) or external resources.',
+        ]
+      : []),
     ...(markdown
       ? [
           'The selection is given as markdown, and the proposal must be markdown too: it may contain headings, lists, ' +
@@ -56,20 +63,38 @@ export function proposalInstructions(requestId: string, markdown = false): strin
   ].join('\n')
 }
 
+/** The chain of elements around an HTML selection, one per line, from the innermost one up to body. */
+function contextLines(context: ExchangeSelectionContextEntry[]): string {
+  return context
+    .map((entry) => {
+      const attrs = [entry.class ? `class="${entry.class}"` : '', entry.style ? `style="${entry.style}"` : '']
+        .filter(Boolean)
+        .join(' ')
+      return `<${entry.tag}${attrs ? ` ${attrs}` : ''}>`
+    })
+    .join(' inside ')
+}
+
 /** The message to send to the agent for a selection action; [requestId] ties its answer back to the request. */
 export function buildSelectionMessage(action: ExchangeSelectionAction, requestId: string): string {
   // A selection made in the rendered markdown goes as its markdown source, not as the flattened text.
   const markdown = action.selectionMarkdown !== undefined
-  const shown = action.selectionMarkdown ?? action.selection
+  // A selection made in an HTML page goes as its markup, so that the proposal keeps the formatting.
+  const html = !markdown && !!action.selectionHtml?.trim()
+  const shown = action.selectionMarkdown ?? (html ? action.selectionHtml! : action.selection)
   const fence = fenceFor(shown)
+  const language = html ? 'html' : fenceLanguage(action.ref.path)
   const parts = [
     action.instruction.trim(),
-    `[Selection from ${qualifiedPath(action)}${lineLabel(action)}]\n${fence}${fenceLanguage(action.ref.path)}\n${shown}\n${fence}`,
+    `[Selection from ${qualifiedPath(action)}${lineLabel(action)}]\n${fence}${language}\n${shown}\n${fence}`,
   ]
+  if (html && action.selectionContext?.length) {
+    parts.push(`(The selection sits in: ${contextLines(action.selectionContext)}.)`)
+  }
   if (action.unsavedChanges) {
     parts.push('(The selection comes from unsaved edits in the editor: the file may not contain it yet.)')
   }
-  parts.push(proposalInstructions(requestId, markdown))
+  parts.push(proposalInstructions(requestId, markdown, html))
   parts.push(`[Files referenced: ${qualifiedPath(action)}]`)
   return parts.join('\n\n')
 }

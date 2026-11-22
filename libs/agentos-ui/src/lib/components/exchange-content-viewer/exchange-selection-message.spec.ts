@@ -75,6 +75,43 @@ describe('exchange-selection-message', () => {
     expect(build()).not.toContain('must be markdown')
   })
 
+  describe('selection made in an HTML page', () => {
+    const htmlAction = (): Partial<ExchangeSelectionAction> => ({
+      ref: { scope: ExchangeFileEntryScopeEnum.CASE, path: 'report.html' },
+      selection: 'Hello big world',
+      selectionHtml: '<p style="color:red">Hello <b class="x">big</b> world</p>',
+      selectionContext: [{ tag: 'div', class: 'card', style: 'padding:4px' }, { tag: 'body' }],
+    })
+
+    it('sends the markup in an html fence, with its context, and asks to keep it', () => {
+      const message = build(htmlAction())
+      expect(message).toContain('```html\n<p style="color:red">Hello <b class="x">big</b> world</p>\n```')
+      expect(message).not.toContain('\nHello big world\n')
+      expect(message).toContain('<div class="card" style="padding:4px"> inside <body>')
+      expect(message).toContain('an HTML fragment')
+      expect(message).toContain('keep the existing tags, classes, inline styles and attributes')
+      expect(message).toContain('Do not add `<script>`, event handler attributes')
+    })
+
+    it('is exactly the message with the html instructions', () => {
+      expect(build(htmlAction())).toBe(
+        [
+          'Translate this to French',
+          '[Selection from case:report.html]\n```html\n<p style="color:red">Hello <b class="x">big</b> world</p>\n```',
+          '(The selection sits in: <div class="card" style="padding:4px"> inside <body>.)',
+          proposalInstructions('req1', false, true),
+          '[Files referenced: case:report.html]',
+        ].join('\n\n')
+      )
+    })
+
+    it('falls back to the flattened text when the page gave no markup', () => {
+      const message = build({ ...htmlAction(), selectionHtml: undefined, selectionContext: undefined })
+      expect(message).toContain('```html\nHello big world\n```')
+      expect(message).not.toContain('keep the existing tags')
+    })
+  })
+
   it('trims the instruction', () => {
     expect(build({ instruction: '  fix  \n' }).startsWith('fix\n\n[Selection')).toBe(true)
   })

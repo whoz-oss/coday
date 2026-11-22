@@ -265,6 +265,9 @@
                   }
                 }
               </p>
+              @if (formattingChanged()) {
+                <p class="exchange-content-viewer__card-note">Formatting changed</p>
+              }
               @if (acceptError()) {
                 <p class="exchange-content-viewer__card-error" role="alert">{{ acceptError() }}</p>
               }

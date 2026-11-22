@@ -670,7 +670,102 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
 
       cardButton('Accept')!.click()
 
-      expect(send).toHaveBeenCalledWith({ type: 'agentos-exchange-replace', from: 'two', to: 'TWO' }, '*')
+      expect(send).toHaveBeenCalledWith({ type: 'agentos-exchange-replace', text: 'TWO', selectionText: 'two' }, '*')
+    })
+
+    it('Accept posts the html of a proposal that has tags, and the diff card uses its text content', () => {
+      create('page.html', '<p>one <b>two</b> three</p>')
+      const send = jest.spyOn(iframe()!.contentWindow!, 'postMessage')
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'agentos-exchange-selection',
+            text: 'two',
+            html: '<b>two</b>',
+            context: [{ tag: 'p' }, { tag: 'body' }],
+          },
+          source: iframe()!.contentWindow,
+        })
+      )
+      fixture.detectChanges()
+      typeInComposer('fix')
+      composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      fixture.componentRef.setInput(
+        'request',
+        proposed({ ref: ref('page.html'), proposal: '<b>TWO</b> <em>now</em>', selectionHtml: '<b>two</b>' })
+      )
+      fixture.detectChanges()
+
+      expect(card()!.querySelector('del')!.textContent).toBe('two')
+      expect(card()!.querySelector('ins')!.textContent).toContain('TWO')
+      expect(card()!.textContent).not.toContain('<b>')
+      expect(card()!.textContent).toContain('Formatting changed')
+
+      cardButton('Accept')!.click()
+
+      expect(send).toHaveBeenCalledWith(
+        { type: 'agentos-exchange-replace', html: '<b>TWO</b> <em>now</em>', selectionText: 'two' },
+        '*'
+      )
+    })
+
+    it('does not say the formatting changed when the proposal keeps the tags', () => {
+      create('page.html', '<p>one <b>two</b> three</p>')
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'agentos-exchange-selection', text: 'two', html: '<b>two</b>' },
+          source: iframe()!.contentWindow,
+        })
+      )
+      fixture.detectChanges()
+      typeInComposer('fix')
+      composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      fixture.componentRef.setInput(
+        'request',
+        proposed({ ref: ref('page.html'), proposal: '<b>TWO</b>', selectionHtml: '<b>two</b>' })
+      )
+      fixture.detectChanges()
+      expect(card()!.textContent).not.toContain('Formatting changed')
+    })
+
+    it('the selection message carries the capped html and context of the page, and the request keeps the html', () => {
+      create('page.html', '<p>x</p>')
+      const actions: ExchangeSelectionAction[] = []
+      fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: {
+            type: 'agentos-exchange-selection',
+            text: 'hello',
+            html: '<b>hello</b>'.padEnd(60_000, 'x'),
+            context: [{ tag: 'p', class: 'c', style: 'color:red' }, { tag: 42 }, { tag: 'body' }],
+          },
+          source: iframe()!.contentWindow,
+        })
+      )
+      fixture.detectChanges()
+      typeInComposer('fix')
+      composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      expect(actions).toHaveLength(1)
+      expect(actions[0]!.selectionHtml!.length).toBe(50_000)
+      expect(actions[0]!.selectionContext).toEqual([{ tag: 'p', class: 'c', style: 'color:red' }, { tag: 'body' }])
+    })
+
+    it('ignores a non-string html and a malformed context of the selection', () => {
+      create('page.html', '<p>x</p>')
+      const actions: ExchangeSelectionAction[] = []
+      fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'agentos-exchange-selection', text: 'hello', html: 42, context: 'nope' },
+          source: iframe()!.contentWindow,
+        })
+      )
+      fixture.detectChanges()
+      typeInComposer('fix')
+      composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      expect(actions[0]!.selectionHtml).toBeUndefined()
+      expect(actions[0]!.selectionContext).toBeUndefined()
     })
 
     it('Reject clears the request and the highlight', () => {
