@@ -1,5 +1,6 @@
 package io.whozoss.agentos.chat
 
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.nulls.shouldBeNull
@@ -10,6 +11,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.agent.LastLlmRequest
 import io.whozoss.agentos.agent.LastLlmRequestRegistry
+import io.whozoss.agentos.agent.MovingClock
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
@@ -18,10 +20,8 @@ import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.messages.UserMessage
-import java.time.Clock
 import java.time.Duration
 import java.time.Instant
-import java.time.ZoneOffset
 import java.util.UUID
 
 /** How [PromptCacheStatusService] derives the warm / cold status of a case from its last request. */
@@ -30,12 +30,15 @@ class PromptCacheStatusServiceUnitSpec :
         val now: Instant = Instant.parse("2026-01-01T10:00:00Z")
         val sentAt: Instant = now.minusSeconds(30)
         val requesty = "https://router.requesty.ai/v1"
+        val anthropic = "https://api.anthropic.com"
         val claudePricing = ModelPricing(inputMTokens = 3.0, outputMTokens = 15.0, cacheRead = 0.3, cacheWrite = 3.75)
 
         class Fixture(
             pricing: ModelPricing? = claudePricing,
+            anthropicCaching: Boolean = true,
         ) {
-            val registry = LastLlmRequestRegistry(Clock.fixed(now, ZoneOffset.UTC))
+            val clock = MovingClock(now)
+            val registry = LastLlmRequestRegistry(clock)
             val model = AiModel(metadata = EntityMetadata(id = UUID.randomUUID()), aiProviderId = UUID.randomUUID(), apiModelName = "m", pricing = pricing)
             val aiModelService = mockk<AiModelService> { every { findById(model.id) } returns model }
             val service =
@@ -49,17 +52,18 @@ class PromptCacheStatusServiceUnitSpec :
                             UsageConfigProperties(enabled = true),
                             RequestyPromptCacheProperties(),
                         ),
+                    anthropicProperties = AnthropicProperties(promptCachingEnabled = anthropicCaching),
                     requestyPromptCache = RequestyPromptCacheProperties(),
                 )
             val caseId: UUID = UUID.randomUUID()
 
-            /** Records the case's last request: [apiModelName] via [baseUrl], sent at [sentAt] with [promptTokens]. */
+            /** Records the case's last request: [apiModelName] via [baseUrl], sent at [sentAt], of [prefixTokens]. */
             fun lastRequest(
                 apiModelName: String = "anthropic/claude-sonnet-4-5",
                 ttl: PromptCacheTtl = PromptCacheTtl.STANDARD,
                 apiType: AiApiType = AiApiType.OpenAI,
                 baseUrl: String = requesty,
-                promptTokens: Long? = 100_000,
+                prefixTokens: Long? = 100_000,
             ) {
                 registry.put(
                     LastLlmRequest(
@@ -78,7 +82,7 @@ class PromptCacheStatusServiceUnitSpec :
                         lastCoveredEventId = UUID.randomUUID(),
                         promptCacheTtl = ttl,
                         requestSentAt = sentAt,
-                        promptTokens = promptTokens,
+                        prefixTokens = prefixTokens,
                     ),
                     registry.invalidate(caseId),
                 )
@@ -109,10 +113,10 @@ class PromptCacheStatusServiceUnitSpec :
             status.coldCostEstimate.shouldNotBeNull() shouldBe (0.6 plusOrMinus 1e-9)
         }
 
-        "the extended choice without the one-hour markers (Claude outside Requesty) keeps 5 minutes" {
+        "Claude through the Anthropic API with prompt caching on: 5 minutes, the extended choice included" {
             val fixture =
                 Fixture().apply {
-                    lastRequest(apiModelName = "claude-sonnet-4-5", ttl = PromptCacheTtl.EXTENDED, apiType = AiApiType.Anthropic, baseUrl = "https://api.anthropic.com")
+                    lastRequest(apiModelName = "claude-sonnet-4-5", ttl = PromptCacheTtl.EXTENDED, apiType = AiApiType.Anthropic, baseUrl = anthropic)
                 }
 
             val status = fixture.status()
@@ -121,11 +125,34 @@ class PromptCacheStatusServiceUnitSpec :
             status.coldCostEstimate.shouldNotBeNull() shouldBe (0.375 plusOrMinus 1e-9)
         }
 
-        "a GPT model, named after it through a Requesty policy too: 30 minutes, whatever the choice" {
-            for (name in listOf("openai/gpt-5.6", "policy/gpt-sol")) {
+        "Claude through the Anthropic API with prompt caching off: nothing is cached, nothing is known" {
+            val fixture =
+                Fixture(anthropicCaching = false).apply {
+                    lastRequest(apiModelName = "claude-sonnet-4-5", apiType = AiApiType.Anthropic, baseUrl = anthropic)
+                }
+
+            fixture.status() shouldBe PromptCacheStatus(expiresAt = null, coldCostEstimate = null)
+        }
+
+        "Claude through another OpenAI-compatible gateway than Requesty: nothing is known" {
+            val fixture = Fixture().apply { lastRequest(baseUrl = "https://llm-gateway.example.com/v1") }
+
+            fixture.status() shouldBe PromptCacheStatus(expiresAt = null, coldCostEstimate = null)
+        }
+
+        "GPT-5.6 and later, or a Requesty policy named after GPT: 30 minutes, whatever the choice" {
+            for (name in listOf("openai/gpt-5.6", "gpt-5.10", "openai/gpt-6.1-mini", "gpt-7", "policy/gpt-sol", "policy/gpt-terra")) {
                 val fixture = Fixture().apply { lastRequest(apiModelName = name, ttl = PromptCacheTtl.EXTENDED) }
 
-                fixture.status().expiresAt shouldBe sentAt.plus(Duration.ofMinutes(30))
+                withClue(name) { fixture.status().expiresAt shouldBe sentAt.plus(Duration.ofMinutes(30)) }
+            }
+        }
+
+        "older GPT models and gpt-oss: nothing is known" {
+            for (name in listOf("openai/gpt-4o", "gpt-4.1", "gpt-5", "openai/gpt-5.5", "openai/gpt-oss-120b")) {
+                val fixture = Fixture().apply { lastRequest(apiModelName = name) }
+
+                withClue(name) { fixture.status().expiresAt.shouldBeNull() }
             }
         }
 
@@ -140,7 +167,7 @@ class PromptCacheStatusServiceUnitSpec :
                 it.expiresAt shouldBe sentAt.plus(Duration.ofMinutes(5))
                 it.coldCostEstimate.shouldBeNull()
             }
-            Fixture().apply { lastRequest(promptTokens = null) }.status().let {
+            Fixture().apply { lastRequest(prefixTokens = null) }.status().let {
                 it.expiresAt shouldBe sentAt.plus(Duration.ofMinutes(5))
                 it.coldCostEstimate.shouldBeNull()
             }
@@ -150,6 +177,18 @@ class PromptCacheStatusServiceUnitSpec :
             val fixture = Fixture().apply { lastRequest(apiModelName = "google/gemini-2.5-pro") }
 
             fixture.status() shouldBe PromptCacheStatus(expiresAt = null, coldCostEstimate = null)
+        }
+
+        "once the request itself is gone (a run started, it expired), its stamp still tells the cache is cold" {
+            val fixture = Fixture().apply { lastRequest() }
+            fixture.registry.invalidate(fixture.caseId)
+            fixture.clock.now = now.plus(Duration.ofHours(3))
+            fixture.registry.purgeExpired()
+
+            val status = fixture.status()
+
+            status.expiresAt shouldBe sentAt.plus(Duration.ofMinutes(5))
+            status.coldCostEstimate.shouldNotBeNull() shouldBe (0.375 plusOrMinus 1e-9)
         }
 
         "a later refresh of the prefix (a keep-alive ping, a side question) restarts the lifetime" {

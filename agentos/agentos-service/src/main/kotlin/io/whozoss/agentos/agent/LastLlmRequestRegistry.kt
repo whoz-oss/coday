@@ -68,8 +68,8 @@ data class LastLlmRequest(
      * answer ([capturedAt], which a long answer can make minutes later). Null when unknown.
      */
     val requestSentAt: Instant? = null,
-    /** The prompt size of the request as the provider reported it (input, cache read and write tokens), if known. */
-    val promptTokens: Long? = null,
+    /** The tokens a follow-up request re-sends: the request's prompt and its answer, as reported; null when unknown. */
+    val prefixTokens: Long? = null,
     /** Set by [LastLlmRequestRegistry.put]. */
     val capturedAt: Instant = Instant.EPOCH,
     /** The generation of the case it was captured in ([LastLlmRequestRegistry.generation]), set by `put`. */
@@ -115,6 +115,19 @@ fun CaseEvent.isConversationEvent(): Boolean =
     this is MessageEvent || this is ToolRequestEvent || this is ToolResponseEvent || this is QuestionEvent ||
         this is AnswerEvent
 
+/**
+ * What the prompt cache status of a case ([io.whozoss.agentos.chat.PromptCacheStatusService]) needs of its last
+ * captured request, kept after the request itself is gone ([LastLlmRequestRegistry.stamp]).
+ */
+data class PromptCacheStamp(
+    /** When the provider's cache last saw the prefix ([LastLlmRequest.lastUsedAt]). */
+    val lastUsedAt: Instant,
+    val prefixTokens: Long?,
+    val modelId: UUID,
+    val requestOptions: LlmRequestOptions,
+    val promptCacheTtl: PromptCacheTtl,
+)
+
 @ConfigurationProperties(prefix = "agentos.llm-request-registry")
 data class LlmRequestRegistryProperties(
     /** Approximate memory budget of the registry, in characters of the requests it holds (oldest evicted first). */
@@ -131,6 +144,10 @@ data class LlmRequestRegistryProperties(
  * how long it refreshes one, [io.whozoss.agentos.caseFlow.CaseKeepAliveProperties.maxIdle]); past [MAX_ENTRIES]
  * cases, or past [LlmRequestRegistryProperties.maxSize], the oldest capture is evicted. Expired entries are also purged every
  * minute. Nothing survives a restart, which is fine: the provider's cache would be cold anyway. Thread-safe.
+ *
+ * A small [PromptCacheStamp] of each capture outlives it: it is kept through [invalidate], expiry and eviction, so
+ * that a case idle for long can still be shown cold, and only dropped by [forget], past [MAX_STAMPS] cases (the
+ * oldest use first) or [STAMP_TTL] after its last use.
  */
 @Component
 class LastLlmRequestRegistry(
@@ -140,6 +157,9 @@ class LastLlmRequestRegistry(
     /** In capture order, the oldest first. */
     private val entries = LinkedHashMap<UUID, LastLlmRequest>()
     private var size = 0L
+
+    /** In order of last use, the oldest first. */
+    private val stamps = LinkedHashMap<UUID, PromptCacheStamp>()
 
     /**
      * Bumped for a case by [invalidate]: a capture or a use started before is outdated. Never reset while the case
@@ -193,6 +213,7 @@ class LastLlmRequestRegistry(
         val captured = request.copy(capturedAt = clock.instant(), generation = generation, lastCacheTouchAt = null)
         entries[captured.caseId] = captured
         size += captured.estimatedSize()
+        putStamp(captured)
         purgeExpired()
         while (entries.isNotEmpty() && (entries.size > MAX_ENTRIES || size > properties.maxSize)) {
             removeEntry(entries.keys.first())
@@ -211,8 +232,12 @@ class LastLlmRequestRegistry(
         sentAt: Instant = clock.instant(),
     ) {
         val request = entries[caseId]?.takeIf { it.capturedAt == capturedAt } ?: return
-        entries[caseId] = request.copy(lastCacheTouchAt = sentAt)
+        entries[caseId] = request.copy(lastCacheTouchAt = sentAt).also(::putStamp)
     }
+
+    /** The [PromptCacheStamp] of the last request captured for [caseId], or null when there is none. */
+    @Synchronized
+    fun stamp(caseId: UUID): PromptCacheStamp? = stamps[caseId]
 
     /** The time of the registry's clock. */
     fun now(): Instant = clock.instant()
@@ -225,6 +250,7 @@ class LastLlmRequestRegistry(
     fun forget(caseId: UUID) {
         removeEntry(caseId)
         generations.remove(caseId)
+        stamps.remove(caseId)
     }
 
     /** Forgets the request of [caseId], without outdating anything else (see [invalidate]). */
@@ -237,10 +263,19 @@ class LastLlmRequestRegistry(
     @Synchronized
     fun purgeExpired() {
         entries.values.filter(::isExpired).map { it.caseId }.forEach(::removeEntry)
+        val oldestKept = clock.instant().minus(STAMP_TTL)
+        stamps.values.removeIf { it.lastUsedAt.isBefore(oldestKept) }
     }
 
     @Synchronized
     internal fun estimatedSize(): Long = size
+
+    private fun putStamp(request: LastLlmRequest) {
+        stamps.remove(request.caseId)
+        stamps[request.caseId] =
+            with(request) { PromptCacheStamp(lastUsedAt, prefixTokens, modelId, requestOptions, promptCacheTtl) }
+        while (stamps.size > MAX_STAMPS) stamps.remove(stamps.keys.first())
+    }
 
     private fun removeEntry(caseId: UUID) {
         entries.remove(caseId)?.let { size -= it.estimatedSize() }
@@ -260,6 +295,10 @@ class LastLlmRequestRegistry(
         /** How long an entry lives after its capture or the last refresh of its cache ([touch]). */
         val TTL: Duration = Duration.ofMinutes(65)
         const val MAX_ENTRIES = 500
+
+        /** How long a [PromptCacheStamp] is kept after its last use, and how many cases keep one. */
+        val STAMP_TTL: Duration = Duration.ofDays(7)
+        const val MAX_STAMPS = 10_000
         private const val PURGE_INTERVAL_MS = 60_000L
     }
 }

@@ -506,15 +506,38 @@ describe('CaseUsageComponent', () => {
       fixture.destroy()
     }))
 
-    it('turns cold at the expiry, with the estimated cost of writing the cache again', fakeAsync(() => {
-      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(45, 0.3)))
+    it('reads the status again at the expiry and turns cold when nothing refreshed the cache', fakeAsync(() => {
+      const expiring = cache(45, 0.3)
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(expiring))
       const fixture = render()
       expect(figure(fixture, 'cache')).toBe('Warm (<1 min left)')
+      const calls = promptCaches.getPromptCacheStatusCasePromptCache.mock.calls.length
 
       // Before the next 30 s tick would have shown it.
       tick(45_000)
       fixture.detectChanges()
+      expect(promptCaches.getPromptCacheStatusCasePromptCache).toHaveBeenCalledTimes(calls + 1)
       expect(figure(fixture, 'cache')).toBe('Cold (~0.30)')
+
+      // Still expired: no further read, no timer.
+      tick(3_600_000)
+      expect(promptCaches.getPromptCacheStatusCasePromptCache).toHaveBeenCalledTimes(calls + 1)
+      fixture.destroy()
+    }))
+
+    it('stays warm at the expiry when a keep-alive ping refreshed the cache meanwhile', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(45, 0.3)))
+      const fixture = render()
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(45 + 300, 0.3)))
+
+      tick(45_000)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (5 min left)')
+
+      // The countdown goes on from the new expiry.
+      tick(210_000)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (2 min left)')
       fixture.destroy()
     }))
 
@@ -545,14 +568,28 @@ describe('CaseUsageComponent', () => {
       failed.destroy()
     }))
 
-    it('is refreshed with the totals after an answer, not by the run-cost polling', fakeAsync(() => {
+    it('is hidden while the case runs, and not read by the run-cost polling', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(300)))
       const fixture = render()
+      expect(figure(fixture, 'cache')).toBe('Warm (5 min left)')
+
       fixture.componentRef.setInput('running', true)
       fixture.detectChanges()
       tick(0)
+      expect(figure(fixture, 'cache')).toBeUndefined()
       const calls = promptCaches.getPromptCacheStatusCasePromptCache.mock.calls.length
       tick(6000)
       expect(promptCaches.getPromptCacheStatusCasePromptCache).toHaveBeenCalledTimes(calls)
+
+      fixture.componentRef.setInput('running', false)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (5 min left)')
+      fixture.destroy()
+    }))
+
+    it('is read again with the totals after an answer', fakeAsync(() => {
+      const fixture = render()
+      const calls = promptCaches.getPromptCacheStatusCasePromptCache.mock.calls.length
 
       promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(300)))
       agentMessageEvents.next({ id: 'answer-1', caseId: 'case-a' } as MessageEvent)

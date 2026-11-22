@@ -18,8 +18,11 @@ data class LlmExchange(
     val responseText: String? = null,
     /** When the request was sent: when the provider's prompt cache saw its prefix. */
     val sentAt: Instant? = null,
-    /** The prompt size the provider reported (input, cache read and cache write tokens); null until reported. */
-    val promptTokens: Long? = null,
+    /**
+     * The tokens a follow-up request re-sends, as the provider reported them: the prompt (input, cache read and cache
+     * write tokens) and the answer (output tokens). Null until reported.
+     */
+    val prefixTokens: Long? = null,
 )
 
 /**
@@ -40,10 +43,10 @@ class LlmExchangeRecorder(
         last.updateAndGet { it?.copy(responseText = text.orEmpty()) }
     }
 
-    /** A response without usage (0 prompt tokens) leaves the prompt size unknown. */
+    /** A response without usage (0 prompt tokens) leaves the size unknown. */
     fun usageReceived(usage: LlmUsage) {
         val promptTokens = usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
-        if (promptTokens > 0) last.updateAndGet { it?.copy(promptTokens = promptTokens) }
+        if (promptTokens > 0) last.updateAndGet { it?.copy(prefixTokens = promptTokens + usage.outputTokens) }
     }
 }
 

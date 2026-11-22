@@ -53,7 +53,7 @@ class LastLlmRequestCapture(
                 lastCoveredEventId = request.lastCoveredEventId,
                 promptCacheTtl = promptCacheTtl,
                 requestSentAt = request.sentAt,
-                promptTokens = request.promptTokens,
+                prefixTokens = request.prefixTokens,
             ),
             generation,
         )

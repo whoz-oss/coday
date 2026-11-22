@@ -151,7 +151,7 @@ class AgentSimpleFinalRequestSpec :
             reported.caseId shouldBe input.caseId
         }
 
-        "reports the prompt size the provider reported for the last request" {
+        "reports the size the provider reported for the last request: its prompt and its answer" {
             val result =
                 run(tracked = true) { request ->
                     val usage = DefaultUsage(1200 + request, 5, 1205 + request, OpenAiApi.Usage(5, 1200 + request, 1205 + request, null, null))
@@ -159,7 +159,7 @@ class AgentSimpleFinalRequestSpec :
                     ChatResponse(response.results, ChatResponseMetadata.builder().usage(usage).build())
                 }
 
-            result.reported.single().promptTokens shouldBe 1201L
+            result.reported.single().prefixTokens shouldBe 1206L
         }
 
         "covers the conversation up to the recorded answer, the events of the turn included" {

@@ -64,10 +64,13 @@ export class CaseUsageComponent {
   /** The clock of the cache countdown. */
   private readonly now = signal(Date.now())
 
-  /** `Warm (N min left)`, `Cold (~cost)` or `Cold`; null (hidden) when the cache lifetime is unknown. */
+  /**
+   * `Warm (N min left)`, `Cold (~cost)` or `Cold`; null (hidden) when the cache lifetime is unknown, or while the case
+   * runs (its requests are using the cache, the status only follows once its turn is over).
+   */
   readonly cacheLabel = computed((): string | null => {
     const status = this.promptCache()
-    if (!status?.expiresAt) return null
+    if (!status?.expiresAt || this.running()) return null
     const left = Date.parse(status.expiresAt) - this.now()
     if (left > 0) return left < MINUTE_MS ? 'Warm (<1 min left)' : `Warm (${Math.ceil(left / MINUTE_MS)} min left)`
     const cost = status.coldCostEstimate
@@ -109,20 +112,30 @@ export class CaseUsageComponent {
       cleanup(() => refresh.unsubscribe())
     })
 
-    // The countdown ticks only while the cache is warm, and once more at its expiry to turn it cold.
+    // The countdown ticks only while the cache is warm. At its expiry the status is read once more: a keep-alive ping
+    // or a side question may have refreshed the cache meanwhile, and a later expiry restarts the countdown here.
     effect((cleanup) => {
       const expiresAt = this.promptCache()?.expiresAt
       const left = expiresAt ? Date.parse(expiresAt) - Date.now() : 0
       if (left <= 0) return
+      const caseId = this.caseId()
       const refresh = (): void => this.now.set(Date.now())
       const tick = setInterval(refresh, CACHE_TICK_MS)
+      let reread: Subscription | undefined
       const expiry = setTimeout(() => {
         clearInterval(tick)
-        refresh()
+        reread = this.promptCaches
+          .getPromptCacheStatusCasePromptCache(caseId)
+          .pipe(catchError(() => of(null)))
+          .subscribe((status) => {
+            refresh()
+            if (status) this.promptCache.set(status)
+          })
       }, left)
       cleanup(() => {
         clearInterval(tick)
         clearTimeout(expiry)
+        reread?.unsubscribe()
       })
     })
   }

@@ -567,11 +567,11 @@ class UsageTrackingChatModelSpec :
                 exchange.messages.map { it.messageType.name } shouldBe listOf("USER", "ASSISTANT", "TOOL")
                 // Only the answer to the last request, not the text of the tool round.
                 exchange.responseText shouldBe "Round 2"
-                // Its prompt size as reported by the provider: input, cache read and cache write tokens.
-                exchange.promptTokens shouldBe 10L
+                // What a follow-up request re-sends, as reported by the provider: its 10 prompt and 5 answer tokens.
+                exchange.prefixTokens shouldBe 15L
             }
 
-            "a ${if (streaming) "streamed" else "synchronous"} response without usage leaves the recorded prompt size unknown" {
+            "a ${if (streaming) "streamed" else "synchronous"} response without usage leaves the recorded size unknown" {
                 val raw = mockk<ChatModel>()
                 every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
                 every { raw.call(any<Prompt>()) } returns response(withUsage = false)
@@ -583,7 +583,7 @@ class UsageTrackingChatModelSpec :
                 if (streaming) tracked.stream(prompt).blockLast(Duration.ofSeconds(2)) else tracked.call(prompt)
 
                 recorder.lastExchange!!.responseText shouldBe "Done"
-                recorder.lastExchange!!.promptTokens shouldBe null
+                recorder.lastExchange!!.prefixTokens shouldBe null
             }
         }
     })

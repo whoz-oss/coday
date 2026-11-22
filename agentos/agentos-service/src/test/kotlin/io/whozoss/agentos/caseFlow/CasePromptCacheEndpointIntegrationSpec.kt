@@ -81,7 +81,7 @@ class CasePromptCacheEndpointIntegrationSpec : StringSpec() {
                 agentConfigId = null,
                 coveredEventCount = 2,
                 lastCoveredEventId = UUID.randomUUID(),
-                promptTokens = 100_000,
+                prefixTokens = 100_000,
             ),
             registry.invalidate(caseId),
         )
