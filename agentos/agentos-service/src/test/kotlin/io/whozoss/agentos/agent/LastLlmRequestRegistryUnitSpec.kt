@@ -170,7 +170,7 @@ class LastLlmRequestRegistryUnitSpec :
                     "agent",
                     null,
                     registry.invalidate(caseId),
-                    io.whozoss.agentos.sdk.api.user.PromptCacheTtl.ONE_HOUR,
+                    io.whozoss.agentos.sdk.api.user.PromptCacheTtl.EXTENDED,
                 )
             capture.recorder.requestSent(org.springframework.ai.chat.prompt.Prompt(listOf(UserMessage("q"))))
             // The answer streams for a minute and a half.
@@ -182,7 +182,7 @@ class LastLlmRequestRegistryUnitSpec :
             val stored = registry.get(caseId)!!
             stored.requestSentAt shouldBe start
             stored.lastUsedAt shouldBe start
-            stored.promptCacheTtl shouldBe io.whozoss.agentos.sdk.api.user.PromptCacheTtl.ONE_HOUR
+            stored.promptCacheTtl shouldBe io.whozoss.agentos.sdk.api.user.PromptCacheTtl.EXTENDED
         }
 
         "all lists the live requests only" {

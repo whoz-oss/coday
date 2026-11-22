@@ -62,7 +62,7 @@ data class LastLlmRequest(
      * cache entry must be sent with it too: with Requesty, a one-hour cache rewrites the body
      * ([io.whozoss.agentos.chat.RequestyPromptCache]).
      */
-    val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+    val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
     /**
      * When the request was sent: the provider's cache lifetime of its prefix runs from then, not from the end of the
      * answer ([capturedAt], which a long answer can make minutes later). Null when unknown.

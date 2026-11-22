@@ -28,7 +28,7 @@ class LastLlmRequestCapture(
     /** The generation of the case when the run started ([LastLlmRequestRegistry.generation]). */
     private val generation: Long,
     /** The prompt cache duration the run's requests are sent with. */
-    private val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+    private val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
 ) {
     /** Dates its requests with the clock of the registry. */
     val recorder = LlmExchangeRecorder(registry::now)

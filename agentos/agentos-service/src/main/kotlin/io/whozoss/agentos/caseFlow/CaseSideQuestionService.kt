@@ -90,7 +90,7 @@ class CaseSideQuestionService(
         val model: AiModel,
         val provider: AiProvider,
         /** The cache duration of the agent's request when it is reused, so that its prefix is sent the same way. */
-        val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+        val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
     )
 
     private sealed interface Outcome {

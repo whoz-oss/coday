@@ -36,9 +36,9 @@ import org.springframework.stereotype.Service
  * response. It is only fed through [UsageTrackingChatModel] (usage tracked, or `runTools` false): an untracked
  * model runs its tool rounds out of sight.
  *
- * The prompt cache duration ([getChatClient] `promptCacheTtl`) is required so every caller decides it: agent
- * runs pass the duration chosen by the user they run for, utility calls (case naming, summary, prompt
- * translation) pass [PromptCacheTtl.FIVE_MINUTES]. It only changes the request for Claude models via Requesty.
+ * The prompt cache choice ([getChatClient] `promptCacheTtl`) is required so every caller decides it: agent
+ * runs pass the choice of the user they run for, utility calls (case naming, summary, prompt translation) pass
+ * [PromptCacheTtl.STANDARD]. Only [PromptCacheTtl.EXTENDED] for Claude models via Requesty changes the request.
  */
 @Service
 class ChatClientProvider(

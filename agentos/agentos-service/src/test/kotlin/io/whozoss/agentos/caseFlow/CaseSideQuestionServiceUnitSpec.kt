@@ -314,7 +314,7 @@ class CaseSideQuestionServiceUnitSpec :
             fixture.service.answer(case.id, "?", runUserId)
 
             verify(exactly = 1) {
-                fixture.chatClientProvider.getChatClient(agentModel, agentProvider, case.id.toString(), any(), null, PromptCacheTtl.FIVE_MINUTES, false, null)
+                fixture.chatClientProvider.getChatClient(agentModel, agentProvider, case.id.toString(), any(), null, PromptCacheTtl.STANDARD, false, null)
             }
             val tools = fixture.tools.single()
             tools.map { it.toolDefinition } shouldBe stored.toolDefinitions
@@ -323,13 +323,13 @@ class CaseSideQuestionServiceUnitSpec :
         }
 
         "from the agent's last request: sent with the prompt cache duration of the agent's request" {
-            val fixture = Fixture(stored = lastRequest().copy(promptCacheTtl = PromptCacheTtl.ONE_HOUR))
+            val fixture = Fixture(stored = lastRequest().copy(promptCacheTtl = PromptCacheTtl.EXTENDED))
             fixture.answering(text("ok"))
 
             fixture.service.answer(case.id, "?", runUserId)
 
             verify(exactly = 1) {
-                fixture.chatClientProvider.getChatClient(agentModel, agentProvider, case.id.toString(), any(), null, PromptCacheTtl.ONE_HOUR, false, null)
+                fixture.chatClientProvider.getChatClient(agentModel, agentProvider, case.id.toString(), any(), null, PromptCacheTtl.EXTENDED, false, null)
             }
         }
 
@@ -448,7 +448,7 @@ class CaseSideQuestionServiceUnitSpec :
             fixture.service.answer(case.id, "?", runUserId)
 
             fixture.usedTranscript() shouldBe true
-            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(model, provider, case.id.toString(), any(), null, PromptCacheTtl.FIVE_MINUTES, false, null) }
+            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(model, provider, case.id.toString(), any(), null, PromptCacheTtl.STANDARD, false, null) }
         }
 
         "a last request whose cache went cold is not replayed, one used recently is" {
@@ -489,7 +489,7 @@ class CaseSideQuestionServiceUnitSpec :
             fixture.service.answer(case.id, "?", otherUserId)
 
             fixture.usedTranscript() shouldBe true
-            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(model, transcriptPersonal, any(), any(), any(), PromptCacheTtl.FIVE_MINUTES, false, any()) }
+            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(model, transcriptPersonal, any(), any(), any(), PromptCacheTtl.STANDARD, false, any()) }
             fixture.records.single().userId shouldBe otherUserId
         }
 
@@ -541,7 +541,7 @@ class CaseSideQuestionServiceUnitSpec :
             fixture.service.answer(case.id, "?", runUserId)
 
             fixture.usedTranscript() shouldBe false
-            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(withCaseEffort, agentProvider, any(), any(), any(), PromptCacheTtl.FIVE_MINUTES, false, any()) }
+            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(withCaseEffort, agentProvider, any(), any(), any(), PromptCacheTtl.STANDARD, false, any()) }
         }
 
         // ---------------------------------------------------------------------------------------------------------
@@ -750,7 +750,7 @@ class CaseSideQuestionServiceUnitSpec :
 
             fixture.service.answer(case.id, "anything?", runUserId)
 
-            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(model, provider, case.id.toString(), any(), null, PromptCacheTtl.FIVE_MINUTES, false, null) }
+            verify(exactly = 1) { fixture.chatClientProvider.getChatClient(model, provider, case.id.toString(), any(), null, PromptCacheTtl.STANDARD, false, null) }
             fixture.tools.shouldBeEmpty()
             val record = fixture.records.single()
             record.agentName shouldBe CaseSideQuestionService.SIDE_QUESTION_AGENT_NAME

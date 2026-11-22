@@ -62,7 +62,7 @@ class CaseKeepAliveSchedulerUnitSpec :
         val cacheHit = LlmUsage(inputTokens = 100, cacheReadTokens = 1900, outputTokens = 1, totalTokens = 2001)
 
         class Fixture(
-            ttl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+            ttl: PromptCacheTtl = PromptCacheTtl.STANDARD,
             val case: Case = idleCase(),
             requestOptions: LlmRequestOptions = options(),
             maxIdle: Duration = Duration.ofHours(2),
@@ -114,7 +114,7 @@ class CaseKeepAliveSchedulerUnitSpec :
             var request: LastLlmRequest = capture(ttl, requestOptions, streamDuration)
 
             fun capture(
-                ttl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+                ttl: PromptCacheTtl = PromptCacheTtl.STANDARD,
                 requestOptions: LlmRequestOptions = options(),
                 streamDuration: Duration = Duration.ZERO,
                 sentAt: Instant = start,
@@ -178,7 +178,7 @@ class CaseKeepAliveSchedulerUnitSpec :
         }
 
         "a 1-hour cache (Claude via Requesty) is not pinged at 4:20 nor before 58:00, and is at 58:00" {
-            val fixture = Fixture(ttl = PromptCacheTtl.ONE_HOUR)
+            val fixture = Fixture(ttl = PromptCacheTtl.EXTENDED)
 
             fixture.tickAt(fiveMinuteDue).shouldBeEmpty()
             fixture.tickAt(oneHourDue.minusSeconds(1)).shouldBeEmpty()
@@ -188,7 +188,7 @@ class CaseKeepAliveSchedulerUnitSpec :
         }
 
         "a 1-hour choice the request did not get (not a Claude model) keeps the 5-minute interval" {
-            val fixture = Fixture(ttl = PromptCacheTtl.ONE_HOUR, requestOptions = options(apiModelName = "openai/gpt-4.1"))
+            val fixture = Fixture(ttl = PromptCacheTtl.EXTENDED, requestOptions = options(apiModelName = "openai/gpt-4.1"))
 
             fixture.tickAt(fiveMinuteDue) shouldBe listOf(fixture.case.id)
         }
@@ -205,7 +205,7 @@ class CaseKeepAliveSchedulerUnitSpec :
         }
 
         "pings keep a 1-hour request in the registry past its own lifetime, up to the maximum idle duration" {
-            val fixture = Fixture(ttl = PromptCacheTtl.ONE_HOUR)
+            val fixture = Fixture(ttl = PromptCacheTtl.EXTENDED)
 
             fixture.tickAt(oneHourDue) shouldBe listOf(fixture.case.id)
             // 65 minutes after the capture the request would have expired without the ping.

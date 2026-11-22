@@ -87,8 +87,8 @@ class ChatModelFactory internal constructor(
         headers: Map<String, String> = emptyMap(),
         /** Null keeps the provider default; ignored for Anthropic and Gemini, where it is rejected at save time. */
         reasoningEffort: ReasoningEffort? = null,
-        /** The calling user's choice; only changes the request for Claude models via Requesty (OpenAI API type). */
-        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+        /** The calling user's choice; EXTENDED only changes the request for Claude models via Requesty. */
+        promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
         /** Receives the cost reported in OpenAI-compatible responses (e.g. Requesty `usage.cost`). */
         providerCost: ProviderReportedCost? = null,
     ): ChatModel {
@@ -152,7 +152,7 @@ class ChatModelFactory internal constructor(
 
     /**
      * Whether a request built by [createChatModel] for these parameters gets a one-hour prompt cache: the user chose
-     * [PromptCacheTtl.ONE_HOUR], and the model is a Claude one ([RequestyPromptCacheProperties]) reached through
+     * [PromptCacheTtl.EXTENDED], and the model is a Claude one ([RequestyPromptCacheProperties]) reached through
      * Requesty with the OpenAI API type. Any other request keeps the provider's default 5-minute cache.
      */
     fun appliesOneHourCache(
@@ -161,7 +161,7 @@ class ChatModelFactory internal constructor(
         modelName: String,
         promptCacheTtl: PromptCacheTtl,
     ): Boolean =
-        promptCacheTtl == PromptCacheTtl.ONE_HOUR &&
+        promptCacheTtl == PromptCacheTtl.EXTENDED &&
             apiType == AiApiType.OpenAI &&
             isRequestyBaseUrl(baseUrl ?: OPENAI_DEFAULT_BASE_URL) &&
             requestyPromptCache.matchesModel(modelName)

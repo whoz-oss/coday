@@ -269,7 +269,7 @@ class CaseKeepAliveWireSpec :
             val tools = listOf(tool("lookup", executed), tool("search", executed))
             val caseId = UUID.randomUUID()
             val clock = MutableClock(Instant.parse("2026-01-01T10:00:00Z"))
-            val turn = agentTurn(clients, claude, caseId, PromptCacheTtl.ONE_HOUR, tools, clock)
+            val turn = agentTurn(clients, claude, caseId, PromptCacheTtl.EXTENDED, tools, clock)
             val case = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId, status = CaseStatus.IDLE, keepAlive = true)
             val caseService =
                 mockk<CaseService> {
@@ -327,7 +327,7 @@ class CaseKeepAliveWireSpec :
             val executed = AtomicInteger()
             val tools = listOf(tool("lookup", executed))
             val caseId = UUID.randomUUID()
-            val turn = agentTurn(clients, claude, caseId, PromptCacheTtl.FIVE_MINUTES, tools)
+            val turn = agentTurn(clients, claude, caseId, PromptCacheTtl.STANDARD, tools)
             val case = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId, status = CaseStatus.IDLE, keepAlive = true)
             val (usageRecords, records) = records()
 
@@ -345,7 +345,7 @@ class CaseKeepAliveWireSpec :
             val clients = clients(requesty = false)
             val reasoning = claude.copy(metadata = EntityMetadata(id = UUID.randomUUID()), apiModelName = "openai/o4-mini")
             val caseId = UUID.randomUUID()
-            val turn = agentTurn(clients, reasoning, caseId, PromptCacheTtl.FIVE_MINUTES, listOf(tool("lookup", AtomicInteger())))
+            val turn = agentTurn(clients, reasoning, caseId, PromptCacheTtl.STANDARD, listOf(tool("lookup", AtomicInteger())))
             val case = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId, status = CaseStatus.IDLE, keepAlive = true)
 
             pinger(clients, reasoning, records().first).ping(case, turn.request)
@@ -357,7 +357,7 @@ class CaseKeepAliveWireSpec :
         "a model or provider that changed since the agent's request is not pinged" {
             val clients = clients(requesty = false)
             val caseId = UUID.randomUUID()
-            val turn = agentTurn(clients, claude, caseId, PromptCacheTtl.FIVE_MINUTES, emptyList())
+            val turn = agentTurn(clients, claude, caseId, PromptCacheTtl.STANDARD, emptyList())
             val case = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId, status = CaseStatus.IDLE, keepAlive = true)
             val changed = claude.copy(temperature = 0.2)
 

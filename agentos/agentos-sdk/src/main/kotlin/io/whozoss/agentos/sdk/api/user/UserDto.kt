@@ -40,16 +40,18 @@ data class UserDto(
     )
     val preferredLanguage: String? = null,
     /**
-     * How long the user's conversation prompt stays cached between two LLM calls (Claude models via Requesty
-     * only). Responses always carry the effective value ([PromptCacheTtl.FIVE_MINUTES] when never set). On
-     * create, null means [PromptCacheTtl.FIVE_MINUTES].
+     * Whether the user's conversation prompt should stay cached through longer pauses between two LLM calls
+     * (see [PromptCacheTtl]). Responses always carry the effective value ([PromptCacheTtl.STANDARD] when never
+     * set). On create, null means [PromptCacheTtl.STANDARD].
      *
      * The exception to PUT replace-semantics: on update, null (or an omitted field) keeps the stored value, so
      * clients that do not know this field cannot reset it.
      */
     @field:Schema(
         nullable = true,
-        description = "Prompt cache duration for Claude models via Requesty. On update, null keeps the stored value.",
+        description =
+            "Prompt cache choice; EXTENDED only changes Claude models via Requesty. On update, null keeps the " +
+                "stored value.",
     )
     val promptCacheTtl: PromptCacheTtl? = null,
 )

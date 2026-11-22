@@ -124,7 +124,7 @@ class CachePrefixWireSpec :
                         provider,
                         case.id.toString(),
                         UsageAccumulator(),
-                        promptCacheTtl = PromptCacheTtl.FIVE_MINUTES,
+                        promptCacheTtl = PromptCacheTtl.STANDARD,
                         exchangeRecorder = capture.recorder,
                     ),
                     tools = listOf(tool("lookup", "Build #42\nThe build is green."), tool("search", "No open incident.")),

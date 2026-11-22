@@ -471,7 +471,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             val prompts = mutableListOf<Prompt>()
             val sideClients = mockk<ChatClientProvider>()
-            every { sideClients.getChatClient(model, provider, caseId.toString(), null, null, PromptCacheTtl.FIVE_MINUTES, false, null) } answers {
+            every { sideClients.getChatClient(model, provider, caseId.toString(), null, null, PromptCacheTtl.STANDARD, false, null) } answers {
                 val reqSpec = mockk<ChatClient.ChatClientRequestSpec>()
                 val callSpec = mockk<ChatClient.CallResponseSpec>()
                 every { callSpec.chatResponse() } returns ChatResponse(listOf(Generation(AssistantMessage("It is green."))))
@@ -2895,7 +2895,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             (agentService.findAgentByName("advanced-with-support", context) is AgentAdvanced) shouldBe true
         }
 
-        // One test per mode and duration, ONE_HOUR included: the resolved user's choice reaches getChatClient.
+        // One test per mode and choice, EXTENDED included: the resolved user's choice reaches getChatClient.
         listOf(ExecutionMode.SIMPLE, ExecutionMode.ADVANCED).forEach { mode ->
             PromptCacheTtl.entries.forEach { ttl ->
                 "a $mode agent run for a user who chose $ttl builds its chat client with promptCacheTtl = $ttl" {
@@ -2938,7 +2938,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
         "a SIMPLE agent records its last request with the prompt cache duration and the user it runs for" {
             val userId = UUID.randomUUID()
-            val user = User(metadata = EntityMetadata(id = userId), externalId = "ext-ttl", promptCacheTtl = PromptCacheTtl.ONE_HOUR)
+            val user = User(metadata = EntityMetadata(id = userId), externalId = "ext-ttl", promptCacheTtl = PromptCacheTtl.EXTENDED)
             val config = agentConfig(name = "ttl-recorded").copy(executionMode = ExecutionMode.SIMPLE)
             val model = modelConfig(alias = "sonnet", supportsAdvancedExecution = false)
             val provider = providerConfig()
@@ -2973,13 +2973,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
             onFinalRequest(FinalLlmRequest(caseId, emptyList(), emptyList(), "Done", 1, UUID.randomUUID()))
 
             val recorded = registry.get(caseId)!!
-            recorded.promptCacheTtl shouldBe PromptCacheTtl.ONE_HOUR
+            recorded.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
             recorded.userId shouldBe userId
             recorded.modelId shouldBe model.id
             recorded.providerId shouldBe model.aiProviderId
         }
 
-        "an agent run without a known user keeps the default prompt cache duration" {
+                "an agent run without a known user keeps the default prompt cache choice" {
             val config = agentConfig(name = "ttl-anonymous").copy(executionMode = ExecutionMode.SIMPLE)
             val model = stubAgentOnModel(config, modelFlag = false)
             every {
@@ -2989,7 +2989,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.findAgentByName(config.name, context)
 
             verify(exactly = 1) {
-                chatClientProvider.getChatClient(model, any(), any(), any(), any(), PromptCacheTtl.FIVE_MINUTES)
+                chatClientProvider.getChatClient(model, any(), any(), any(), any(), PromptCacheTtl.STANDARD)
             }
         }
 

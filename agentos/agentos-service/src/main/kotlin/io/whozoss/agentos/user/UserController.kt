@@ -67,7 +67,7 @@ class UserController(
                     bio = resource.bio,
                     isAdmin = resource.isAdmin,
                     preferredLanguage = resource.preferredLanguage,
-                    promptCacheTtl = resource.promptCacheTtl ?: PromptCacheTtl.FIVE_MINUTES,
+                    promptCacheTtl = resource.promptCacheTtl ?: PromptCacheTtl.STANDARD,
                 )
             },
         )

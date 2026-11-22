@@ -63,7 +63,7 @@ class PromptTranslationServiceImpl(
         namespaceId: UUID,
     ): List<String> {
         val (model, provider) = resolveModelAndProvider(namespaceId)
-        val chatClient = chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
+        val chatClient = chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD)
         return content.map { element ->
             translateText(
                 text = element,
@@ -83,7 +83,7 @@ class PromptTranslationServiceImpl(
         namespaceId: UUID,
     ): String {
         val (model, provider) = resolveModelAndProvider(namespaceId)
-        val chatClient = chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.FIVE_MINUTES)
+        val chatClient = chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD)
         return translateText(
             text = title,
             sourceLanguage = sourceLanguage,
