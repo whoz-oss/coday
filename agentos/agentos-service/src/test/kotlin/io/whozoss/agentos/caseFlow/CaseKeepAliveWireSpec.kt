@@ -54,7 +54,6 @@ import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * What a keep-alive ping puts on the wire, compared with the agent's last request it replays: the real

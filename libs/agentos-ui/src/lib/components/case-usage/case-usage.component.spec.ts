@@ -553,7 +553,7 @@ describe('CaseUsageComponent', () => {
       unpriced.destroy()
     }))
 
-    it('is hidden when the case has no recent request or the status cannot be read', fakeAsync(() => {
+    it('is hidden while the status is unknown or cannot be read', fakeAsync(() => {
       promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of({ expiresAt: null, coldCostEstimate: 0.3 }))
       const unknown = render()
       expect(figure(unknown, 'cache')).toBeUndefined()

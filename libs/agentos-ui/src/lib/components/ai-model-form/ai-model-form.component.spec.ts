@@ -102,7 +102,7 @@ describe('AiModelFormComponent (prompt cache lifetimes)', () => {
     )
   })
 
-  it('sends emptied lifetimes as absent, so the model falls back to the defaults', () => {
+  it('sends emptied lifetimes as absent: the model then has no cache TTL', () => {
     const element = render('model-1')
     type(element, 'model-cache-ttl', '')
     type(element, 'model-extended-cache-ttl', '')

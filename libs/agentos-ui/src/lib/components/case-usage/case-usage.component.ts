@@ -64,7 +64,7 @@ export class CaseUsageComponent {
   /** The clock of the cache countdown. */
   private readonly now = signal(Date.now())
 
-  /** `Warm (N min left)`, `Cold (~cost)` or `Cold`; null (hidden) when the case has no recent request. */
+  /** `Warm (N min left)`, `Cold (~cost)` or `Cold`; null (hidden) while the status is unknown. */
   readonly cacheLabel = computed((): string | null => {
     const status = this.promptCache()
     if (!status?.expiresAt) return null
@@ -123,13 +123,10 @@ export class CaseUsageComponent {
       let reread: Subscription | undefined
       const expiry = setTimeout(() => {
         clearInterval(tick)
-        reread = this.promptCaches
-          .getPromptCacheStatusCasePromptCache(caseId)
-          .pipe(catchError(() => of(null)))
-          .subscribe((status) => {
-            refresh()
-            if (status) this.promptCache.set(status)
-          })
+        reread = this.readPromptCache(caseId).subscribe((status) => {
+          refresh()
+          if (status) this.promptCache.set(status)
+        })
       }, left)
       cleanup(() => {
         clearInterval(tick)
@@ -146,15 +143,18 @@ export class CaseUsageComponent {
       run: this.costs.getRunCost(caseId),
       total: includeTotal ? this.usage.aggregateByCaseTreeUsageRecord(caseId) : of(undefined),
       // Refreshed with the totals (load, answers, run start and end), not by the run-cost polling.
-      promptCache: includeTotal
-        ? this.promptCaches.getPromptCacheStatusCasePromptCache(caseId).pipe(catchError(() => of(null)))
-        : of(undefined),
+      promptCache: includeTotal ? this.readPromptCache(caseId) : of(undefined),
     }).pipe(
       catchError(() => {
         this.error.set('Usage could not be refreshed. Displayed values may be out of date.')
         return EMPTY
       })
     )
+  }
+
+  /** The prompt cache status of [caseId]; null when it cannot be read (the figure is hidden). */
+  private readPromptCache(caseId: string): Observable<PromptCacheStatus | null> {
+    return this.promptCaches.getPromptCacheStatusCasePromptCache(caseId).pipe(catchError(() => of(null)))
   }
 
   private applyUsage(caseId: string, usage: UsageLoad): void {
