@@ -28,6 +28,7 @@ import { UserStateService } from '../../services/user-state.service'
 import { CaseListMode, CaseStateService } from '../../services/case-state.service'
 import { GlobalStreamService } from '../../services/global-stream.service'
 import { ShellContextService } from '../../services/shell-context.service'
+import { projectRootOf } from '../../services/file-link'
 import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 import { ShellSidebarComponent } from './shell-sidebar/shell-sidebar.component'
 import { ShellTopbarMobileComponent } from './shell-topbar-mobile/shell-topbar-mobile.component'
@@ -185,6 +186,14 @@ export class CaseShellComponent {
     const namespaceRole = this.namespaces().find((namespace) => namespace.id === this.namespaceId())?.role
     return namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN'
   })
+
+  /**
+   * Root of the namespace project on this machine (parent of its configPath, from the namespace list already loaded),
+   * from which the chat opens file references. Null without a configPath: file references then stay plain code.
+   */
+  protected readonly projectRoot = computed(() =>
+    projectRootOf(this.namespaces().find((namespace) => namespace.id === this.namespaceId())?.configPath)
+  )
 
   /**
    * What the caller sees in the case list. Only an administrator of the namespace (role ADMIN or SUPER-ADMIN, from the

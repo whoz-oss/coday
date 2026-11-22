@@ -24,6 +24,8 @@ import { DelegationResultComponent } from '../delegation-result/delegation-resul
 export class DelegationCardComponent {
   readonly delegation = input.required<DelegationPresentation>()
   readonly namespaceId = input.required<string>()
+  /** Render the file references of the result as IDE links, opened by the chat. */
+  readonly fileLinks = input(false)
   private readonly router = inject(Router)
   private readonly config = inject(Configuration)
   private readonly zone = inject(NgZone)

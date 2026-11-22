@@ -1,4 +1,11 @@
-import { buildIdeUrl, escapeHtml, parseFileReference, renderFileCodespan, resolveFilePath } from './file-link'
+import {
+  buildIdeUrl,
+  escapeHtml,
+  parseFileReference,
+  projectRootOf,
+  renderFileCodespan,
+  resolveFilePath,
+} from './file-link'
 
 describe('parseFileReference', () => {
   it.each([
@@ -50,6 +57,24 @@ describe('resolveFilePath', () => {
 
   it('joins with exactly one slash when the root ends with one', () => {
     expect(resolveFilePath('/root/proj/', 'src/a.ts')).toBe('/root/proj/src/a.ts')
+  })
+})
+
+describe('projectRootOf', () => {
+  it('is the parent directory of the namespace configPath', () => {
+    expect(projectRootOf('/Users/ali/Workspace/app/version/coday')).toBe('/Users/ali/Workspace/app/version')
+  })
+
+  it('ignores trailing slashes of the configPath', () => {
+    expect(projectRootOf('/Users/ali/app/coday//')).toBe('/Users/ali/app')
+  })
+
+  it('is the filesystem root for a configPath right under it', () => {
+    expect(projectRootOf('/coday')).toBe('/')
+  })
+
+  it.each([undefined, '', '   ', '/', 'relative/coday'])('is null for the configPath %p', (configPath) => {
+    expect(projectRootOf(configPath)).toBeNull()
   })
 })
 

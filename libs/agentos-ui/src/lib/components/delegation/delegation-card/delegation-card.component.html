@@ -39,7 +39,7 @@
   }
   @if (open()) {
     @if (delegation().result) {
-      <agentos-delegation-result [result]="delegation().result!" />
+      <agentos-delegation-result [result]="delegation().result!" [fileLinks]="fileLinks()" />
     } @else {
       <ol class="delegation-card__activity" aria-label="Live sub-case activity">
         @if (activity().length) {

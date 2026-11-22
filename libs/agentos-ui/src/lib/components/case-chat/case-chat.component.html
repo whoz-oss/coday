@@ -348,7 +348,11 @@
                   }
                 }
               } @else if (item.kind === 'delegation') {
-                <agentos-delegation-card [delegation]="item.delegation" [namespaceId]="namespaceId" />
+                <agentos-delegation-card
+                  [delegation]="item.delegation"
+                  [namespaceId]="namespaceId"
+                  [fileLinks]="fileLinks()"
+                />
               } @else {
                 <div
                   class="case-chat__tool-call"

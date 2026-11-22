@@ -152,8 +152,6 @@ describe('CaseHomeComponent — first message with attachments', () => {
             shouldSend: jest.fn().mockReturnValue(false),
             composerHint: () => 'hint',
             enterKeyBehavior: signal('send'),
-            ideProjectRoot: signal(''),
-            ideUrlTemplate: signal('idea://open?file={file}&line={line}'),
           },
         },
       ],

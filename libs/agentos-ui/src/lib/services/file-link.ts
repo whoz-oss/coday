@@ -41,8 +41,18 @@ export function parseFileReference(text: string): FileReference | null {
   }
 }
 
-export function isAbsolutePath(path: string): boolean {
+function isAbsolutePath(path: string): boolean {
   return path.startsWith('/')
+}
+
+/**
+ * Root of the namespace project on this machine: the parent directory of its `configPath`, as the FILES integration
+ * of the namespaces reads it (`{{NAMESPACE_CONFIG_PATH}}/..`). Null without an absolute configPath.
+ */
+export function projectRootOf(configPath: string | undefined): string | null {
+  const path = configPath?.trim().replace(/\/+$/, '') ?? ''
+  if (!isAbsolutePath(path)) return null
+  return path.slice(0, path.lastIndexOf('/')) || '/'
 }
 
 /** Absolute paths are returned as they are; relative ones are joined to the project root with one `/`. */
