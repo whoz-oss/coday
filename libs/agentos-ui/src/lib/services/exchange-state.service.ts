@@ -55,6 +55,13 @@ export interface ExchangeFileRef {
 /** Save progress of the file being edited in the viewer. `conflict`: the file changed since it was opened. */
 export type ExchangeSaveStatus = 'idle' | 'saving' | 'error' | 'conflict'
 
+/** One element of the chain from the common ancestor of an HTML selection up to body: its tag, class and style. */
+export interface ExchangeSelectionContextEntry {
+  tag: string
+  class?: string
+  style?: string
+}
+
 /**
  * The user asked an agent to act on a part of the previewed document.
  *
@@ -64,6 +71,12 @@ export type ExchangeSaveStatus = 'idle' | 'saving' | 'error' | 'conflict'
 export interface ExchangeSelectionAction {
   ref: ExchangeFileRef
   selection: string
+  /**
+   * The markup of the selection, when it was made in an HTML page (the serialized contents of its range), and the
+   * chain of elements around it up to body. Sent to the agent so that its proposal keeps the tags, classes and styles.
+   */
+  selectionHtml?: string
+  selectionContext?: ExchangeSelectionContextEntry[]
   /**
    * The markdown source of the selection, when it was made in the rendered markdown document (turndown on the
    * selected DOM): `# Title\n\nparagraph`, where `selection` is the flattened text. Sent to the agent instead of it.

@@ -1,4 +1,5 @@
 import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser'
+import { EXCHANGE_EDIT_SOURCE } from './exchange-html-edit-source'
 
 /**
  * Lets an HTML file be used as the `srcdoc` of a sandboxed iframe.
@@ -33,7 +34,10 @@ export const EXCHANGE_REPLACE_RESULT_MESSAGE_TYPE = 'agentos-exchange-replace-re
 export const EXCHANGE_EDIT_MESSAGE_TYPE = 'agentos-exchange-edit'
 /** Sent by the parent: `{ text }` highlights that passage (null removes the highlight). */
 export const EXCHANGE_HIGHLIGHT_MESSAGE_TYPE = 'agentos-exchange-highlight'
-/** Sent by the parent: `{ from, to }` replaces the passage `from` of the document with the text `to`. */
+/**
+ * Sent by the parent: `{ selectionText, html?, text? }` replaces the passage `selectionText` of the document with the
+ * proposal: `html` (a fragment, keeps the markup) or `text`. See `EXCHANGE_EDIT_SOURCE` for how it is applied.
+ */
 export const EXCHANGE_REPLACE_MESSAGE_TYPE = 'agentos-exchange-replace'
 /** Posted by the bridge on Ctrl/Cmd+S inside the document, after the latest html: the parent then saves. */
 export const EXCHANGE_SAVE_MESSAGE_TYPE = 'agentos-exchange-save'
@@ -74,9 +78,16 @@ export const EXCHANGE_SERIALIZE_SOURCE =
   'for(var j=0;j<m.length;j++){var p=m[j].parentNode;while(m[j].firstChild)p.insertBefore(m[j].firstChild,m[j]);p.removeChild(m[j])}' +
   'return "<!DOCTYPE html>\\n"+c.outerHTML'
 
+/** Longest html of a selection the bridge reports (the viewer caps what it accepts as well). */
+export const EXCHANGE_SELECTION_HTML_CAP = 50_000
+
 const BRIDGE_SOURCE = [
   'var M="agentos-exchange-",HL="agentos-selection",st,ht,range=null,last=null,editing=false;',
   'function post(m){try{parent.postMessage(m,"*")}catch(e){}}',
+  // The editing logic, shared with the unit tests (see EXCHANGE_EDIT_SOURCE).
+  'var E=(function(){' + EXCHANGE_EDIT_SOURCE + '})();',
+  'function selHtml(r){try{return E.selectionHtml(document,r,' + EXCHANGE_SELECTION_HTML_CAP + ')}catch(e){return ""}}',
+  'function selContext(r){try{return E.selectionContext(r)}catch(e){return ""}}',
   'function serialize(doc){' + EXCHANGE_SERIALIZE_SOURCE + '}',
   'function rectOf(r){' + EXCHANGE_RECT_SOURCE + '}',
   // Selection reporting with the rect of the selection end, so that the parent anchors its popover there. It is
@@ -87,7 +98,7 @@ const BRIDGE_SOURCE = [
   'var down=false;function report(click){var s=getSelection(),cur=null;if(s&&s.rangeCount&&String(s)){cur=s.getRangeAt(0);last=cur.cloneRange()}' +
     'post({type:"' +
     EXCHANGE_SELECTION_MESSAGE_TYPE +
-    '",text:String(getSelection()||""),rect:cur?rectOf(cur):null,click:click===true})}',
+    '",text:String(getSelection()||""),html:cur?selHtml(cur):"",context:cur?selContext(cur):"",rect:cur?rectOf(cur):null,click:click===true})}',
   'document.addEventListener("selectionchange",function(){clearTimeout(st);st=setTimeout(function(){if(!down)report()},150)});',
   'document.addEventListener("mousedown",function(){down=true},true);',
   'document.addEventListener("mouseup",function(){down=false;clearTimeout(st);st=setTimeout(function(){report(true)},0)},true);',
@@ -132,11 +143,14 @@ const BRIDGE_SOURCE = [
     'CSS.highlights.set(HL,new Highlight(r))}' +
     'else{try{var k=document.createElement("mark");k.setAttribute("data-agentos-selection","");' +
     'k.style.background="#ffe14d";k.style.color="#000";r.surroundContents(k);range=document.createRange();range.selectNodeContents(k)}catch(e){}}}',
-  'function replace(from,to){var r=range;if(!r||String(r).trim()!==from)r=find(from);' +
-    'if(!r){post({type:"' +
+  // Accepting a proposal: the passage is found again (the highlighted range, else the last selection, else its text),
+  // then replaced in this document by E.apply, which keeps the styles of the page.
+  'function replace(from,html,text){var r=range;if(!r||String(r).trim()!==from)r=find(from);' +
+    'var ok=false;if(r){try{ok=E.apply(document,r,html,text)}catch(e){ok=false}}' +
+    'if(!ok){post({type:"' +
     EXCHANGE_REPLACE_RESULT_MESSAGE_TYPE +
     '",ok:false});return}' +
-    'r.deleteContents();r.insertNode(document.createTextNode(to));clearHl();sendHtml();post({type:"' +
+    'clearHl();last=null;sendHtml();post({type:"' +
     EXCHANGE_REPLACE_RESULT_MESSAGE_TYPE +
     '",ok:true})}',
   // Messages from the parent only.
@@ -149,7 +163,8 @@ const BRIDGE_SOURCE = [
     '"){highlight(typeof d.text==="string"?d.text:null)}' +
     'else if(d.type==="' +
     EXCHANGE_REPLACE_MESSAGE_TYPE +
-    '"&&typeof d.from==="string"&&typeof d.to==="string"){replace(d.from,d.to)}}catch(x){}});',
+    '"&&typeof d.selectionText==="string"&&(typeof d.html==="string"||typeof d.text==="string")){' +
+    'replace(d.selectionText,typeof d.html==="string"?d.html:null,typeof d.text==="string"?d.text:null)}}catch(x){}});',
   'post({type:"' + EXCHANGE_READY_MESSAGE_TYPE + '"});',
 ].join('')
 
@@ -165,7 +180,9 @@ const SELECTION_BRIDGE_SCRIPT =
  * - `agentos-exchange-edit {enabled}`: `document.designMode` on/off, so the user types in the rendered page. On
  *   `input`, debounced, it posts `agentos-exchange-html {html}`: the serialized document with the bridge removed.
  * - `agentos-exchange-highlight {text}`: highlights the frozen selection (CSS Custom Highlight, `<mark>` fallback).
- * - `agentos-exchange-replace {from, to}`: replaces the passage `from` with the text `to` (an accepted proposal).
+ * - `agentos-exchange-replace {selectionText, html?, text?}`: replaces the passage with an accepted proposal, keeping
+ *   the styles of the page (a style-preserving text edit, or a sanitized fragment when the markup changed).
+ *   The selection message carries `html` (the markup of the selection) and `context` (its ancestor chain).
  *
  * Why this is safe: the sandbox invariant is unchanged (no `allow-same-origin`). The file's own scripts could post
  * fake messages of these types, but the payload is the user's own file content; it is only SAVED on an explicit user

@@ -74,7 +74,12 @@ import {
   POPOVER_MAX_WIDTH,
 } from '../../services/exchange-popover-position'
 import { ExchangeSelectionRequest } from '../../services/exchange-selection-request.service'
-import { ExchangeFileRef, ExchangeSaveStatus, ExchangeSelectionAction } from '../../services/exchange-state.service'
+import {
+  ExchangeFileRef,
+  ExchangeSaveStatus,
+  ExchangeSelectionAction,
+  ExchangeSelectionContextEntry,
+} from '../../services/exchange-state.service'
 import { diffWords } from '../../services/exchange-word-diff'
 import {
   EXCHANGE_FULL_VIEW_PANEL_CLASS,
@@ -86,6 +91,11 @@ import { SelectionComposerComponent } from '../selection-composer/selection-comp
 
 /** Longest selection taken from the HTML preview, whatever the page posts. */
 const MAX_PREVIEW_SELECTION = 100_000
+/** Longest markup of a selection, and longest chain / attribute of its context, taken from the HTML preview. */
+const MAX_SELECTION_HTML = 50_000
+const MAX_CONTEXT_ENTRIES = 12
+const MAX_CONTEXT_CLASS = 200
+const MAX_CONTEXT_STYLE = 300
 /** Largest edited document accepted from the HTML preview (the file endpoint refuses more anyway). */
 const MAX_EDITED_HTML = 20 * 1024 * 1024
 
@@ -113,6 +123,48 @@ interface PopoverState {
   hidden: boolean
   /** Offset of the caret from the left of the popover: it points at the start of the selection. */
   caret: number
+}
+
+/** The markup of a selection posted by the bridge, when it is a string (capped). Never inserted in the DOM. */
+function toSelectionHtml(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.slice(0, MAX_SELECTION_HTML) : undefined
+}
+
+/** The chain of elements posted by the bridge: only well-formed entries (strings, capped), at most a dozen. */
+function toSelectionContext(value: unknown): ExchangeSelectionContextEntry[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const entries: ExchangeSelectionContextEntry[] = []
+  for (const item of value.slice(0, MAX_CONTEXT_ENTRIES)) {
+    if (!item || typeof item !== 'object') continue
+    const { tag, class: cls, style } = item as Record<string, unknown>
+    if (typeof tag !== 'string' || !/^[a-z][a-z0-9-]{0,30}$/i.test(tag)) continue
+    entries.push({
+      tag: tag.toLowerCase(),
+      ...(typeof cls === 'string' && cls ? { class: cls.slice(0, MAX_CONTEXT_CLASS) } : {}),
+      ...(typeof style === 'string' && style ? { style: style.slice(0, MAX_CONTEXT_STYLE) } : {}),
+    })
+  }
+  return entries.length ? entries : undefined
+}
+
+/** Whether a proposal carries markup (a tag, a comment or a doctype), as opposed to plain text. */
+function hasMarkup(proposal: string): boolean {
+  return /<[a-z!/][^>]*>/i.test(proposal)
+}
+
+/**
+ * Text content and sequence of tags of an HTML string, read through an inert DOMParser document (no script runs, no
+ * resource loads, and nothing of it is ever inserted in the DOM of the app: only `textContent` and the tag names are
+ * read).
+ */
+function readMarkup(html: string): { text: string; tags: string } {
+  const body = new DOMParser().parseFromString(html, 'text/html').body
+  return {
+    text: body.textContent ?? '',
+    tags: Array.from(body.querySelectorAll('*'))
+      .map((element) => element.tagName.toLowerCase())
+      .join(','),
+  }
 }
 
 /** A rectangle posted by the bridge of the HTML preview, when it is made of finite numbers. */
@@ -143,6 +195,9 @@ interface ViewerSelection {
   to: number
   startLine?: number
   endLine?: number
+  /** Markup of the selection and chain of its ancestors, reported by the bridge of an HTML page. */
+  html?: string
+  context?: ExchangeSelectionContextEntry[]
 }
 
 /** A selection frozen when the composer was opened. */
@@ -452,6 +507,7 @@ export class ExchangeContentViewerComponent {
             to: request.to,
             unsaved: false,
             ...(request.selectionMarkdown !== undefined ? { markdown: request.selectionMarkdown } : {}),
+            ...(request.selectionHtml !== undefined ? { html: request.selectionHtml } : {}),
           })
         }
       })
@@ -1016,6 +1072,7 @@ export class ExchangeContentViewerComponent {
       ok?: unknown
       rect?: unknown
       click?: unknown
+      context?: unknown
     } | null
     if (!data || typeof data.type !== 'string') return
     switch (data.type) {
@@ -1031,7 +1088,15 @@ export class ExchangeContentViewerComponent {
         if (text) {
           // The bridge reports a settled selection: the popover opens under it, from the rect it sent.
           this.frameRect.set(toRect(data.rect))
-          this.selection.set({ text, from: 0, to: 0 })
+          const html = toSelectionHtml(data.html)
+          const context = toSelectionContext(data.context)
+          this.selection.set({
+            text,
+            from: 0,
+            to: 0,
+            ...(html !== undefined ? { html } : {}),
+            ...(context !== undefined ? { context } : {}),
+          })
           this.composerOpen.set(true)
           this.freeze()
         } else {
@@ -1118,6 +1183,8 @@ export class ExchangeContentViewerComponent {
         ref: this.file(),
         selection: frozen.text,
         ...(frozen.markdown !== undefined ? { selectionMarkdown: frozen.markdown } : {}),
+        ...(frozen.html !== undefined ? { selectionHtml: frozen.html } : {}),
+        ...(frozen.context !== undefined ? { selectionContext: frozen.context } : {}),
         ...(frozen.startLine !== undefined && frozen.endLine !== undefined
           ? { startLine: frozen.startLine, endLine: frozen.endLine }
           : {}),
@@ -1190,8 +1257,23 @@ export class ExchangeContentViewerComponent {
   protected readonly proposalDiff = computed(() => {
     const request = this.request()
     if (request?.status !== 'proposed') return []
+    const proposal = request.proposal ?? ''
+    if (this.format() === 'html') {
+      // Readable diff of the text of the passage against the text content of the proposal (read through a DOMParser).
+      return diffWords(request.selection, hasMarkup(proposal) ? readMarkup(proposal).text : proposal)
+    }
     const before = this.frozen()?.markdown ?? request.selectionMarkdown ?? request.selection
-    return diffWords(before, request.proposal ?? '')
+    return diffWords(before, proposal)
+  })
+
+  /** The proposal for an HTML page changes its tags (not only its words): the card says so. */
+  protected readonly formattingChanged = computed(() => {
+    const request = this.request()
+    if (request?.status !== 'proposed' || this.format() !== 'html') return false
+    const proposal = request.proposal ?? ''
+    if (!hasMarkup(proposal)) return false
+    const html = this.frozen()?.html ?? request.selectionHtml
+    return readMarkup(proposal).tags !== (html ? readMarkup(html).tags : '')
   })
 
   protected onReject(): void {
@@ -1221,8 +1303,13 @@ export class ExchangeContentViewerComponent {
     const text = frozen?.text ?? request.selection
 
     if (mode === 'html') {
-      // The bridge finds the passage again by its text, replaces it and reports whether it could.
-      this.postToFrame({ type: EXCHANGE_REPLACE_MESSAGE_TYPE, from: text.trim(), to: proposal })
+      // The bridge finds the passage again, and applies the proposal in its own document, so that the styles of the
+      // page are kept: an HTML fragment when the proposal has tags, plain text otherwise.
+      this.postToFrame({
+        type: EXCHANGE_REPLACE_MESSAGE_TYPE,
+        ...(hasMarkup(proposal) ? { html: proposal } : { text: proposal }),
+        selectionText: text.trim(),
+      })
       return
     }
     if (mode === 'text') {
