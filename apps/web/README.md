@@ -164,8 +164,11 @@ The ports are **always the same** for a given way of running Coday: the redirect
   Stop that program and start again.
 - If you really need other ports, choose them explicitly (see *Choosing the ports yourself*), knowing that the redirect
   URIs registered at your OAuth providers are tied to the default ports and will have to be registered again.
-- **`scripts/web-dev-tmux.sh`**: a helper that picks the first free block among 4000, 4010, 4020 … for itself, so
-  several worktrees run side by side; it then starts the stack on that block explicitly (`CODAY_PORT_BASE`).
+- **`scripts/web-dev-tmux.sh`**: starts Express, both Angular dev servers, AgentOS and Factory in separate tmux
+  sessions after building the backend plugins. By default it picks the first free dev block and keeps data under
+  `.coday-dev/` in that checkout. `--port-base <base> --config-dir <absolute-path>` pins an existing dev block and its
+  AgentOS/Factory data; `--dry-run` prints the plan. It refuses occupied ports or matching sessions and never stops
+  them implicitly.
 - **`pnpm web:serve:dev`**: its ports are written in Nx and Angular config files, which cannot follow a move. Same
   rule: it stops at once with a message naming the port and the program holding it. Stop that program, or use the
   tmux script.

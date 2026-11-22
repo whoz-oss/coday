@@ -23,6 +23,7 @@ coverage
 # API keys and secrets
 .env
 .env.local
+.coday-dev/
 
 # Dependency directory
 node_modules
