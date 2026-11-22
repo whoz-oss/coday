@@ -1332,6 +1332,62 @@ describe('CaseChatComponent — submit with attachments', () => {
     })
   })
 
+  describe('selection action from the exchange viewer', () => {
+    const action = {
+      ref: { scope: ExchangeFileEntryScopeEnum.CASE, path: 'notes/todo.md' },
+      selection: 'Buy milk',
+      startLine: 2,
+      endLine: 2,
+      instruction: '@Writer translate this',
+      unsavedChanges: false,
+    }
+    const expectedMessage = [
+      '@Writer translate this',
+      '[Selection from case:notes/todo.md, line 2]\n```markdown\nBuy milk\n```',
+      '[Files referenced: case:notes/todo.md]',
+    ].join('\n\n')
+
+    it('runs the agent directly when the composer could send now', () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('half-written draft')
+
+      ref.instance['onSelectionAction'](action)
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: expectedMessage,
+        userId: 'default-user',
+      })
+      expect(ref.instance['isRunning']()).toBe(true)
+      // The draft the user was writing is left alone.
+      expect(ref.instance['inputValue']()).toBe('half-written draft')
+    })
+
+    it.each([
+      ['an agent turn is running', (ref: ComponentRef<CaseChatComponent>) => ref.instance['isRunning'].set(true)],
+      ['the case has ended', (ref: ComponentRef<CaseChatComponent>) => ref.instance['_sseStatus'].set('KILLED')],
+      ['files are uploading', (ref: ComponentRef<CaseChatComponent>) => attachments(ref).isUploading.set(true)],
+      ['a send is in flight', (ref: ComponentRef<CaseChatComponent>) => (ref.instance['submitting'] = true)],
+    ])('puts the message in the composer instead when %s', (_name, block) => {
+      const ref = makeComponent()
+      block(ref)
+
+      ref.instance['onSelectionAction'](action)
+
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe(expectedMessage)
+    })
+
+    it('appends to the draft of the composer rather than replacing it', () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('my draft')
+
+      ref.instance['onSelectionAction'](action)
+
+      expect(ref.instance['inputValue']()).toBe(`my draft\n\n${expectedMessage}`)
+    })
+  })
+
   describe('kill with confirmation', () => {
     it('clicking kill does not call the API until confirmed', () => {
       const ref = makeComponent()

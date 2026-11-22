@@ -12,6 +12,7 @@ import java.net.URLConnection
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -20,6 +21,7 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.NotDirectoryException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.time.Instant
@@ -289,6 +291,72 @@ class ExchangeStorageService(
         // against the canonical root to obtain the stored relative path.
         return toEntry(root.toRealPath(), resolved, scope)
     }
+
+    /**
+     * Replace the UTF-8 text content of the existing file [relativePath] under [root].
+     *
+     * The counterpart of [writeNew]: the file must already exist. When [expectedEtag] is not null it
+     * must match the file's current etag, so an edit made from a stale copy is refused instead of
+     * silently overwriting a concurrent change (an agent may be editing the same file). The new
+     * content is written to a temporary file in the same directory and moved over the target, so a
+     * reader never sees a half-written file.
+     *
+     * @throws InvalidExchangePathException if the path escapes the scope boundary.
+     * @throws java.nio.file.NoSuchFileException if the file does not exist (or is not a regular file).
+     * @throws ExchangeEditConflictException if [expectedEtag] differs from the current etag.
+     * @throws ExchangeFileTooLargeException if the content exceeds the configured read limit.
+     * @return the content metadata of the file as now stored.
+     */
+    fun writeContent(
+        root: Path,
+        relativePath: String,
+        content: String,
+        expectedEtag: String?,
+    ): ExchangeFileContent {
+        val resolved = resolveWithin(root, relativePath)
+        // NOFOLLOW_LINKS: a symlink is not a regular file here, so it is never replaced.
+        if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) throw NoSuchFileException(relativePath)
+
+        val bytes = content.toByteArray(StandardCharsets.UTF_8)
+        // Refuse what could not be read back: the editor loads through the same cap.
+        if (bytes.size.toLong() > config.readMaxSizeBytes) {
+            throw ExchangeFileTooLargeException(
+                "Content is too large to save (exceeds the ${config.readMaxSizeBytes}-byte limit)",
+            )
+        }
+        if (expectedEtag != null && expectedEtag != currentEtag(resolved)) {
+            throw ExchangeEditConflictException("The file was modified since it was opened")
+        }
+
+        val temp = Files.createTempFile(resolved.parent, ".", ".edit.tmp")
+        try {
+            Files.write(temp, bytes)
+            // createTempFile is owner-only: keep the permissions the file had, as an in-place write would.
+            runCatching { Files.setPosixFilePermissions(temp, Files.getPosixFilePermissions(resolved)) }
+                .onFailure { e -> if (e !is UnsupportedOperationException) logger.debug(e) { "Could not copy permissions" } }
+            try {
+                Files.move(temp, resolved, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (e: AtomicMoveNotSupportedException) {
+                Files.move(temp, resolved, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            // No-op after a successful move; removes the staging file when the write or move failed.
+            Files.deleteIfExists(temp)
+        }
+
+        val lastModified = Files.getLastModifiedTime(resolved).toInstant()
+        val size = bytes.size.toLong()
+        return ExchangeFileContent(
+            content = content,
+            etag = computeEtag(size, lastModified),
+            mimeType = mimeTypeFor(resolved.fileName.toString()),
+            size = size,
+        )
+    }
+
+    /** The etag [readContent] would report for [file] right now. */
+    private fun currentEtag(file: Path): String =
+        computeEtag(Files.size(file), Files.getLastModifiedTime(file).toInstant())
 
     /**
      * Delete [relativePath] under [root].

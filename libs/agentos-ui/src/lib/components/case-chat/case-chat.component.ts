@@ -89,10 +89,11 @@ import {
 } from '../composer-autocomplete/file-mention'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeSelectionAction, ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
+import { buildSelectionMessage } from '../exchange-content-viewer/exchange-selection-message'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
 import {
@@ -1785,6 +1786,29 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // An attachment send in flight is not running yet: posting now would send two messages.
     if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.composerClosed()) return
     this.sendMessage('Continue')
+  }
+
+  /**
+   * The user asked an agent to act on a selection of an exchange document: send it right away when the
+   * composer could send now, so the agent runs on it directly. Otherwise (a turn is running, the case is
+   * over, an upload, a recording or a send is in flight) the message is put in the composer, never lost.
+   * The files drawer stays open either way.
+   */
+  protected onSelectionAction(action: ExchangeSelectionAction): void {
+    const message = buildSelectionMessage(action)
+    if (
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      !this.attachments.isUploading() &&
+      !this.submitting &&
+      !this.voice.isBusy()
+    ) {
+      this.sendMessage(message)
+      return
+    }
+    const draft = this.inputValue().trim()
+    this.inputValue.set(draft ? `${draft}\n\n${message}` : message)
+    queueMicrotask(() => this.composerInput()?.nativeElement.focus())
   }
 
   private postMessage(content: string): Promise<boolean> {

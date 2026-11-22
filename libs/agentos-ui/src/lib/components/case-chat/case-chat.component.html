@@ -16,6 +16,7 @@
         [referenced]="referencedFiles()"
         (referenceToggled)="onReferenceToggled($event)"
         (closeRequested)="exchangeOpen.set(false)"
+        (selectionActionRequested)="onSelectionAction($event)"
       />
     }
   </div>

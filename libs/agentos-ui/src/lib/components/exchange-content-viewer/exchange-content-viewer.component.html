@@ -22,10 +22,99 @@
     <span class="exchange-content-viewer__sr-only" aria-live="polite">{{
       copyState() === 'copied' ? 'Path copied' : ''
     }}</span>
+    <span class="exchange-content-viewer__state" role="status" aria-live="polite">
+      @if (saving()) {
+        Saving…
+      } @else if (dirty()) {
+        • unsaved
+      }
+    </span>
+    @if (editable() && hasRenderedView()) {
+      <div class="exchange-content-viewer__toggle" role="group" aria-label="View mode">
+        <button
+          type="button"
+          class="exchange-content-viewer__toggle-option"
+          [attr.aria-pressed]="viewMode() === 'source'"
+          (click)="onSetView('source')"
+        >
+          Source
+        </button>
+        <button
+          type="button"
+          class="exchange-content-viewer__toggle-option"
+          [attr.aria-pressed]="viewMode() === 'preview'"
+          (click)="onSetView('preview')"
+        >
+          Preview
+        </button>
+      </div>
+    }
+    @if (editable()) {
+      <ds-icon-button icon="save" variant="primary" title="Save (Ctrl+S)" [disabled]="!canSave()" (action)="onSave()" />
+      @if (dirty()) {
+        <ds-icon-button icon="undo" variant="default" title="Revert changes" (action)="onRevert()" />
+      }
+    }
     <ds-icon-button icon="download" variant="default" [title]="'Download ' + filename()" (action)="onDownload()" />
   </header>
 
-  <div class="exchange-content-viewer__body">
+  @if (hasSaveProblem()) {
+    <p class="exchange-content-viewer__save-error" role="alert">
+      {{ saveError() || 'Save failed' }}
+      @if (saveStatus() === 'conflict') {
+        <button type="button" class="exchange-content-viewer__link" (click)="onReload()">
+          Reload the latest version (discards your edits)
+        </button>
+      }
+    </p>
+  }
+
+  @if (selection() || actionOpen()) {
+    <div class="exchange-content-viewer__selection-bar">
+      @if (!actionOpen()) {
+        <!-- mousedown is held back so the click does not clear the selection it is about to capture. -->
+        <button
+          type="button"
+          class="exchange-content-viewer__ask"
+          title="Ask an agent about the selection"
+          (mousedown)="$event.preventDefault()"
+          (click)="openAction()"
+        >
+          <span class="material-icons" aria-hidden="true">auto_awesome</span>
+          Ask an agent about the selection
+        </button>
+      } @else {
+        <textarea
+          #instructionInput
+          class="exchange-content-viewer__instruction"
+          rows="2"
+          aria-label="Instruction for the agent"
+          placeholder="What should the agent do with this selection? (you can @mention an agent)"
+          [value]="instruction()"
+          (input)="onInstructionInput($event)"
+          (keydown)="onInstructionKeydown($event)"
+        ></textarea>
+        <div class="exchange-content-viewer__selection-actions">
+          <button
+            type="button"
+            class="exchange-content-viewer__cta"
+            title="Run the agent on the selection"
+            [disabled]="!instruction().trim()"
+            (click)="runAction()"
+          >
+            Run
+          </button>
+          <button type="button" class="exchange-content-viewer__secondary" (click)="closeAction()">Cancel</button>
+        </div>
+      }
+    </div>
+  }
+
+  <div
+    #body
+    class="exchange-content-viewer__body"
+    [class.exchange-content-viewer__body--editing]="showEditor() && status() === 'ready'"
+  >
     @if (!canView()) {
       <ds-empty-state
         icon="insert_drive_file"
@@ -42,6 +131,19 @@
       <ds-empty-state icon="error_outline" title="Couldn't load this file" hint="The content could not be retrieved.">
         <button class="exchange-content-viewer__cta" type="button" (click)="onDownload()">Download instead</button>
       </ds-empty-state>
+    } @else if (showEditor()) {
+      <textarea
+        #editor
+        class="exchange-content-viewer__editor"
+        spellcheck="false"
+        [attr.aria-label]="'Edit ' + filename()"
+        [value]="draft()"
+        (input)="onDraftInput($event)"
+        (keydown)="onEditorKeydown($event)"
+        (select)="captureEditorSelection()"
+        (keyup)="captureEditorSelection()"
+        (mouseup)="captureEditorSelection()"
+      ></textarea>
     } @else if (format() === 'image') {
       @if (blobUrl(); as url) {
         @if (imageFailed()) {
@@ -87,7 +189,10 @@
         </div>
       }
     } @else if (format() === 'markdown') {
-      <div class="exchange-content-viewer__markdown" [innerHTML]="content() | agentosMarkdown"></div>
+      <div
+        class="exchange-content-viewer__markdown"
+        [innerHTML]="(editable() ? draft() : content()) | agentosMarkdown"
+      ></div>
     } @else if (format() === 'html') {
       <!--
         The sandbox MUST stay a static attribute (Angular forbids binding it) and MUST NEVER contain
@@ -96,6 +201,7 @@
         (<img src="img/a.png">) do not resolve from a srcdoc.
       -->
       <iframe
+        #previewFrame
         class="exchange-content-viewer__iframe"
         [srcdoc]="htmlSrcdoc()"
         [title]="'Preview of ' + filename()"
@@ -106,3 +212,13 @@
     }
   </div>
 </div>
+
+<ds-confirm-dialog
+  [open]="pendingDiscard()"
+  title="Discard changes"
+  message="You have unsaved changes to this file. Discard them?"
+  confirmLabel="Discard"
+  cancelLabel="Keep editing"
+  (confirmed)="onConfirmDiscard()"
+  (cancelled)="onKeepEditing()"
+/>

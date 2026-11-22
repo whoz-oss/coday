@@ -52,6 +52,24 @@ export interface ExchangeFileRef {
   path: string
 }
 
+/** Save progress of the file being edited in the viewer. `conflict`: the file changed since it was opened. */
+export type ExchangeSaveStatus = 'idle' | 'saving' | 'error' | 'conflict'
+
+/**
+ * The user asked an agent to act on a part of the previewed document.
+ *
+ * Lines are 1-based and only known when the selection was made in the editor, where offsets are exact;
+ * [unsavedChanges] tells that the selection comes from text that is not saved to the file yet.
+ */
+export interface ExchangeSelectionAction {
+  ref: ExchangeFileRef
+  selection: string
+  startLine?: number
+  endLine?: number
+  instruction: string
+  unsavedChanges: boolean
+}
+
 interface ExchangeScopeView {
   status: ExchangeScopeStatus
   /** Entries of the directory currently being browsed: sub-directories first, then files. */
@@ -339,20 +357,23 @@ export class ExchangeStateService {
         const forceReload = this.forceBrowseReload.delete(scope)
         // A reused case id in another namespace is still a different context.
         const contextKey = scope === ExchangeFileEntryScopeEnum.CASE ? JSON.stringify([this.namespaceId, id]) : id
-        const keepListing = !forceReload && contextKey === previousId && path === previousPath && latestView.status === 'ready'
+        const keepListing =
+          !forceReload && contextKey === previousId && path === previousPath && latestView.status === 'ready'
         previousId = contextKey
         previousPath = path
         if (!id) return of(NEUTRAL_LOADING)
         const loaded = load(id)
         const accessGeneration = this.browseAccessGeneration.get(scope) ?? 0
-        const revalidated = forceReload ? loaded.pipe(
-          tap((view) => {
-            if (view.status === 'ready' && (this.browseAccessGeneration.get(scope) ?? 0) === accessGeneration) {
-              this.browseUnavailable(scope).set(false)
-            }
-          }),
-          finalize(() => this.browseRecoveryInFlight.delete(scope))
-        ) : loaded
+        const revalidated = forceReload
+          ? loaded.pipe(
+              tap((view) => {
+                if (view.status === 'ready' && (this.browseAccessGeneration.get(scope) ?? 0) === accessGeneration) {
+                  this.browseUnavailable(scope).set(false)
+                }
+              }),
+              finalize(() => this.browseRecoveryInFlight.delete(scope))
+            )
+          : loaded
         return keepListing ? revalidated : revalidated.pipe(startWith(NEUTRAL_LOADING))
       }),
       tap((view) => {
@@ -505,29 +526,39 @@ export class ExchangeStateService {
       // Coalesce invalidations behind the outstanding scan instead of relying on HTTP cancellation
       // to stop server work. Dropped UI subscribers do not start their queued replacement.
       const wait$: Observable<unknown> = active
-        ? active.pipe(ignoreElements(), catchError(() => EMPTY), endWith(null))
+        ? active.pipe(
+            ignoreElements(),
+            catchError(() => EMPTY),
+            endWith(null)
+          )
         : timer(delay)
       files$ = wait$.pipe(
-        concatMap(() => defer(() => {
-          const current = isCase ? this.caseManifestCache : this.namespaceManifestCache
-          if (current?.files$ === files$) {
-            if (isCase) this.caseManifestCache = null
-            else this.namespaceManifestCache = null
-          }
-          if (id !== (isCase ? this.caseId : this.namespaceId)) return throwError(() => new Error('Scope changed'))
-          return this.fileManifest(scope)
-        })),
+        concatMap(() =>
+          defer(() => {
+            const current = isCase ? this.caseManifestCache : this.namespaceManifestCache
+            if (current?.files$ === files$) {
+              if (isCase) this.caseManifestCache = null
+              else this.namespaceManifestCache = null
+            }
+            if (id !== (isCase ? this.caseId : this.namespaceId)) return throwError(() => new Error('Scope changed'))
+            return this.fileManifest(scope)
+          })
+        ),
         shareReplay({ bufferSize: 1, refCount: true })
       )
     } else {
       files$ = defer(() => {
         this.manifestInFlight.set(scope, files$)
-        return isCase ? this.controller.getCaseFilesManifestExchange(id) : this.controller.getNamespaceFilesManifestExchange(id)
+        return isCase
+          ? this.controller.getCaseFilesManifestExchange(id)
+          : this.controller.getNamespaceFilesManifestExchange(id)
       }).pipe(
         timeout({ first: MANIFEST_TIMEOUT_MS, each: MANIFEST_TIMEOUT_MS }),
         map((manifest) => (manifest.capability === ExchangeManifestCapabilityEnum.NONE ? [] : (manifest.files ?? []))),
         tap({
-          complete: () => { if (this.manifestInFlight.get(scope) === files$) this.manifestInFlight.delete(scope) },
+          complete: () => {
+            if (this.manifestInFlight.get(scope) === files$) this.manifestInFlight.delete(scope)
+          },
           error: (error: unknown) => {
             const delay = error instanceof TimeoutError ? MANIFEST_TIMEOUT_COOLDOWN_MS : MANIFEST_ERROR_COOLDOWN_MS
             this.manifestRetryAfter.set(scope, Date.now() + delay)
@@ -657,6 +688,54 @@ export class ExchangeStateService {
         error: (err: { message?: string }) => resolve({ success: false, error: err?.message ?? 'Delete failed' }),
       })
     })
+  }
+
+  /**
+   * Replace the text of an existing file (the viewer's editor save).
+   *
+   * [etag] is the one of the content being edited: the server refuses the write with a 409 when the
+   * file changed since (an agent may be editing it too), reported as `conflict` so the caller can
+   * offer to reload instead of overwriting. Only the mutated scope is refreshed.
+   */
+  async saveContent(
+    scope: ExchangeScope,
+    path: string,
+    content: string,
+    etag?: string
+  ): Promise<{ success: boolean; etag?: string; conflict?: boolean; error?: string }> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return { success: false, error: 'No active scope' }
+    const body = { path, content, ...(etag ? { etag } : {}) }
+    const update$ = isCase
+      ? this.controller.updateCaseFileContentExchange(id, body)
+      : this.controller.updateNamespaceFileContentExchange(id, body)
+    return new Promise((resolve) => {
+      update$.subscribe({
+        next: (saved) => {
+          // Do not refresh another scope instance if the user navigated away meanwhile.
+          if (id === (isCase ? this.caseId : this.namespaceId)) {
+            if (isCase) this.refreshCase()
+            else this.refreshNamespace()
+          }
+          resolve({ success: true, etag: saved.etag })
+        },
+        error: (err: { status?: number; message?: string; error?: { message?: string } }) =>
+          resolve({ success: false, conflict: err?.status === 409, error: this.saveErrorMessage(err) }),
+      })
+    })
+  }
+
+  /** Maps a save error response to a user-facing message (conflict, permission, missing, too large). */
+  private saveErrorMessage(err: { status?: number; message?: string; error?: { message?: string } }): string {
+    const byStatus: Record<number, string | undefined> = {
+      400: err?.error?.message ?? 'This file cannot be edited.',
+      403: 'You do not have permission to edit this file.',
+      404: 'This file no longer exists.',
+      409: 'The file was modified since it was opened.',
+      422: err?.error?.message ?? 'The content is too large to save.',
+    }
+    return (err?.status != null && byStatus[err.status]) || err?.message || 'Save failed'
   }
 
   // ── Download ──────────────────────────────────────────────────────────────────

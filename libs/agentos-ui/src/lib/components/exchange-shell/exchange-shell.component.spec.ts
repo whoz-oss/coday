@@ -1,5 +1,6 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
+import { By } from '@angular/platform-browser'
 import { ExchangeControllerService, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs'
 import { CaseWorkspaceService } from '../../services/case-workspace.service'
@@ -11,6 +12,7 @@ import {
   MANIFEST_TIMEOUT_MS,
 } from '../../services/exchange-state.service'
 import { ExchangeShellComponent, FILTER_REFRESH_INTERVAL_MS as POLL_MS } from './exchange-shell.component'
+import { ExchangeDrawerComponent } from '../exchange-drawer/exchange-drawer.component'
 
 const CASE = ExchangeFileEntryScopeEnum.CASE
 const NAMESPACE = ExchangeFileEntryScopeEnum.NAMESPACE
@@ -1135,7 +1137,8 @@ describe('ExchangeShellComponent filters', () => {
     el.querySelector<HTMLButtonElement>('agentos-exchange-item .exchange-item__main')!.click()
     fixture.detectChanges()
     expect(api.getCaseFileContentExchange).toHaveBeenCalledWith('c-1', 'deep/report.md')
-    expect(el.textContent).toContain('body')
+    // The case is writable: the file opens straight in the editor.
+    expect(el.querySelector<HTMLTextAreaElement>('textarea.exchange-content-viewer__editor')?.value).toBe('body')
     el.querySelector<HTMLButtonElement>('ds-icon-button[title="Back to files"] button')!.click()
     fixture.detectChanges()
     expect(el.querySelector<HTMLInputElement>('input[aria-label="Filter case files by name or path"]')?.value).toBe(
@@ -1431,5 +1434,236 @@ describe('ExchangeShellComponent filters', () => {
     shell['onFileSelected']({ scope: CASE, path: 'deep/readme.md' })
     old.next({ content: 'old' })
     expect(shell['selectedContent']()).toBe('new')
+  })
+})
+
+describe('ExchangeShellComponent editing', () => {
+  const ref = { scope: CASE, path: 'notes/todo.md' }
+  const entry = (lastModified: string, path = 'notes/todo.md') => ({
+    path,
+    name: path.split('/').pop()!,
+    filename: path.split('/').pop()!,
+    size: 10,
+    lastModified,
+    directory: false,
+  })
+  const browse = (entries: ReturnType<typeof entry>[], capability = 'READ_WRITE') => ({
+    ...listing,
+    capability,
+    entries,
+    totalEntries: entries.length,
+  })
+
+  function setup(capability = 'READ_WRITE', entries = [entry('t1')]) {
+    const api = {
+      browseCaseFilesExchange: jest.fn().mockReturnValue(of(browse(entries, capability))),
+      browseNamespaceFilesExchange: jest.fn().mockReturnValue(of(listing)),
+      getCaseFilesManifestExchange: jest.fn().mockReturnValue(of({ files: [] })),
+      getNamespaceFilesManifestExchange: jest.fn().mockReturnValue(of({ files: [] })),
+      getCaseFileContentExchange: jest.fn().mockReturnValue(of({ content: 'hello', etag: 'e1' })),
+      getNamespaceFileContentExchange: jest.fn().mockReturnValue(of({ content: 'hello', etag: 'n1' })),
+      updateCaseFileContentExchange: jest.fn().mockReturnValue(of({ etag: 'e2' })),
+      updateNamespaceFileContentExchange: jest.fn().mockReturnValue(of({ etag: 'n2' })),
+    }
+    TestBed.configureTestingModule({
+      imports: [ExchangeShellComponent],
+      providers: [
+        { provide: ActivatedRoute, useValue: { queryParams: new BehaviorSubject({ ns: 'ns-1', case: 'c-1' }) } },
+        { provide: ExchangeControllerService, useValue: api },
+        { provide: CaseWorkspaceService, useValue: { watch: jest.fn(), enabled$: of(false) } },
+      ],
+    })
+    const fixture = TestBed.createComponent(ExchangeShellComponent)
+    fixture.componentRef.setInput('active', true)
+    fixture.detectChanges()
+    return { fixture, shell: fixture.componentInstance, api, state: TestBed.inject(ExchangeStateService) }
+  }
+
+  describe('canEditSelected', () => {
+    it('is true for a text file of a writable, ready scope', () => {
+      const { shell } = setup()
+      shell['onFileSelected'](ref)
+      expect(shell['canEditSelected']()).toBe(true)
+    })
+
+    it('is false when the scope is read-only', () => {
+      const { shell } = setup('READ')
+      shell['onFileSelected'](ref)
+      expect(shell['canEditSelected']()).toBe(false)
+    })
+
+    it('is false for a binary file', () => {
+      const { shell } = setup('READ_WRITE', [entry('t1', 'archive.zip')])
+      shell['onFileSelected']({ scope: CASE, path: 'archive.zip' })
+      expect(shell['canEditSelected']()).toBe(false)
+    })
+
+    it('is false while the content is loading', () => {
+      const { shell, api } = setup()
+      api.getCaseFileContentExchange.mockReturnValue(new Subject())
+      shell['onFileSelected'](ref)
+      expect(shell['canEditSelected']()).toBe(false)
+    })
+
+    it('is false for the namespace scope when only the case scope is writable', () => {
+      const { shell } = setup()
+      shell['onFileSelected']({ scope: NAMESPACE, path: 'shared.md' })
+      expect(shell['canEditSelected']()).toBe(false)
+    })
+  })
+
+  describe('save', () => {
+    it('saves with the etag of the loaded content, then shows the saved text and its new etag', async () => {
+      const { shell, api } = setup()
+      shell['onFileSelected'](ref)
+
+      await shell['onSaveRequested']({ ref, content: 'edited' })
+
+      expect(api.updateCaseFileContentExchange).toHaveBeenCalledWith('c-1', {
+        path: 'notes/todo.md',
+        content: 'edited',
+        etag: 'e1',
+      })
+      expect(shell['selectedContent']()).toBe('edited')
+      expect(shell['selectedEtag']()).toBe('e2')
+      expect(shell['saveStatus']()).toBe('idle')
+    })
+
+    it('surfaces a conflict, keeping the loaded content for the viewer to offer a reload', async () => {
+      const { shell, api } = setup()
+      api.updateCaseFileContentExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      shell['onFileSelected'](ref)
+
+      await shell['onSaveRequested']({ ref, content: 'edited' })
+
+      expect(shell['saveStatus']()).toBe('conflict')
+      expect(shell['saveError']()).toBe('The file was modified since it was opened.')
+      expect(shell['selectedContent']()).toBe('hello')
+    })
+
+    it('reports another failure as an error', async () => {
+      const { shell, api } = setup()
+      api.updateCaseFileContentExchange.mockReturnValue(throwError(() => ({ status: 403 })))
+      shell['onFileSelected'](ref)
+
+      await shell['onSaveRequested']({ ref, content: 'edited' })
+
+      expect(shell['saveStatus']()).toBe('error')
+      expect(shell['saveError']()).toBe('You do not have permission to edit this file.')
+    })
+
+    it('reloads the latest version after a conflict', async () => {
+      const { shell, api } = setup()
+      api.updateCaseFileContentExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      shell['onFileSelected'](ref)
+      await shell['onSaveRequested']({ ref, content: 'edited' })
+      api.getCaseFileContentExchange.mockReturnValue(of({ content: 'agent version', etag: 'e9' }))
+
+      shell['onReloadRequested']()
+
+      expect(shell['selectedContent']()).toBe('agent version')
+      expect(shell['selectedEtag']()).toBe('e9')
+      expect(shell['saveStatus']()).toBe('idle')
+    })
+
+    it('ignores the answer of a save for a file that is no longer selected', async () => {
+      const { shell, api } = setup()
+      const answer = new Subject<{ etag: string }>()
+      api.updateCaseFileContentExchange.mockReturnValue(answer)
+      shell['onFileSelected'](ref)
+      const saving = shell['onSaveRequested']({ ref, content: 'edited' })
+      shell['onViewerClosed']()
+      answer.next({ etag: 'e2' })
+      await saving
+      expect(shell['selectedContent']()).toBeNull()
+    })
+  })
+
+  describe('content follows the agent edits', () => {
+    it('reloads the previewed file when its version changes in the listing', () => {
+      const { fixture, shell, api, state } = setup()
+      shell['onFileSelected'](ref)
+      fixture.detectChanges()
+      api.getCaseFileContentExchange.mockClear()
+      api.getCaseFileContentExchange.mockReturnValue(of({ content: 'agent edit', etag: 'e5' }))
+
+      api.browseCaseFilesExchange.mockReturnValue(of(browse([entry('t2')])))
+      state.refreshCase()
+      fixture.detectChanges()
+
+      expect(api.getCaseFileContentExchange).toHaveBeenCalledTimes(1)
+      expect(shell['selectedContent']()).toBe('agent edit')
+    })
+
+    it('does not reload when the listing reports the same version', () => {
+      const { fixture, shell, api, state } = setup()
+      shell['onFileSelected'](ref)
+      fixture.detectChanges()
+      api.getCaseFileContentExchange.mockClear()
+
+      state.refreshCase()
+      fixture.detectChanges()
+
+      expect(api.getCaseFileContentExchange).not.toHaveBeenCalled()
+    })
+
+    it('does not replace the content under unsaved edits, and picks the change up once they end', () => {
+      const { fixture, shell, api, state } = setup()
+      shell['onFileSelected'](ref)
+      fixture.detectChanges()
+      shell['onDirtyChanged'](true)
+      api.getCaseFileContentExchange.mockClear()
+      api.getCaseFileContentExchange.mockReturnValue(of({ content: 'agent edit', etag: 'e5' }))
+
+      api.browseCaseFilesExchange.mockReturnValue(of(browse([entry('t2')])))
+      state.refreshCase()
+      fixture.detectChanges()
+      expect(api.getCaseFileContentExchange).not.toHaveBeenCalled()
+      expect(shell['selectedContent']()).toBe('hello')
+
+      shell['onDirtyChanged'](false)
+      fixture.detectChanges()
+      expect(shell['selectedContent']()).toBe('agent edit')
+    })
+
+    it('drops a late answer for a file that was closed meanwhile', () => {
+      const { shell, api } = setup()
+      const late = new Subject<{ content: string; etag: string }>()
+      api.getCaseFileContentExchange.mockReturnValue(late)
+      shell['onFileSelected'](ref)
+      shell['onViewerClosed']()
+
+      late.next({ content: 'late', etag: 'e3' })
+
+      expect(shell['selectedContent']()).toBeNull()
+      expect(shell['selectedFile']()).toBeNull()
+    })
+
+    it('keeps what is shown when a background reload fails', () => {
+      const { fixture, shell, api, state } = setup()
+      shell['onFileSelected'](ref)
+      fixture.detectChanges()
+      api.getCaseFileContentExchange.mockReturnValue(throwError(() => ({ status: 500 })))
+
+      api.browseCaseFilesExchange.mockReturnValue(of(browse([entry('t2')])))
+      state.refreshCase()
+      fixture.detectChanges()
+
+      expect(shell['selectedContent']()).toBe('hello')
+      expect(shell['contentStatus']()).toBe('ready')
+    })
+  })
+
+  it('relays the selection action of the viewer through the drawer', () => {
+    const { fixture } = setup()
+    const received = jest.fn()
+    fixture.componentInstance.selectionActionRequested.subscribe(received)
+    const action = { ref, selection: 'x', instruction: 'do', unsavedChanges: false }
+
+    fixture.debugElement
+      .query(By.directive(ExchangeDrawerComponent))
+      .componentInstance.selectionActionRequested.emit(action)
+
+    expect(received).toHaveBeenCalledWith(action)
   })
 })

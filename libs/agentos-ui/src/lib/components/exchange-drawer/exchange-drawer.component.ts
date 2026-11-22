@@ -21,8 +21,14 @@ import { EnvironmentScope, ExchangeEnvironment } from '../../services/exchange-e
 import { ExchangeEnvironmentComponent } from '../exchange-environment/exchange-environment.component'
 import { ExchangeDirectoryEntry, ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ExchangePathSegment } from '../../services/exchange-state.service'
+import {
+  ExchangeFileRef,
+  ExchangeSaveStatus,
+  ExchangeScope,
+  ExchangeScopeStatus,
+  ExchangeSelectionAction,
+} from '../../services/exchange-state.service'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
-import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
 import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-list.component'
 import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
@@ -107,9 +113,20 @@ export class ExchangeDrawerComponent {
   readonly referenced = input<ExchangeFileRef[]>([])
   readonly contentStatus = input<'loading' | 'ready' | 'error'>('loading')
   readonly canViewSelected = input<boolean>(true)
+  /** The selected file can be edited (writable scope, text format): relayed to the viewer. */
+  readonly canEditSelected = input<boolean>(false)
+  readonly saveStatus = input<ExchangeSaveStatus>('idle')
+  readonly saveError = input<string | null>(null)
 
   readonly fileSelected = output<ExchangeFileRef>()
   readonly referenceToggled = output<ExchangeReferenceToggle>()
+  /** The viewer's edited text to write to the file. */
+  readonly saveRequested = output<{ ref: ExchangeFileRef; content: string }>()
+  readonly reloadRequested = output<void>()
+  /** The viewer's selection to run an agent on. */
+  readonly selectionActionRequested = output<ExchangeSelectionAction>()
+  /** Whether the viewer holds unsaved edits. */
+  readonly dirtyChanged = output<boolean>()
   /** A directory was opened, or a breadcrumb level was clicked. Empty path means the scope root. */
   readonly folderOpened = output<{ scope: ExchangeScope; path: string }>()
   readonly loadMoreRequested = output<ExchangeScope>()
