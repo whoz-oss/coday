@@ -58,8 +58,8 @@ data class LastLlmRequest(
     /** The last conversation event of the case once the answer is in: the answer itself. */
     val lastCoveredEventId: UUID,
     /**
-     * The prompt cache duration the request was sent with (the choice of [userId]). A request meant to read the same
-     * cache entry must be sent with it too: with Requesty, a one-hour cache rewrites the body
+     * The prompt cache choice the request was sent with (that of [userId]). A request meant to read the same cache
+     * entry must be sent with it too: with Requesty, Extended rewrites the body
      * ([io.whozoss.agentos.chat.RequestyPromptCache]).
      */
     val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,

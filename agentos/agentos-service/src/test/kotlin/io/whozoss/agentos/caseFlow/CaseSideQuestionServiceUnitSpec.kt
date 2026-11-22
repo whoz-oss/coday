@@ -322,7 +322,7 @@ class CaseSideQuestionServiceUnitSpec :
             tools.forEach { tool -> shouldThrow<IllegalStateException> { tool.call("{}") } }
         }
 
-        "from the agent's last request: sent with the prompt cache duration of the agent's request" {
+        "from the agent's last request: sent with the prompt cache choice of the agent's request" {
             val fixture = Fixture(stored = lastRequest().copy(promptCacheTtl = PromptCacheTtl.EXTENDED))
             fixture.answering(text("ok"))
 

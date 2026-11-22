@@ -33,7 +33,7 @@ import org.springframework.stereotype.Service
  * - the same tool definitions in the same order, as definitions only ([DefinitionOnlyToolCallback]): no tool can
  *   run, and the client never executes one either (`runTools = false`);
  * - the same model and provider, resolved again by id ([resolve]; a provider holds an API key, the snapshot does
- *   not) and only used when they still produce the same [LlmRequestOptions], with the same prompt cache duration,
+ *   not) and only used when they still produce the same [LlmRequestOptions], with the same prompt cache choice,
  *   so that the Requesty one-hour rewrite ([io.whozoss.agentos.chat.RequestyPromptCache]) marks the body the same
  *   way.
  *

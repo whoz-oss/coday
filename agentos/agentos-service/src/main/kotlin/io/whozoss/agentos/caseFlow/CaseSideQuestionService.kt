@@ -89,7 +89,7 @@ class CaseSideQuestionService(
         val toolDefinitions: List<ToolDefinition>,
         val model: AiModel,
         val provider: AiProvider,
-        /** The cache duration of the agent's request when it is reused, so that its prefix is sent the same way. */
+        /** The prompt cache choice of the agent's request when it is reused, so that its prefix is sent the same way. */
         val promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
     )
 

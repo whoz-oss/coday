@@ -153,7 +153,7 @@ class ChatModelFactory internal constructor(
     /**
      * Whether a request built by [createChatModel] for these parameters gets a one-hour prompt cache: the user chose
      * [PromptCacheTtl.EXTENDED], and the model is a Claude one ([RequestyPromptCacheProperties]) reached through
-     * Requesty with the OpenAI API type. Any other request keeps the provider's default 5-minute cache.
+     * Requesty with the OpenAI API type. Any other request keeps the provider's default caching.
      */
     fun appliesOneHourCache(
         apiType: AiApiType,

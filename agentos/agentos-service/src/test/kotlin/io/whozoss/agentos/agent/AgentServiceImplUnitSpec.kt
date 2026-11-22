@@ -2936,7 +2936,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             }
         }
 
-        "a SIMPLE agent records its last request with the prompt cache duration and the user it runs for" {
+        "a SIMPLE agent records its last request with the prompt cache choice and the user it runs for" {
             val userId = UUID.randomUUID()
             val user = User(metadata = EntityMetadata(id = userId), externalId = "ext-ttl", promptCacheTtl = PromptCacheTtl.EXTENDED)
             val config = agentConfig(name = "ttl-recorded").copy(executionMode = ExecutionMode.SIMPLE)
