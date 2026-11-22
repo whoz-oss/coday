@@ -36,6 +36,42 @@
       }
     }
     <ds-icon-button icon="download" variant="default" [title]="'Download ' + filename()" (action)="onDownload()" />
+
+    @if (editMode() === 'markdown') {
+      <!-- Formatting of the rendered markdown edited in place. mousedown is cancelled so the selection is kept. -->
+      <div class="exchange-content-viewer__toolbar" role="toolbar" aria-label="Formatting">
+        @for (button of formatButtons; track button.title) {
+          <span class="exchange-content-viewer__toolbar-button" (mousedown)="$event.preventDefault()">
+            <ds-icon-button
+              [icon]="button.icon"
+              variant="default"
+              [title]="button.title"
+              (action)="runFormat(button.action)"
+            />
+          </span>
+        }
+      </div>
+      @if (linkBar(); as bar) {
+        <div class="exchange-content-viewer__link-bar" role="group" aria-label="Link">
+          <input
+            #linkField
+            class="exchange-content-viewer__link-input"
+            type="text"
+            inputmode="url"
+            placeholder="https://… (empty removes the link)"
+            aria-label="Link URL"
+            [value]="bar.url"
+            (input)="onLinkInput($event)"
+            (keydown)="onLinkKeydown($event)"
+          />
+          <ds-icon-button icon="check" variant="primary" title="Apply the link" (action)="applyLink()" />
+          <ds-icon-button icon="close" variant="default" title="Cancel" (action)="closeLinkBar()" />
+          @if (bar.error) {
+            <span class="exchange-content-viewer__link-error" role="alert">{{ bar.error }}</span>
+          }
+        </div>
+      }
+    }
   </header>
 
   @if (hasSaveProblem()) {
@@ -154,7 +190,8 @@
         [attr.aria-label]="editMode() === 'markdown' ? 'Edit ' + filename() : null"
         [attr.tabindex]="editMode() === 'markdown' ? 0 : null"
         [innerHTML]="mdHtml()"
-        (input)="onMarkdownInput()"
+        (input)="onMarkdownInput($event)"
+        (paste)="onMarkdownPaste($event)"
         (keydown)="editMode() === 'markdown' && onEditorKeydown($event)"
       ></div>
     } @else if (format() === 'html') {

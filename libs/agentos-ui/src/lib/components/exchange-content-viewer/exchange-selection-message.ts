@@ -39,27 +39,37 @@ function lineLabel(action: ExchangeSelectionAction): string {
 }
 
 /** What the agent is told about the answer it must give. */
-export function proposalInstructions(requestId: string): string {
+export function proposalInstructions(requestId: string, markdown = false): string {
   return [
     selectionRequestMarker(requestId),
     'Do NOT modify the file and do not call any tool that writes it: read it only if you need context.',
     'Answer with a short explanation, followed by exactly one fenced block whose info string is `proposal` and that holds ' +
       'the full replacement text for the selected passage (the passage only, not the whole file).',
+    ...(markdown
+      ? [
+          'The selection is given as markdown, and the proposal must be markdown too: it may contain headings, lists, ' +
+            'emphasis, links and similar, and is rendered as formatted content when accepted. Keep the structure of the ' +
+            'selection (for instance its heading levels) unless asked to change it.',
+        ]
+      : []),
     'If no change is appropriate, answer without that block.',
   ].join('\n')
 }
 
 /** The message to send to the agent for a selection action; [requestId] ties its answer back to the request. */
 export function buildSelectionMessage(action: ExchangeSelectionAction, requestId: string): string {
-  const fence = fenceFor(action.selection)
+  // A selection made in the rendered markdown goes as its markdown source, not as the flattened text.
+  const markdown = action.selectionMarkdown !== undefined
+  const shown = action.selectionMarkdown ?? action.selection
+  const fence = fenceFor(shown)
   const parts = [
     action.instruction.trim(),
-    `[Selection from ${qualifiedPath(action)}${lineLabel(action)}]\n${fence}${fenceLanguage(action.ref.path)}\n${action.selection}\n${fence}`,
+    `[Selection from ${qualifiedPath(action)}${lineLabel(action)}]\n${fence}${fenceLanguage(action.ref.path)}\n${shown}\n${fence}`,
   ]
   if (action.unsavedChanges) {
     parts.push('(The selection comes from unsaved edits in the editor: the file may not contain it yet.)')
   }
-  parts.push(proposalInstructions(requestId))
+  parts.push(proposalInstructions(requestId, markdown))
   parts.push(`[Files referenced: ${qualifiedPath(action)}]`)
   return parts.join('\n\n')
 }

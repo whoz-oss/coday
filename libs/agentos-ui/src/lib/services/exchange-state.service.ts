@@ -64,6 +64,11 @@ export type ExchangeSaveStatus = 'idle' | 'saving' | 'error' | 'conflict'
 export interface ExchangeSelectionAction {
   ref: ExchangeFileRef
   selection: string
+  /**
+   * The markdown source of the selection, when it was made in the rendered markdown document (turndown on the
+   * selected DOM): `# Title\n\nparagraph`, where `selection` is the flattened text. Sent to the agent instead of it.
+   */
+  selectionMarkdown?: string
   startLine?: number
   endLine?: number
   /** Offsets of the frozen selection in the editable text, to apply a proposal there later. */

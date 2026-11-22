@@ -42,7 +42,27 @@ import {
   trustSandboxedSrcdoc,
   withSelectionBridge,
 } from '../../services/exchange-html-srcdoc'
-import { htmlToMarkdown } from '../../services/exchange-markdown-convert'
+import {
+  htmlStringToMarkdown,
+  htmlToMarkdown,
+  rangeToMarkdown,
+  renderMarkdownFragment,
+} from '../../services/exchange-markdown-convert'
+import {
+  insertLink,
+  linkAtSelection,
+  MarkdownAction,
+  markdownActionFor,
+  removeLinks,
+  runMarkdownAction,
+  sanitizeLinkUrl,
+} from '../../services/exchange-markdown-commands'
+import {
+  applyBlockInputRule,
+  applyCodeFenceRule,
+  applyInlineInputRule,
+} from '../../services/exchange-markdown-input-rules'
+import { replaceRangeWithFragment } from '../../services/exchange-markdown-insert'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { locatePassage, rangeFromTextOffsets, rangeTextOffsets, squash } from '../../services/exchange-passage'
 import {
@@ -128,7 +148,26 @@ interface ViewerSelection {
 /** A selection frozen when the composer was opened. */
 interface FrozenSelection extends ViewerSelection {
   unsaved: boolean
+  /** Markdown source of the selection (turndown on the selected DOM), once computed: rendered markdown only. */
+  markdown?: string
 }
+
+/** Looks like markdown: a heading, list or quote marker at the start of a line, emphasis, code or a link. */
+const LOOKS_LIKE_MARKDOWN =
+  /^(?: {0,3}(?:#{1,6}[ \t]|[-*+][ \t]|\d+[.)][ \t]|>[ \t]?|```))|\*\*[^*\n]+\*\*|(?<![*\w])\*[^*\s][^*\n]*\*(?![*\w])|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\)/m
+
+/** The buttons of the formatting toolbar of the markdown editor. */
+const FORMAT_BUTTONS: { icon: string; title: string; action: MarkdownAction }[] = [
+  { icon: 'title', title: 'Heading 1 (Ctrl+Alt+1)', action: { kind: 'block', block: 'h1' } },
+  { icon: 'text_fields', title: 'Heading 2 (Ctrl+Alt+2)', action: { kind: 'block', block: 'h2' } },
+  { icon: 'format_bold', title: 'Bold (Ctrl+B)', action: { kind: 'inline', tag: 'strong' } },
+  { icon: 'format_italic', title: 'Italic (Ctrl+I)', action: { kind: 'inline', tag: 'em' } },
+  { icon: 'format_list_bulleted', title: 'Bulleted list (Ctrl+Shift+8)', action: { kind: 'list', list: 'ul' } },
+  { icon: 'format_list_numbered', title: 'Numbered list (Ctrl+Shift+7)', action: { kind: 'list', list: 'ol' } },
+  { icon: 'link', title: 'Link (Ctrl+K)', action: { kind: 'link' } },
+  { icon: 'code', title: 'Code (Ctrl+E)', action: { kind: 'inline', tag: 'code' } },
+  { icon: 'subject', title: 'Paragraph (Ctrl+Alt+0)', action: { kind: 'block', block: 'p' } },
+]
 
 interface CssHighlights {
   set(name: string, highlight: unknown): void
@@ -163,6 +202,31 @@ function wrapRangeInMarks(range: Range): void {
     target.parentNode?.insertBefore(mark, target)
     mark.appendChild(target)
   }
+}
+
+/** Plain text as DOM, for a paste that is not markdown: blank lines separate paragraphs, a line break stays one. */
+function plainTextFragment(text: string): DocumentFragment {
+  const fragment = document.createDocumentFragment()
+  const paragraphs = text
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .filter((paragraph) => paragraph.length > 0)
+  const inline = (target: Node, paragraph: string): void => {
+    paragraph.split('\n').forEach((line, index) => {
+      if (index > 0) target.appendChild(document.createElement('br'))
+      if (line) target.appendChild(document.createTextNode(line))
+    })
+  }
+  if (paragraphs.length <= 1) {
+    inline(fragment, paragraphs[0] ?? '')
+    return fragment
+  }
+  for (const paragraph of paragraphs) {
+    const block = document.createElement('p')
+    inline(block, paragraph)
+    fragment.appendChild(block)
+  }
+  return fragment
 }
 
 function unwrapMarks(root: Element): void {
@@ -269,6 +333,7 @@ export class ExchangeContentViewerComponent {
   private readonly mirror = viewChild<ElementRef<HTMLElement>>('mirror')
   private readonly previewFrame = viewChild<ElementRef<HTMLIFrameElement>>('previewFrame')
   private readonly body = viewChild<ElementRef<HTMLElement>>('body')
+  private readonly linkField = viewChild<ElementRef<HTMLInputElement>>('linkField')
   /** The rendered markdown, or the <pre> of a read-only text file: where DOM selections and highlights live. */
   private readonly docRoot = viewChild<ElementRef<HTMLElement>>('docRoot')
 
@@ -305,6 +370,14 @@ export class ExchangeContentViewerComponent {
   protected readonly acceptError = signal<string | null>(null)
   /** Whether the confirmation to leave the file with unsaved changes is showing. */
   protected readonly pendingDiscard = signal(false)
+  /** The buttons of the formatting toolbar (markdown edited in place). */
+  protected readonly formatButtons = FORMAT_BUTTONS
+  /** The small input that asks for the URL of a link (not `window.prompt`), null while closed. */
+  protected readonly linkBar = signal<{ url: string; error: string | null } | null>(null)
+  /** The selection of the document when the link input opened: the focus leaves it, the link goes there. */
+  private linkRange: Range | null = null
+  /** The markdown source of the frozen selection being computed (turndown is lazy-loaded). */
+  private markdownPending: Promise<void> | null = null
 
   constructor() {
     ensureHighlightStyle()
@@ -345,6 +418,9 @@ export class ExchangeContentViewerComponent {
           this.prefill.set('')
           this.acceptError.set(null)
           this.pendingDiscard.set(false)
+          this.linkBar.set(null)
+          this.linkRange = null
+          this.markdownPending = null
         } else if (content !== previous.content) {
           if (this.editMode() === 'markdown' || this.editMode() === 'html') {
             if (content === this.lastSaved) {
@@ -370,7 +446,13 @@ export class ExchangeContentViewerComponent {
       const request = this.request()
       untracked(() => {
         if (request && !this.frozen()) {
-          this.frozen.set({ text: request.selection, from: request.from, to: request.to, unsaved: false })
+          this.frozen.set({
+            text: request.selection,
+            from: request.from,
+            to: request.to,
+            unsaved: false,
+            ...(request.selectionMarkdown !== undefined ? { markdown: request.selectionMarkdown } : {}),
+          })
         }
       })
     })
@@ -602,8 +684,14 @@ export class ExchangeContentViewerComponent {
   }
 
   /** The user typed in the rendered markdown: it is dirty from now on, and converted back when saved. */
-  protected onMarkdownInput(): void {
-    if (this.editMode() === 'markdown') this.mdEdited.set(true)
+  protected onMarkdownInput(event?: Event): void {
+    if (this.editMode() !== 'markdown') return
+    // `**text**` / `*text*` / `code` turn into their formatting when the closing marker is typed.
+    const root = this.docRoot()?.nativeElement
+    const selection = window.getSelection()
+    const typed = !(event instanceof InputEvent) || event.inputType === 'insertText'
+    if (typed && root && selection) applyInlineInputRule(root, selection)
+    this.mdEdited.set(true)
   }
 
   protected onEditorKeydown(event: KeyboardEvent): void {
@@ -613,7 +701,135 @@ export class ExchangeContentViewerComponent {
     } else if (event.key === 'Escape') {
       // Escape never closes the panel around unsaved edits; it closes the composer, when there is one.
       event.stopPropagation()
-      if (this.composerShown()) this.closeComposer()
+      if (this.linkBar()) this.closeLinkBar()
+      else if (this.composerShown()) this.closeComposer()
+    } else if (this.editMode() === 'markdown') {
+      this.onMarkdownKeydown(event)
+    }
+  }
+
+  /** Shortcuts of the markdown editor, and the block input rules (typed markers that become blocks). */
+  private onMarkdownKeydown(event: KeyboardEvent): void {
+    const root = this.docRoot()?.nativeElement
+    const selection = window.getSelection()
+    if (!root || !selection) return
+    const action = markdownActionFor(event)
+    if (action) {
+      event.preventDefault()
+      this.runFormat(action)
+      return
+    }
+    if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return
+    if (event.key === ' ' && applyBlockInputRule(root, selection)) {
+      event.preventDefault()
+      this.mdEdited.set(true)
+    } else if (event.key === 'Enter' && !event.shiftKey && applyCodeFenceRule(root, selection)) {
+      event.preventDefault()
+      this.mdEdited.set(true)
+    }
+  }
+
+  // ── Formatting (toolbar and shortcuts) ────────────────────────────────────────────────────────────────────
+  /** Runs a formatting action on the selection of the editor; the draft is dirty when it changed the document. */
+  protected runFormat(action: MarkdownAction): void {
+    if (action.kind === 'link') {
+      this.openLinkBar()
+      return
+    }
+    const root = this.docRoot()?.nativeElement
+    const selection = window.getSelection()
+    if (this.editMode() !== 'markdown' || !root || !selection) return
+    if (!this.selectionInEditor(root, selection)) root.focus()
+    if (runMarkdownAction(root, selection, action)) this.mdEdited.set(true)
+  }
+
+  private selectionInEditor(root: HTMLElement, selection: Selection): boolean {
+    return selection.rangeCount > 0 && root.contains(selection.getRangeAt(0).startContainer)
+  }
+
+  /** Opens the small URL input (never `window.prompt`), remembering where in the document the link goes. */
+  protected openLinkBar(): void {
+    const root = this.docRoot()?.nativeElement
+    const selection = window.getSelection()
+    if (this.editMode() !== 'markdown' || !root || !selection || !this.selectionInEditor(root, selection)) return
+    this.linkRange = selection.getRangeAt(0).cloneRange()
+    this.linkBar.set({ url: linkAtSelection(root, selection) ?? '', error: null })
+    afterNextRender(() => this.linkField()?.nativeElement.focus(), { injector: this.injector })
+  }
+
+  protected onLinkInput(event: Event): void {
+    this.linkBar.set({ url: (event.target as HTMLInputElement).value, error: null })
+  }
+
+  protected onLinkKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      this.applyLink()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      this.closeLinkBar()
+    }
+  }
+
+  /** Links the selection to the typed URL, when it is acceptable: http(s), mailto, a relative path or a `#` anchor. */
+  protected applyLink(): void {
+    const bar = this.linkBar()
+    const root = this.docRoot()?.nativeElement
+    const selection = window.getSelection()
+    if (!bar || !root || !selection || !this.linkRange) return
+    if (bar.url.trim() && sanitizeLinkUrl(bar.url) === null) {
+      this.linkBar.set({ ...bar, error: 'Only http(s), mailto, relative and # links are allowed' })
+      return
+    }
+    root.focus()
+    selection.removeAllRanges()
+    selection.addRange(this.linkRange)
+    const changed = bar.url.trim() ? insertLink(root, selection, bar.url) : removeLinks(root, selection)
+    if (changed) this.mdEdited.set(true)
+    this.closeLinkBar()
+  }
+
+  /** Closes the URL input and puts the caret back in the document. */
+  protected closeLinkBar(): void {
+    this.linkBar.set(null)
+    const root = this.docRoot()?.nativeElement
+    const selection = window.getSelection()
+    if (root && selection && this.linkRange) {
+      root.focus()
+      selection.removeAllRanges()
+      selection.addRange(this.linkRange)
+    }
+    this.linkRange = null
+  }
+
+  /**
+   * Paste into the rendered markdown. Never raw HTML: pasted HTML goes through turndown (parsed inertly) and back
+   * through the sanitized markdown pipeline, text that looks like markdown is rendered by that pipeline, and any
+   * other text is inserted as plain text.
+   */
+  protected onMarkdownPaste(event: ClipboardEvent): void {
+    if (this.editMode() !== 'markdown') return
+    const root = this.docRoot()?.nativeElement
+    const selection = window.getSelection()
+    if (!root || !selection || !this.selectionInEditor(root, selection)) return
+    event.preventDefault()
+    const html = event.clipboardData?.getData('text/html') ?? ''
+    const text = event.clipboardData?.getData('text/plain') ?? ''
+    const range = selection.getRangeAt(0)
+    const insert = (fragment: DocumentFragment): void => {
+      replaceRangeWithFragment(root, range, fragment)
+      selection.removeAllRanges()
+      selection.addRange(range)
+      this.mdEdited.set(true)
+    }
+    if (html.trim()) {
+      void htmlStringToMarkdown(html).then(
+        (markdown) => insert(markdown ? renderMarkdownFragment(markdown) : plainTextFragment(text)),
+        () => insert(plainTextFragment(text))
+      )
+    } else if (text) {
+      insert(LOOKS_LIKE_MARKDOWN.test(text) ? renderMarkdownFragment(text) : plainTextFragment(text))
     }
   }
 
@@ -865,6 +1081,30 @@ export class ExchangeContentViewerComponent {
     const selection = this.selection()
     if (this.frozen() || !selection) return
     this.frozen.set({ ...selection, unsaved: this.dirty() })
+    this.computeSelectionMarkdown()
+  }
+
+  /**
+   * The markdown source of the frozen selection of the rendered document (turndown on a clone of the selected DOM:
+   * an h1 and a paragraph give `# Title\n\nparagraph`). The text stays for the highlight and the anchoring; this is
+   * what the agent is shown and what the word diff compares. The clone is taken now, the conversion is async.
+   */
+  private computeSelectionMarkdown(): void {
+    const range = this.liveRange
+    if (this.format() !== 'markdown' || !range || this.textEditor()) return
+    const frozen = this.frozen()
+    if (!frozen) return
+    const pending = rangeToMarkdown(range).then(
+      (markdown) => {
+        const current = this.frozen()
+        if (current === frozen && markdown) this.frozen.set({ ...current, markdown })
+      },
+      () => undefined
+    )
+    this.markdownPending = pending
+    void pending.finally(() => {
+      if (this.markdownPending === pending) this.markdownPending = null
+    })
   }
 
   protected onComposerSent(instruction: string): void {
@@ -872,17 +1112,24 @@ export class ExchangeContentViewerComponent {
     const selection = this.frozen()
     if (!selection) return
     this.prefill.set('')
-    this.selectionActionRequested.emit({
-      ref: this.file(),
-      selection: selection.text,
-      ...(selection.startLine !== undefined && selection.endLine !== undefined
-        ? { startLine: selection.startLine, endLine: selection.endLine }
-        : {}),
-      from: selection.from,
-      to: selection.to,
-      instruction,
-      unsavedChanges: selection.unsaved,
-    })
+    const emit = (): void => {
+      const frozen = this.frozen() ?? selection
+      this.selectionActionRequested.emit({
+        ref: this.file(),
+        selection: frozen.text,
+        ...(frozen.markdown !== undefined ? { selectionMarkdown: frozen.markdown } : {}),
+        ...(frozen.startLine !== undefined && frozen.endLine !== undefined
+          ? { startLine: frozen.startLine, endLine: frozen.endLine }
+          : {}),
+        from: frozen.from,
+        to: frozen.to,
+        instruction,
+        unsavedChanges: frozen.unsaved,
+      })
+    }
+    // The markdown source is still being computed: the agent gets it, not the flattened text.
+    if (this.markdownPending) void this.markdownPending.then(emit)
+    else emit()
   }
 
   /** Escape in the composer: nothing is asked, the selection and its highlight go. */
@@ -936,10 +1183,15 @@ export class ExchangeContentViewerComponent {
     return status === 'proposed' || status === 'answered' || status === 'failed'
   })
 
-  /** Word-level diff of the selected passage against the proposal. */
+  /**
+   * Word-level diff of the selected passage against the proposal, in markdown on both sides when the passage was
+   * selected in the rendered document: a changed heading shows as `# Title` changing, not as flattened text.
+   */
   protected readonly proposalDiff = computed(() => {
     const request = this.request()
-    return request?.status === 'proposed' ? diffWords(request.selection, request.proposal ?? '') : []
+    if (request?.status !== 'proposed') return []
+    const before = this.frozen()?.markdown ?? request.selectionMarkdown ?? request.selection
+    return diffWords(before, request.proposal ?? '')
   })
 
   protected onReject(): void {
@@ -984,7 +1236,8 @@ export class ExchangeContentViewerComponent {
       this.finishRequest()
       return
     }
-    // Rendered markdown: the passage is a range of the document, replaced by the proposal as text.
+    // Rendered markdown: the passage is a range of the document, replaced by the proposal RENDERED (markdown through
+    // the sanitized pipeline), never inserted as markdown text.
     const root = this.docRoot()?.nativeElement
     if (!root) return
     this.clearHighlight()
@@ -996,8 +1249,7 @@ export class ExchangeContentViewerComponent {
       this.applyHighlight()
       return
     }
-    range.deleteContents()
-    range.insertNode(document.createTextNode(proposal))
+    replaceRangeWithFragment(root, range, renderMarkdownFragment(proposal))
     root.normalize()
     this.mdEdited.set(true)
     this.finishRequest()

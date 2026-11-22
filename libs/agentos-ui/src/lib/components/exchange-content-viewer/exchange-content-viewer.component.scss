@@ -25,6 +25,52 @@
   padding: 0.5rem 0.5rem 0.5rem 0.75rem;
   border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
   flex-shrink: 0;
+  // The formatting toolbar of an editable markdown file takes a row of its own under the buttons.
+  flex-wrap: wrap;
+}
+
+.exchange-content-viewer__toolbar {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.exchange-content-viewer__toolbar-button {
+  display: inline-flex;
+}
+
+.exchange-content-viewer__link-bar {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.exchange-content-viewer__link-input {
+  flex: 1;
+  min-width: 8rem;
+  box-sizing: border-box;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text, #1d1d1f);
+  background: var(--color-bg, #ffffff);
+  border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-md, 0);
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-accent, var(--color-primary, #007aff));
+  }
+}
+
+.exchange-content-viewer__link-error {
+  flex: 1 0 100%;
+  font-size: 0.75rem;
+  color: var(--color-error, #ff3b30);
 }
 
 .exchange-content-viewer__filename {

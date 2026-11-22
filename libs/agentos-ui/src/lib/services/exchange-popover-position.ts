@@ -25,8 +25,11 @@ export interface PopoverPosition {
 /** Space kept between the popover and the edges of its container. */
 export const POPOVER_MARGIN = 8
 
-/** Width of the floating popovers (composer, waiting line, proposal), before the container narrows it. */
-export const POPOVER_MAX_WIDTH = 420
+/** Preferred width of the floating popovers (composer, waiting line, proposal). */
+export const POPOVER_MAX_WIDTH = 520
+
+/** Narrowest width a popover takes while the container has the room for it. */
+export const POPOVER_MIN_WIDTH = 360
 
 /**
  * The anchor of a popover from the client rects of a selection (a Range, or the mark of a mirror layer): vertically
@@ -43,9 +46,14 @@ export function anchorFromRects(rects: ArrayLike<PopoverRect>): PopoverRect | nu
   return { left: first.left, top: last.top, right: last.right, bottom: last.bottom }
 }
 
-/** Width of a popover inside [container]: `min(420px, container width - margins)`, never negative. */
+/**
+ * Width of a popover inside [container]: preferred 520px, at least 360px, never wider than the container minus the
+ * margins. In a container narrower than 360px, the full container width minus the margins. Never negative.
+ */
 export function popoverWidth(container: PopoverRect, margin = POPOVER_MARGIN): number {
-  return Math.max(0, Math.min(POPOVER_MAX_WIDTH, container.right - container.left - 2 * margin))
+  const available = Math.max(0, container.right - container.left - 2 * margin)
+  if (container.right - container.left < POPOVER_MIN_WIDTH) return available
+  return Math.min(Math.max(POPOVER_MIN_WIDTH, Math.min(POPOVER_MAX_WIDTH, available)), available)
 }
 
 /**

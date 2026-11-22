@@ -11,6 +11,8 @@ export interface ExchangeSelectionRequest {
   from: number
   to: number
   selection: string
+  /** Markdown source of the selection, when it was made in the rendered markdown (what the agent was shown). */
+  selectionMarkdown?: string
   instruction: string
   status: ExchangeSelectionRequestStatus
   /** The replacement text proposed by the agent, when `status` is 'proposed'. */

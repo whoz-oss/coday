@@ -10,9 +10,16 @@ import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeContentViewerComponent } from './exchange-content-viewer.component'
 
 const mockConvert = jest.fn()
+// Only the save conversion is mocked; the markdown source of a selection and the rendering of a proposal are real.
 jest.mock('../../services/exchange-markdown-convert', () => ({
+  ...jest.requireActual('../../services/exchange-markdown-convert'),
   htmlToMarkdown: (root: HTMLElement) => mockConvert(root),
 }))
+
+/** Lets the lazy-loaded turndown resolve (the markdown source of a selection is computed asynchronously). */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0))
+}
 
 describe('ExchangeContentViewerComponent in-place editing, composer and proposals', () => {
   let fixture: ComponentFixture<ExchangeContentViewerComponent>
@@ -342,7 +349,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       expect(composerInput()).toBeNull()
       selectInMarkdown('two')
       expect(composerInput()).not.toBeNull()
-      expect(composerInput()!.placeholder).toBe('Ask an agent about the selection… type @ to pick an agent')
+      expect(composerInput()!.placeholder).toBe('Ask an agent… (@ to pick one)')
       expect(el().querySelector('.selection-composer ds-icon-button[icon="send"]')).not.toBeNull()
       expect(el().querySelector('.exchange-content-viewer__ask')).toBeNull()
     })
@@ -373,18 +380,20 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       expect(onInput).toHaveBeenCalledTimes(1)
     })
 
-    it('sends the payload on Enter, following the user preference', () => {
+    it('sends the payload on Enter, following the user preference', async () => {
       create('notes/todo.md', 'one two three')
       const actions: ExchangeSelectionAction[] = []
       fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
       selectInMarkdown('two')
       typeInComposer('@Writer translate')
       composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      await flush()
       expect(shouldSend).toHaveBeenCalled()
       expect(actions).toEqual([
         {
           ref: ref('notes/todo.md'),
           selection: 'two',
+          selectionMarkdown: 'two',
           from: 4,
           to: 7,
           instruction: '@Writer translate',
@@ -405,13 +414,14 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       expect(run).not.toHaveBeenCalled()
     })
 
-    it('sends with the send button', () => {
+    it('sends with the send button', async () => {
       create()
       const run = jest.fn()
       fixture.componentInstance.selectionActionRequested.subscribe(run)
       selectInMarkdown('two')
       typeInComposer('go')
       ;(el().querySelector('.selection-composer ds-icon-button button') as HTMLButtonElement).click()
+      await flush()
       expect(run).toHaveBeenCalledWith(expect.objectContaining({ instruction: 'go', selection: 'two' }))
     })
 
@@ -426,7 +436,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       expect(run).not.toHaveBeenCalled()
     })
 
-    it('flags a selection taken from unsaved edits', () => {
+    it('flags a selection taken from unsaved edits', async () => {
       create()
       const actions: ExchangeSelectionAction[] = []
       fixture.componentInstance.selectionActionRequested.subscribe((action) => actions.push(action))
@@ -434,6 +444,7 @@ describe('ExchangeContentViewerComponent in-place editing, composer and proposal
       selectInMarkdown('two')
       typeInComposer('fix')
       composerInput()!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+      await flush()
       expect(actions[0]!.unsavedChanges).toBe(true)
     })
 

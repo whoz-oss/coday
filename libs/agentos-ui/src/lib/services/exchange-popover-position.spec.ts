@@ -22,6 +22,7 @@ describe('anchorFromRects', () => {
 describe('computePopoverPosition', () => {
   const container = { left: 100, top: 50, right: 700, bottom: 450 }
   const size = { width: 420, height: 80 }
+  // (a popover size independent of popoverWidth: these tests are about the position only)
   const anchor = (left: number, top: number, right = left + 60, bottom = top + 20) => ({ left, top, right, bottom })
 
   it('goes under the anchor, left-aligned with it, relative to the container', () => {
@@ -67,11 +68,20 @@ describe('computePopoverPosition', () => {
 })
 
 describe('popoverWidth', () => {
-  it('is 420px in a wide container', () => {
-    expect(popoverWidth({ left: 0, top: 0, right: 900, bottom: 10 })).toBe(420)
+  it('is the preferred 520px in a wide container', () => {
+    expect(popoverWidth({ left: 0, top: 0, right: 900, bottom: 10 })).toBe(520)
   })
 
-  it('is the container width minus the margins in a narrow one, never negative', () => {
+  it('shrinks with the container minus the margins, down to 360px', () => {
+    expect(popoverWidth({ left: 0, top: 0, right: 500, bottom: 10 })).toBe(484)
+    expect(popoverWidth({ left: 0, top: 0, right: 376, bottom: 10 })).toBe(360)
+  })
+
+  it('is never wider than the container minus the margins, even under the 360px minimum', () => {
+    expect(popoverWidth({ left: 0, top: 0, right: 370, bottom: 10 })).toBe(354)
+  })
+
+  it('is the full body width minus the margins below a 360px body, never negative', () => {
     expect(popoverWidth({ left: 100, top: 0, right: 400, bottom: 10 })).toBe(284)
     expect(popoverWidth({ left: 0, top: 0, right: 4, bottom: 10 })).toBe(0)
   })
