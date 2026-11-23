@@ -6,8 +6,8 @@ description: AgentOS backend work in agentos/ (Kotlin, Spring Boot 3, Spring AI,
 # AgentOS backend
 
 Use this skill for any change under `agentos/`: Kotlin, Spring Boot 3, Spring AI, Spring Data Neo4j, the PF4J
-plugin system and the Gradle composite build. Do not use it to change `apps/` or `libs/`: those belong to the
-Angular and TypeScript skills.
+plugin system and the Gradle composite build. Do not use it to change `apps/` or `libs/`: browser-side code
+belongs to the `angular-frontend` skill.
 
 ## Read before coding
 
