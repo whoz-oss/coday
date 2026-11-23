@@ -96,6 +96,22 @@ In a filesystem integration config (`<configPath>/integrations/<NAME>.yaml`) wri
 [plugin-system.md](plugin-system.md)); configs saved through the API or the UI must carry the absolute path
 themselves, a relative path is refused at parse time.
 
+Text values under `parameters` in filesystem integration configs also resolve Spring-style placeholders when
+the service loads the file. Any value available to the service's Spring `Environment`, including environment
+variables, can be used without registering its name in AgentOS. The form `${NAME:default}` uses `default` when
+`NAME` is unset; a placeholder without a default must resolve or the integration config fails to load. For
+example, these two fields can share one per-process endpoint while keeping a default for the standard runtime:
+
+```yaml
+parameters:
+  spec:
+    url: "http://${SERVICE_HOST:localhost}:${SERVICE_PORT:8080}/openapi.yaml"
+  baseUrl: "http://${SERVICE_HOST:localhost}:${SERVICE_PORT:8080}"
+```
+
+Resolution applies to textual parameter values, not integration names, types, descriptions or YAML keys. It
+happens as each AgentOS process loads the filesystem config, so each instance can use its own environment.
+
 **Trust boundary.** Whoever can write the namespace config directory can point the plugin at any file the
 service process can read, the same boundary as the `rootPath` of a `FILE_ACCESS` integration. Beyond the
 extension allowlist, no path restriction is applied or promised (no escaping guard, symbolic links are

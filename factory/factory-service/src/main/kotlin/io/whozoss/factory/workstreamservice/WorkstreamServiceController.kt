@@ -138,7 +138,7 @@ class WorkstreamServiceController(
                 "status" to projection?.get("status"),
                 "steps" to steps,
                 "blockers" to actions.blockers.take(MAX_ITEMS).map(::blockerView),
-                // Only retry is advertised: it is the one action this facade can execute.
+                // Only retry is advertised: this facade can request an eligible retry, not dispatch one.
                 "allowedActions" to actions.allowedActions
                     .filter { it.type == WorkflowActionTypes.RETRY }
                     .take(MAX_ITEMS)
@@ -317,7 +317,7 @@ class WorkstreamServiceController(
     }
 
     @PostMapping("/workflows/{workflowId}/retries", produces = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(operationId = "request_agent_retry", summary = "Request a governed retry of a blocked step.")
+    @Operation(operationId = "request_agent_retry", summary = "Request a human-approved retry for an eligible blocked agent step.")
     fun requestRetry(
         @RequestParam(name = "namespaceId") namespaceId: String,
         @PathVariable workflowId: String,

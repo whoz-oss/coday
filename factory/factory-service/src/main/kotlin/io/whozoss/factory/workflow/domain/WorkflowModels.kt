@@ -139,7 +139,7 @@ data class WorkflowDefinitionInput(
 ) {
     /** The optional execution block as a normalized definition fragment. */
     val execution: Map<String, Any?>?
-        get() = executionPolicy?.let { mapOf("plugin" to it.plugin) }
+        get() = executionPolicy?.toJson()
 }
 
 /**
@@ -148,16 +148,17 @@ data class WorkflowDefinitionInput(
  * by a `FactoryWorkflowExecutionPolicy` PF4J extension, resolved by the host at
  * start time before any external effect.
  */
-data class WorkflowExecutionPolicy(val plugin: String) {
+data class WorkflowExecutionPolicy(val plugin: String, val humanCheckpointPolicyRequired: Boolean = false) {
     /** The normalized definition/projection fragment (`{ "plugin": "<id>" }`). */
-    fun toJson(): Map<String, Any?> = mapOf("plugin" to plugin)
+    fun toJson(): Map<String, Any?> = mapOf("plugin" to plugin) +
+        if (humanCheckpointPolicyRequired) mapOf("humanCheckpointPolicyRequired" to true) else emptyMap()
 }
 
 /** Extracts the optional execution policy from a normalized definition map. */
 fun executionPolicyOf(definition: Map<String, Any?>): WorkflowExecutionPolicy? {
     val execution = definition["execution"] as? Map<*, *> ?: return null
     val plugin = execution["plugin"] as? String ?: return null
-    return WorkflowExecutionPolicy(plugin)
+    return WorkflowExecutionPolicy(plugin, execution["humanCheckpointPolicyRequired"] == true)
 }
 
 /** A validated workflow definition aggregate as persisted. */

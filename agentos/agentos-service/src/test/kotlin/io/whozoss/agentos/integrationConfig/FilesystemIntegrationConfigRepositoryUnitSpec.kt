@@ -14,6 +14,7 @@ import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
 import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.springframework.mock.env.MockEnvironment
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
@@ -176,6 +177,95 @@ class FilesystemIntegrationConfigRepositoryUnitSpec :
             result.integrationType shouldBe "JIRA"
             result.description shouldBe "Team Jira instance"
             result.parameters?.get("baseUrl")?.textValue() shouldBe "https://company.atlassian.net"
+        }
+
+        "findByNamespaceId resolves environment placeholders in nested parameter values" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "factory.yaml",
+                """
+                name: FACTORY_WORKER
+                integrationType: HTTP_API
+                parameters:
+                  spec:
+                    url: "http://coday-factory:${'$'}{FACTORY_PORT:8141}/api/openapi.yaml"
+                  baseUrl: "http://coday-factory:${'$'}{FACTORY_PORT:8141}"
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+            val repository =
+                FilesystemIntegrationConfigRepository(
+                    delegate = delegate,
+                    namespaceRepository = nsRepo,
+                    ttl = Duration.ofMinutes(5),
+                    environment = MockEnvironment().withProperty("FACTORY_PORT", "4106"),
+                )
+
+            val result = repository.findByNamespaceId(namespaceId).single()
+
+            result.parameters?.get("spec")?.get("url")?.textValue() shouldBe
+                "http://coday-factory:4106/api/openapi.yaml"
+            result.parameters?.get("baseUrl")?.textValue() shouldBe "http://coday-factory:4106"
+        }
+
+        "findByNamespaceId uses the placeholder default when an environment property is unset" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "factory.yaml",
+                """
+                name: FACTORY_WORKER
+                integrationType: HTTP_API
+                parameters:
+                  baseUrl: "http://coday-factory:${'$'}{FACTORY_PORT:8141}"
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+            val repository =
+                FilesystemIntegrationConfigRepository(
+                    delegate = delegate,
+                    namespaceRepository = nsRepo,
+                    ttl = Duration.ofMinutes(5),
+                    environment = MockEnvironment(),
+                )
+
+            val result = repository.findByNamespaceId(namespaceId).single()
+
+            result.parameters?.get("baseUrl")?.textValue() shouldBe "http://coday-factory:8141"
+        }
+
+        "findByNamespaceId skips a filesystem config with an unresolved required placeholder" {
+            val root = tempDir()
+            writeYaml(
+                integrationsDir(root),
+                "factory.yaml",
+                """
+                name: FACTORY_WORKER
+                integrationType: HTTP_API
+                parameters:
+                  baseUrl: "http://coday-factory:${'$'}{MISSING_FACTORY_PORT}"
+                """.trimIndent(),
+            )
+
+            val delegate = mockk<IntegrationConfigRepository>()
+            val nsRepo = nsRepoWith(namespaceId, root.toString())
+            every { delegate.findByNamespaceId(namespaceId) } returns emptyList()
+            val repository =
+                FilesystemIntegrationConfigRepository(
+                    delegate = delegate,
+                    namespaceRepository = nsRepo,
+                    ttl = Duration.ofMinutes(5),
+                    environment = MockEnvironment(),
+                )
+
+            repository.findByNamespaceId(namespaceId) shouldHaveSize 0
         }
 
         "findByNamespaceId uses stable UUID derived from namespace and integration name" {

@@ -1,6 +1,7 @@
 package io.whozoss.factory.agentattempt.domain
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.workflow.domain.WorkflowTicket
 
 /** Strict validation of the structured business result schema. */

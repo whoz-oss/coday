@@ -72,6 +72,9 @@ export class ActionBarComponent {
   } | null>(null)
   readonly answeringQuestionId = input<string | null>(null)
   readonly questionFeedback = input<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(null)
+  readonly retryingStepId = input<string | null>(null)
+  readonly retryRefreshPending = input(false)
+  readonly retryFeedback = input<{ stepId: string; code: string; message: string; status: number } | null>(null)
   readonly resumingResearchStepId = input<string | null>(null)
   readonly researchResumptionFeedback = input<{
     stepId: string
@@ -110,7 +113,11 @@ export class ActionBarComponent {
   )
 
   protected readonly hasActions = computed(
-    () => this.allowedActions().length > 0 || this.agentQuestions().length > 0 || this.agentQuestionsError() !== null
+    () =>
+      this.allowedActions().length > 0 ||
+      this.agentQuestions().length > 0 ||
+      this.agentQuestionsError() !== null ||
+      this.retryFeedback() !== null
   )
   protected readonly hasBlockers = computed(() => this.blockers().length > 0)
 
@@ -255,7 +262,7 @@ export class ActionBarComponent {
   }
 
   protected requestRetry(action: AllowedAction): void {
-    if (!action.stepId) return
+    if (!action.stepId || this.retryingStepId() !== null || this.retryRefreshPending()) return
     const intent: RetryIntent = { stepId: action.stepId, reasonCode: 'human_retry' }
     if (action.expectedRevision !== undefined) intent.expectedRevision = action.expectedRevision
     this.retryRequested.emit(intent)

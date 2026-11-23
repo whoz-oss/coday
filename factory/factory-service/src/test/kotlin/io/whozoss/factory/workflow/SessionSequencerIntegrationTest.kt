@@ -290,6 +290,7 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         val workflowId = "wf-waiting-recheck"
         startSession("waiting-recheck", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))
         val capability = mockk<CapabilityExecutionService>()
+        every { capability.canResumeWaitingAgentStep(scope, namespace, workflowId, "s1") } returns false
         every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
             CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired("s1", "architect"), attemptId = "attempt")
         val runner = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub)
@@ -299,7 +300,7 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
             CapabilityExecution(CapabilityOutcome.AgentCompleted("s1", "architect", "PASS", emptyMap()), attemptId = "successor")
 
         assertThat(runner.runSession(scope, namespace, workflowId, repoRoot).status).isEqualTo(WorkflowStatuses.COMPLETED)
-        verify(exactly = 2) { capability.canResumeWaitingAgentStep(scope, namespace, workflowId, "s1") }
+        verify(exactly = 3) { capability.canResumeWaitingAgentStep(scope, namespace, workflowId, "s1") }
         verify(exactly = 0) { capability.hasFinalizedAttempt(any(), any(), any(), any()) }
     }
 
@@ -810,6 +811,36 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(statusOf(workflowId, "s3")).isEqualTo(WorkflowStatuses.COMPLETED)
         val state = sessionRunService.sessionState(scope, namespace, workflowId)!!
         assertThat(state.status).isEqualTo(WorkflowStatuses.COMPLETED)
+    }
+
+    @Test
+    fun `two independent human gates complete the workflow only after both approvals`() {
+        writeScript("pass", "exit 0")
+        writeManifest("check" to "./factory/verification/pass")
+        val workflowId = "wf-two-human-gates"
+        startSession("two-human-gates", workflowId, listOf(
+            stepJson("review", "code", "check", emptyList()),
+            stepJson("technical", "human", "reviewer", listOf("review")),
+            stepJson("functional", "human", "reviewer", listOf("review")),
+        ))
+
+        assertThat(sessionRunService.runSession(scope, namespace, workflowId, repoRoot).status)
+            .isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        val opened = interactionRepository.list(scope, namespace, workflowId, openOnly = true).associateBy { it.stepId }
+        assertThat(opened.keys).containsExactlyInAnyOrder("technical", "functional")
+
+        val technical = opened.getValue("technical")
+        workflowService.replyInteraction(scope, namespace, workflowId, technical.interactionId,
+            technical.revision, "approve", null, "alice", repoRoot)
+        assertThat(sessionRunService.sessionState(scope, namespace, workflowId)?.status)
+            .isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+
+        val functional = interactionRepository.find(scope, namespace, workflowId,
+            opened.getValue("functional").interactionId)!!
+        workflowService.replyInteraction(scope, namespace, workflowId, functional.interactionId,
+            functional.revision, "approve", null, "bob", repoRoot)
+        assertThat(sessionRunService.sessionState(scope, namespace, workflowId)?.status)
+            .isEqualTo(WorkflowStatuses.COMPLETED)
     }
 
     @Test

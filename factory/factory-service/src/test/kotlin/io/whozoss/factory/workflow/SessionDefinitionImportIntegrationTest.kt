@@ -44,9 +44,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
  *
  * Extends the shared [Neo4jDomainIntegrationTest] fixture (one Spring context, one
  * in-process embedded Neo4j) — no new `@SpringBootTest` variant. Covers:
- *  - the bundled `forge-controller-v1-searcher` definition loads, validates and
- *    registers through the definition service (import/upsert surface), carrying
- *    its `execution` plugin selection;
+ *  - the removed legacy Forge controller is not imported;
  *  - the seeder imports the bundled catalogue idempotently;
  *  - a session run persists a projection whose steps carry the lane
  *    (`agent|code|human`), the actor name, the status, the execution window and
@@ -206,47 +204,8 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
     // ----- import & seed -------------------------------------------------
 
     @Test
-    fun `bundled forge controller session definition loads, validates and registers`() {
-        val records = catalogue.load()
-        val record = records.first { it.workflowType == FORGE_CONTROLLER_TYPE }
-
-        assertThat(record.version).isEqualTo("1.0.0")
-        @Suppress("UNCHECKED_CAST")
-        val steps = record.definition["steps"] as List<Map<String, Any?>>
-        assertThat(steps.map { it["id"] }).containsExactly(
-            "product-specification",
-            "product-approval",
-            "ux-assessment",
-            "technical-assessment",
-            "ux-design",
-            "codebase-research",
-            "technical-design",
-            "specification-approval",
-            "frontend-implementation",
-            "frontend-verification",
-            "backend-implementation",
-            "backend-verification",
-            "code-review",
-            "functional-approval",
-        )
-        // The controller catalogue currently declares only `agent` and `human`
-        // lanes: its two verification steps are agent-driven. Running a build or
-        // a test suite is a deterministic command and therefore belongs to the
-        // `code` lane (an actor must not be its own oracle) — restoring that lane
-        // is a pending catalogue decision, NOT a test relaxation.
-        @Suppress("UNCHECKED_CAST")
-        val kinds = steps.map { (it["responsibility"] as Map<String, Any?>)["kind"] }.toSet()
-        assertThat(kinds).isEqualTo(setOf("agent", "human"))
-
-        // The definition selects the Forge execution plugin; the catalogue must
-        // carry that selection through to the registered record.
-        assertThat(record.executionPolicy?.plugin).isEqualTo("forge")
-        assertThat(record.definition["execution"]).isEqualTo(mapOf("plugin" to "forge"))
-
-        workflowService.registerDefinition(scope, record)
-        val fetched = workflowService.getDefinition(scope, FORGE_CONTROLLER_TYPE, "1.0.0")
-        assertThat(fetched).isNotNull
-        assertThat(fetched!!["definitionHash"]).isEqualTo(record.definitionHash)
+    fun `legacy forge controller is not imported from bundled resources`() {
+        assertThat(catalogue.load().map { it.workflowType }).doesNotContain(FORGE_CONTROLLER_TYPE)
     }
 
     @Test
@@ -331,6 +290,38 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(resumedHuman["status"]).isEqualTo(WorkflowStatuses.COMPLETED)
         assertThat(resumedHuman["completedAt"]).isNotNull
         assertThat(step(workflowId, "c")["status"]).isEqualTo(WorkflowStatuses.COMPLETED)
+    }
+
+    @Test
+    fun `independent human gates resume from persisted state and join after both replies`() {
+        writeScript("pass-both", "exit 0")
+        writeManifest("check-both" to "./factory/verification/pass-both")
+        val workflowId = "wf-parallel-human-gates"
+        startSession("parallel-human-gates", workflowId, listOf(
+            stepJson("a", "agent", "EntryAgent", emptyList()),
+            stepJson("technical", "human", "Technical validation", listOf("a")),
+            stepJson("functional", "human", "Functional validation", listOf("a")),
+            stepJson("joint", "code", "check-both", listOf("technical", "functional")),
+        ))
+        val service = agentSessionService(AgentTurnResult.Completed("PASS", mapOf("caseStatus" to "IDLE")))
+
+        assertThat(service.runSession(scope, namespace, workflowId, repoRoot).status)
+            .isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(interactionRepository.list(scope, namespace, workflowId, openOnly = true).map { it.stepId })
+            .containsExactlyInAnyOrder("technical", "functional")
+        assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.PENDING)
+
+        answerHuman(workflowId, "technical", "approve")
+        val recoveredAfterTechnicalReply = agentSessionService(AgentTurnResult.Completed("PASS", mapOf("caseStatus" to "IDLE")))
+        assertThat(recoveredAfterTechnicalReply.runSession(scope, namespace, workflowId, repoRoot).status)
+            .isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.PENDING)
+
+        answerHuman(workflowId, "functional", "approve")
+        val recoveredAfterFunctionalReply = agentSessionService(AgentTurnResult.Completed("PASS", mapOf("caseStatus" to "IDLE")))
+        assertThat(recoveredAfterFunctionalReply.runSession(scope, namespace, workflowId, repoRoot).status)
+            .isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(step(workflowId, "joint")["status"]).isEqualTo(WorkflowStatuses.COMPLETED)
     }
 
     @Test

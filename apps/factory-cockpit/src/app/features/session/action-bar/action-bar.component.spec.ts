@@ -179,6 +179,28 @@ describe('ActionBarComponent', () => {
     expect(emitted).toEqual([{ stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' }])
   })
 
+  it('disables retry during submission and displays an accessible server error even if the action disappears', () => {
+    fixture.componentRef.setInput('retryingStepId', 'build')
+    const emitted: RetryIntent[] = []
+    fixture.componentInstance.retryRequested.subscribe((intent) => emitted.push(intent))
+    const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7 }])
+    expect(buttons(host)[0]?.disabled).toBe(true)
+    buttons(host)[0]?.click()
+    expect(emitted).toEqual([])
+
+    fixture.componentRef.setInput('retryingStepId', null)
+    fixture.componentRef.setInput('retryFeedback', {
+      stepId: 'build',
+      code: 'UNSUPPORTED_ACTION',
+      message: 'Retry is not supported',
+      status: 400,
+    })
+    render([])
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Retry is not supported')
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('UNSUPPORTED_ACTION')
+    expect(buttons(host)).toHaveLength(0)
+  })
+
   it('renders NEEDS_RESEARCH as information/access needed, not as a failure or unknown runtime', () => {
     const host = render([], [{ code: 'NEEDS_RESEARCH', stepId: 'research', label: 'Agent needs research' }])
 

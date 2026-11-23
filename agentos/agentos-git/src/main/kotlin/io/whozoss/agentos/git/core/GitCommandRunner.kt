@@ -146,6 +146,36 @@ class GitCommandRunner(
                 throw GitCommandException("git ${invocation.args.firstOrNull() ?: ""} could not run: ${result.message}")
         }
 
+    /** Read exact object bytes through the hardened Git runner, without text decoding. */
+    fun runBinaryOrThrow(invocation: GitInvocation, maxBytes: Int): ByteArray {
+        require(maxBytes in 0..MAX_BINARY_OUTPUT_BYTES) { "Invalid Git object byte limit" }
+        require(invocation.credentials is GitCredentials.None && ManagedNetworkCommand.of(invocation) == null) {
+            "Binary Git reads cannot use network credentials"
+        }
+        val builder = ProcessBuilder(buildCommand(invocation)).redirectErrorStream(false)
+        invocation.workingDirectory?.let { builder.directory(it.toFile()) }
+        applyEnvironment(builder, invocation)
+        builder.environment()["GIT_NO_REPLACE_OBJECTS"] = "1"
+        val process = try {
+            builder.start()
+        } catch (e: IOException) {
+            throw GitCommandException("Git object read could not start", e)
+        }
+        val result = try {
+            BoundedBinaryProcessOutput.await(process, invocation.timeout ?: properties.defaultTimeout, maxBytes)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw GitCommandException("Git object read was interrupted", e)
+        } catch (e: TimeoutException) {
+            throw GitCommandException("Git object read timed out", e)
+        } catch (e: Exception) {
+            throw GitCommandException("Git object read failed", e)
+        }
+        if (result.truncated) throw GitCommandException("Git object output exceeds the allowed size")
+        if (result.exitCode != 0) throw GitCommandException("Git object is unavailable")
+        return result.stdout
+    }
+
     /**
      * Reject local settings that can execute a program during checkout or file inspection.
      * Network configuration is harmless here: credentialed commands use a private repository.
@@ -360,6 +390,7 @@ class GitCommandRunner(
     private fun redactedCommandLine(command: List<String>): String = command.joinToString(" ")
 
     companion object : KLogging() {
+        private const val MAX_BINARY_OUTPUT_BYTES = 16 * 1024 * 1024
         private const val DEFAULT_PATH = "/usr/local/bin:/usr/bin:/bin"
         internal const val ASKPASS_USERNAME_VAR = "AGENTOS_GIT_USERNAME"
         internal const val ASKPASS_SECRET_VAR = "AGENTOS_GIT_SECRET"

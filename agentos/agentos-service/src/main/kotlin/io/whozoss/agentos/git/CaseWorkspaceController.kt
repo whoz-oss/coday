@@ -21,6 +21,7 @@ class CaseWorkspaceController(
     private val status: GitWorkspaceStatusService,
     private val lifecycle: GitWorkspaceLifecycleService,
     private val workspaceChanges: GitWorkspaceChangesService,
+    private val pinnedObjects: GitPinnedObjectService,
     private val bindings: CaseResourceBindingService,
     private val users: UserService,
     private val permissions: PermissionService,
@@ -44,6 +45,18 @@ class CaseWorkspaceController(
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     fun diff(@PathVariable caseId: UUID, @RequestParam path: String): ExchangeFileDiff =
         workspaceChanges.diff(authorizedRoot(caseId, Action.READ), path)
+
+    @GetMapping("/api/cases/{caseId}/workspace/git-commit")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    fun pinnedCommit(@PathVariable caseId: UUID, @RequestParam commit: String): Map<String, Any?> {
+        pinnedObjects.requireCommit(authorizedRoot(caseId, Action.READ), commit)
+        return mapOf("commit" to commit, "exists" to true)
+    }
+
+    @GetMapping("/api/cases/{caseId}/workspace/git-blob", produces = [MediaType.APPLICATION_OCTET_STREAM_VALUE])
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    fun pinnedBlob(@PathVariable caseId: UUID, @RequestParam commit: String, @RequestParam path: String): ByteArray =
+        pinnedObjects.readBlob(authorizedRoot(caseId, Action.READ), commit, path)
 
     @PostMapping("/api/cases/{caseId}/workspace/refresh")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")

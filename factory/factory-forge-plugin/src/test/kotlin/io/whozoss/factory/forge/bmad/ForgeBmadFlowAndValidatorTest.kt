@@ -10,6 +10,7 @@ import io.whozoss.factory.sdk.spi.FragmentView
 import io.whozoss.factory.sdk.spi.RunUpdate
 import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.sdk.spi.StepOutcomeView
+import io.whozoss.factory.sdk.spi.ToolEventView
 import io.whozoss.factory.sdk.spi.StepValidationContext
 import io.whozoss.factory.sdk.spi.StepValidationVerdict
 import io.whozoss.factory.sdk.spi.WatchedFileSnapshot
@@ -21,7 +22,7 @@ import org.junit.jupiter.api.Test
 /**
  * Comprehensive unit & scenario tests for the Forge BMAD plugin extensions
  * (Lot 2, Lot 3, Lot 4, Lot 6):
- * - [ForgeBmadCatalogContributor]: 10 static flows with unified `ForgeBuilder`/`ForgeVerifier`
+ * - [ForgeBmadCatalogContributor]: 10 static flows with unified `ForgeDeveloper`/`ForgeVerifier`
  * - [ForgeBmadBriefContributor]: BMAD brief sections and `watchedPaths`
  * - [ForgeBmadStepResultValidator]: phantom artifact detection, `SPEC.md` write-lock,
  *   expected section check, structured `delivery_plan.steps[]` check, and `file_paths` scope check
@@ -31,6 +32,9 @@ import org.junit.jupiter.api.Test
  */
 class ForgeBmadFlowAndValidatorTest {
 
+    private data class StoredArtifact(val kind: String, val encoding: String, val content: String)
+    private data class StoredFinding(val severity: String, val code: String, val summary: String, val file: String)
+
     private val mapper = ObjectMapper()
     private val catalog = ForgeBmadCatalogContributor()
     private val briefContributor = ForgeBmadBriefContributor()
@@ -38,13 +42,227 @@ class ForgeBmadFlowAndValidatorTest {
     private val selector = ForgeBmadFlowSelector()
     private val observer = ForgeBmadLifecycleObserver()
 
-    @Test
-    fun `catalog contributes all 10 valid static JSON flow definitions using unified ForgeBuilder`() {
-        val flows = catalog.flows()
-        assertThat(flows).hasSize(10)
+    private fun businessReport(values: Map<String, Any?>): Map<String, Any?> = mapOf(
+        "artifacts" to listOf(mapOf(
+            "kind" to ForgeBusinessOutputArtifact.KIND,
+            "encoding" to "markdown",
+            "content" to mapper.writeValueAsString(values),
+        )),
+    )
 
-        val parsed = flows.map { mapper.readValue(it, Map::class.java) }
-        val flowTypes = parsed.map { it["workflowType"] as String }
+    private fun trustedCaseEvidence() = mapOf("case_write" to mapOf(
+        "repository" to "CODAY", "location" to "CASE_EXCHANGE", "working_path" to "/case/repo",
+        "relative_path" to "repo", "revision" to "b".repeat(40),
+    ))
+
+    private fun checkoutToolEvidence(source: Map<*, *>): List<ToolEventView> =
+        if (source["location"] != "NAMESPACE_EXCHANGE") emptyList() else listOf(ToolEventView(
+            toolName = "find-checkouts", eventType = "tool-response",
+            payload = mapOf("result" to mapOf(
+                "repository" to source["repository"], "location" to source["location"],
+                "workingPath" to source["working_path"], "relativePath" to source["relative_path"],
+                "revision" to source["revision"], "coverage" to source["coverage"], "modified" to source["modified"],
+            )),
+        ))
+
+    private fun repositoryRouting(
+        namespaceRelativePath: String = ".",
+        mappedCasePath: String? = null,
+        workstreamSource: String = "whoz_namespace",
+        coverage: String = "complete",
+    ): Map<String, Any?> {
+        val logical = "forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428/SPEC.md"
+        val namespaceRoot = if (namespaceRelativePath == ".") "/namespace" else "/namespace/$namespaceRelativePath"
+        val sourceLocation = if (workstreamSource == "case") "CASE_EXCHANGE" else "NAMESPACE_EXCHANGE"
+        val sourceRoot = if (workstreamSource == "case") "/case/repo" else namespaceRoot
+        val sourceRepository = if (workstreamSource == "case") "CODAY" else "WHOZ"
+        val sourceRelativePath = if (workstreamSource == "case") "repo" else namespaceRelativePath
+        return mapOf(
+            "pinned_source" to mapOf(
+                "repository" to sourceRepository, "location" to sourceLocation, "working_path" to sourceRoot,
+                "relative_path" to sourceRelativePath, "path" to logical,
+                "revision" to "b".repeat(40), "coverage" to coverage, "modified" to false,
+            ),
+            "case_write" to mapOf(
+                "repository" to "CODAY", "location" to "CASE_EXCHANGE", "working_path" to "/case/repo",
+                "relative_path" to "repo", "revision" to "b".repeat(40),
+            ),
+            "workstream_context" to mapOf(
+                "source" to workstreamSource, "repository" to sourceRepository, "coverage" to "complete",
+                "case_context_status" to if (workstreamSource == "case") "valid" else "missing-runtime",
+                "location" to sourceLocation, "working_path" to sourceRoot,
+                "relative_path" to sourceRelativePath, "project_path" to "forge/bmad/workstreams/forge",
+            ),
+            "artifact_paths" to listOf(mapOf("logical_path" to logical, "case_path" to (mappedCasePath ?: "repo/$logical"))),
+        )
+    }
+
+    @Test
+    fun `delivery preflight accepts root and nested Whoz Namespace routes and persists Case-only mapping`() {
+        for (relativePath in listOf(".", "team/feature/talent-portal")) {
+            val run = RunView(runId = "route-$relativePath", runType = "forge.delivery")
+            val verdict = validator.validate(StepValidationContext(
+                run = run, flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+                report = businessReport(mapOf("repository_routing" to repositoryRouting(relativePath))),
+                externalEvidence = trustedCaseEvidence(),
+                toolEvents = checkoutToolEvidence(repositoryRouting(relativePath)["pinned_source"] as Map<*, *>),
+                workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+            )) as StepValidationVerdict.Accepted
+            val persisted = verdict.newDomainState!!["repositoryRouting"] as Map<*, *>
+            assertThat((persisted["case_write"] as Map<*, *>) ["relative_path"]).isEqualTo("repo")
+            assertThat((persisted["pinned_source"] as Map<*, *>) ["relative_path"]).isEqualTo(relativePath)
+        }
+    }
+
+    @Test
+    fun `pinned source in Case remains distinct from Whoz Namespace workstream fallback`() {
+        val route = repositoryRouting().toMutableMap()
+        val logical = "forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428/SPEC.md"
+        route["pinned_source"] = mapOf(
+            "repository" to "CODAY", "location" to "CASE_EXCHANGE", "working_path" to "/case/repo",
+            "relative_path" to "repo", "path" to logical, "revision" to "b".repeat(40), "coverage" to "complete", "modified" to false,
+        )
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "case-source-namespace-context", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to route)),
+            externalEvidence = trustedCaseEvidence(),
+            toolEvents = checkoutToolEvidence(route["pinned_source"] as Map<*, *>),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        val accepted = (verdict as StepValidationVerdict.Accepted).newDomainState!!["repositoryRouting"] as Map<*, *>
+        assertThat((accepted["pinned_source"] as Map<*, *>)["location"]).isEqualTo("CASE_EXCHANGE")
+        assertThat((accepted["workstream_context"] as Map<*, *>)["location"]).isEqualTo("NAMESPACE_EXCHANGE")
+    }
+
+    @Test
+    fun `delivery preflight rejects unsafe mapped paths before repository writes`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "unsafe-route", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to repositoryRouting(mappedCasePath = "repo/../outside/SPEC.md"))),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_REPOSITORY_ROUTING")
+    }
+
+    @Test
+    fun `delivery writes fail closed without persisted Case routing`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "missing-route", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "product-design", agentName = "ProductEngineer",
+            workspaceDelta = WorkspaceDelta(changedFilesDuringTurn = mapOf("forge/bmad/plan.md" to "ADDED")),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("REPOSITORY_ROUTING_MISSING")
+    }
+
+    @Test
+    fun `delivery preflight prefers valid Case-local workstream context`() {
+        val route = repositoryRouting(workstreamSource = "case")
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "local-context", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to route)),
+            externalEvidence = trustedCaseEvidence(),
+            toolEvents = checkoutToolEvidence(route["pinned_source"] as Map<*, *>),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        assertThat((((verdict as StepValidationVerdict.Accepted).newDomainState!!["repositoryRouting"] as Map<*, *>)["workstream_context"] as Map<*, *>)["source"])
+            .isEqualTo("case")
+    }
+
+    @Test
+    fun `delivery preflight rejects invalid local workstream instead of falling back`() {
+        val route = repositoryRouting().toMutableMap()
+        route["workstream_context"] = mapOf(
+            "source" to "whoz_namespace", "case_context_status" to "invalid", "location" to "NAMESPACE_EXCHANGE",
+            "working_path" to "/namespace", "relative_path" to ".", "project_path" to "forge/bmad/workstreams/forge",
+        )
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "invalid-local", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to route)),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_REPOSITORY_ROUTING")
+    }
+
+    @Test
+    fun `delivery preflight rejects incomplete Namespace discovery coverage`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "incomplete-namespace", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to repositoryRouting(coverage = "incomplete"))),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_REPOSITORY_ROUTING")
+    }
+
+    @Test
+    fun `delivery preflight blocks SHA-256 Git object format before writes`() {
+        val route = repositoryRouting().toMutableMap()
+        route["pinned_source"] = (route["pinned_source"] as Map<*, *>).toMutableMap().apply {
+            put("revision", "c".repeat(64))
+        }
+        route["case_write"] = (route["case_write"] as Map<*, *>).toMutableMap().apply {
+            put("revision", "c".repeat(64))
+        }
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "unsupported-object-format", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to route)),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "c".repeat(64), headShaAfter = "c".repeat(64)),
+        )) as StepValidationVerdict.Rejected
+        assertThat(verdict.reasonCode).isEqualTo("UNSUPPORTED_GIT_OBJECT_FORMAT")
+    }
+
+    @Test
+    fun `directory artifact mapping contains descendants in Case repo`() {
+        val routing = repositoryRouting()
+        val logicalDirectory = "forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428"
+        val directoryRouting = routing.toMutableMap().apply {
+            put("artifact_paths", listOf(mapOf("logical_path" to logicalDirectory, "case_path" to "repo/$logicalDirectory")))
+        }
+        val run = RunView(runId = "mapped-directory", runType = "forge.delivery", domainState = mapOf("repositoryRouting" to directoryRouting))
+        val verdict = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.delivery", stepId = "product-design", agentName = "ProductEngineer",
+            workspaceDelta = WorkspaceDelta(
+                headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40),
+                changedFilesDuringTurn = mapOf("forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428/SPEC.md" to "MODIFIED"),
+            ),
+            externalEvidence = trustedCaseEvidence(),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+    }
+
+    @Test
+    fun `delivery writes reject Case HEAD drift from the persisted revision`() {
+        val routing = repositoryRouting()
+        val run = RunView(runId = "revision-drift", runType = "forge.delivery", domainState = mapOf("repositoryRouting" to routing))
+        val verdict = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.delivery", stepId = "product-design", agentName = "ProductEngineer",
+            workspaceDelta = WorkspaceDelta(headShaBefore = "c".repeat(40), headShaAfter = "c".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("CASE_REVISION_DRIFT")
+    }
+
+    @Test
+    fun `catalog publishes only delivery while legacy Factory contracts remain valid`() {
+        val flows = catalog.flows()
+        assertThat(flows).hasSize(1)
+        assertThat(mapper.readValue(flows.single(), Map::class.java)["workflowType"]).isEqualTo("forge.delivery")
+
+        val parsed = ForgeBmadCatalogContributor.ALL_FLOW_JSONS.map { mapper.readValue(it, Map::class.java) }
+        val current = parsed.filter { it["version"] == "1.2.0" }
+        assertThat(current).hasSize(10)
+        val flowTypes = current.map { it["workflowType"] as String }
         assertThat(flowTypes).containsExactly(
             "forge.product-spec",
             "forge.product-approval",
@@ -58,10 +276,17 @@ class ForgeBmadFlowAndValidatorTest {
             "forge.acceptance",
         )
 
-        val implementStep = parsed.single { it["workflowType"] == "forge.implement-step" }
+        val implementStep = current.single { it["workflowType"] == "forge.implement-step" }
         val steps = (implementStep["steps"] as List<*>).filterIsInstance<Map<*, *>>()
         val builderResp = steps.first { it["id"] == "step-implementation" }["responsibility"] as Map<*, *>
-        assertThat(builderResp["name"]).isEqualTo("ForgeBuilder")
+        assertThat(builderResp["name"]).isEqualTo("ForgeDeveloper")
+        for (flow in current) {
+            for (step in (flow["steps"] as List<*>).filterIsInstance<Map<*, *>>()) {
+                assertThat(step["entry"] as List<*>).isNotEmpty
+                assertThat(step["mission"] as String).isNotBlank
+                assertThat(step["exit"] as List<*>).isNotEmpty
+            }
+        }
     }
 
     @Test
@@ -102,7 +327,7 @@ class ForgeBmadFlowAndValidatorTest {
     }
 
     @Test
-    fun `validator enforces SPEC_md write-lock on non-authoring agents like ForgeBuilder and Searcher`() {
+    fun `validator enforces SPEC_md write-lock on non-authoring agents like ForgeDeveloper and Searcher`() {
         val run = RunView(runId = "r-1", runType = "forge-controller-v1")
         val deltaWithUnauthorizedSpecEdit = WorkspaceDelta(
             captureStatus = WorkspaceCaptureStatus.COMPLETE,
@@ -122,7 +347,7 @@ class ForgeBmadFlowAndValidatorTest {
                 run = run,
                 flowType = "forge.implement-step",
                 stepId = "step-implementation",
-                agentName = "ForgeBuilder",
+                agentName = "ForgeDeveloper",
                 workspaceDelta = deltaWithUnauthorizedSpecEdit,
             ),
         )
@@ -131,7 +356,7 @@ class ForgeBmadFlowAndValidatorTest {
     }
 
     @Test
-    fun `validator enforces step file_paths scope on ForgeBuilder`() {
+    fun `validator enforces step file_paths scope on ForgeDeveloper`() {
         val run = RunView(runId = "r-1", runType = "forge-controller-v1")
         val deltaWithOutOfScopeFile = WorkspaceDelta(
             captureStatus = WorkspaceCaptureStatus.COMPLETE,
@@ -148,7 +373,7 @@ class ForgeBmadFlowAndValidatorTest {
                 run = run,
                 flowType = "forge.implement-step",
                 stepId = "step-implementation",
-                agentName = "ForgeBuilder",
+                agentName = "ForgeDeveloper",
                 fragmentInputs = mapOf(
                     "step_index" to 0,
                     "step" to mapOf("file_paths" to listOf("src/allowed.kt")),
@@ -188,18 +413,19 @@ class ForgeBmadFlowAndValidatorTest {
                 flowType = "forge.assessment",
                 status = "completed",
                 stepOutcomes = listOf(
-                    StepOutcomeView("ux-assessment", "agent", "completed", report = mapOf("ux_applicable" to false)),
+                    StepOutcomeView("ux-assessment", "agent", "completed", report = businessReport(mapOf("ux_applicable" to false))),
                     StepOutcomeView(
                         "technical-assessment",
                         "agent",
                         "completed",
-                        report = mapOf(
+                        report = businessReport(mapOf(
+                            "tech_spec_applicable" to false,
                             "trivial" to true,
                             "trivial_scope" to mapOf(
                                 "file_paths" to listOf("apps/client/src/button.ts"),
                                 "verification" to "front-verify",
                             ),
-                        ),
+                        )),
                     ),
                 ),
             ),
@@ -243,7 +469,7 @@ class ForgeBmadFlowAndValidatorTest {
                         "technical-design",
                         "agent",
                         "completed",
-                        report = mapOf("delivery_plan" to mapOf("steps" to multiSteps)),
+                        report = businessReport(mapOf("delivery_plan" to mapOf("steps" to multiSteps))),
                     ),
                 ),
             ),
@@ -378,7 +604,7 @@ class ForgeBmadFlowAndValidatorTest {
                 run = initialView.copy(domainState = state),
                 flowType = "forge.implement-step",
                 stepId = "step-implementation",
-                agentName = "ForgeBuilder",
+                agentName = "ForgeDeveloper",
                 fragmentInputs = mapOf("step_index" to 0, "step" to multiSteps[0]),
             ),
         )
@@ -621,6 +847,101 @@ class ForgeBmadFlowAndValidatorTest {
         assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
         assertThat((verdict as StepValidationVerdict.Rejected).reasonCode)
             .isEqualTo("READ_ONLY_WORKSPACE_VIOLATION")
+    }
+
+    @Test
+    fun `assessment requires structured output and downstream brief receives durable run brief`() {
+        val run = RunView(
+            runId = "r-assessment", runType = "forge-bmad",
+            domainState = mapOf("run_brief" to "Objective: deliver the approved feature"),
+        )
+        val missing = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.assessment", stepId = "ux-assessment",
+            agentName = "ForgeUXDesigner",
+            workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
+        ))
+        assertThat((missing as StepValidationVerdict.Rejected).reasonCode).isEqualTo("MISSING_ASSESSMENT_OUTPUT")
+
+        val accepted = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.assessment", stepId = "ux-assessment",
+            agentName = "ForgeUXDesigner", report = businessReport(mapOf("ux_applicable" to true)),
+            workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
+        ))
+        assertThat((accepted as StepValidationVerdict.Accepted).newDomainState).containsEntry("ux_applicable", true)
+        val brief = briefContributor.contribute(BriefContext(
+            run = run, flowType = "forge.assessment", stepId = "ux-assessment", agentName = "ForgeUXDesigner",
+        ))
+        assertThat(brief.sections.joinToString("\n")).contains("Objective: deliver the approved feature")
+    }
+
+    @Test
+    fun `Forge business artifact is validated before it can steer a run`() {
+        val run = RunView(runId = "r-artifact", runType = "forge-bmad")
+        fun assessment(report: Map<String, Any?>) = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.assessment", stepId = "ux-assessment",
+            agentName = "ForgeUXDesigner", report = report,
+            workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
+        ))
+
+        val unsupportedField = assessment(mapOf("outputs" to mapOf("ux_applicable" to true)))
+        assertThat((unsupportedField as StepValidationVerdict.Rejected).reasonCode).isEqualTo("MISSING_ASSESSMENT_OUTPUT")
+        val malformed = assessment(mapOf("artifacts" to listOf(mapOf(
+            "kind" to ForgeBusinessOutputArtifact.KIND, "encoding" to "markdown", "content" to "{invalid",
+        ))))
+        assertThat((malformed as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_FORGE_OUTPUT_ARTIFACT")
+        val duplicate = assessment(mapOf("artifacts" to listOf(
+            mapOf("kind" to ForgeBusinessOutputArtifact.KIND, "encoding" to "markdown", "content" to "{}"),
+            mapOf("kind" to ForgeBusinessOutputArtifact.KIND, "encoding" to "markdown", "content" to "{}"),
+        )))
+        assertThat((duplicate as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_FORGE_OUTPUT_ARTIFACT")
+
+        val storedArtifact = StoredArtifact(
+            ForgeBusinessOutputArtifact.KIND, "markdown", "{\"ux_applicable\":true}",
+        )
+        val accepted = assessment(mapOf("artifacts" to listOf(storedArtifact))) as StepValidationVerdict.Accepted
+        assertThat(accepted.newDomainState).containsEntry("ux_applicable", true)
+    }
+
+    @Test
+    fun `Forge artifact preserves run brief and delivery plan in durable state`() {
+        val delta = WorkspaceDelta(
+            captureStatus = WorkspaceCaptureStatus.COMPLETE,
+            watchedFiles = mapOf(
+                "SPEC.md" to WatchedFileSnapshot("SPEC.md", true, "before", true, "after"),
+                ".memlog.md" to WatchedFileSnapshot(".memlog.md", true, "before", true, "after"),
+            ),
+        )
+        val run = RunView(runId = "r-handoff", runType = "forge-bmad")
+        val product = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.product-spec", stepId = "product-specification",
+            agentName = "ForgeProductWorker", report = businessReport(mapOf("run_brief" to "Objective: deliver")),
+            workspaceDelta = delta,
+        )) as StepValidationVerdict.Accepted
+        assertThat(product.newDomainState).containsEntry("run_brief", "Objective: deliver")
+
+        val plan = mapOf("steps" to listOf(mapOf(
+            "id" to "s1", "title" to "Implement", "file_paths" to listOf("src/Main.kt"),
+            "verification" to "./gradlew test",
+        )))
+        val technical = validator.validate(StepValidationContext(
+            run = run.copy(domainState = product.newDomainState!!),
+            flowType = "forge.tech-design", stepId = "technical-design",
+            agentName = "ForgeTechDesigner", report = businessReport(mapOf("delivery_plan" to plan)),
+            workspaceDelta = delta,
+        )) as StepValidationVerdict.Accepted
+        assertThat(technical.newDomainState).containsEntry("delivery_plan", plan)
+    }
+
+    @Test
+    fun `reviewer findings in Factory standard result shape become Forge findings`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "r-review", runType = "forge-bmad"),
+            flowType = "forge.code-review", stepId = "code-review", agentName = "ForgeReviewer",
+            report = mapOf("findings" to listOf(StoredFinding("blocking", "AUTH_BYPASS", "Guard is missing", "src/Auth.kt"))),
+            workspaceDelta = WorkspaceDelta(captureStatus = WorkspaceCaptureStatus.COMPLETE),
+        )) as StepValidationVerdict.Accepted
+        assertThat(verdict.addedFindings.single().severity).isEqualTo(FindingSeverity.CRITICAL)
+        assertThat(verdict.addedFindings.single().filePath).isEqualTo("src/Auth.kt")
     }
 
     @Test

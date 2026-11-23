@@ -197,7 +197,11 @@ describe('FactoryStore', () => {
   }
 
   /** Flush the 7 enrichment requests issued for an arbitrary active run. */
-  function flushRunEnrichment(wfId: string, select = true): void {
+  function flushRunEnrichment(
+    wfId: string,
+    select = true,
+    actions: unknown = { allowedActions: [], blockers: [] }
+  ): void {
     ensureNamespaceSelected()
     if (select) store.selectSession(wfId)
     http.expectOne((r) => r.url.endsWith(`/${wfId}/timing`)).flush({ data: { workflowId: wfId, startedAt } })
@@ -205,7 +209,7 @@ describe('FactoryStore', () => {
     http.expectOne((r) => r.url.endsWith(`/${wfId}/metrics`)).flush({ data: { workflowId: wfId } })
     http.expectOne((r) => r.url.endsWith(`/${wfId}/interactions`)).flush({ data: { workflowId: wfId, items: [] } })
     http.expectOne((r) => r.url.endsWith(`/${wfId}/attempts`)).flush({ data: [] })
-    http.expectOne((r) => r.url.endsWith(`/${wfId}/actions`)).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/actions`)).flush({ data: actions })
     http.expectOne((r) => r.url.endsWith(`/${wfId}/agent-questions`)).flush({ data: [] })
   }
 
@@ -1237,6 +1241,75 @@ describe('FactoryStore', () => {
     ])
   })
 
+  it('removes only cached Retry after a failed actions refresh and restores server-advertised actions after success', () => {
+    flushInitialWorkflows([snapshot])
+    const authorizedActions = {
+      allowedActions: [
+        { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relaunch' },
+        { type: 'stop_cost', expectedRevision: 7 },
+      ],
+      blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'Still blocked' }],
+    }
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      { workflowId: 'wf-1', data: [] },
+      authorizedActions
+    )
+    expect(store.session('wf-1')?.allowedActions).toEqual(authorizedActions.allowedActions)
+
+    // The workflow snapshot moves to FAILED/sealed before the actions read fails.
+    const failedSnapshot = {
+      ...snapshot,
+      revision: 3,
+      projection: {
+        ...snapshot.projection,
+        status: 'failed',
+        steps: [
+          { ...snapshot.projection.steps[0], status: 'completed' },
+          { ...snapshot.projection.steps[1], status: 'failed' },
+        ],
+      },
+    }
+    store.refresh()
+    flushInitialWorkflows([failedSnapshot])
+    flushRunEnrichment('wf-1', false, authorizedActions)
+    expect(store.session('wf-1')?.status).toBe('failed')
+    expect(store.session('wf-1')?.allowedActions).toEqual(authorizedActions.allowedActions)
+
+    // A failed authoritative read must remove cached Retry despite the sealed status.
+    store.selectSession('wf-1')
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/actions'))
+      .flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Unavailable' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
+
+    expect(store.session('wf-1')?.allowedActions).toEqual([{ type: 'stop_cost', expectedRevision: 7 }])
+    expect(store.session('wf-1')?.blockers).toEqual([
+      { code: 'STEP_BLOCKED', stepId: 'build', label: 'Still blocked', message: 'Still blocked' },
+    ])
+
+    // A later successful server response is the only way to re-advertise Retry.
+    store.selectSession('wf-1')
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: authorizedActions })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
+
+    expect(store.session('wf-1')?.allowedActions).toEqual(authorizedActions.allowedActions)
+    expect(store.session('wf-1')?.blockers).toEqual([
+      { code: 'STEP_BLOCKED', stepId: 'build', label: 'Still blocked', message: 'Still blocked' },
+    ])
+  })
+
   it('degrades gracefully when the actions fetch fails', () => {
     flushInitialWorkflows([snapshot])
     store.selectSession('wf-1')
@@ -1290,8 +1363,102 @@ describe('FactoryStore', () => {
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
+    expect(store.retryConflict()).toEqual({ workflowId: 'wf-1', namespaceId: 'ns-1' })
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+    http.expectNone((r) => r.url.endsWith('/wf-1/retries'))
     flushRunEnrichment('wf-1', false)
+    expect(store.retryConflict()).toBeNull()
     flushInitialWorkflows([])
+  })
+
+  it('reports retry rejection and fences duplicate submissions', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+    const payload = { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' }
+
+    store.retry('wf-1', payload)
+    store.retry('wf-1', payload)
+    const requests = http.match((r) => r.url.endsWith('/wf-1/retries'))
+    expect(requests).toHaveLength(1)
+    expect(store.retrying()).toEqual({ workflowId: 'wf-1', stepId: 'build' })
+    requests[0]!.flush(
+      { error: { code: 'UNSUPPORTED_ACTION', message: 'Retry is not supported' } },
+      { status: 400, statusText: 'Bad Request' }
+    )
+
+    expect(store.retrying()).toBeNull()
+    expect(store.retryFeedback()).toEqual(
+      expect.objectContaining({
+        workflowId: 'wf-1',
+        stepId: 'build',
+        code: 'UNSUPPORTED_ACTION',
+        message: 'Retry is not supported',
+      })
+    )
+    http.expectNone((r) => r.url.endsWith('/wf-1/actions'))
+  })
+
+  it('refreshes actions on retry revision conflict and retains server failure', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/retries'))
+      .flush(
+        { error: { code: 'WORKFLOW_REVISION_CONFLICT', message: 'Revision changed' } },
+        { status: 409, statusText: 'Conflict' }
+      )
+
+    expect(store.retryFeedback()).toEqual(
+      expect.objectContaining({
+        workflowId: 'wf-1',
+        stepId: 'build',
+        code: 'WORKFLOW_REVISION_CONFLICT',
+        message: 'Revision changed',
+      })
+    )
+    expect(store.retryConflict()).toEqual({ workflowId: 'wf-1', namespaceId: 'ns-1' })
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http.expectNone((r) => r.url.endsWith('/wf-1/retries'))
+    flushRunEnrichment('wf-1', false)
+    expect(store.retryConflict()).toBeNull()
+    flushInitialWorkflows([])
+  })
+
+  it('keeps retries fenced if action refresh fails after a conflict', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/retries'))
+      .flush(
+        { error: { code: 'WORKFLOW_REVISION_CONFLICT', message: 'Revision changed' } },
+        { status: 409, statusText: 'Conflict' }
+      )
+    const actions = http.expectOne((r) => r.url.endsWith('/wf-1/actions'))
+    actions.flush(
+      { error: { code: 'UNAVAILABLE', message: 'Actions unavailable' } },
+      { status: 503, statusText: 'Unavailable' }
+    )
+    http.match((r) => r.url.includes('/wf-1/')).forEach((request) => request.flush({ data: [] }))
+    flushInitialWorkflows([snapshot])
+    expect(store.retryConflict()).toEqual({ workflowId: 'wf-1', namespaceId: 'ns-1' })
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http.expectNone((r) => r.url.endsWith('/wf-1/retries'))
+
+    store.refresh()
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([snapshot])
+    expect(store.retryConflict()).toBeNull()
+  })
+
+  it('reports an ambiguous retry transport failure without claiming it failed on the server', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+    store.retry('wf-1', { stepId: 'build' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/retries')).error(new ProgressEvent('error'))
+    expect(store.retrying()).toBeNull()
+    expect(store.retryFeedback()).toEqual(expect.objectContaining({ workflowId: 'wf-1', stepId: 'build', status: 0 }))
   })
 
   it('resumes research with a stable key after an ambiguous transport failure', () => {

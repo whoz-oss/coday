@@ -1,0 +1,250 @@
+{
+  "execution": {
+    "humanCheckpointPolicyRequired": true,
+    "plugin": "forge"
+  },
+  "schemaVersion": "1",
+  "steps": [
+    {
+      "dependsOn": [],
+      "entry": [
+        "Read the supplied Jira ticket and pinned source specification through its verified read route. Resolve forge with bmad-workstream-context --workstream forge --ticket <ticket> --project-root <verified-root>, first against the Case project root.",
+        "Bind the Case Git checkout at repo/ as the only Forge write target. If its BMAD runtime or Forge registry is absent, use Searcher for bounded read-only discovery of exactly one eligible Whoz Namespace checkout, then invoke the same resolver with that checkout as --project-root. Do not mask invalid local configuration with fallback.",
+        "Return repository_routing in the Forge business-output artifact with the exact pinned source route/path/revision, Case repo route/path/revision, workstream context source/root, and each ticket artifact logical path mapped beneath Case repo/. Require complete discovery coverage; reject ambiguity, unavailable routes, path escape, or an unverified Case binding before any write."
+      ],
+      "exit": [
+        "Submit PASS only if the ticket is Ready and the source is sufficient, with claims.modifiedFiles empty, observed ticket status, source locator and full revision, evidence references, and a valid repository_routing binding. Otherwise submit an evidenced non-PASS result; a retry must revalidate the same pinned source and Case checkout binding against fresh evidence."
+      ],
+      "id": "delivery-preflight",
+      "mission": "Decide whether the ticket is sufficiently specified and currently Ready for delivery, and bind verified read and write routes. Do not groom, edit Jira, approve the packet or modify repository files.",
+      "name": "Check delivery readiness",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    },
+    {
+      "dependsOn": ["delivery-preflight"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read the Ready ticket, pinned source specification and preflight evidence."
+      ],
+      "exit": [
+        "Return one forge.business-outputs.v1 artifact with applicability.detailed_spec, applicability.ux_spec, applicability.technical_spec and applicability.qa_spec. Each decision has applicable (Boolean) and a nonempty reason. Include evidence references; do not silently drop a discipline or start Build."
+      ],
+      "id": "design-assessment",
+      "mission": "Decide whether detailed product, UX, technical and QA specifications are applicable, with reasons for every decision.",
+      "name": "Assess design applicability",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    },
+    {
+      "dependsOn": ["design-assessment"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read the pinned source and detailed-product applicability decision.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
+      "exit": [
+        "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
+      ],
+      "id": "product-design",
+      "mission": "Produce the detailed product specification when applicable; otherwise preserve the evidenced not-applicable decision.",
+      "name": "Prepare detailed product design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ProductEngineer"
+      }
+    },
+    {
+      "dependsOn": ["product-design"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read the pinned source, product design evidence and UX applicability decision.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
+      "exit": [
+        "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
+      ],
+      "id": "ux-design",
+      "mission": "Produce the UX specification when applicable; otherwise confirm the evidenced not-applicable decision without changing the source.",
+      "name": "Prepare UX design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Designer"
+      }
+    },
+    {
+      "dependsOn": ["ux-design"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read the pinned source, design evidence and technical applicability decision.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
+      "exit": [
+        "Return the produced document path, locator, revision and content digest, or the explicit not-applicable reason."
+      ],
+      "id": "technical-design",
+      "mission": "Produce the technical specification when applicable; otherwise confirm the evidenced not-applicable decision.",
+      "name": "Prepare technical design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Architect"
+      }
+    },
+    {
+      "dependsOn": ["technical-design"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read every applicable design, its pinned revision and all not-applicable decisions.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
+      "exit": [
+        "Return a forge.business-outputs.v1 artifact with nonempty delivery_plan.steps. Every ordered item needs a distinct id, title, stack (frontend or backend), safe relative file_paths, verification command and depends_on (null or the id of an earlier item), including for a trivial change. Also return the plan document path, locator, revision and content digest."
+      ],
+      "id": "implementation-planning",
+      "mission": "Produce a nonempty implementation plan with ordered, bounded code items, stack, dependencies and file scopes, including for a trivial change.",
+      "name": "Prepare implementation plan",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Architect"
+      }
+    },
+    {
+      "dependsOn": ["implementation-planning"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read the pinned source, applicable specifications, implementation plan and QA applicability decision.",
+        "When applicable, write the named design or plan document in the current Case Git worktree under the same workstream and ticket directory as the pinned source specification. Use case-exchange__editFiles with repo/<relative-path>; inspect the actual Git diff and compute the document SHA-256 before reporting it. These serial design steps may write their own documents before packet approval, but never implementation code."
+      ],
+      "exit": [
+        "Return the QA specification path, locator, revision and digest when applicable, or its not-applicable reason. Always return a forge.business-outputs.v1 artifact with nonempty verification_plan Markdown and the plan document path, locator, revision and digest."
+      ],
+      "id": "qa-design",
+      "mission": "Produce the QA specification when applicable and a nonempty verification plan on every route.",
+      "name": "Prepare QA design and verification plan",
+      "responsibility": {
+        "kind": "agent",
+        "name": "QAArchitect"
+      }
+    },
+    {
+      "dependsOn": ["qa-design"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read the pinned source specification, every produced design and plan, and all applicability decisions.",
+        "Use the Case Git worktree to write the canonical packet manifest beside the design documents. Verify the actual document bytes, then commit the complete packet with GIT tools and report that real commit. Do not claim a revision from report text alone."
+      ],
+      "exit": [
+        "Commit the complete packet to the source Git repository. Return the canonical manifest bytes and SHA-256, pinned repository and commit, and verified paths and document digests; stop if Git or any committed object is unavailable or mismatched."
+      ],
+      "id": "packet-assembly",
+      "mission": "Assemble one packet-manifest.v1 with every applicable document and produced plan. Validate paths, revisions, hashes and applicability against actual document bytes.",
+      "name": "Assemble complete design packet",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgePacketAssembler"
+      }
+    },
+    {
+      "dependsOn": ["packet-assembly"],
+      "entry": [
+        "Present the complete packet at its pinned source Git commit and canonical manifest SHA-256, including every applicability decision. Stop if the source repository or committed objects are unavailable or mismatched."
+      ],
+      "exit": [
+        "Record the authenticated human decision against the same pinned repository, commit and canonical manifest SHA-256; a changed packet requires a new decision."
+      ],
+      "id": "packet-approval",
+      "mission": "Approve or reject this exact packet revision before any Build step.",
+      "name": "Approve complete design packet",
+      "responsibility": {
+        "kind": "human",
+        "name": "Factory user"
+      }
+    },
+    {
+      "dependsOn": ["packet-approval"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read the approved packet at its pinned Git commit and the ordered delivery_plan.steps. Confirm that the human packet gate covers the same manifest digest; stop on a mismatch or unavailable Git source."
+      ],
+      "exit": [
+        "Return one forge.business-outputs.v1 artifact with build_report: manifest_sha256, work_commit and one ordered item receipt for every planned step. Each receipt needs step_id, stack, PASS status, summary and changed_files within that item's scope. Do not approve the implementation or declare delivery complete."
+      ],
+      "id": "implementation-build",
+      "mission": "Coordinate Backend and Frontend specialists through the approved plan in order inside this one Build step; resume delegated work without repeating completed items and report each item truthfully.",
+      "name": "Build planned implementation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeDeveloper"
+      }
+    },
+    {
+      "dependsOn": ["implementation-build"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Read the approved packet, accepted Build report and ordered delivery plan at the pinned work commit. Use only the verifier tools granted for each item's stack."
+      ],
+      "exit": [
+        "Return one forge.business-outputs.v1 verification_report with the accepted work commit and one ordered PASS receipt for every planned item, including green: true, its exact verification command, child Case reference and observed result. A failed or unavailable check keeps this step non-PASS."
+      ],
+      "id": "implementation-verification",
+      "mission": "Independently run the plan's verification commands through the backend and frontend verifier specialists; do not edit or approve code.",
+      "name": "Verify implementation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeVerifier"
+      }
+    },
+    {
+      "dependsOn": ["implementation-verification"],
+      "entry": [
+        "Use the persisted repository_routing binding. Read the pinned source only through its exact verified route, path and revision; write Forge artifacts and code only through the Case repo/ route and its mapped paths. Revalidate the Case root and expected revision before writing. Namespace is read-only.",
+        "Review the local worktree at the accepted Build commit against the approved packet and diff base."
+      ],
+      "exit": [
+        "Return one forge.business-outputs.v1 review_report with the matching work commit, four lens votes and classified findings. PASS requires every lens PASS and no critical or major finding. Review is evidence, not human approval."
+      ],
+      "id": "implementation-review",
+      "mission": "Review the committed local implementation against the approved packet and verified plan without changing code or approving a gate.",
+      "name": "Review implementation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Reviewer"
+      }
+    },
+    {
+      "dependsOn": ["implementation-review"],
+      "entry": ["Present the approved packet, accepted work commit and review to an authenticated Factory user."],
+      "exit": [
+        "Record that user's decision, identity and server time against the presented candidate; a changed packet or work commit requires a new decision."
+      ],
+      "id": "technical-validation",
+      "mission": "Ask a human whether this reviewed implementation is technically acceptable.",
+      "name": "Validate implementation technically",
+      "responsibility": {
+        "kind": "human",
+        "name": "Factory user"
+      }
+    },
+    {
+      "dependsOn": ["implementation-review"],
+      "entry": [
+        "Present the same reviewed work candidate to an authenticated Factory user. Ask them to confirm they tested it in their chosen environment. Factory does not verify deployment automatically."
+      ],
+      "exit": ["Record that user's decision, identity and server time against the presented work candidate."],
+      "id": "functional-validation",
+      "mission": "Ask a human to confirm the reviewed work candidate was tested and meets the functional intent.",
+      "name": "Validate functionality",
+      "responsibility": {
+        "kind": "human",
+        "name": "Factory user"
+      }
+    }
+  ],
+  "title": "Forge delivery — ready to merge draft",
+  "version": "0.7.2",
+  "workflowType": "forge.delivery"
+}

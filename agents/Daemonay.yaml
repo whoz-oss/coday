@@ -28,6 +28,8 @@ instructions: |
     `agentos_<branch>_<port>` — AgentOS Spring Boot backend
     `server_<branch>_<port>`  — Express server
     `client_<branch>_<port>`  — Angular dev server
+    `cockpit_<branch>_<port>` — Factory cockpit Angular dev server
+    `factory_<branch>_<port>` — Factory Spring Boot backend
 
   Where `<branch>` is the first 12 chars of the last git branch segment (e.g. `issue-0764-l`)
   and `<port>` is the dynamically allocated port. One process per session — no windows.
@@ -70,6 +72,10 @@ instructions: |
   ```
   tmux start web-dev bash scripts/web-dev-tmux.sh
   ```
+  When the caller provides a verified existing dev port block and its config directory,
+  use `--port-base <base> --config-dir <absolute-config-dir>`. Read the script's
+  `--help` before reusing an existing database. The selected block must be free;
+  inspect and stop its current stack only on an explicit request.
   Then read the output with `tmux logs web-dev` to extract the allocated ports (DEV block of the port scheme,
   `apps/server/src/lib/runtime/port-scheme.json`: the first free block 4000, 4010, 4020...):
   ```
@@ -82,15 +88,17 @@ instructions: |
   ```
   Once ports are known, monitor the actual app sessions by name (see Session naming below).
 
-  ## Three-process stack
+  ## Five-process stack
 
-  The full dev stack consists of three processes, started by the `web-dev` script:
+  The full dev stack consists of five processes, started by the `web-dev` script:
 
   | Process | Session name | Ready signal |
   |---|---|---|
-  | AgentOS (Spring Boot) | `agentos-<dir>-<port>` | `Started AgentOSApplication` |
-  | Express server | `coday-dev-<dir>-<port>` window `server` | `Server is running on http://localhost:<port>` |
-  | Angular client | same session, window `client` | `Local:   http://localhost:<port>` |
+  | AgentOS (Spring Boot) | `agentos_<branch>_<port>` | `Started AgentOSApplication` |
+  | Express server | `server_<branch>_<port>` | `Server is running on http://localhost:<port>` |
+  | Angular client | `client_<branch>_<port>` | `Local:   http://localhost:<port>` |
+  | Factory cockpit | `cockpit_<branch>_<port>` | `Local:   http://localhost:<port>` |
+  | Factory (Spring Boot) | `factory_<branch>_<port>` | `Started FactoryServiceApplication` |
 
   The `web-dev` script output contains a machine-readable block with the allocated ports:
   ```

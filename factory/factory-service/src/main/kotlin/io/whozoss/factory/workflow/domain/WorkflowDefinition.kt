@@ -37,7 +37,7 @@ private val DEFINITION_FIELDS = setOf("schemaVersion", "workflowType", "version"
 private val TRUSTED_EXECUTION_FIELDS = setOf("allowedPaths")
 
 /** Allowed keys of the optional top-level `execution` block. */
-private val EXECUTION_FIELDS = setOf("plugin")
+private val EXECUTION_FIELDS = setOf("plugin", "humanCheckpointPolicyRequired")
 private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn", "entry", "mission", "exit", "decision", "join", "outcomeTransitions")
 private val RESPONSIBILITY_FIELDS = setOf("kind", "name")
 
@@ -114,7 +114,12 @@ object WorkflowDefinitionValidator {
             }
             val (plugin, pluginError) = text(executionRecord["plugin"], "execution.plugin", safe = true, maximum = 128)
             if (pluginError != null) return WorkflowDefinitionValidation.Invalid(pluginError)
-            execution = mapOf("plugin" to plugin!!)
+            val required = executionRecord["humanCheckpointPolicyRequired"]
+            if (required != null && required !is Boolean) {
+                return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "execution.humanCheckpointPolicyRequired")
+            }
+            execution = mapOf("plugin" to plugin!!) +
+                if (required == true) mapOf("humanCheckpointPolicyRequired" to true) else emptyMap()
         }
 
         val rawSteps = record["steps"]

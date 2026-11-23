@@ -95,10 +95,12 @@ parameters:
       Starts the full Coday dev stack (AgentOS + Express server + Angular client) in tmux sessions.
       Ports are allocated dynamically to avoid collisions across worktrees.
 
-      Three tmux sessions are created (one process per session):
+      Five tmux sessions are created (one process per session):
         - agentos_<branch>_<port>   AgentOS Spring Boot backend
         - server_<branch>_<port>    Express server
         - client_<branch>_<port>    Angular dev server
+        - cockpit_<branch>_<port>   Factory cockpit Angular dev server
+        - factory_<branch>_<port>   Factory Spring Boot backend
       Where <branch> is the first 12 chars of the last git branch segment.
 
       Output includes a machine-readable block with allocated ports (DEV block of the port scheme):
@@ -116,5 +118,8 @@ parameters:
 
       Run with --help for full documentation:
         bash scripts/web-dev-tmux.sh --help
+      To pin an isolated stack to an existing dev port block and its persistent data:
+        bash scripts/web-dev-tmux.sh --port-base <base> --config-dir <absolute-config-dir>
+      The selected block must be free. The script does not stop an existing session.
     command: "bash ./scripts/web-dev-tmux.sh"
     timeoutSeconds: 60
