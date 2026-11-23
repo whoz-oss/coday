@@ -50,6 +50,35 @@
     }
   }
 
+  // Drag handle on the inner edge of the panel (same look as the case sidebar's handle):
+  // right edge of a panel at the start, left edge of a panel at the end.
+  &__resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 4px;
+    cursor: col-resize;
+    background: var(--color-divider, var(--color-border, rgba(0, 0, 0, 0.1)));
+    transition: background 150ms;
+    z-index: 10;
+
+    &--end {
+      right: auto;
+      left: 0;
+    }
+
+    &:hover,
+    &:active,
+    &:focus-visible {
+      background: var(--color-accent, #007aff);
+    }
+
+    &:focus-visible {
+      outline: none;
+    }
+  }
+
   &__content {
     display: flex;
     flex-direction: column;

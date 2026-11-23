@@ -27,7 +27,7 @@
     <ol class="config-change__operations">
       @for (op of plan.operations; track op.ref) {
         <li class="config-change__op" [class.config-change__op--highlight]="isHighlighted(op)">
-          <details class="config-change__details">
+          <details class="config-change__details" open>
             <summary class="config-change__op-head">
               <span class="config-change__chevron" aria-hidden="true"></span>
               <span class="config-change__op-main">
@@ -71,34 +71,33 @@
               }
 
               @if (op.changes.length > 0) {
-                <table class="config-change__diff">
-                  <thead>
-                    <tr>
-                      <th scope="col">Field</th>
-                      <th scope="col">Current</th>
-                      <th scope="col">Proposed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    @for (change of op.changes; track change.path) {
-                      <tr>
-                        <td>
-                          <code>{{ change.path }}</code>
-                        </td>
-                        <td>
-                          <pre class="config-change__json">{{ display(change.before) }}</pre>
-                        </td>
-                        <td>
-                          @if (change.remove) {
-                            <em>removed</em>
-                          } @else {
-                            <pre class="config-change__json">{{ proposedValue(change) }}</pre>
-                          }
-                        </td>
-                      </tr>
+                @for (change of op.changes; track change.path) {
+                  <div class="config-change__change">
+                    <code class="config-change__path">{{ change.path }}</code>
+                    @if (change.remove) {
+                      <span class="config-change__badge">removed</span>
                     }
-                  </tbody>
-                </table>
+                    <ol class="config-change__diff" [attr.aria-label]="'Changes to ' + change.path">
+                      @for (row of diffRows(change); track $index) {
+                        @if (row.kind === 'gap') {
+                          <li class="config-change__line config-change__line--gap">
+                            … {{ row.count }} unchanged {{ row.count === 1 ? 'line' : 'lines' }}
+                          </li>
+                        } @else {
+                          <li class="config-change__line config-change__line--{{ row.kind }}">
+                            <span class="config-change__sign" aria-hidden="true">{{
+                              row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ' '
+                            }}</span>
+                            @if (row.kind !== 'context') {
+                              <span class="sr-only">{{ row.kind === 'added' ? 'Added: ' : 'Removed: ' }}</span>
+                            }
+                            <span class="config-change__line-text">{{ row.text }}</span>
+                          </li>
+                        }
+                      }
+                    </ol>
+                  </div>
+                }
               }
 
               @if (op.action !== 'CREATE' && op.changes.length === 0) {

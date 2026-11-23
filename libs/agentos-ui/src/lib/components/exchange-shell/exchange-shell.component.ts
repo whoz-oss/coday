@@ -14,10 +14,19 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ConfirmDialogComponent } from '@whoz-oss/design-system'
-import { canViewFile, ensureImageBlob, isFormatViewable, isImageFile } from '../../services/exchange-content.utils'
+import {
+  canViewFile,
+  ensureTypedBlob,
+  isBlobPreviewFile,
+  isFormatViewable,
+} from '../../services/exchange-content.utils'
 import { folderBaseName, folderDeleteMessage as buildFolderDeleteMessage } from '../../services/exchange-folder.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
-import { ExchangeDrawerComponent, ExchangeManifestStatus, ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
+import {
+  ExchangeDrawerComponent,
+  ExchangeManifestStatus,
+  ExchangeReferenceToggle,
+} from '../exchange-drawer/exchange-drawer.component'
 
 /**
  * Poll only while a visible filter is in use; slow scans may extend this interval. Each poll walks the
@@ -60,8 +69,12 @@ export class ExchangeShellComponent {
   // ── Current selection / viewer content ────────────────────────────────────────
   protected readonly selectedFile = signal<ExchangeFileRef | null>(null)
   protected readonly selectedContent = signal<string | null>(null)
-  /** Object URL of the previewed image; owned here so it can be revoked when the selection changes. */
-  protected readonly selectedImageUrl = signal<string | null>(null)
+  /**
+   * Object URL of the previewed image or PDF, and the typed blob behind it. Owned here so the URL can be revoked
+   * when the selection changes.
+   */
+  protected readonly selectedBlobUrl = signal<string | null>(null)
+  protected readonly selectedBlob = signal<Blob | null>(null)
   protected readonly contentStatus = signal<'loading' | 'ready' | 'error'>('loading')
   protected readonly canViewSelected = signal<boolean>(true)
   protected readonly actionError = signal<string | null>(null)
@@ -104,7 +117,7 @@ export class ExchangeShellComponent {
 
   constructor() {
     // An object URL keeps its blob in memory until revoked.
-    this.destroyRef.onDestroy(() => this.revokeImageUrl())
+    this.destroyRef.onDestroy(() => this.revokeBlobUrl())
     // The case view is rendered directly by the case-shell (not through a router-outlet with
     // `:namespaceId/cases/:caseId` path params), so the active case/namespace come through query
     // params (`?ns=..&case=..`), mirroring case-chat. Subscribing (not reading the snapshot once)
@@ -140,7 +153,11 @@ export class ExchangeShellComponent {
       }
     })
     // A namespace-only drawer borrows the state from its home composer.
-    effect((onCleanup) => onCleanup(() => { if (this.activeCaseId !== null) this.state.clear() }))
+    effect((onCleanup) =>
+      onCleanup(() => {
+        if (this.activeCaseId !== null) this.state.clear()
+      })
+    )
     // Revoke only the selected scope; the other scope and its filter remain untouched.
     effect(() => {
       const ref = this.selectedFile()
@@ -157,7 +174,12 @@ export class ExchangeShellComponent {
       const visible = isCase ? this.state.caseSectionVisible : this.state.namespaceSectionVisible
       const pollingEnabled = computed(() => {
         this.contextGeneration()
-        return this.active() && !!query() && (visible() || accessUnavailable()) && !!(isCase ? this.activeCaseId : this.activeNamespaceId)
+        return (
+          this.active() &&
+          !!query() &&
+          (visible() || accessUnavailable()) &&
+          !!(isCase ? this.activeCaseId : this.activeNamespaceId)
+        )
       })
       let inFlight = false
       let backgroundRefresh = false
@@ -166,7 +188,13 @@ export class ExchangeShellComponent {
         const generation = version()
         this.contextGeneration()
         retry()
-        if (!active || !(isCase ? this.activeCaseId : this.activeNamespaceId)) { inFlight = false; backgroundRefresh = false; files.set(null); status.set('idle'); return }
+        if (!active || !(isCase ? this.activeCaseId : this.activeNamespaceId)) {
+          inFlight = false
+          backgroundRefresh = false
+          files.set(null)
+          status.set('idle')
+          return
+        }
         // A closed drawer keeps its last result and fetches again when it reopens, not on every change.
         if (!this.active()) {
           inFlight = false
@@ -200,7 +228,9 @@ export class ExchangeShellComponent {
               if (untracked(this.pendingFolderDelete)?.scope === scope) this.pendingFolderDelete.set(null)
             }
           },
-          complete: () => { inFlight = false },
+          complete: () => {
+            inFlight = false
+          },
         })
         onCleanup(() => subscription.unsubscribe())
       })
@@ -244,7 +274,7 @@ export class ExchangeShellComponent {
     const generation = ++this.selectionGeneration
     this.selectedFile.set(ref)
     this.selectedContent.set(null)
-    this.revokeImageUrl()
+    this.revokeBlobUrl()
     const file = this.findFile(ref)
     // A file reached through the filter lives deeper than the directory being browsed: judge it by its
     // manifest entry, or by its name alone when even that is unknown.
@@ -255,8 +285,8 @@ export class ExchangeShellComponent {
       return
     }
     this.contentStatus.set('loading')
-    if (isImageFile(ref.path)) {
-      this.loadImage(ref, generation)
+    if (isBlobPreviewFile(ref.path)) {
+      this.loadBlob(ref, generation)
       return
     }
     this.state
@@ -402,39 +432,43 @@ export class ExchangeShellComponent {
   }
 
   /**
-   * Images cannot go through the text endpoint: fetch the raw bytes via the download endpoint and
+   * Images and PDFs cannot go through the text endpoint: fetch the raw bytes via the download endpoint and
    * preview them from an object URL.
    */
-  private loadImage(ref: ExchangeFileRef, generation: number): void {
+  private loadBlob(ref: ExchangeFileRef, generation: number): void {
     this.state
       .getBlob(ref.scope, ref.path)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (blob) => {
-          if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope)) return
-          const typed = ensureImageBlob(blob instanceof Blob ? blob : new Blob([blob]), ref.path)
-          this.revokeImageUrl()
-          this.selectedImageUrl.set(URL.createObjectURL(typed))
+          if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope))
+            return
+          const typed = ensureTypedBlob(blob instanceof Blob ? blob : new Blob([blob]), ref.path)
+          this.revokeBlobUrl()
+          this.selectedBlob.set(typed)
+          this.selectedBlobUrl.set(URL.createObjectURL(typed))
           this.contentStatus.set('ready')
         },
         error: () => {
-          if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope)) return
+          if (generation !== this.selectionGeneration || !this.isStillSelected(ref) || this.scopeForbidden(ref.scope))
+            return
           this.contentStatus.set('error')
         },
       })
   }
 
-  private revokeImageUrl(): void {
-    const url = this.selectedImageUrl()
+  private revokeBlobUrl(): void {
+    const url = this.selectedBlobUrl()
     if (url) URL.revokeObjectURL(url)
-    this.selectedImageUrl.set(null)
+    this.selectedBlobUrl.set(null)
+    this.selectedBlob.set(null)
   }
 
   private clearSelection(): void {
     this.selectionGeneration++
     this.selectedFile.set(null)
     this.selectedContent.set(null)
-    this.revokeImageUrl()
+    this.revokeBlobUrl()
     this.contentStatus.set('loading')
     this.canViewSelected.set(true)
   }
@@ -459,15 +493,16 @@ export class ExchangeShellComponent {
 
   private scopeForbidden(scope: ExchangeScope): boolean {
     const status = scope === ExchangeFileEntryScopeEnum.CASE ? this.state.caseStatus() : this.state.namespaceStatus()
-    const unavailable = scope === ExchangeFileEntryScopeEnum.CASE
-      ? this.state.caseBrowseUnavailable()
-      : this.state.namespaceBrowseUnavailable()
+    const unavailable =
+      scope === ExchangeFileEntryScopeEnum.CASE
+        ? this.state.caseBrowseUnavailable()
+        : this.state.namespaceBrowseUnavailable()
     return status === 'forbidden' || unavailable
   }
 
   private canViewUnlisted(ref: ExchangeFileRef): boolean {
     if (ref.scope !== ExchangeFileEntryScopeEnum.NAMESPACE) return false
-    return isImageFile(ref.path) || isFormatViewable(ref.path)
+    return isBlobPreviewFile(ref.path) || isFormatViewable(ref.path)
   }
 
   private isStillSelected(ref: ExchangeFileRef): boolean {
