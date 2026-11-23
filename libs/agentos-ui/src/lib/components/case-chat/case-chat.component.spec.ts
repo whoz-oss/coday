@@ -1,5 +1,15 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { ComponentRef, createComponent, ElementRef, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
+import {
+  Component,
+  ComponentRef,
+  createComponent,
+  ElementRef,
+  EnvironmentInjector,
+  input,
+  output,
+  signal,
+  WritableSignal,
+} from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -35,6 +45,8 @@ import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
+import { CaseUsageComponent } from '../case-usage/case-usage.component'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseChatComponent } from './case-chat.component'
 
 /**
@@ -2189,7 +2201,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(dom.bubble('u-1').animate).not.toHaveBeenCalled()
     })
 
-    it('jumps without smooth scroll nor flash when the reader prefers reduced motion', () => {
+    it('jumps without smooth scroll when the reader prefers reduced motion, and still flashes (a fade, not a motion)', () => {
       reduceMotion(true)
       const ref = makeComponent()
       const dom = fakeMessagesContainer({ 'u-1': 200, 'u-2': 1400 })
@@ -2198,7 +2210,20 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.instance['scrollToMessage']('u-1')
 
       expect(dom.scrollTo).toHaveBeenCalledWith({ top: 200 - 12, behavior: 'auto' })
-      expect(dom.bubble('u-1').animate).not.toHaveBeenCalled()
+      expect(dom.bubble('u-1').animate).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the same rail list while the user messages are unchanged', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        message('u-1', ActorRoleEnum.USER, 'first'),
+        message('u-2', ActorRoleEnum.USER, 'second'),
+      ])
+      const before = ref.instance['railMessages']()
+
+      ref.instance['events'].update((events) => [...events, message('a-1', ActorRoleEnum.AGENT, 'an answer')])
+
+      expect(ref.instance['railMessages']()).toBe(before)
     })
 
     it('ignores a message that is not in the container', () => {
@@ -2278,6 +2303,69 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(ref.instance['isAtBottom']()).toBe(false)
       dom.scroll(2440)
       expect(ref.instance['isAtBottom']()).toBe(true)
+    })
+
+    describe('rendered', () => {
+      // The only rendered test of this spec: the two children that load their own data are stubbed, the rest is real.
+      @Component({ selector: 'agentos-exchange-shell', template: '' })
+      class ExchangeShellStub {
+        readonly active = input(false)
+        readonly selectable = input(false)
+        readonly referenced = input<unknown>()
+        readonly referenceToggled = output<unknown>()
+        readonly closeRequested = output<void>()
+      }
+
+      @Component({ selector: 'agentos-case-usage', template: '' })
+      class CaseUsageStub {
+        readonly caseId = input<string>()
+        readonly canWrite = input(false)
+        readonly running = input(false)
+      }
+
+      it('anchors user turns only, and scrolls the messages area when a rail dot is clicked', () => {
+        const original = globalThis.EventSource
+        globalThis.EventSource = jest.fn(() =>
+          Object.assign(new EventTarget(), { close: jest.fn() })
+        ) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        TestBed.overrideProvider(VoiceCapabilityStateService, {
+          useValue: { available: signal(false), load: jest.fn() },
+        })
+        TestBed.overrideComponent(CaseChatComponent, {
+          remove: { imports: [ExchangeShellComponent, CaseUsageComponent] },
+          add: { imports: [ExchangeShellStub, CaseUsageStub] },
+        })
+        try {
+          const fixture = TestBed.createComponent(CaseChatComponent)
+          fixture.detectChanges()
+          fixture.componentInstance['events'].set([
+            message('u-1', ActorRoleEnum.USER, 'first question'),
+            message('a-1', ActorRoleEnum.AGENT, 'an answer'),
+            message('u-2', ActorRoleEnum.USER, 'second question'),
+          ])
+          fixture.detectChanges()
+          const host = fixture.nativeElement as HTMLElement
+
+          const anchors = Array.from(host.querySelectorAll('.case-chat__turn[data-message-id]'))
+          expect(anchors.map((turn) => turn.getAttribute('data-message-id'))).toEqual(['u-1', 'u-2'])
+          expect(host.querySelectorAll('.case-chat__turn')).toHaveLength(3)
+
+          const container = host.querySelector<HTMLElement>('.case-chat__messages')!
+          const scrollTo = jest.fn()
+          container.scrollTo = scrollTo as unknown as HTMLElement['scrollTo']
+          const dots = host.querySelectorAll<HTMLButtonElement>('agentos-case-message-rail button')
+          expect(dots).toHaveLength(2)
+          dots[1]!.click()
+
+          // jsdom has no layout: every top is 0, so the target position is 0.
+          expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+          fixture.destroy()
+        } finally {
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
     })
   })
 })

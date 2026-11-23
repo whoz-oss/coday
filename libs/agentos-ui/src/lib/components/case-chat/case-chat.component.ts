@@ -763,6 +763,26 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   })
 
   /**
+   * The user's messages, in conversation order, for the message rail.
+   *
+   * Equal while ids and texts are: the base timeline is rebuilt on every persisted event, and the rail re-measures (and
+   * forgets the dot picked last) only when its own list really changes.
+   */
+  protected readonly railMessages = computed<RailMessage[]>(
+    () =>
+      this.baseTimeline().flatMap((item) =>
+        item.kind === 'message' && item.event.actor.role === ActorRoleEnum.USER
+          ? [{ id: item.event.id, text: this.extractText(item.event) }]
+          : []
+      ),
+    {
+      equal: (previous, next) =>
+        previous.length === next.length &&
+        previous.every((message, index) => message.id === next[index]?.id && message.text === next[index]?.text),
+    }
+  )
+
+  /**
    * Id of the latest unanswered, non-OAuth question (the one whose answer controls get focus).
    * OAuth questions are excluded: their popup flow must start from an explicit click.
    */
@@ -1022,15 +1042,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.scrollToBottom()
   }
 
-  /** The user's messages, in conversation order, for the message rail. */
-  protected readonly railMessages = computed<RailMessage[]>(() =>
-    this.baseTimeline().flatMap((item) =>
-      item.kind === 'message' && item.event.actor.role === ActorRoleEnum.USER
-        ? [{ id: item.event.id, text: this.extractText(item.event) }]
-        : []
-    )
-  )
-
   /**
    * Brings a user message chosen on the rail just under the top of the messages area, then flashes its bubble.
    *
@@ -1047,9 +1058,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.railJumpScrollTop = container.scrollTop
       this.isAtBottom.set(false)
     }
-    const reducedMotion = prefersReducedMotion()
-    container.scrollTo({ top, behavior: reducedMotion ? 'auto' : 'smooth' })
-    if (!reducedMotion) flashMessage(anchor.querySelector<HTMLElement>('.case-chat__bubble') ?? anchor)
+    container.scrollTo({ top, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+    flashMessage(anchor.querySelector<HTMLElement>('.case-chat__bubble') ?? anchor)
   }
 
   // ---------------------------------------------------------------------------

@@ -49,9 +49,31 @@ describe('messagePreview', () => {
     expect(preview('Run this:\n```bash\npnpm test\n```\n---\nthanks')).toBe('Run this: pnpm test thanks')
   })
 
+  it('keeps double underscores inside a word, which the renderer never reads as emphasis', () => {
+    expect(preview('rename snake__case__name')).toBe('rename snake__case__name')
+  })
+
+  it('reads dunder names as the bubble shows them: strong text, as marked renders `__init__`', () => {
+    expect(preview('call __init__ and __str__')).toBe('call init and str')
+  })
+
+  it('drops strong and strikethrough markers inside a word, as the renderer does', () => {
+    expect(preview('a**b**c x~~y~~z')).toBe('abc xyz')
+  })
+
+  it('keeps escaped markdown characters as literal text', () => {
+    expect(preview('a \\*star\\* and \\_under\\_ and \\# not a title')).toBe('a *star* and _under_ and # not a title')
+  })
+
   it('never splits an emoji when cutting', () => {
-    const result = messagePreview('ok 👍👍👍👍', 5)
-    expect(result).toBe('ok 👍…')
+    expect(messagePreview('ok 👍👍👍👍', 5)).toBe('ok 👍…')
+  })
+
+  it('cuts by user-perceived characters: a joined emoji family or a flag counts as one', () => {
+    const family = '👨‍👩‍👧‍👦'
+    const flag = '🇫🇷'
+    expect(messagePreview(`hi ${family}${family}${family}`, 5)).toBe(`hi ${family}…`)
+    expect(messagePreview(`go ${flag}${flag}${flag}`, 5)).toBe(`go ${flag}…`)
   })
 
   it('returns an empty string for a message without text', () => {

@@ -28,20 +28,22 @@ export function scrollTopFor(container: HTMLElement, anchor: HTMLElement): numbe
   return Math.min(maxScrollTop, Math.max(0, contentTop(container, anchor) - MESSAGE_SCROLL_MARGIN))
 }
 
-/** Whether the reader asked the system to minimise motion (no smooth scroll, no flash then). */
+/** Whether the reader asked the system to minimise motion (no smooth scroll then). */
 export function prefersReducedMotion(): boolean {
   // matchMedia is missing from some non-browser environments (jsdom).
   return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
 /**
- * Briefly outlines an element the rail jumped to, so the eye finds it after the scroll.
+ * Briefly outlines an element the rail jumped to, so the eye finds it after the scroll. A colour fade, not a motion:
+ * it plays under prefers-reduced-motion too. The ring is drawn inside the element, so a container clipping its
+ * edges (the user bubbles sit flush right, the messages scroller hides horizontal overflow) never cuts it.
  *
  * Web Animations rather than a class: the element belongs to the host's template and stylesheet, and the animation
  * restarts cleanly on a second click and removes itself when done.
  */
 export function flashMessage(element: HTMLElement): void {
-  const ring = { outlineStyle: 'solid', outlineWidth: '2px', outlineOffset: '3px' }
+  const ring = { outlineStyle: 'solid', outlineWidth: '2px', outlineOffset: '-2px' }
   element.animate?.(
     [
       { ...ring, outlineColor: 'var(--color-accent)' },

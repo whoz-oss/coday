@@ -1,5 +1,5 @@
 @if (visible()) {
-  <nav class="message-rail" aria-label="Your messages">
+  <nav class="message-rail" aria-label="User messages">
     <ol #list class="message-rail__list" (scroll)="onListScroll()">
       @for (entry of entries(); track entry.id) {
         <li class="message-rail__item">

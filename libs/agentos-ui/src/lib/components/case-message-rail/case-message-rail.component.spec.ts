@@ -13,9 +13,12 @@ const MESSAGES: RailMessage[] = [
 
 /**
  * A scroll container laid out by hand (jsdom has no layout): message i is 100px tall at i × 400px, seen through a
- * 500px viewport of a 2000px conversation. `scrollTo` moves the reading position.
+ * 500px viewport of a `scrollHeight` conversation. `scrollTo` moves the reading position.
  */
-function fakeConversation(messages: readonly RailMessage[]): {
+function fakeConversation(
+  messages: readonly RailMessage[],
+  scrollHeight = 2000
+): {
   container: HTMLElement
   scrollTo: (top: number) => void
 } {
@@ -24,7 +27,7 @@ function fakeConversation(messages: readonly RailMessage[]): {
   Object.defineProperties(container, {
     scrollTop: { get: () => scrollTop },
     clientHeight: { value: 500 },
-    scrollHeight: { value: 2000 },
+    scrollHeight: { value: scrollHeight },
   })
   container.getBoundingClientRect = () => new DOMRect(0, 0, 600, 500)
   messages.forEach((message, index) => {
@@ -49,8 +52,8 @@ describe('CaseMessageRailComponent', () => {
   let selected: string[]
   let conversation: ReturnType<typeof fakeConversation>
 
-  function render(messages: readonly RailMessage[] = MESSAGES): HTMLElement {
-    conversation = fakeConversation(messages)
+  function render(messages: readonly RailMessage[] = MESSAGES, scrollHeight?: number): HTMLElement {
+    conversation = fakeConversation(messages, scrollHeight)
     fixture = TestBed.createComponent(CaseMessageRailComponent)
     fixture.componentRef.setInput('messages', messages)
     fixture.componentRef.setInput('scrollContainer', conversation.container)
@@ -83,7 +86,7 @@ describe('CaseMessageRailComponent', () => {
   it('renders a navigation landmark with one dot button per user message, in order', () => {
     const host = render()
 
-    expect(host.querySelector('nav')?.getAttribute('aria-label')).toBe('Your messages')
+    expect(host.querySelector('nav')?.getAttribute('aria-label')).toBe('User messages')
     expect(host.querySelectorAll('nav li')).toHaveLength(3)
     // Native buttons: Enter and Space activate them like a click.
     expect(dots(host).map((dot) => dot.type)).toEqual(['button', 'button', 'button'])
@@ -134,13 +137,40 @@ describe('CaseMessageRailComponent', () => {
     expect(tooltip(host)).toBeNull()
   })
 
-  it('emits the id of a clicked dot and marks it current right away', () => {
+  it('hides the preview when the list scrolls from under it', () => {
+    const host = render()
+    dots(host)[0]!.focus()
+    dots(host)[1]!.dispatchEvent(new Event('pointerenter'))
+    fixture.detectChanges()
+    expect(tooltip(host)).not.toBeNull()
+
+    host.querySelector('ol')!.dispatchEvent(new Event('scroll'))
+    fixture.detectChanges()
+    expect(tooltip(host)).toBeNull()
+  })
+
+  it('emits the id of a clicked dot, for the host to scroll to it', () => {
     const host = render()
 
     dots(host)[2]!.click()
-    fixture.detectChanges()
 
     expect(selected).toEqual(['m-3'])
+  })
+
+  it('at the very end, keeps the clicked dot current over a later message on screen, until the messages change', async () => {
+    // A 900px conversation scrolled to its end: m-2 (400) and m-3 (800) are both on screen, neither can reach the top.
+    const host = render(MESSAGES, 900)
+    await scrollConversation(400)
+    expect(current(host)).toEqual([null, null, 'location'])
+
+    dots(host)[1]!.click()
+    await scrollConversation(400)
+    expect(current(host)).toEqual([null, 'location', null])
+
+    // A new message (same layout here) clears the pick: the usual rule applies again.
+    fixture.componentRef.setInput('messages', [...MESSAGES])
+    fixture.detectChanges()
+    fixture.detectChanges()
     expect(current(host)).toEqual([null, null, 'location'])
   })
 
@@ -162,7 +192,7 @@ describe('CaseMessageRailComponent', () => {
 
     fixture.destroy()
 
-    expect(removed.mock.calls.map(([type]) => type).sort()).toEqual(['scroll', 'touchstart', 'wheel'])
+    expect(removed.mock.calls.map(([type]) => type)).toEqual(['scroll'])
   })
 
   it('moves focus between dots with ArrowUp / ArrowDown, Home and End, without wrapping', () => {

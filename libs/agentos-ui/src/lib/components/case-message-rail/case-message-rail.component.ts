@@ -7,12 +7,13 @@ import {
   ElementRef,
   inject,
   input,
+  NgZone,
   output,
   signal,
   viewChild,
   viewChildren,
 } from '@angular/core'
-import { MessageBox, RailPin, resolveActiveMessage } from './active-message'
+import { MessageBox, resolveActiveMessage } from './active-message'
 import { contentTop, messageAnchors } from './message-anchor'
 import { messagePreview, RAIL_LABEL_LENGTH, RAIL_PREVIEW_LENGTH } from './message-preview'
 
@@ -47,6 +48,10 @@ interface RailTooltip {
  * the host to scroll when a dot is chosen: the host owns its scroll position and its auto-follow. Each message is
  * found in the container through its `[data-message-id]` anchor (see MESSAGE_ANCHOR_ATTRIBUTE).
  *
+ * The reading position is measured on scroll and when the messages change. A layout change that neither scrolls nor
+ * changes the messages (a tool group expanded, the window resized) can leave the filled dot stale until the next
+ * scroll: accepted, since the next scroll corrects it.
+ *
  * It renders nothing under two messages. It sits just outside the right edge of its positioned parent (in the
  * gutter), stays put while the conversation scrolls, and scrolls itself when its dots no longer fit.
  */
@@ -67,6 +72,7 @@ export class CaseMessageRailComponent {
   readonly messageSelected = output<string>()
 
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
+  private readonly zone = inject(NgZone)
   private readonly list = viewChild<ElementRef<HTMLOListElement>>('list')
   private readonly dots = viewChildren<ElementRef<HTMLButtonElement>>('dot')
 
@@ -100,26 +106,20 @@ export class CaseMessageRailComponent {
   /** One tooltip at a time, the pointer first: it is outside the scrolling list, so the list never clips it. */
   protected readonly tooltip = computed(() => this.hoverTooltip() ?? this.focusTooltip())
 
-  private pin: RailPin | null = null
+  /** The message last picked on the rail: see `resolveActiveMessage`. Forgotten when the messages change. */
+  private pinnedId: string | null = null
   private frame: number | null = null
 
   constructor() {
-    // Follow the reading position: one measure per frame at most, only while the rail is shown.
+    // Follow the reading position: one measure per frame at most, only while the rail is shown. Scroll events and
+    // frames stay outside Angular; setting the active id still schedules a render.
     effect((onCleanup) => {
       const container = this.scrollContainer()
       if (!container || !this.visible()) return
       const onScroll = (): void => this.scheduleMeasure()
-      // A wheel or a swipe means the reader took over: a jump in progress no longer decides the active dot.
-      const onTakeOver = (): void => {
-        this.pin = null
-      }
-      container.addEventListener('scroll', onScroll, { passive: true })
-      container.addEventListener('wheel', onTakeOver, { passive: true })
-      container.addEventListener('touchstart', onTakeOver, { passive: true })
+      this.zone.runOutsideAngular(() => container.addEventListener('scroll', onScroll, { passive: true }))
       onCleanup(() => {
         container.removeEventListener('scroll', onScroll)
-        container.removeEventListener('wheel', onTakeOver)
-        container.removeEventListener('touchstart', onTakeOver)
         if (this.frame !== null) cancelAnimationFrame(this.frame)
         this.frame = null
       })
@@ -130,24 +130,29 @@ export class CaseMessageRailComponent {
       read: () => {
         this.messages()
         this.scrollContainer()
+        this.pinnedId = null
         this.measure()
       },
     })
 
-    // Keep the active dot in sight when the rail scrolls.
+    // Keep the active dot in sight when the rail scrolls: measure first, then scroll the list if needed.
     afterRenderEffect({
-      write: () => {
+      earlyRead: () => {
         const index = this.entries().findIndex((entry) => entry.id === this.activeId())
         const dot = this.dots()[index]?.nativeElement
         const list = this.list()?.nativeElement
-        if (dot && list) revealInList(list, dot)
+        const top = dot && list ? revealScrollTop(list, dot) : null
+        return list && top !== null ? { list, top } : null
+      },
+      write: (reveal) => {
+        const target = reveal()
+        if (target) target.list.scrollTop = target.top
       },
     })
   }
 
   protected select(id: string): void {
-    this.pin = { id, seen: false }
-    this.activeId.set(id)
+    this.pinnedId = id
     this.messageSelected.emit(id)
   }
 
@@ -160,7 +165,8 @@ export class CaseMessageRailComponent {
     const dot = this.dots()[Math.min(last, Math.max(0, target))]?.nativeElement
     const list = this.list()?.nativeElement
     if (!dot || !list) return
-    revealInList(list, dot)
+    const top = revealScrollTop(list, dot)
+    if (top !== null) list.scrollTop = top
     dot.focus({ preventScroll: true })
   }
 
@@ -183,12 +189,10 @@ export class CaseMessageRailComponent {
     this.focusTooltip.set(null)
   }
 
-  /** The list scrolled under the tooltip: the pointer is over another dot now, the focused one has moved. */
+  /** The list scrolled from under the tooltip: it no longer points at its dot. */
   protected onListScroll(): void {
     this.hoverTooltip.set(null)
-    const focused = this.dots().find((dot) => dot.nativeElement === document.activeElement)?.nativeElement
-    const tooltip = this.focusTooltip()
-    if (focused && tooltip) this.focusTooltip.set({ ...tooltip, top: this.dotCentre(focused) })
+    this.focusTooltip.set(null)
   }
 
   private dotCentre(dot: HTMLElement): number {
@@ -198,10 +202,12 @@ export class CaseMessageRailComponent {
 
   private scheduleMeasure(): void {
     if (this.frame !== null) return
-    this.frame = requestAnimationFrame(() => {
-      this.frame = null
-      this.measure()
-    })
+    this.frame = this.zone.runOutsideAngular(() =>
+      requestAnimationFrame(() => {
+        this.frame = null
+        this.measure()
+      })
+    )
   }
 
   /** Reads where the listed messages sit (layout reads only) and updates the active dot. */
@@ -215,22 +221,25 @@ export class CaseMessageRailComponent {
       const top = contentTop(container, anchor)
       return [{ id: message.id, top, bottom: top + anchor.offsetHeight }]
     })
-    const { activeId, pin } = resolveActiveMessage(
-      boxes,
-      { scrollTop: container.scrollTop, clientHeight: container.clientHeight, scrollHeight: container.scrollHeight },
-      this.pin
-    )
-    this.pin = pin
-    this.activeId.set(activeId)
+    const viewport = {
+      scrollTop: container.scrollTop,
+      clientHeight: container.clientHeight,
+      scrollHeight: container.scrollHeight,
+    }
+    this.activeId.set(resolveActiveMessage(boxes, viewport, this.pinnedId))
   }
 }
 
-/** Scrolls `list` just enough to show `item`, which must be laid out against it (the list is positioned). */
-function revealInList(list: HTMLElement, item: HTMLElement): void {
+/**
+ * The scroll position of `list` that just shows `item`, or null when it is already in view (layout reads only).
+ * `item` must be laid out against the list, which is positioned.
+ */
+function revealScrollTop(list: HTMLElement, item: HTMLElement): number | null {
   const top = item.offsetTop
   const bottom = top + item.offsetHeight
-  if (top < list.scrollTop) list.scrollTop = top
-  else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight
+  if (top < list.scrollTop) return top
+  if (bottom > list.scrollTop + list.clientHeight) return bottom - list.clientHeight
+  return null
 }
 
 function isFocusVisible(element: HTMLElement): boolean {

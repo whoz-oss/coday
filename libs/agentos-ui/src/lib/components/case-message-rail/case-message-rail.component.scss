@@ -103,7 +103,7 @@
 .message-rail__tooltip {
   position: absolute;
   inset-inline-end: calc(100% + 0.25rem);
-  max-inline-size: 20rem;
+  max-inline-size: min(20rem, calc(100vw - 4rem));
   padding: 0.25rem 0.5rem;
   overflow: hidden;
   font-family: var(--font-body);
