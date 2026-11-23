@@ -10,6 +10,7 @@ import io.whozoss.factory.sdk.spi.FragmentView
 import io.whozoss.factory.sdk.spi.RunUpdate
 import io.whozoss.factory.sdk.spi.RunView
 import io.whozoss.factory.sdk.spi.StepOutcomeView
+import io.whozoss.factory.sdk.spi.ToolEventView
 import io.whozoss.factory.sdk.spi.StepValidationContext
 import io.whozoss.factory.sdk.spi.StepValidationVerdict
 import io.whozoss.factory.sdk.spi.WatchedFileSnapshot
@@ -48,6 +49,209 @@ class ForgeBmadFlowAndValidatorTest {
             "content" to mapper.writeValueAsString(values),
         )),
     )
+
+    private fun trustedCaseEvidence() = mapOf("case_write" to mapOf(
+        "repository" to "CODAY", "location" to "CASE_EXCHANGE", "working_path" to "/case/repo",
+        "relative_path" to "repo", "revision" to "b".repeat(40),
+    ))
+
+    private fun checkoutToolEvidence(source: Map<*, *>): List<ToolEventView> =
+        if (source["location"] != "NAMESPACE_EXCHANGE") emptyList() else listOf(ToolEventView(
+            toolName = "find-checkouts", eventType = "tool-response",
+            payload = mapOf("result" to mapOf(
+                "repository" to source["repository"], "location" to source["location"],
+                "workingPath" to source["working_path"], "relativePath" to source["relative_path"],
+                "revision" to source["revision"], "coverage" to source["coverage"], "modified" to source["modified"],
+            )),
+        ))
+
+    private fun repositoryRouting(
+        namespaceRelativePath: String = ".",
+        mappedCasePath: String? = null,
+        workstreamSource: String = "whoz_namespace",
+        coverage: String = "complete",
+    ): Map<String, Any?> {
+        val logical = "forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428/SPEC.md"
+        val namespaceRoot = if (namespaceRelativePath == ".") "/namespace" else "/namespace/$namespaceRelativePath"
+        val sourceLocation = if (workstreamSource == "case") "CASE_EXCHANGE" else "NAMESPACE_EXCHANGE"
+        val sourceRoot = if (workstreamSource == "case") "/case/repo" else namespaceRoot
+        val sourceRepository = if (workstreamSource == "case") "CODAY" else "WHOZ"
+        val sourceRelativePath = if (workstreamSource == "case") "repo" else namespaceRelativePath
+        return mapOf(
+            "pinned_source" to mapOf(
+                "repository" to sourceRepository, "location" to sourceLocation, "working_path" to sourceRoot,
+                "relative_path" to sourceRelativePath, "path" to logical,
+                "revision" to "b".repeat(40), "coverage" to coverage, "modified" to false,
+            ),
+            "case_write" to mapOf(
+                "repository" to "CODAY", "location" to "CASE_EXCHANGE", "working_path" to "/case/repo",
+                "relative_path" to "repo", "revision" to "b".repeat(40),
+            ),
+            "workstream_context" to mapOf(
+                "source" to workstreamSource, "repository" to sourceRepository, "coverage" to "complete",
+                "case_context_status" to if (workstreamSource == "case") "valid" else "missing-runtime",
+                "location" to sourceLocation, "working_path" to sourceRoot,
+                "relative_path" to sourceRelativePath, "project_path" to "forge/bmad/workstreams/forge",
+            ),
+            "artifact_paths" to listOf(mapOf("logical_path" to logical, "case_path" to (mappedCasePath ?: "repo/$logical"))),
+        )
+    }
+
+    @Test
+    fun `delivery preflight accepts root and nested Whoz Namespace routes and persists Case-only mapping`() {
+        for (relativePath in listOf(".", "team/feature/talent-portal")) {
+            val run = RunView(runId = "route-$relativePath", runType = "forge.delivery")
+            val verdict = validator.validate(StepValidationContext(
+                run = run, flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+                report = businessReport(mapOf("repository_routing" to repositoryRouting(relativePath))),
+                externalEvidence = trustedCaseEvidence(),
+                toolEvents = checkoutToolEvidence(repositoryRouting(relativePath)["pinned_source"] as Map<*, *>),
+                workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+            )) as StepValidationVerdict.Accepted
+            val persisted = verdict.newDomainState!!["repositoryRouting"] as Map<*, *>
+            assertThat((persisted["case_write"] as Map<*, *>) ["relative_path"]).isEqualTo("repo")
+            assertThat((persisted["pinned_source"] as Map<*, *>) ["relative_path"]).isEqualTo(relativePath)
+        }
+    }
+
+    @Test
+    fun `pinned source in Case remains distinct from Whoz Namespace workstream fallback`() {
+        val route = repositoryRouting().toMutableMap()
+        val logical = "forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428/SPEC.md"
+        route["pinned_source"] = mapOf(
+            "repository" to "CODAY", "location" to "CASE_EXCHANGE", "working_path" to "/case/repo",
+            "relative_path" to "repo", "path" to logical, "revision" to "b".repeat(40), "coverage" to "complete", "modified" to false,
+        )
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "case-source-namespace-context", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to route)),
+            externalEvidence = trustedCaseEvidence(),
+            toolEvents = checkoutToolEvidence(route["pinned_source"] as Map<*, *>),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        val accepted = (verdict as StepValidationVerdict.Accepted).newDomainState!!["repositoryRouting"] as Map<*, *>
+        assertThat((accepted["pinned_source"] as Map<*, *>)["location"]).isEqualTo("CASE_EXCHANGE")
+        assertThat((accepted["workstream_context"] as Map<*, *>)["location"]).isEqualTo("NAMESPACE_EXCHANGE")
+    }
+
+    @Test
+    fun `delivery preflight rejects unsafe mapped paths before repository writes`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "unsafe-route", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to repositoryRouting(mappedCasePath = "repo/../outside/SPEC.md"))),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_REPOSITORY_ROUTING")
+    }
+
+    @Test
+    fun `delivery writes fail closed without persisted Case routing`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "missing-route", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "product-design", agentName = "ProductEngineer",
+            workspaceDelta = WorkspaceDelta(changedFilesDuringTurn = mapOf("forge/bmad/plan.md" to "ADDED")),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("REPOSITORY_ROUTING_MISSING")
+    }
+
+    @Test
+    fun `delivery preflight prefers valid Case-local workstream context`() {
+        val route = repositoryRouting(workstreamSource = "case")
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "local-context", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to route)),
+            externalEvidence = trustedCaseEvidence(),
+            toolEvents = checkoutToolEvidence(route["pinned_source"] as Map<*, *>),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+        assertThat((((verdict as StepValidationVerdict.Accepted).newDomainState!!["repositoryRouting"] as Map<*, *>)["workstream_context"] as Map<*, *>)["source"])
+            .isEqualTo("case")
+    }
+
+    @Test
+    fun `delivery preflight rejects invalid local workstream instead of falling back`() {
+        val route = repositoryRouting().toMutableMap()
+        route["workstream_context"] = mapOf(
+            "source" to "whoz_namespace", "case_context_status" to "invalid", "location" to "NAMESPACE_EXCHANGE",
+            "working_path" to "/namespace", "relative_path" to ".", "project_path" to "forge/bmad/workstreams/forge",
+        )
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "invalid-local", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to route)),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_REPOSITORY_ROUTING")
+    }
+
+    @Test
+    fun `delivery preflight rejects incomplete Namespace discovery coverage`() {
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "incomplete-namespace", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to repositoryRouting(coverage = "incomplete"))),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("INVALID_REPOSITORY_ROUTING")
+    }
+
+    @Test
+    fun `delivery preflight blocks SHA-256 Git object format before writes`() {
+        val route = repositoryRouting().toMutableMap()
+        route["pinned_source"] = (route["pinned_source"] as Map<*, *>).toMutableMap().apply {
+            put("revision", "c".repeat(64))
+        }
+        route["case_write"] = (route["case_write"] as Map<*, *>).toMutableMap().apply {
+            put("revision", "c".repeat(64))
+        }
+        val verdict = validator.validate(StepValidationContext(
+            run = RunView(runId = "unsupported-object-format", runType = "forge.delivery"),
+            flowType = "forge.delivery", stepId = "delivery-preflight", agentName = "ProductEngineer",
+            report = businessReport(mapOf("repository_routing" to route)),
+            workspaceDelta = WorkspaceDelta(headShaBefore = "c".repeat(64), headShaAfter = "c".repeat(64)),
+        )) as StepValidationVerdict.Rejected
+        assertThat(verdict.reasonCode).isEqualTo("UNSUPPORTED_GIT_OBJECT_FORMAT")
+    }
+
+    @Test
+    fun `directory artifact mapping contains descendants in Case repo`() {
+        val routing = repositoryRouting()
+        val logicalDirectory = "forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428"
+        val directoryRouting = routing.toMutableMap().apply {
+            put("artifact_paths", listOf(mapOf("logical_path" to logicalDirectory, "case_path" to "repo/$logicalDirectory")))
+        }
+        val run = RunView(runId = "mapped-directory", runType = "forge.delivery", domainState = mapOf("repositoryRouting" to directoryRouting))
+        val verdict = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.delivery", stepId = "product-design", agentName = "ProductEngineer",
+            workspaceDelta = WorkspaceDelta(
+                headShaBefore = "b".repeat(40), headShaAfter = "b".repeat(40),
+                changedFilesDuringTurn = mapOf("forge/bmad/workstreams/forge/planning-artifacts/specs/WZ-35428/SPEC.md" to "MODIFIED"),
+            ),
+            externalEvidence = trustedCaseEvidence(),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Accepted::class.java)
+    }
+
+    @Test
+    fun `delivery writes reject Case HEAD drift from the persisted revision`() {
+        val routing = repositoryRouting()
+        val run = RunView(runId = "revision-drift", runType = "forge.delivery", domainState = mapOf("repositoryRouting" to routing))
+        val verdict = validator.validate(StepValidationContext(
+            run = run, flowType = "forge.delivery", stepId = "product-design", agentName = "ProductEngineer",
+            workspaceDelta = WorkspaceDelta(headShaBefore = "c".repeat(40), headShaAfter = "c".repeat(40)),
+        ))
+        assertThat(verdict).isInstanceOf(StepValidationVerdict.Rejected::class.java)
+        assertThat((verdict as StepValidationVerdict.Rejected).reasonCode).isEqualTo("CASE_REVISION_DRIFT")
+    }
 
     @Test
     fun `catalog publishes only delivery while legacy Factory contracts remain valid`() {

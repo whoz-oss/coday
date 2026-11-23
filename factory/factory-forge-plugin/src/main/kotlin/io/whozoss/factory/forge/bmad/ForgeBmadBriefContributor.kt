@@ -38,6 +38,25 @@ class ForgeBmadBriefContributor : FactoryBriefContributor {
         }
 
         if (context.flowType == "forge.delivery") {
+            val repositoryRouting = domainState["repositoryRouting"] as? Map<*, *>
+            if (context.stepId == "delivery-preflight") {
+                sections += """
+                    ## Forge repository routing preflight
+                    - Read the pinned source through its exact Case or Namespace route and report its repository, exchange location, actual relativePath (including `.` at exchange root), source file path relative to that Git root, full 40-character revision, and complete discovery coverage.
+                    - Resolve `forge` with the existing `bmad-workstream-context` script, first using the Case project root. Use Whoz Namespace fallback only when the Case BMAD runtime or Forge registry is absent; require exactly one complete, valid Whoz checkout. Never mask invalid local configuration.
+                    - Return `repository_routing` in `forge.business-outputs.v1`: `pinned_source {repository, location, working_path, relative_path, path, revision, coverage, modified}`, `case_write {repository, location: CASE_EXCHANGE, working_path, relative_path: repo, revision}`, `workstream_context {source: case|whoz_namespace, repository, coverage, case_context_status: valid|missing-runtime|missing-registry, location, working_path, relative_path, project_path: forge/bmad/workstreams/forge}`, and `artifact_paths[] {logical_path, case_path}`. Each `working_path` is the exact absolute Git root. Namespace sources require `coverage: complete`, `modified: false`, and a matching observed `find-checkouts` tool result; a Case source must match the trusted Case root and revision exactly. Every `case_path` must equal `repo/<logical_path>`.
+                    - The Case Git checkout under `repo/` is the only write route for designs, plans, tests, packet and code. Namespace access is read-only. Stop before any write on an unavailable or ambiguous route, incomplete discovery, changed binding, malformed path, or path escape.
+                """.trimIndent()
+            } else if (repositoryRouting != null) {
+                sections += """
+                    ## Bound Forge repository routes
+                    Persisted routing binding: ${ObjectMapper().writeValueAsString(repositoryRouting)}
+                    - Read the pinned source only from the recorded exchange, checkout relativePath, file path and full revision.
+                    - Route every write through CASE_EXCHANGE `repo/<mapped path>` at the persisted Case checkout. Revalidate the Case root and expected revision before writing. Do not write through Namespace tools or substitute another checkout.
+                """.trimIndent()
+            } else {
+                sections += "Forge repository routing is unavailable. Do not read or write repository files; report the missing preflight binding."
+            }
             when (context.stepId) {
                 "implementation-planning" -> sections += "Write the implementation plan document as one JSON object equal to the submitted delivery_plan, with no surrounding Markdown."
                 "qa-design" -> sections += "Write the verification plan document with exactly the UTF-8 bytes of submitted verification_plan, including its final newline if present."

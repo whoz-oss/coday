@@ -114,6 +114,13 @@ internal class ForgeGitPacketSnapshot(
 
 /** Git is invoked without a shell; failures become a technical pause at the caller boundary. */
 internal class ProcessGitObjects : ForgeGitPacketSnapshot.GitObjects {
+    fun checkoutRoot(worktree: Path): Path? = runGit(worktree, listOf("rev-parse", "--show-toplevel"), 4_096)
+        ?.toString(Charsets.UTF_8)?.trim()?.takeIf { it.isNotBlank() }
+        ?.let { runCatching { Path.of(it).toRealPath() }.getOrNull() }
+
+    fun headCommit(worktree: Path): String? = runGit(worktree, listOf("rev-parse", "--verify", "HEAD^{commit}"), 128)
+        ?.toString(Charsets.UTF_8)?.trim()?.takeIf { Regex("^[0-9a-f]{40}$").matches(it) }
+
     fun sourceRepository(worktree: Path): String? =
         runGit(worktree, listOf("remote", "get-url", "origin"), 1024)
             ?.toString(Charsets.UTF_8)?.trim()

@@ -42,6 +42,26 @@ class ForgeBuildPacketEvidenceObserver : FactoryStepEvidenceObserver {
     }
 
     private fun verify(context: StepEvidenceObservationContext, requireAcceptedDesign: Boolean): StepEvidenceObservation {
+        val route = context.run.domainState["repositoryRouting"] as? Map<*, *>
+        if (route != null) {
+            val caseWrite = route["case_write"] as? Map<*, *>
+                ?: return StepEvidenceObservation.Invalid("CASE_BINDING_INVALID", "The Case write binding is invalid.")
+            val suppliedRoot = runCatching { Path.of(context.worktreePath).toRealPath() }.getOrNull()
+                ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound Case path cannot be resolved.")
+            val git = ProcessGitObjects()
+            val gitRoot = git.checkoutRoot(suppliedRoot)
+                ?: return StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Run-bound Case Git root cannot be observed.")
+            if (gitRoot != suppliedRoot || caseWrite["working_path"] != gitRoot.toString() ||
+                caseWrite["location"] != "CASE_EXCHANGE" || caseWrite["relative_path"] != "repo"
+            ) return StepEvidenceObservation.Invalid("CASE_BINDING_MISMATCH", "Build is not running in the preflight-bound Case repo/ root.")
+            val observedRepository = (context.gitObjects?.sourceRepository() ?: git.sourceRepository(gitRoot))?.uppercase()
+            if (observedRepository != caseWrite["repository"]) {
+                return StepEvidenceObservation.Invalid("CASE_BINDING_MISMATCH", "The Case repository changed since preflight.")
+            }
+            if (context.report.isEmpty() && git.headCommit(gitRoot) != caseWrite["revision"]) {
+                return StepEvidenceObservation.Invalid("CASE_REVISION_DRIFT", "The Case revision changed before packet approval or Build dispatch.")
+            }
+        }
         val packet = context.run.domainState["approvedPacketCandidate"] as? Map<*, *>
             ?: return StepEvidenceObservation.Invalid("PACKET_IDENTITY_MISSING", "The approved packet is unavailable.")
         val repository = packet["repository"] as? String

@@ -10,6 +10,7 @@ import io.whozoss.factory.sdk.spi.StepValidationContext
 import io.whozoss.factory.sdk.spi.StepValidationVerdict
 import io.whozoss.factory.sdk.spi.WatchedFileSnapshot
 import org.pf4j.Extension
+import java.nio.file.Path
 
 /**
  * PF4J extension synchronously validating BMAD agent step results and
@@ -73,16 +74,22 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         val watched = context.workspaceDelta.watchedFiles
 
         return when (context.flowType) {
-            "forge.delivery" -> when (context.stepId) {
-                "delivery-preflight" -> checkReadOnlyWorkspace(context) ?: StepValidationVerdict.Accepted()
-                "design-assessment" -> validateDeliveryAssessment(context)
+            "forge.delivery" -> {
+                if (context.stepId == "delivery-preflight") {
+                    validateDeliveryPreflight(context)
+                } else {
+                    validatePersistedDeliveryRouting(context)?.let { return it }
+                    when (context.stepId) {
+                        "design-assessment" -> validateDeliveryAssessment(context)
                 "implementation-planning" -> validateDeliveryImplementationPlan(context)
                 "qa-design" -> validateDeliveryVerificationPlan(context)
                 "packet-assembly" -> validateObservedPacket(context)
                 "implementation-build" -> validateDeliveryBuild(context)
                 "implementation-verification" -> validateDeliveryVerification(context)
-                "implementation-review" -> validateDeliveryReview(context)
-                else -> StepValidationVerdict.Accepted()
+                        "implementation-review" -> validateDeliveryReview(context)
+                        else -> StepValidationVerdict.Accepted()
+                    }
+                }
             }
 
             ForgeBmadCatalogContributor.FLOW_PRODUCT_SPEC ->
@@ -416,6 +423,184 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         )
     }
 
+    private fun validateDeliveryPreflight(context: StepValidationContext): StepValidationVerdict {
+        checkReadOnlyWorkspace(context)?.let { return it }
+        if (context.workspaceDelta.captureStatus != io.whozoss.factory.sdk.spi.WorkspaceCaptureStatus.COMPLETE) {
+            return rejectRepositoryRouting(context, "CASE_BINDING_UNAVAILABLE", "A complete trusted Case workspace baseline is required before writes.")
+        }
+        val route = extractOutputs(context.report)["repository_routing"] as? Map<*, *>
+            ?: return rejectRepositoryRouting(context, "REPOSITORY_ROUTING_MISSING", "Preflight must return repository_routing before any repository write.")
+        val source = route["pinned_source"] as? Map<*, *>
+        val caseWrite = route["case_write"] as? Map<*, *>
+        val workstream = route["workstream_context"] as? Map<*, *>
+        val artifacts = route["artifact_paths"] as? List<*>
+        val caseRevision = context.workspaceDelta.headShaBefore
+        val sourceLocation = source?.get("location") as? String
+        val sourceRepository = source?.get("repository") as? String
+        val sourceWorkingPath = source?.get("working_path") as? String
+        val sourceRelativePath = source?.get("relative_path") as? String
+        val sourcePath = source?.get("path") as? String
+        val sourceRevision = source?.get("revision") as? String
+        val coverage = source?.get("coverage") as? String
+        val caseRepository = caseWrite?.get("repository") as? String
+        val caseWorkingPath = caseWrite?.get("working_path") as? String
+        val caseRelativePath = caseWrite?.get("relative_path") as? String
+        val reportedCaseRevision = caseWrite?.get("revision") as? String
+        val workstreamSource = workstream?.get("source") as? String
+        val workstreamRepository = workstream?.get("repository") as? String
+        val workstreamCoverage = workstream?.get("coverage") as? String
+        val caseContextStatus = workstream?.get("case_context_status") as? String
+        val workstreamLocation = workstream?.get("location") as? String
+        val workstreamWorkingPath = workstream?.get("working_path") as? String
+        val workstreamRelativePath = workstream?.get("relative_path") as? String
+        val projectPath = workstream?.get("project_path") as? String
+        if (listOf(sourceRevision, reportedCaseRevision, caseRevision).any { it?.matches(Regex("^[0-9a-f]{64}$")) == true }) {
+            return rejectRepositoryRouting(
+                context, "UNSUPPORTED_GIT_OBJECT_FORMAT",
+                "This Forge packet protocol currently supports SHA-1 Git object IDs only; the SHA-256 checkout is blocked before artifact writes.",
+            )
+        }
+        val safeSourceRoute = sourceRepository in setOf("WHOZ", "CODAY") &&
+            sourceLocation in setOf("CASE_EXCHANGE", "NAMESPACE_EXCHANGE") &&
+            safeAbsoluteCheckoutPath(sourceWorkingPath) &&
+            sourceRelativePath?.let(::safeExchangeRelativePath) == true &&
+            sourcePath?.let(::safeRelativePath) == true &&
+            sourceRevision?.matches(Regex("^[0-9a-f]{40}$")) == true &&
+            coverage == "complete" && source?.get("modified") == false
+        val safeCaseRoute = caseRepository in setOf("WHOZ", "CODAY") &&
+            caseWrite?.get("location") == "CASE_EXCHANGE" && safeAbsoluteCheckoutPath(caseWorkingPath) && caseRelativePath == "repo" &&
+            caseRevision?.matches(Regex("^[0-9a-f]{40}$")) == true && reportedCaseRevision == caseRevision
+        val safeWorkstream = projectPath == "forge/bmad/workstreams/forge" &&
+            safeAbsoluteCheckoutPath(workstreamWorkingPath) && workstreamRelativePath?.let(::safeExchangeRelativePath) == true &&
+            ((workstreamSource == "case" && workstreamRepository == caseRepository && workstreamCoverage == "complete" &&
+                caseContextStatus == "valid" && workstreamLocation == "CASE_EXCHANGE" && workstreamRelativePath == "repo" &&
+                workstreamWorkingPath == caseWorkingPath) ||
+                (workstreamSource == "whoz_namespace" && workstreamRepository == "WHOZ" && workstreamCoverage == "complete" &&
+                    caseContextStatus in setOf("missing-runtime", "missing-registry") &&
+                    workstreamLocation == "NAMESPACE_EXCHANGE" && workstreamWorkingPath != caseWorkingPath &&
+                    workstreamRelativePath?.let(::safeExchangeRelativePath) == true))
+        val artifactMappings = artifacts.orEmpty().mapNotNull { it as? Map<*, *> }
+        val safeArtifacts = artifacts != null && artifacts.isNotEmpty() && artifactMappings.size == artifacts.size &&
+            artifactMappings.all { item ->
+                val logical = item["logical_path"] as? String
+                val casePath = item["case_path"] as? String
+                logical?.let(::safeRelativePath) == true && casePath == "repo/$logical" &&
+                    logical.startsWith("$projectPath/")
+            }
+        if (!safeSourceRoute || !safeCaseRoute || !safeWorkstream || !safeArtifacts) {
+            return rejectRepositoryRouting(context, "INVALID_REPOSITORY_ROUTING", "Preflight repository routes, revisions, coverage or mapped paths are incomplete or unsafe.")
+        }
+        val trustedCase = context.externalEvidence["case_write"] as? Map<*, *>
+            ?: return rejectRepositoryRouting(context, "CASE_BINDING_UNAVAILABLE", "Factory could not independently observe the Run-bound Case checkout.")
+        if (trustedCase["repository"] != caseRepository || trustedCase["location"] != "CASE_EXCHANGE" ||
+            trustedCase["relative_path"] != "repo" || trustedCase["working_path"] != caseWorkingPath ||
+            trustedCase["revision"] != caseRevision
+        ) return rejectRepositoryRouting(context, "CASE_BINDING_MISMATCH", "The reported Case route does not match the Run-bound Git root and revision.")
+        val sourceEvidenceMatches = when (sourceLocation) {
+            "CASE_EXCHANGE" -> sourceRepository == caseRepository && sourceWorkingPath == caseWorkingPath &&
+                sourceRelativePath == caseRelativePath && sourceRevision == caseRevision
+            "NAMESPACE_EXCHANGE" -> hasCheckoutToolEvidence(context, source!!)
+            else -> false
+        }
+        if (!sourceEvidenceMatches) return rejectRepositoryRouting(
+            context, "PINNED_SOURCE_EVIDENCE_MISSING",
+            "The pinned source must match the trusted Case binding or a complete, clean find-checkouts result before any write.",
+        )
+        val previous = context.run.domainState["repositoryRouting"] as? Map<*, *>
+        if (previous != null) {
+            val previousSource = previous["pinned_source"] as? Map<*, *>
+            val previousCase = previous["case_write"] as? Map<*, *>
+            if (previousSource != source ||
+                previousCase?.get("repository") != caseRepository || previousCase?.get("location") != "CASE_EXCHANGE" ||
+                previousCase?.get("working_path") != caseWorkingPath || previousCase?.get("relative_path") != "repo" ||
+                previous["workstream_context"] != workstream || previous["artifact_paths"] != artifacts) {
+                return rejectRepositoryRouting(context, "REPOSITORY_BINDING_CHANGED", "A retry must revalidate the same pinned source, workstream root and Case checkout.")
+            }
+            if (previousCase?.get("revision") != reportedCaseRevision || reportedCaseRevision != caseRevision) {
+                return rejectRepositoryRouting(context, "CASE_REVISION_DRIFT", "The Case checkout revision changed since preflight; bind and verify the current revision before writing.")
+            }
+        }
+        if (context.workspaceDelta.headShaAfter != caseRevision) {
+            return rejectRepositoryRouting(context, "CASE_REVISION_DRIFT", "The Case revision changed during preflight; no repository write may proceed.")
+        }
+        val logicalPaths = artifactMappings.mapNotNull { it["logical_path"] as? String }.distinct()
+        val persisted = LinkedHashMap(context.run.domainState).apply {
+            put("repositoryRouting", route)
+            put("repositoryRoutingArtifactPaths", logicalPaths)
+        }
+        return StepValidationVerdict.Accepted(newDomainState = persisted)
+    }
+
+    private fun validatePersistedDeliveryRouting(context: StepValidationContext): StepValidationVerdict.Rejected? {
+        val route = context.run.domainState["repositoryRouting"] as? Map<*, *>
+            ?: return rejectRepositoryRouting(context, "REPOSITORY_ROUTING_MISSING", "The verified Case write binding is missing; rerun preflight before repository access.")
+        val caseWrite = route["case_write"] as? Map<*, *>
+        if (caseWrite?.get("location") != "CASE_EXCHANGE" || caseWrite["relative_path"] != "repo" ||
+            caseWrite["repository"] !in setOf("WHOZ", "CODAY") ||
+            (caseWrite["revision"] as? String)?.matches(Regex("^[0-9a-f]{40}$")) != true
+        ) return rejectRepositoryRouting(context, "CASE_BINDING_INVALID", "The persisted Case repo/ binding is invalid; stop before writing.")
+        if (context.workspaceDelta.captureStatus != io.whozoss.factory.sdk.spi.WorkspaceCaptureStatus.COMPLETE) {
+            return rejectRepositoryRouting(context, "CASE_BINDING_UNAVAILABLE", "A complete Case workspace capture is required before repository access.")
+        }
+        val expectedRevision = caseWrite["revision"] as String
+        val observedBefore = context.workspaceDelta.headShaBefore
+        if (observedBefore != expectedRevision) {
+            return rejectRepositoryRouting(context, "CASE_REVISION_DRIFT", "Expected Case revision $expectedRevision but observed ${observedBefore ?: "unavailable"}; revalidate the binding before writing.")
+        }
+        val trustedCase = if (context.stepId !in setOf("implementation-build", "packet-approval")) {
+            context.externalEvidence["case_write"] as? Map<*, *>
+                ?: return rejectRepositoryRouting(context, "CASE_BINDING_UNAVAILABLE", "Factory did not independently revalidate the Case root after this step.")
+        } else null
+        if (trustedCase != null) {
+            if (trustedCase["repository"] != caseWrite["repository"] || trustedCase["location"] != "CASE_EXCHANGE" ||
+                trustedCase["working_path"] != caseWrite["working_path"] || trustedCase["relative_path"] != "repo"
+            ) return rejectRepositoryRouting(context, "CASE_BINDING_MISMATCH", "The Case root or repository changed since preflight.")
+        }
+        val observedAfter = context.workspaceDelta.headShaAfter
+        if (observedAfter == null || trustedCase != null && trustedCase["revision"] != observedAfter) {
+            return rejectRepositoryRouting(context, "CASE_REVISION_DRIFT", "Factory's post-step Case revision does not match the captured workspace revision.")
+        }
+        if (context.stepId !in setOf("packet-assembly", "implementation-build") && observedAfter != null && observedAfter != observedBefore) {
+            return rejectRepositoryRouting(context, "CASE_REVISION_DRIFT", "The Case revision changed during '${context.stepId}'; only packet assembly or Build may advance it.")
+        }
+        if (context.stepId in setOf("product-design", "ux-design", "technical-design", "implementation-planning", "qa-design", "packet-assembly")) {
+            val mapped = ((route["artifact_paths"] as? List<*>)?.filterIsInstance<Map<*, *>>() ?: emptyList())
+                .mapNotNull { (it["case_path"] as? String)?.removePrefix("repo/") }
+                .toSet()
+            val outside = context.workspaceDelta.changedFilesDuringTurn.keys.filterNot { changed ->
+                mapped.any { target -> changed == target || changed.startsWith("$target/") }
+            }
+            if (outside.isNotEmpty()) {
+                return rejectRepositoryRouting(context, "CASE_ARTIFACT_PATH_VIOLATION", "Forge artifacts must be written only to preflight-mapped Case repo/ paths: ${outside.joinToString(", ")}.")
+            }
+        }
+        return null
+    }
+
+    private fun rejectRepositoryRouting(context: StepValidationContext, code: String, message: String) =
+        StepValidationVerdict.Rejected(
+            reasonCode = code,
+            findings = listOf(NewFinding(code = code, severity = FindingSeverity.CRITICAL, message = message, stepId = context.stepId)),
+        )
+
+    private fun safeExchangeRelativePath(path: String): Boolean = path == "." || safeRelativePath(path)
+
+    private fun safeAbsoluteCheckoutPath(path: String?): Boolean = path?.let {
+        runCatching { Path.of(it).isAbsolute && Path.of(it).normalize().toString() == it }.getOrDefault(false)
+    } == true
+
+    private fun hasCheckoutToolEvidence(context: StepValidationContext, source: Map<*, *>): Boolean {
+        val expected = listOf(
+            source["repository"], source["location"], source["working_path"], source["relative_path"],
+            source["revision"], "complete", false,
+        ).map { it?.toString() ?: return false }
+        return context.toolEvents.any { event ->
+            event.toolName.contains("find-checkouts", ignoreCase = true) &&
+                runCatching { mapper.writeValueAsString(mapOf("summary" to event.summary, "payload" to event.payload)) }
+                    .getOrDefault("").let { evidence -> expected.all(evidence::contains) }
+        }
+    }
+
     private fun validateDeliveryAssessment(context: StepValidationContext): StepValidationVerdict {
         checkReadOnlyWorkspace(context)?.let { return it }
         val outputs = (ForgeBusinessOutputArtifact.read(context.report) as? ForgeBusinessOutputArtifact.ReadResult.Valid)
@@ -506,8 +691,18 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         val clearedTechnicalPauses = context.run.findings
             .filter { it.id.startsWith("technical-pause:") && it.stepId == context.stepId && it.status == FindingStatus.OPEN }
             .associate { it.id to FindingResolution(FindingStatus.RESOLVED, "Pinned Git packet observed again") }
+        val nextState = LinkedHashMap(context.run.domainState).apply { put("approvedPacketCandidate", packet) }
+        val routing = nextState["repositoryRouting"] as? Map<*, *>
+        val currentCase = routing?.get("case_write") as? Map<*, *>
+        if (currentCase != null && context.workspaceDelta.headShaAfter == commit) {
+            nextState["repositoryRouting"] = LinkedHashMap(routing).apply {
+                put("case_write", LinkedHashMap(currentCase).apply { put("revision", commit) })
+            }
+        } else if (currentCase != null) {
+            return rejectRepositoryRouting(context, "CASE_REVISION_DRIFT", "Packet commit does not match the observed Case checkout revision.")
+        }
         return StepValidationVerdict.Accepted(
-            newDomainState = LinkedHashMap(context.run.domainState).apply { put("approvedPacketCandidate", packet) },
+            newDomainState = nextState,
             findingResolutions = clearedTechnicalPauses,
         )
     }
@@ -562,8 +757,16 @@ class ForgeBmadStepResultValidator : FactoryStepResultValidator {
         if (context.workspaceDelta.changedFilesDuringTurn.keys.any { it !in allowed }) {
             return StepValidationVerdict.Rejected("BUILD_FILE_SCOPE_VIOLATION")
         }
+        if (context.workspaceDelta.headShaAfter != workCommit) {
+            return rejectRepositoryRouting(context, "CASE_REVISION_DRIFT", "Build work_commit must equal the observed Case checkout revision after Build.")
+        }
         return StepValidationVerdict.Accepted(newDomainState = LinkedHashMap(context.run.domainState).apply {
             put("build_report", report)
+            val routing = this["repositoryRouting"] as? Map<*, *>
+            val currentCase = routing?.get("case_write") as? Map<*, *>
+            if (currentCase != null) put("repositoryRouting", LinkedHashMap(routing).apply {
+                put("case_write", LinkedHashMap(currentCase).apply { put("revision", workCommit) })
+            })
         })
     }
 

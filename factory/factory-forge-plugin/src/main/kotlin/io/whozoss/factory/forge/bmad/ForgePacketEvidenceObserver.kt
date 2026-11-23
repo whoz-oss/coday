@@ -14,9 +14,45 @@ class ForgePacketEvidenceObserver : FactoryStepEvidenceObserver {
     private val mapper = ObjectMapper()
 
     override fun supports(flowType: String, stepId: String, agentName: String): Boolean =
-        flowType == "forge.delivery" && stepId == "packet-assembly"
+        flowType == "forge.delivery" && stepId !in setOf("packet-approval", "implementation-build")
+
+    override fun requiresBeforeSideEffect(flowType: String, stepId: String): Boolean =
+        flowType == "forge.delivery" && stepId in setOf(
+            "product-design", "ux-design", "technical-design", "implementation-planning", "qa-design", "packet-assembly",
+        )
+
+    private fun observeCaseBinding(context: StepEvidenceObservationContext): StepEvidenceObservation {
+        val suppliedRoot = runCatching { Path.of(context.worktreePath).toRealPath() }.getOrNull()
+            ?: return StepEvidenceObservation.Unavailable("WORKTREE_UNAVAILABLE", "The Run-bound Case path cannot be resolved.")
+        val gitRoot = git.checkoutRoot(suppliedRoot)
+            ?: return StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Run-bound Case Git root cannot be observed.")
+        if (gitRoot != suppliedRoot) return StepEvidenceObservation.Invalid(
+            "CASE_WORKTREE_ROOT_MISMATCH", "The Run-bound worktree path is not the selected Case Git root.",
+        )
+        val repository = (context.gitObjects?.sourceRepository() ?: git.sourceRepository(gitRoot))
+            ?.uppercase()
+            ?.takeIf { it in setOf("WHOZ", "CODAY") }
+            ?: return StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Case repository identity cannot be observed.")
+        val revision = git.headCommit(gitRoot)
+            ?: return StepEvidenceObservation.Unavailable("GIT_SOURCE_UNAVAILABLE", "The Case HEAD revision cannot be observed.")
+        return StepEvidenceObservation.Observed(mapOf("case_write" to mapOf(
+            "repository" to repository,
+            "location" to "CASE_EXCHANGE",
+            "working_path" to gitRoot.toString(),
+            "relative_path" to "repo",
+            "revision" to revision,
+        )))
+    }
 
     override fun observe(context: StepEvidenceObservationContext): StepEvidenceObservation {
+        val hasPersistedRouting = context.run.domainState["repositoryRouting"] is Map<*, *>
+        val caseBinding = if (context.stepId == "delivery-preflight" || hasPersistedRouting) {
+            observeCaseBinding(context)
+        } else null
+        if (caseBinding != null && caseBinding !is StepEvidenceObservation.Observed) return caseBinding
+        if (context.stepId != "packet-assembly" || context.report.isEmpty()) {
+            return caseBinding ?: StepEvidenceObservation.Observed(emptyMap())
+        }
         val artifacts = context.report["artifacts"] as? List<*>
             ?: return StepEvidenceObservation.Invalid("PACKET_MANIFEST_MISSING", "The packet manifest artifact is missing.")
         val matching = artifacts.mapNotNull { raw ->
@@ -49,7 +85,7 @@ class ForgePacketEvidenceObserver : FactoryStepEvidenceObserver {
                 "manifestSha256" to result.sha256,
                 "canonicalManifest" to result.canonicalManifest.toString(Charsets.UTF_8),
                 "packetGeneration" to context.attemptId,
-            ))
+            ) + (caseBinding as? StepEvidenceObservation.Observed)?.facts.orEmpty())
             is ForgeGitPacketSnapshot.Result.Invalid -> when (result.code) {
                 "GIT_COMMIT_UNAVAILABLE", "GIT_DOCUMENT_UNAVAILABLE", "GIT_SNAPSHOT_UNAVAILABLE" ->
                     StepEvidenceObservation.Unavailable(result.code, "The pinned Git packet could not be read.")

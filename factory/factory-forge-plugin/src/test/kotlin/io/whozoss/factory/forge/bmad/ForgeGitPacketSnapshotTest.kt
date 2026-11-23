@@ -264,6 +264,29 @@ class ForgeGitPacketSnapshotTest {
         }
     }
 
+    @Test
+    fun `delivery preflight observer returns the exact Case Git root and HEAD`() {
+        initRepo()
+        git("remote", "add", "origin", "https://example.invalid/whoz-oss/coday.git")
+        Files.writeString(repo.resolve("README.md"), "case")
+        git("add", ".")
+        git("commit", "-qm", "case baseline")
+        val expectedCommit = git("rev-parse", "HEAD").trim()
+        val observer = ForgePacketEvidenceObserver()
+        val context = StepEvidenceObservationContext(
+            run = RunView("run-case", "forge.delivery"), flowType = "forge.delivery", stepId = "delivery-preflight",
+            agentName = "ProductEngineer", attemptId = "attempt-preflight", worktreePath = repo.toString(), report = emptyMap(),
+        )
+
+        val observed = observer.observe(context) as StepEvidenceObservation.Observed
+        val route = observed.facts["case_write"] as Map<*, *>
+        assertThat(route["repository"]).isEqualTo("CODAY")
+        assertThat(route["location"]).isEqualTo("CASE_EXCHANGE")
+        assertThat(route["working_path"]).isEqualTo(repo.toRealPath().toString())
+        assertThat(route["relative_path"]).isEqualTo("repo")
+        assertThat(route["revision"]).isEqualTo(expectedCommit)
+    }
+
     private fun observationContext(rawManifest: ByteArray) = StepEvidenceObservationContext(
         run = RunView("run-1", "forge.delivery"), flowType = "forge.delivery", stepId = "packet-assembly",
         agentName = "ProductEngineer", attemptId = "attempt-1", worktreePath = repo.toString(),
