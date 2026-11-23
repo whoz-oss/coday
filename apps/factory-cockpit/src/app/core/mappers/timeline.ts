@@ -19,6 +19,7 @@ import {
   classifyActorKind,
   classifyLane,
   actorName,
+  explicitActorName,
   resolveStepState,
   stepDurationSec,
   toneForActor,
@@ -306,11 +307,21 @@ export function mapStepsToPhaseSegments(steps: unknown[], totalDurationSec = 0):
   })
 }
 
+/**
+ * Short label of who is currently working: the actor/agent name of the active
+ * (else last) step. Step names can be long sentences, so they are only a
+ * fallback when the step declares no explicit actor.
+ */
+function stepBadgeLabel(step: unknown): string | undefined {
+  const obj = asObject(step)
+  return explicitActorName(step) ?? getString(obj, 'name') ?? getString(obj, 'id')
+}
+
 export function currentPhaseName(steps: unknown[]): string | undefined {
   const active = steps.find((step) => ['running', 'waiting_human', 'ready'].includes(resolveStepState(step)))
-  if (active) return getString(asObject(active), 'name') ?? getString(asObject(active), 'id')
+  if (active) return stepBadgeLabel(active)
   const last = steps[steps.length - 1]
-  return last ? (getString(asObject(last), 'name') ?? getString(asObject(last), 'id')) : undefined
+  return last ? stepBadgeLabel(last) : undefined
 }
 
 // ---------------------------------------------------------------------------

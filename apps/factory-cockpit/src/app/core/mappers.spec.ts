@@ -184,11 +184,55 @@ describe('mappers', () => {
       expect(run.workflow).toBe('Deliver the AgentOS adapter')
       expect(run.id).toBe('wf-1')
       expect(run.status).toBe('running')
-      expect(run.currentPhase).toBe('build')
+      // Active step is `build`, whose responsibility name is `builder`.
+      expect(run.currentPhase).toBe('builder')
       expect(run.goal).toBe('Deliver the AgentOS adapter')
       expect(run.durationSec).toBe(180)
       expect(run.phases.map((phase) => phase.key)).toEqual(['request', 'plan', 'build'])
       expect(run.unknownCostCount).toBe(0)
+    })
+
+    it('uses the actor name, not a long step name, as currentPhase', () => {
+      const longName =
+        'Archay checks the worktree, moves the ticket to In Progress, reads the issue and prepares the plan'
+      const run = mapProjectionToRunSummary({
+        workflowId: 'wf-long',
+        projection: {
+          status: 'running',
+          steps: [
+            {
+              id: 'kickoff',
+              name: longName,
+              status: 'running',
+              responsibility: { kind: 'agent', name: 'Archay' },
+            },
+          ],
+        },
+      })
+      expect(run.currentPhase).toBe('Archay')
+    })
+
+    it('resolves currentPhase from agentName, then facts.agentName, then falls back to step name/id', () => {
+      const phase = (step: Record<string, unknown>) =>
+        mapProjectionToRunSummary({ workflowId: 'w', projection: { status: 'running', steps: [step] } }).currentPhase
+      expect(phase({ id: 's', name: 'Long name', status: 'running', agentName: 'Thor' })).toBe('Thor')
+      expect(phase({ id: 's', name: 'Long name', status: 'running', facts: { agentName: 'Loki' } })).toBe('Loki')
+      expect(phase({ id: 's', name: 'Long name', status: 'running' })).toBe('Long name')
+      expect(phase({ id: 's', status: 'running' })).toBe('s')
+    })
+
+    it('uses the actor name of the last step when no step is active', () => {
+      const run = mapProjectionToRunSummary({
+        workflowId: 'wf-done',
+        projection: {
+          status: 'completed',
+          steps: [
+            { id: 'a', name: 'First', status: 'completed', responsibility: { kind: 'agent', name: 'Planner' } },
+            { id: 'b', name: 'Last long sentence', status: 'completed', responsibility: { kind: 'agent', name: 'Archay' } },
+          ],
+        },
+      })
+      expect(run.currentPhase).toBe('Archay')
     })
 
     it('uses workflow id as the display fallback for legacy records without title', () => {
