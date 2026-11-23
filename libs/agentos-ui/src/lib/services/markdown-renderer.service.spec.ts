@@ -1,14 +1,14 @@
 import { TestBed } from '@angular/core/testing'
 import { SafeHtml } from '@angular/platform-browser'
 import { COPY_FEEDBACK_MS } from './clipboard.utils'
-import { MarkdownRenderOptions, MarkdownRendererService } from './markdown-renderer.service'
+import { MarkdownRendererService } from './markdown-renderer.service'
 
 describe('MarkdownRendererService code blocks', () => {
   let service: MarkdownRendererService
   let writeText: jest.Mock
   let host: HTMLElement
 
-  function mount(markdown: string, options?: MarkdownRenderOptions): HTMLElement {
+  function mount(markdown: string, options?: { copyButton?: boolean }): HTMLElement {
     const html = service.render(markdown, options) as SafeHtml & { changingThisBreaksApplicationSecurity: string }
     host.innerHTML = html.changingThisBreaksApplicationSecurity
     return host

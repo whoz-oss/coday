@@ -7,11 +7,6 @@ import { COPY_FEEDBACK_MS, copyText } from './clipboard.utils'
 const CODE_CLASS = 'ds-md-code'
 const COPY_BUTTON_CLASS = 'ds-md-code__copy'
 
-export interface MarkdownRenderOptions {
-  /** Offer a copy button on fenced code blocks (default true). */
-  copyButton?: boolean
-}
-
 /** Single sanitized Markdown pipeline shared by chat messages and delegation outcomes. */
 @Injectable({ providedIn: 'root' })
 export class MarkdownRendererService {
@@ -24,7 +19,8 @@ export class MarkdownRendererService {
     if (typeof document !== 'undefined') document.addEventListener('click', (event) => this.onClick(event))
   }
 
-  render(text: string, { copyButton = true }: MarkdownRenderOptions = {}): SafeHtml {
+  /** `copyButton`: offer a copy button on fenced code blocks (default true). */
+  render(text: string, { copyButton = true }: { copyButton?: boolean } = {}): SafeHtml {
     if (!text) return ''
     const renderer = copyButton ? this.renderers.withCopy : this.renderers.withoutCopy
     const html = marked.parse(text, { renderer, breaks: true, gfm: true, async: false }) as string
