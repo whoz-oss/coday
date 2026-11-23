@@ -32,6 +32,8 @@ data class WorkEnvironment(
     val createdAt: Instant = Instant.now(),
     val revision: Int = 1,
     val envType: String = DEFAULT_ENV_TYPE,
+    /** Durable standalone adoption refusal. No automatic setup retry clears this diagnostic. */
+    val provisioningFailure: String? = null,
 ) {
     companion object {
         const val DEFAULT_ENV_TYPE = "work-unit-environment"

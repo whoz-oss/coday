@@ -102,6 +102,46 @@ class CapabilityResolverTest {
         assertThat((outcome as CapabilityOutcome.CodeRefused).code).isEqualTo(VERIFICATION_MANIFEST_MISSING)
     }
 
+    @Test
+    fun `build keeps the before HEAD and rejects a changed HEAD even when command passes`() {
+        val git = Files.createDirectories(repoRoot.resolve(".git"))
+        val before = "a".repeat(40)
+        val after = "b".repeat(40)
+        Files.writeString(git.resolve("HEAD"), before)
+        writeManifest("build", "printf '$after' > .git/HEAD")
+
+        val run = resolver.resolve(step(ResponsibilityKind.CODE, "build"), repoRoot) as CapabilityOutcome.CodeExecuted
+        assertThat(run.observedHead).isEqualTo(before)
+        assertThat(run.observedHeadAfter).isEqualTo(after)
+        assertThat(run.exitCode).isZero()
+        assertThat(run.workspaceStable).isFalse()
+        assertThat(run.verdict).isFalse()
+    }
+
+    @Test
+    fun `linked worktree reports common ref HEAD before and after build`() {
+        val gitDir = Files.createDirectories(repoRoot.resolve("metadata/worktree"))
+        val common = Files.createDirectories(repoRoot.resolve("metadata/common/refs/heads"))
+        val head = "c".repeat(40)
+        Files.writeString(repoRoot.resolve(".git"), "gitdir: metadata/worktree")
+        Files.writeString(gitDir.resolve("commondir"), "../common")
+        Files.writeString(gitDir.resolve("HEAD"), "ref: refs/heads/test")
+        Files.writeString(common.resolve("test"), head)
+        writeManifest("build", "exit 0")
+        val run = resolver.resolve(step(ResponsibilityKind.CODE, "build"), repoRoot) as CapabilityOutcome.CodeExecuted
+        assertThat(run.observedHead).isEqualTo(head)
+        assertThat(run.observedHeadAfter).isEqualTo(head)
+        assertThat(run.verdict).isTrue()
+    }
+
+    @Test
+    fun `build timeout is never a pass`() {
+        writeManifest("build", "sleep 2", 20)
+        val run = resolver.resolve(step(ResponsibilityKind.CODE, "build"), repoRoot) as CapabilityOutcome.CodeExecuted
+        assertThat(run.timedOut).isTrue()
+        assertThat(run.verdict).isFalse()
+    }
+
     // ------------------------------------------------------------ agent branch
 
     @Test
@@ -166,5 +206,42 @@ class CapabilityResolverTest {
         val outcome = resolver.resolve(step(ResponsibilityKind.HUMAN, "reviewer"), repoRoot)
         assertThat(outcome).isInstanceOf(CapabilityOutcome.HumanCheckpointRequired::class.java)
         assertThat((outcome as CapabilityOutcome.HumanCheckpointRequired).role).isEqualTo("reviewer")
+    }
+
+    @Test
+    fun `prepare work branch normalizes Jira and GitHub issue tickets into work forge branch names`() {
+        val capturedBranches = mutableListOf<String>()
+        val branchPreparation = io.mockk.mockk<FactoryBranchPreparation>()
+        io.mockk.every { branchPreparation.prepare(any(), any(), capture(capturedBranches)) } answers {
+            val branch = thirdArg<String>()
+            BranchPreparationResult.Prepared(
+                io.whozoss.factory.environment.port.EnvironmentGitFacts(
+                    providerId = "local-worktree",
+                    environmentId = "env-1",
+                    environmentRevision = 1,
+                    branch = branch,
+                    previousBranch = "main",
+                    startingHead = "a".repeat(40),
+                    baselineHash = "sha256:base",
+                    mutationApplied = true,
+                    failureStage = "branch_created_or_switched",
+                ),
+            )
+        }
+        val branchResolver = CapabilityResolver(branchPreparation = branchPreparation)
+        val scope = io.whozoss.factory.persistence.TenantScope("org", "ws")
+        val prepStep = step(ResponsibilityKind.CODE, PREPARE_WORK_BRANCH, "prep")
+
+        branchResolver.resolve(prepStep, repoRoot, workflowId = "wf-1", trustedTicket = "#1731", tenantScope = scope)
+        branchResolver.resolve(prepStep, repoRoot, workflowId = "wf-1", trustedTicket = "whoz-oss/coday#1731", tenantScope = scope)
+        branchResolver.resolve(prepStep, repoRoot, workflowId = "wf-1", trustedTicket = "WZ-33157", tenantScope = scope)
+        branchResolver.resolve(prepStep, repoRoot, workflowId = "wf-1", trustedTicket = "untrusted ticket", tenantScope = scope)
+
+        assertThat(capturedBranches).containsExactly(
+            "work/forge/1731",
+            "work/forge/1731",
+            "work/forge/WZ-33157",
+            "work/forge/wf-1",
+        )
     }
 }

@@ -209,6 +209,260 @@ describe('FactoryStore', () => {
     http.expectOne((r) => r.url.endsWith(`/${wfId}/agent-questions`)).flush({ data: [] })
   }
 
+  describe('stable dashboard refresh (#1705)', () => {
+    const metrics = { realCost: { cost: 2.5, unknownCostCount: 2, liveTokens: 321 } }
+
+    beforeEach(() => {
+      // Running durations are legitimate card changes; hold time fixed when
+      // asserting that otherwise identical responses preserve references.
+      jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-30T16:02:00.000Z'))
+    })
+
+    afterEach(() => jest.restoreAllMocks())
+
+    function overview(items: unknown[], removed: unknown[] = [], reverse = false): void {
+      const requests = http.match((r) => r.url === '/api/factory/workflows')
+      expect(requests.length).toBeGreaterThan(0)
+      for (const request of reverse ? requests.reverse() : requests) {
+        const source = request.request.params.get('state') === 'active' ? items : removed
+        const ns = request.request.params.get('namespaceId')
+        request.flush({
+          data: { items: source.filter((item) => (item as { namespaceId: string }).namespaceId === ns) },
+        })
+      }
+    }
+
+    function enrich(id: string, cost: unknown = metrics): void {
+      http.expectOne((r) => r.url.endsWith(`/${id}/timing`)).flush({ data: { startedAt } })
+      http.expectOne((r) => r.url.endsWith(`/${id}/evidence`)).flush({ data: { items: [] } })
+      http.expectOne((r) => r.url.endsWith(`/${id}/metrics`)).flush({ data: cost })
+      http.expectOne((r) => r.url.endsWith(`/${id}/interactions`)).flush({ data: { items: [] } })
+      http.expectOne((r) => r.url.endsWith(`/${id}/attempts`)).flush({ data: [] })
+      http.expectOne((r) => r.url.endsWith(`/${id}/actions`)).flush({ data: { allowedActions: [], blockers: [] } })
+      http.expectOne((r) => r.url.endsWith(`/${id}/agent-questions`)).flush({ data: [] })
+    }
+
+    function start(items: unknown[] = [snapshot]): void {
+      flushNamespaces([
+        { namespaceId: 'ns-1', name: 'Alpha' },
+        { namespaceId: 'ns-2', name: 'Beta' },
+      ])
+      overview(items)
+      for (const item of items) enrich((item as { workflowId: string }).workflowId)
+    }
+
+    it.each(['overview-first', 'enrichment-first'])(
+      'keeps positive costs and all references for identical %s responses',
+      (order) => {
+        start()
+        const runs = store.runs()
+        const groups = store.workstreams()
+        const costs = store.costs()
+        expect(costs.totalUsd).toBe(2.5)
+        expect(costs.unknownCostCount).toBe(2)
+
+        store.refresh()
+        const list = (): void => overview([JSON.parse(JSON.stringify(snapshot))])
+        const details = (): void => enrich('wf-1', JSON.parse(JSON.stringify(metrics)))
+        for (const respond of order === 'overview-first' ? [list, details] : [details, list]) {
+          respond()
+          expect(store.runs()).toBe(runs)
+          expect(store.runs()[0]).toBe(runs[0])
+          expect(store.workstreams()).toBe(groups)
+          expect(store.workstreams()[0]?.runs).toBe(groups[0]?.runs)
+          expect(store.costs()).toBe(costs)
+        }
+      }
+    )
+
+    it.each(['overview-first', 'enrichment-first'])(
+      'merges a changed projection and independent metrics in %s order',
+      (order) => {
+        start()
+        const changed = { ...snapshot, revision: 3, projection: { ...snapshot.projection, title: 'Fresh title' } }
+        store.refresh()
+        const list = (): void => overview([changed])
+        const details = (): void => enrich('wf-1', { realCost: { cost: 4, unknownCostCount: 0, liveTokens: 400 } })
+        for (const respond of order === 'overview-first' ? [list, details] : [details, list]) {
+          respond()
+          expect(store.costs().totalUsd).toBeGreaterThan(0)
+        }
+        expect(store.runs()[0]?.title).toBe('Fresh title')
+        expect(store.runs()[0]?.run?.workflow).toBe('Fresh title')
+        expect(store.costs().totalUsd).toBe(4)
+        expect(store.costs().unknownCostCount).toBe(0)
+        expect(store.runs()[0]?.tokens).toBe(400)
+      }
+    )
+
+    it('changes only the affected card and group for overview and enrichment updates', () => {
+      const second = snapshotFor('wf-2', 'ns-1', 'Second')
+      const third = snapshotFor('wf-3', 'ns-2', 'Third')
+      start([snapshot, second, third])
+      const runs = store.runs()
+      const groups = store.workstreams()
+      const costs = store.costs()
+      const changed = { ...snapshot, projection: { ...snapshot.projection, title: 'Changed' } }
+
+      store.refresh()
+      overview([changed, second, third])
+      expect(store.costs()).toBe(costs)
+      expect(store.runs()[0]).not.toBe(runs[0])
+      expect(store.runs()[1]).toBe(runs[1])
+      expect(store.runs()[2]).toBe(runs[2])
+      expect(store.workstreams()[0]).not.toBe(groups[0])
+      expect(store.workstreams()[1]).toBe(groups[1])
+      expect(store.workstreams()[1]?.runs).toBe(groups[1]?.runs)
+      const afterOverview = store.runs()
+      enrich('wf-1', { realCost: { cost: 0, unknownCostCount: 0, liveTokens: 0 } })
+      expect(store.runs()[0]).not.toBe(afterOverview[0])
+      expect(store.runs()[0]?.costUsd).toBe(0)
+      expect(store.runs()[0]?.tokens).toBe(0)
+      expect(store.runs()[0]?.run?.unknownCostCount).toBe(0)
+      enrich('wf-2')
+      enrich('wf-3')
+      expect(store.runs()[1]).toBe(runs[1])
+      expect(store.runs()[2]).toBe(runs[2])
+      expect(store.workstreams()[1]).toBe(groups[1])
+      expect(store.costs().totalUsd).toBe(5)
+    })
+
+    it('accepts status, order, additions, removals and destroyed transitions without resetting costs', () => {
+      const second = snapshotFor('wf-2', 'ns-1', 'Second')
+      start([snapshot, second])
+      const original = store.runs()[0]
+      const failed = {
+        ...snapshot,
+        projection: {
+          ...snapshot.projection,
+          status: 'failed',
+          steps: snapshot.projection.steps.map((step) => ({ ...step, status: 'failed' })),
+        },
+      }
+      store.refresh()
+      overview([second, failed])
+      expect(store.runs().map((run) => run.id)).toEqual(['wf-2', 'wf-1'])
+      expect(store.runs()[1]).not.toBe(original)
+      expect(store.runs()[1]?.status).toBe('failed')
+      // The fresh failure projection must not clear costs while metrics are pending.
+      expect(store.runs()[1]?.costUsd).toBe(2.5)
+      expect(store.runs()[1]?.run?.unknownCostCount).toBe(2)
+      expect(store.costs().totalUsd).toBe(5)
+      expect(store.costs().unknownCostCount).toBe(4)
+      enrich('wf-1')
+      enrich('wf-2')
+
+      store.refresh()
+      overview([second], [failed])
+      enrich('wf-1') // in flight before the removed list arrived
+      enrich('wf-2')
+      expect(store.destroyedRuns()[0]?.status).toBe('destroyed')
+      expect(store.destroyedRuns()[0]?.costUsd).toBe(2.5)
+      expect(store.costs().totalUsd).toBe(2.5)
+      store.showDestroyed.set(true)
+      expect(store.visibleRuns()).toHaveLength(2)
+
+      const added = snapshotFor('wf-3', 'ns-2', 'Added')
+      store.refresh()
+      overview([second, added])
+      enrich('wf-2')
+      enrich('wf-3')
+      expect(store.runs().map((run) => run.id)).toEqual(['wf-2', 'wf-3'])
+      expect(store.session('wf-1')).toBeUndefined()
+      expect(store.workstreams().map((group) => group.namespaceId)).toEqual(['ns-1', 'ns-2'])
+    })
+
+    it('preserves source namespace order and references when responses finish in reverse order', () => {
+      const second = snapshotFor('wf-2', 'ns-2', 'Second')
+      start([snapshot, second])
+      const runs = store.runs()
+      const groups = store.workstreams()
+      const costs = store.costs()
+      expect(runs.map((run) => run.id)).toEqual(['wf-1', 'wf-2'])
+
+      store.refresh()
+      overview([snapshot, second], [], true)
+      expect(store.runs()).toBe(runs)
+      expect(store.workstreams()).toBe(groups)
+      expect(store.costs()).toBe(costs)
+      enrich('wf-2')
+      enrich('wf-1')
+      expect(store.runs()).toBe(runs)
+      expect(store.workstreams()).toBe(groups)
+      expect(store.costs()).toBe(costs)
+    })
+
+    it('updates only the active card as time advances, retaining completed cards and cost totals', () => {
+      const completed = {
+        ...snapshot,
+        workflowId: 'wf-done',
+        namespaceId: 'ns-2',
+        projection: {
+          ...snapshot.projection,
+          status: 'completed',
+          steps: snapshot.projection.steps.map((step) => ({ ...step, status: 'completed' })),
+        },
+      }
+      start([snapshot, completed])
+      const runs = store.runs()
+      const groups = store.workstreams()
+      const costs = store.costs()
+      expect(runs[0]?.status).toBe('working')
+      expect(runs[1]?.run?.status).toBe('succeeded')
+
+      // A changed displayed duration is legitimate, not a refresh artefact.
+      jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-30T16:02:15.000Z'))
+      store.refresh()
+      overview([snapshot, completed])
+      const active = store.runs()[0]
+      expect(active).not.toBe(runs[0])
+      expect(active?.durationSec).toBe((runs[0]?.durationSec ?? 0) + 15)
+      expect(store.runs()[1]).toBe(runs[1])
+      expect(store.workstreams()[0]).not.toBe(groups[0])
+      expect(store.workstreams()[1]).toBe(groups[1])
+      expect(store.costs()).toBe(costs)
+
+      enrich('wf-1')
+      enrich('wf-done')
+      expect(store.runs()[0]).toBe(active)
+      expect(store.runs()[1]).toBe(runs[1])
+      expect(store.workstreams()[1]).toBe(groups[1])
+      expect(store.costs()).toBe(costs)
+    })
+
+    it('retains group run arrays on catalogue-only changes and ignores revision-only changes', () => {
+      start()
+      const runs = store.runs()
+      const groups = store.workstreams()
+      store.refresh()
+      overview([{ ...snapshot, revision: 99 }])
+      enrich('wf-1')
+      expect(store.runs()).toBe(runs)
+      expect(store.workstreams()).toBe(groups)
+
+      store.namespaces.set(new Map([['ns-1', 'Renamed']]))
+      const renamed = store.workstreams()
+      expect(renamed).not.toBe(groups)
+      expect(renamed[0]?.title).toBe('Renamed')
+      expect(renamed[0]?.runs).toBe(groups[0]?.runs)
+      store.namespaces.set(new Map([['ns-1', 'Renamed']]))
+      expect(store.workstreams()).toBe(renamed)
+    })
+
+    it('does not reuse cached costs or cards across namespace switches', () => {
+      start()
+      const old = store.runs()[0]
+      store.selectNamespace('ns-2')
+      const other = { ...snapshot, namespaceId: 'ns-2' }
+      overview([other])
+      expect(store.runs()[0]).not.toBe(old)
+      expect(store.runs()[0]?.namespaceId).toBe('ns-2')
+      expect(store.costs().totalUsd).toBe(0)
+      enrich('wf-1', { realCost: { cost: 0, unknownCostCount: 0, liveTokens: 0 } })
+      expect(store.costs().totalUsd).toBe(0)
+    })
+  })
+
   // ---------------------------------------------------------------------------
   // Derivation from the real active workflows
   // ---------------------------------------------------------------------------
@@ -546,6 +800,15 @@ describe('FactoryStore', () => {
     expect(workstream?.title).toBe('No namespace')
     expect(workstream?.runs.map((run) => run.id)).toEqual(['wf-orphan'])
     expect(workstream?.runs[0]?.namespaceId).toBeUndefined()
+    expect(workstream?.runs[0]?.status).toBe('working')
+    const runs = store.runs()
+
+    store.refresh()
+    flushInitialWorkflows([orphan])
+    http.expectNone((request) => request.url.includes('/wf-orphan/'))
+    expect(store.runs()[0]?.status).toBe('working')
+    expect(store.runs()).toBe(runs)
+    expect(store.workstreams()[0]).toBe(workstream)
   })
 
   it('falls back to the namespace id as title when the catalogue is empty', () => {
@@ -610,7 +873,9 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([snapshot])
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
-    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush('unavailable', { status: 503, statusText: 'Unavailable' })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/metrics'))
+      .flush('unavailable', { status: 503, statusText: 'Unavailable' })
     http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: [] })
     http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
     http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
@@ -628,7 +893,16 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment({
       workflowId: 'wf-1',
-      realCost: { cost: null, unknownCostCount: null, totalTokens: null, inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheWriteTokens: null, liveTokens: null },
+      realCost: {
+        cost: null,
+        unknownCostCount: null,
+        totalTokens: null,
+        inputTokens: null,
+        outputTokens: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        liveTokens: null,
+      },
     })
 
     expect(store.session('wf-1')?.costUsd).toBeNull()
@@ -685,9 +959,11 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([snapshot])
     flushRunEnrichment('wf-1', false)
     store.refreshActiveUsage()
-    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({
-      data: { workflowId: 'wf-1', realCost: { cost: 2.5, unknownCostCount: 0, totalTokens: 700 } },
-    })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/metrics'))
+      .flush({
+        data: { workflowId: 'wf-1', realCost: { cost: 2.5, unknownCostCount: 0, totalTokens: 700 } },
+      })
     expect(store.runs()[0]?.run?.costUsd).toBe(2.5)
 
     store.refreshActiveUsage()
@@ -872,7 +1148,9 @@ describe('FactoryStore', () => {
     expect(session?.id).toBe('wf-1')
     expect(session?.attempts).toEqual([])
     expect(session?.phase.attempt).toBe('Attempts unavailable')
-    expect(session?.attemptsLoadError).toBe('Http failure response for /api/factory/workflows/wf-1/attempts: 500 Server Error')
+    expect(session?.attemptsLoadError).toBe(
+      'Http failure response for /api/factory/workflows/wf-1/attempts: 500 Server Error'
+    )
     expect(session?.workflow).toBe('Real workflow')
   })
 

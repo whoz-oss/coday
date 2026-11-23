@@ -78,9 +78,9 @@ class HttpAgentOsProxyClient(
             relay("/api/cases/$caseId", externalUserId, object : ParameterizedTypeReference<Map<String, Any?>>() {})
         } catch (_: AgentOsNotFound) { null }
         fun validate(remote: Map<String, Any?>) {
-            check(remote["id"] == caseId && remote["namespaceId"] == namespaceId &&
-                remote["parentCaseId"] == null && remote["parentId"] == null && remote["removed"] != true) {
-                "AgentOS root case identity mismatch"
+            if (!(remote["id"] == caseId && remote["namespaceId"] == namespaceId &&
+                remote["parentCaseId"] == null && remote["parentId"] == null && remote["removed"] != true)) {
+                throw io.whozoss.factory.workspace.TerminalWorkspaceAdoptionException("AgentOS root case identity mismatch")
             }
         }
         read()?.let { validate(it); return }

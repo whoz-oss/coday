@@ -103,6 +103,7 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
                     "workflowId" to workflowId,
                     "workflowType" to "test.validation",
                     "runId" to runId,
+                    "controllerRequest" to mapOf("actorId" to "test"),
                 ),
                 projection = mapOf(
                     "steps" to listOf(
@@ -284,7 +285,12 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
                 revision = 1,
                 status = "active",
                 creationCommandHash = "hash-finalization-accepted-pass",
-                instance = mapOf("workflowId" to testWorkflowId, "workflowType" to "test.accepted-pass", "runId" to testRunId),
+                instance = mapOf(
+                    "workflowId" to testWorkflowId,
+                    "workflowType" to "test.accepted-pass",
+                    "runId" to testRunId,
+                    "controllerRequest" to mapOf("actorId" to "test"),
+                ),
                 projection = mapOf(
                     "steps" to listOf(
                         mapOf(
@@ -403,6 +409,7 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
         }
         val preflightOrder = mutableListOf<String>()
         every { workspaceProxy.fetchWorkspaceChanges(any(), any()) } answers {
+            assertThat(secondArg<String?>()).isEqualTo("test")
             preflightOrder.add(if (firstArg<String>() == rootCaseId) "root" else "child")
             mapOf("equipped" to true, "status" to "READY", "path" to
                 if (childDivergent && firstArg<String>() != rootCaseId) worktreeRoot.resolve("missing-child").toString() else worktreeRoot.toString())

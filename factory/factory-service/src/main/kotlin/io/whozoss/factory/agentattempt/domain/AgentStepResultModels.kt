@@ -52,8 +52,8 @@ object AgentStepResultLimits {
     const val DELIVERY_ANALYSIS_TITLE = 200
     const val DELIVERY_ANALYSIS_BASE_BRANCH = 255
 
-    /** Default capability lifetime: the Node `DEFAULT_TTL_MS` (15 minutes). */
-    const val CAPABILITY_TTL_SECONDS = 15L * 60L
+    /** Default capability lifetime: 2 hours (supports long-running active agent turns). */
+    const val CAPABILITY_TTL_SECONDS = 2L * 60L * 60L
 
     /** Submission budget of a capability (single-use, port of `submissionBudget: 1`). */
     const val SUBMISSION_BUDGET = 1

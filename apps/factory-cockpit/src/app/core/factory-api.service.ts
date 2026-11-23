@@ -70,6 +70,11 @@ export interface LegacyContract {
 }
 
 /** One step of a full workflow definition (`GET /api/factory/workflow-definitions/:type/:version`). */
+export interface OutcomeTransitions {
+  pass?: { action: 'continue' | 'activate'; target?: string }
+  fail?: { action: 'block' | 'return'; target?: string; maxCycles?: number }
+}
+
 export interface FullWorkflowStep {
   id: string
   name: string
@@ -77,6 +82,8 @@ export interface FullWorkflowStep {
   dependsOn?: string[]
   decision?: { mode: 'single' | 'multiple'; routes: { name: string; target: string }[] }
   join?: string
+  /** Declarative outcome routing. Legacy definitions omit this field. */
+  outcomeTransitions?: OutcomeTransitions
   status?: string
   activation?: string
   routeDecision?: { selectedRoutes: string[] }

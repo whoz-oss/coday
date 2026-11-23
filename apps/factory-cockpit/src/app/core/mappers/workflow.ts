@@ -3,7 +3,16 @@
  * Orchestrates all sub-modules to produce SessionDetail and FactoryRun.
  */
 
-import { AgentQuestion, FactoryRun, RunStatus, SandboxStatus, SessionDetail, SessionStep } from '../models'
+import {
+  AgentQuestion,
+  CorrectionCycle,
+  FactoryRun,
+  RunStatus,
+  SandboxStatus,
+  SessionDetail,
+  SessionStep,
+  StepExecution,
+} from '../models'
 import { asArray, asObject, getString, getNumber } from './utils'
 import { classifyActorKind, resolveStepState, stepDurationSec, toneForActor } from './step-classification'
 import {
@@ -132,6 +141,8 @@ export function mapProjectionToSessionDetail(
   const realCost = extractRealCost(metricsObj)
   const mappedInteractions = extractInteractions(interactions)
   const mappedAttempts = extractAttempts(attempts)
+  const stepExecutions = extractStepExecutions(projection['stepExecutions'])
+  const correction = extractCorrection(projection['correction'])
   const mappedAllowedActions = extractAllowedActions(actions)
   const mappedBlockers = extractBlockers(actions)
   const blockedStepIds = new Set(mappedBlockers.map((blocker) => blocker.stepId).filter((id): id is string => !!id))
@@ -169,7 +180,8 @@ export function mapProjectionToSessionDetail(
   const isActivelyRunning = stepStates.includes('running') || hasRunningAttempt
   const waitingHuman =
     !isActivelyRunning &&
-    (stepStates.includes('waiting_human') ||
+    (correction?.status === 'waiting_human' ||
+      stepStates.includes('waiting_human') ||
       hasNeedsResearchAttempt ||
       latestAttempts.some((attempt) => attempt.status === 'waiting_human') ||
       (agentQuestions ?? []).some((q) => !q.answered))
@@ -187,9 +199,9 @@ export function mapProjectionToSessionDetail(
           : 'pending'
 
   const enrichedSnapshot = { ...snapshot, projection: { ...projection, steps } }
-  const timelineOriginMs = resolveTimelineOriginMs(enrichedSnapshot, timing, mappedAttempts)
+  const timelineOriginMs = resolveTimelineOriginMs(enrichedSnapshot, timing, mappedAttempts, stepExecutions)
   const timelineOriginAt = new Date(timelineOriginMs).toISOString()
-  const lanes = mapProjectionToLanes(enrichedSnapshot, timing, mappedAttempts)
+  const lanes = mapProjectionToLanes(enrichedSnapshot, timing, mappedAttempts, stepExecutions)
   const laneEnd = lanes.reduce((max, lane) => {
     const requestEnd = lane.request?.endSec ?? 0
     const blocksEnd = lane.blocks.reduce((end, block) => Math.max(end, block.endSec), 0)
@@ -228,7 +240,12 @@ export function mapProjectionToSessionDetail(
   const tokensWritten = realCost?.outputTokens ?? null
 
   const phaseByStepId = mapProjectionToPhaseByStepId(
-    steps, status, mappedInteractions, mappedAttempts, evidenceItems, attemptsLoadError
+    steps,
+    status,
+    mappedInteractions,
+    mappedAttempts,
+    evidenceItems,
+    attemptsLoadError
   )
   const controllerRequest = readControllerRequest(snapshot, projection)
   const instance = asObject(snapshot['instance'])
@@ -255,11 +272,41 @@ export function mapProjectionToSessionDetail(
     evidenceItems,
     attemptsLoadError
   )
+  const phaseByExecutionId = new Map<string, import('../models').PhaseDetail>()
+  for (const execution of stepExecutions) {
+    const executionEvidence = evidenceForExecution(evidenceItems, execution)
+    const executionInteractions = mappedInteractions.filter(
+      (interaction) => interaction.executionId === execution.executionId
+    )
+    const executionAttempt = execution.attemptId
+      ? mappedAttempts.filter((attempt) => attempt.attemptId === execution.attemptId)
+      : []
+    const executionScopedSteps = steps.map((raw) => {
+      const step = asObject(raw)
+      return getString(step, 'id') === execution.stepId
+        ? { ...step, status: execution.status, startedAt: execution.startedAt, completedAt: execution.completedAt }
+        : raw
+    })
+    // Each ledger entry gets its own timestamps, evidence/interactions and never resolves a newer attempt.
+    phaseByExecutionId.set(
+      execution.executionId,
+      buildPhaseDetail(
+        executionScopedSteps,
+        status,
+        executionInteractions,
+        executionAttempt,
+        executionEvidence,
+        execution.stepId,
+        execution.attemptId
+      )
+    )
+  }
 
   // Pre-compute per-step and per-attempt event slices so the UI can show
   // filtered events without re-scanning evidence on every selection change.
   const eventsByStepId = new Map<string, import('../models').RunEvent[]>()
   const eventsByAttemptId = new Map<string, import('../models').RunEvent[]>()
+  const eventsByExecutionId = new Map<string, import('../models').RunEvent[]>()
 
   for (const step of steps) {
     const stepObj = asObject(step)
@@ -277,12 +324,21 @@ export function mapProjectionToSessionDetail(
       filterEventsForSelection([], evidenceItems, mappedInteractions, mappedAttempts, attempt.stepId, attempt.attemptId)
     )
   }
+  for (const execution of stepExecutions) {
+    const executionInteractions = mappedInteractions.filter(
+      (interaction) => interaction.executionId === execution.executionId
+    )
+    eventsByExecutionId.set(execution.executionId, [
+      ...mapEvidenceToEvents(evidenceForExecution(evidenceItems, execution), []),
+      ...mapInteractionsToEvents(executionInteractions),
+    ])
+  }
 
   const relations =
     asObject(snapshot['relations']) ?? asObject(asObject(snapshot['instance'])?.['relations']) ?? undefined
 
   const result: SessionDetail = {
-    ...(steps.some((raw) => asObject(raw)?.['decision'])
+    ...(steps.some((raw) => asObject(raw)?.['decision'] || asObject(raw)?.['outcomeTransitions'])
       ? { routingSteps: steps as import('../factory-api.service').FullWorkflowStep[] }
       : {}),
     id,
@@ -313,15 +369,27 @@ export function mapProjectionToSessionDetail(
       activelyRunning ? Math.max(laneEnd, Math.max((Date.now() - timelineOriginMs) / 1000, 0)) : laneEnd
     ),
     events: [...mapEvidenceToEvents(evidenceItems, steps), ...mapInteractionsToEvents(mappedInteractions)],
-    phase: buildPhaseDetail(steps, status, mappedInteractions, mappedAttempts, evidenceItems, undefined, undefined, attemptsLoadError),
+    phase: buildPhaseDetail(
+      steps,
+      status,
+      mappedInteractions,
+      mappedAttempts,
+      evidenceItems,
+      undefined,
+      undefined,
+      attemptsLoadError
+    ),
     launchRequest,
     phaseByStepId,
     phaseByAttemptId,
+    phaseByExecutionId,
     interactions: mappedInteractions,
     attempts: mappedAttempts,
     ...(attemptsLoadError ? { attemptsLoadError } : {}),
     cacheReadTokens: realCost?.cacheReadTokens,
     cacheWriteTokens: realCost?.cacheWriteTokens,
+    ...(stepExecutions.length ? { stepExecutions } : {}),
+    ...(correction ? { correction } : {}),
     allowedActions: mappedAllowedActions,
     blockers: mappedBlockers,
     agentQuestions: agentQuestions ?? [],
@@ -330,8 +398,87 @@ export function mapProjectionToSessionDetail(
     ...(controllerCaseId !== undefined ? { controllerCaseId } : {}),
     eventsByStepId,
     eventsByAttemptId,
+    eventsByExecutionId,
   }
   return result
+}
+
+function evidenceForExecution(evidenceItems: unknown[], execution: StepExecution): unknown[] {
+  return evidenceItems.filter((raw) => {
+    const obj = asObject(raw)
+    const facts = asObject(obj?.['facts'])
+    const evidenceId = getString(obj, 'evidenceId') ?? getString(obj, 'id')
+    return (
+      getString(obj, 'executionId') === execution.executionId ||
+      getString(facts, 'executionId') === execution.executionId ||
+      (execution.resultEvidenceId !== undefined && evidenceId === execution.resultEvidenceId) ||
+      (execution.attemptId !== undefined &&
+        (getString(obj, 'attemptId') === execution.attemptId || getString(facts, 'attemptId') === execution.attemptId))
+    )
+  })
+}
+
+function extractStepExecutions(value: unknown): StepExecution[] {
+  return asArray(value).flatMap((raw): StepExecution[] => {
+    const obj = asObject(raw)
+    const executionId = getString(obj, 'executionId')
+    const stepId = getString(obj, 'stepId')
+    const executionNumber = getNumber(obj, 'executionNumber')
+    const status = getString(obj, 'status')
+    if (!executionId || !stepId || executionNumber === undefined || !status) return []
+    const cycleNumber = getNumber(obj, 'cycleNumber')
+    const startedAt = getString(obj, 'startedAt')
+    const completedAt = getString(obj, 'completedAt')
+    const attemptId = getString(obj, 'attemptId')
+    const resultEvidenceId = getString(obj, 'resultEvidenceId')
+    const triggeringExecutionId = getString(obj, 'triggeringExecutionId')
+    return [
+      {
+        executionId,
+        stepId,
+        executionNumber,
+        status,
+        ...(cycleNumber !== undefined ? { cycleNumber } : {}),
+        ...(startedAt ? { startedAt } : {}),
+        ...(completedAt ? { completedAt } : {}),
+        ...(attemptId ? { attemptId } : {}),
+        ...(resultEvidenceId ? { resultEvidenceId } : {}),
+        ...(triggeringExecutionId ? { triggeringExecutionId } : {}),
+      },
+    ]
+  })
+}
+
+function extractCorrection(value: unknown): CorrectionCycle | undefined {
+  const obj = asObject(value)
+  const cycleId = getString(obj, 'cycleId')
+  const cycleNumber = getNumber(obj, 'cycleNumber')
+  const maxCycles = getNumber(obj, 'maxCycles')
+  const status = getString(obj, 'status')
+  const triggeringStepId = getString(obj, 'triggeringStepId')
+  const returnTargetStepId = getString(obj, 'returnTargetStepId')
+  if (
+    !obj ||
+    !cycleId ||
+    cycleNumber === undefined ||
+    maxCycles === undefined ||
+    !status ||
+    !triggeringStepId ||
+    !returnTargetStepId
+  )
+    return undefined
+  const triggeringAttemptId = getString(obj, 'triggeringAttemptId')
+  const triggeringExecutionId = getString(obj, 'triggeringExecutionId')
+  return {
+    cycleId,
+    cycleNumber,
+    maxCycles,
+    status,
+    triggeringStepId,
+    returnTargetStepId,
+    ...(triggeringAttemptId ? { triggeringAttemptId } : {}),
+    ...(triggeringExecutionId ? { triggeringExecutionId } : {}),
+  }
 }
 
 function mergeCodeEvidenceIntoSteps(steps: unknown[], evidenceItems: unknown[]): unknown[] {

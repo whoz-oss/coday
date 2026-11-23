@@ -1,7 +1,18 @@
 <div class="exchange-content-viewer">
   <header class="exchange-content-viewer__header">
-    <ds-icon-button #backButton icon="chevron_left" variant="default" title="Back to files" inputTrack="ExchangeContentViewer-back" (action)="onClose()" />
+    <ds-icon-button
+      #backButton
+      icon="chevron_left"
+      variant="default"
+      title="Back to files"
+      inputTrack="ExchangeContentViewer-back"
+      (action)="onClose()"
+    />
     <span class="exchange-content-viewer__filename" [title]="filename()">{{ filename() }}</span>
+    @if (canOpenFull()) {
+      <ds-icon-button icon="open_in_full" variant="default" title="Open full view" (action)="onOpenFullView()" />
+      <ds-icon-button icon="open_in_new" variant="default" title="Open in new tab" (action)="onOpenInNewTab()" />
+    }
     <ds-icon-button
       [icon]="copyState() === 'copied' ? 'check' : 'content_copy'"
       variant="default"
@@ -32,7 +43,7 @@
         <button class="exchange-content-viewer__cta" type="button" (click)="onDownload()">Download instead</button>
       </ds-empty-state>
     } @else if (format() === 'image') {
-      @if (imageUrl(); as url) {
+      @if (blobUrl(); as url) {
         @if (imageFailed()) {
           <ds-empty-state
             icon="broken_image"
@@ -63,14 +74,32 @@
           <ds-spinner size="md" label="Loading image" />
         </div>
       }
+    } @else if (format() === 'pdf') {
+      @if (pdfSrc(); as src) {
+        <!--
+          No sandbox attribute on purpose: browsers do not run their built-in PDF viewer in a sandboxed frame.
+          This is only fed with a blob: URL of a PDF made by the shell (see trustPdfBlobUrl), never with HTML.
+        -->
+        <iframe class="exchange-content-viewer__iframe" [src]="src" [title]="'Preview of ' + filename()"></iframe>
+      } @else {
+        <div class="exchange-content-viewer__center">
+          <ds-spinner size="md" label="Loading PDF" />
+        </div>
+      }
     } @else if (format() === 'markdown') {
       <div class="exchange-content-viewer__markdown" [innerHTML]="content() | agentosMarkdown"></div>
     } @else if (format() === 'html') {
+      <!--
+        The sandbox MUST stay a static attribute (Angular forbids binding it) and MUST NEVER contain
+        allow-same-origin or allow-top-navigation: the file is authored by agents, and with same-origin its
+        scripts would run with the session of the app. Known limitation: relative resources
+        (<img src="img/a.png">) do not resolve from a srcdoc.
+      -->
       <iframe
         class="exchange-content-viewer__iframe"
-        [srcdoc]="displayContent()"
+        [srcdoc]="htmlSrcdoc()"
         [title]="'Preview of ' + filename()"
-        sandbox=""
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
       ></iframe>
     } @else {
       <pre class="exchange-content-viewer__pre">{{ displayContent() }}</pre>

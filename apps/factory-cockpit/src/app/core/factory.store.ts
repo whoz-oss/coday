@@ -130,8 +130,12 @@ export class FactoryStore implements OnDestroy {
   /** @deprecated Use {@link runs}. Kept as an alias for compatibility. */
   readonly sandboxes = computed(() => this.runs())
 
-  readonly activeRuns = computed(() => this.runs().filter((run) => run.status !== 'destroyed'))
-  readonly destroyedRuns = computed(() => this.runs().filter((run) => run.status === 'destroyed'))
+  readonly activeRuns = computed(() => this.runs().filter((run) => run.status !== 'destroyed'), {
+    equal: sameReferences,
+  })
+  readonly destroyedRuns = computed(() => this.runs().filter((run) => run.status === 'destroyed'), {
+    equal: sameReferences,
+  })
 
   /**
    * Runs sorted by creation date, most recent first.
@@ -141,10 +145,13 @@ export class FactoryStore implements OnDestroy {
    * The source signal is never mutated: `[...list]` creates a fresh copy
    * before sorting.
    */
-  readonly visibleRuns = computed(() => {
-    const list = this.showDestroyed() ? this.runs() : this.activeRuns()
-    return sortRunsByCreation([...list])
-  })
+  readonly visibleRuns = computed(
+    () => {
+      const list = this.showDestroyed() ? this.runs() : this.activeRuns()
+      return sortRunsByCreation([...list])
+    },
+    { equal: sameReferences }
+  )
 
   /**
    * Runs grouped into workstreams STRICTLY by `namespaceId` (never by title),
@@ -152,6 +159,7 @@ export class FactoryStore implements OnDestroy {
    * without a `namespaceId` land in the explicit {@link UNASSIGNED_NAMESPACE_ID}
    * workstream.
    */
+  private workstreamViews: WorkstreamView[] = []
   readonly workstreams = computed<WorkstreamView[]>(() => {
     const names = this.namespaces()
     const groups = new Map<string, FactoryRun[]>()
@@ -161,20 +169,24 @@ export class FactoryStore implements OnDestroy {
       bucket.push(run)
       groups.set(namespaceId, bucket)
     }
-    return [...groups.entries()]
-      .map(([namespaceId, runs]) => ({
-        namespaceId,
-        title: namespaceId === UNASSIGNED_NAMESPACE_ID ? 'No namespace' : (names.get(namespaceId) ?? namespaceId),
-        runs,
-      }))
+    const previous = new Map(this.workstreamViews.map((group) => [group.namespaceId, group]))
+    const next = [...groups.entries()]
+      .map(([namespaceId, runs]) => {
+        const old = previous.get(namespaceId)
+        const title = namespaceId === UNASSIGNED_NAMESPACE_ID ? 'No namespace' : (names.get(namespaceId) ?? namespaceId)
+        const stableRuns = retainArray(old?.runs ?? [], runs)
+        return old && old.title === title && old.runs === stableRuns ? old : { namespaceId, title, runs: stableRuns }
+      })
       .sort((left, right) => left.title.localeCompare(right.title))
+    this.workstreamViews = retainArray(this.workstreamViews, next)
+    return this.workstreamViews
   })
 
   readonly costs = computed<CostSummary>(() => {
     const active = this.activeRuns()
     // Do not turn unavailable analytics into a false zero or fall back to a
     // legacy snapshot/budget cost. A wholly empty dashboard legitimately totals 0.
-    const realCostOf = (run: FactoryRun): number | null => run.run ? run.run.costUsd : run.costUsd
+    const realCostOf = (run: FactoryRun): number | null => (run.run ? run.run.costUsd : run.costUsd)
     const hasUnavailableAnalytics = active.some((run) => realCostOf(run) === null)
     const hasUnknownCompleteness = active.some((run) => run.run?.unknownCostCount == null)
     const workflowsUsd = hasUnavailableAnalytics
@@ -551,14 +563,15 @@ export class FactoryStore implements OnDestroy {
     const namespaces = extractNamespaceOptions(this.namespaceOptions())
     return from(namespaces).pipe(
       mergeMap(
-        ({ id }) =>
+        ({ id }, index) =>
           forkJoin({
             active: this.api.getWorkflows('active', id),
             removed: this.api.getWorkflows('removed', id),
           }).pipe(
-            map((result) => ({ ...result, error: null as FactoryApiError | null })),
+            map((result) => ({ ...result, index, error: null as FactoryApiError | null })),
             catchError((error: FactoryApiError) =>
               of({
+                index,
                 active: [] as unknown[],
                 removed: [] as unknown[],
                 error: isMissingWorkstreamMapping(error) ? null : error,
@@ -568,6 +581,8 @@ export class FactoryStore implements OnDestroy {
         4
       ),
       toArray(),
+      // Completion order is network-dependent; membership order follows the catalogue.
+      map((results) => results.sort((left, right) => left.index - right.index)),
       tap((results) => {
         if (generation !== this.namespaceGeneration || this.selectedNamespaceId() !== null) return
         this.overviewError.set(results.find((result) => result.error)?.error ?? null)
@@ -832,8 +847,7 @@ export class FactoryStore implements OnDestroy {
         // outer switchMap guarantees an obsolete A request cannot overwrite B.
         const attemptResult = result.attempts as { attempts?: unknown; attemptsLoadError?: string } | undefined
         const partial = Object.fromEntries(
-          Object.entries(result)
-            .filter(([key, value]) => key !== 'attempts' && value !== undefined)
+          Object.entries(result).filter(([key, value]) => key !== 'attempts' && value !== undefined)
         ) as Parameters<typeof merge>[0]
         if (attemptResult?.attempts !== undefined) {
           partial.attempts = attemptResult.attempts
@@ -946,6 +960,7 @@ export class FactoryStore implements OnDestroy {
 
   private clearScopedState(): void {
     this.workflows.set([])
+    this.workstreamViews = []
     this.runs.set([])
     this.sessions.set(new Map())
     this.enrichment.clear()
@@ -1196,6 +1211,18 @@ export class FactoryStore implements OnDestroy {
     return this.supervisorCases.open(run)
   }
 
+  /** Reuse unchanged final cards, without confusing runs from different namespaces. */
+  private setRuns(next: FactoryRun[]): void {
+    const current = this.runs()
+    const key = (run: FactoryRun): string => JSON.stringify([run.namespaceId, run.id])
+    const previous = new Map(current.map((run) => [key(run), run]))
+    const reconciled = next.map((run) => {
+      const old = previous.get(key(run))
+      return old && sameCardData(old, run) ? old : run
+    })
+    this.runs.set(retainArray(current, reconciled))
+  }
+
   /** Replace the summary attached to a run once its real cost is known. */
   private updateRun(summary: RunSummary): void {
     this.runs.update((list) => list.map((run) => (run.id === summary.id ? withSummary(run, summary) : run)))
@@ -1235,10 +1262,7 @@ const REMOVED_USAGE_CONCURRENCY = 2
 /** An AgentOS aggregate is only trusted when its cost and unknown count are finite numbers. */
 function isUsableUsage(usage: CumulativeUsage | null | undefined): usage is CumulativeUsage {
   return (
-    !!usage &&
-    Number.isFinite(usage.cost) &&
-    Number.isFinite(usage.unknownCostCount) &&
-    usage.unknownCostCount >= 0
+    !!usage && Number.isFinite(usage.cost) && Number.isFinite(usage.unknownCostCount) && usage.unknownCostCount >= 0
   )
 }
 
@@ -1250,10 +1274,16 @@ function withRemovedUsage(run: FactoryRun, usage: CumulativeUsage): FactoryRun {
     costUsd: usage.cost,
     finalCostUsd: usage.cost,
     tokens,
-    ...(run.run
-      ? { run: { ...run.run, costUsd: usage.cost, unknownCostCount: usage.unknownCostCount, tokens } }
-      : {}),
+    ...(run.run ? { run: { ...run.run, costUsd: usage.cost, unknownCostCount: usage.unknownCostCount, tokens } } : {}),
   }
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
+  if (Array.isArray(left) || Array.isArray(right)) return false
+  const a = left as Record<string, unknown>
+  const b = right as Record<string, unknown>
+  const keys = Object.keys(a)
+  return (
+    keys.length === Object.keys(b).length && keys.every((key) => Object.hasOwn(b, key) && sameCardData(a[key], b[key]))
+  )
 }
 
 /** Parts of a run's enrichment that a single read can update. */

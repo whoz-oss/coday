@@ -102,6 +102,32 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     private fun data(body: Map<String, Any?>?): Map<String, Any?> = body?.get("data") as? Map<String, Any?> ?: emptyMap()
 
     @Test
+    fun `generic evidence route cannot forge internal branch preparation authority`() {
+        registerWorkstream()
+        registerDefinition()
+        val created = createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "reserved-evidence")
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        val workflowId = data(created.body)["workflowId"] as String
+        for (kind in listOf("branch-preparation", "oracle-result", "human-decision")) {
+            val response = restTemplate.exchange(
+                "/api/factory/workflows/$workflowId/evidence",
+                HttpMethod.POST,
+                HttpEntity(mapOf(
+                    "execution" to mapOf("namespaceId" to namespace, "runtimeId" to "factory-dashboard",
+                        "kind" to "agentos", "agentId" to "factory-agent"),
+                    "evidence" to mapOf("workflowId" to workflowId, "kind" to kind, "outcome" to "pass",
+                        "facts" to mapOf("environmentId" to "env", "branch" to "forged")),
+                ), headers()),
+                jsonType(),
+            )
+            assertThat(response.statusCode.is4xxClientError).isTrue()
+            assertThat((response.body?.get("error") as? Map<*, *>)?.get("code")).isEqualTo("FACTORY_ONLY_EVIDENCE")
+        }
+        val evidence = service.listEvidence(scope, namespace, workflowId, null).data as Map<*, *>
+        assertThat(evidence["items"] as List<*>).isEmpty()
+    }
+
+    @Test
     fun `attempts lists bounded attempts of a workflow and never exposes sensitive fields`() {
         registerWorkstream()
         val workflowId = "wf-attempts-http"
@@ -315,7 +341,9 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         )
 
         assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(data(created.body)["controllerRequest"]).isNull()
+        val attribution = data(created.body)["controllerRequest"] as Map<*, *>
+        assertThat(attribution["actorId"]).isEqualTo(TEST_USER_ID)
+        assertThat(attribution["text"]).isEqualTo("")
         assertThat(data(created.body)["title"]).isEqualTo("Wf http")
     }
 
@@ -567,6 +595,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
                 "kind" to "agentos",
                 "agentId" to "runner",
                 "caseId" to "case-http",
+                "actorId" to "spoofed-body-user",
             ),
             "controllerRequest" to "Implement the engineer request.",
         )
@@ -585,6 +614,8 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(controllerRequest["actorId"]).isEqualTo(TEST_USER_ID)
         assertThat(controllerRequest["source"]).isEqualTo("factory-cockpit")
         assertThat(controllerRequest["observedAt"]).isNotNull
+        val persisted = data(start.body)["instance"] as Map<*, *>
+        assertThat((persisted["controllerExecution"] as Map<*, *>)["actorId"]).isEqualTo(TEST_USER_ID)
 
         val detail = restTemplate.exchange(
             "/api/factory/workflows/wf-http-1?namespaceId=$namespace",
@@ -628,6 +659,23 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(instance["ticket"]).isEqualTo("JIRA-7")
         val relations = payload["relations"] as Map<String, Any?>
         assertThat(relations["ticket"]).isEqualTo("JIRA-7")
+    }
+
+    @Test
+    fun `compatibility start without prose still persists authenticated actor instead of body actor`() {
+        registerWorkstream()
+        registerDefinition()
+        val response = restTemplate.exchange("/api/factory/workflows/authenticated-start/start", HttpMethod.POST,
+            HttpEntity(mapOf(
+                "workflow" to mapOf("workflowId" to "authenticated-start", "workflowType" to "wf-http", "title" to "Title"),
+                "execution" to mapOf("namespaceId" to namespace, "runtimeId" to "agentos-primary", "kind" to "agentos",
+                    "agentId" to "runner", "actorId" to "victim"),
+            ), headers()), jsonType())
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        val attribution = data(response.body)["controllerRequest"] as Map<*, *>
+        assertThat(attribution["actorId"]).isEqualTo(TEST_USER_ID)
+        assertThat(attribution["text"]).isEqualTo("")
+        assertThat((data(response.body)["controllerExecution"] as Map<*, *>)["actorId"]).isEqualTo(TEST_USER_ID)
     }
 
     @Test

@@ -11,15 +11,14 @@ import org.springframework.stereotype.Component
  *
  * The Factory persists the run's `worktreePath` on its
  * [io.whozoss.factory.environment.domain.WorkEnvironment]; this is the
- * authoritative, available source of the run workspace. AgentOS'
- * `CaseResourceBinding` persists a comparable status but exposes no read
- * endpoint, so it cannot be consumed here.
+ * authoritative source consumed here. Parent-run and standalone provisioning adopt
+ * AgentOS' root workspace/changes path into it; this adapter does not discover paths.
  *
  * Mapping:
  *  - `provisioning` -> [WorkspaceStatus.PREPARING];
  *  - `ready` / `busy` -> [WorkspaceStatus.READY];
  *  - `decommissioned` -> [WorkspaceStatus.FAILED];
- *  - no environment -> `null` (no workspace was requested for this run).
+ *  - no environment -> null (absence, never code-step fallback authorization).
  */
 @Component
 class WorkEnvironmentWorkspaceStateAdapter(
@@ -28,6 +27,9 @@ class WorkEnvironmentWorkspaceStateAdapter(
 
     override fun latestForWorkflow(scope: TenantScope, workflowId: String): WorkspaceSnapshot? {
         val environment = repository.findLatestByWorkflowId(scope, workflowId) ?: return null
+        environment.provisioningFailure?.let { failure ->
+            return WorkspaceSnapshot(status = WorkspaceStatus.FAILED, caseId = environment.parentCaseId, failureReason = failure)
+        }
         return when (environment.lifecycleState) {
             WorkEnvironmentState.PROVISIONING -> WorkspaceSnapshot(
                 status = WorkspaceStatus.PREPARING,
@@ -40,6 +42,9 @@ class WorkEnvironmentWorkspaceStateAdapter(
                 worktreePath = environment.worktreePath.takeIf { it.isNotBlank() },
                 repoRoot = environment.repoRoot.takeIf { it.isNotBlank() },
                 caseId = environment.parentCaseId,
+                environmentId = environment.environmentId,
+                baseCommit = environment.baseCommit,
+                namespaceId = environment.namespaceId,
             )
             WorkEnvironmentState.DECOMMISSIONED -> WorkspaceSnapshot(
                 status = WorkspaceStatus.FAILED,

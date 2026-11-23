@@ -172,8 +172,20 @@
         <sf-workflow-definition-diagram
           [steps]="routingSteps"
           [selectedId]="selectedStepId()"
+          [executions]="s.stepExecutions ?? []"
+          [correction]="s.correction"
           (selected)="selectRoutingStep($event)"
         />
+      </section>
+    }
+    @if (s.correction; as correction) {
+      <section class="sf-panel" aria-label="Correction cycle">
+        <h2>Correction cycle {{ correction.cycleNumber }} of {{ correction.maxCycles }}</h2>
+        <p>
+          {{ correction.status }} · FAIL from <b class="sf-mono">{{ correction.triggeringStepId }}</b> returns to
+          <b class="sf-mono">{{ correction.returnTargetStepId }}</b
+          >.
+        </p>
       </section>
     }
     <!-- Timeline -->
@@ -182,7 +194,7 @@
       [nowSec]="s.nowSec"
       [activelyRunning]="s.activelyRunning"
       [timelineOriginAt]="s.timelineOriginAt"
-      [selected]="selectedBlock()"
+      [selected]="selection()"
       (blockSelect)="selectBlock($event)"
     />
 

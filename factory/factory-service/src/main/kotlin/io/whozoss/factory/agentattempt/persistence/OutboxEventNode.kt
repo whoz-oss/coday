@@ -29,6 +29,15 @@ data class OutboxEventNode(
     val attempts: Int = 0,
     val createdAt: Instant = Instant.now(),
     val dispatchedAt: Instant? = null,
+    val nextAttemptAt: Instant? = null,
+    val retryDeadline: Instant? = null,
+    val diagnostic: String? = null,
+    val claimToken: String? = null,
+    val leaseUntil: Instant? = null,
+    val casVersion: Long = 0,
+    val wakeRequested: Boolean? = null,
+    val wakePayload: String? = null,
+    val lastWakeSource: String? = null,
 ) {
     companion object {
         fun compositeId(organizationId: String, eventId: String): String = "$organizationId|$eventId"
