@@ -205,7 +205,7 @@ export function buildPhaseDetail(
     durationSec: Math.round(duration),
     owner,
     kind,
-    attempt: 'No agent attempt',
+    attempt: 'No attempt recorded',
     ...(attemptsLoadError ? { attemptsLoadError } : {}),
     sections: [],
   }
@@ -221,7 +221,7 @@ export function buildPhaseDetail(
     detail.attemptStatus = currentAttempt.status
     detail.caseId = currentAttempt.caseId
     if (currentAttempt.failureCode) detail.failureCode = currentAttempt.failureCode
-  } else if (kind === 'agent') {
+  } else {
     detail.attempt = attemptsLoadError
       ? 'Attempts unavailable'
       : ['pending', 'ready'].includes(detail.stepStatus)

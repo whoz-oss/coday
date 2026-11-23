@@ -58,10 +58,10 @@
         <sf-metric icon="link" label="Total tokens">{{ s.tokens | tokens }}</sf-metric>
         <sf-metric icon="menu_book" label="Input tokens">{{ s.tokensRead | tokens }}</sf-metric>
         <sf-metric icon="edit" label="Output tokens">{{ s.tokensWritten | tokens }}</sf-metric>
-        @if (s.cacheReadTokens != null) {
+        @if (s.cacheReadTokens !== undefined && s.cacheReadTokens !== null) {
           <sf-metric icon="cached" label="Cache read">{{ s.cacheReadTokens | tokens }}</sf-metric>
         }
-        @if (s.cacheWriteTokens != null) {
+        @if (s.cacheWriteTokens !== undefined && s.cacheWriteTokens !== null) {
           <sf-metric icon="save" label="Cache write">{{ s.cacheWriteTokens | tokens }}</sf-metric>
         }
       </div>
