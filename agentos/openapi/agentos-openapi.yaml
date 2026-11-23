@@ -10,30 +10,6 @@ tags:
 - description: "Server-Sent Events endpoints — use EventSource API, not HTTP client"
   name: sse
 paths:
-  /api/usage-records/aggregate/case-trees:
-    get:
-      tags:
-      - cumulative-usage-controller
-      operationId: cumulativeUsage
-      summary: Lifetime union of case trees including live usage
-      parameters:
-      - name: caseIds
-        in: query
-        required: true
-        schema:
-          type: array
-          minItems: 1
-          maxItems: 200
-          items:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CumulativeUsageDto"
   /api/admin/configuration:
     get:
       operationId: listEffectiveConfiguration
@@ -3894,6 +3870,27 @@ paths:
           description: OK
       tags:
       - usage-record-controller
+  /api/usage-records/aggregate/case-trees:
+    get:
+      operationId: cumulativeUsage
+      parameters:
+      - in: query
+        name: caseIds
+        required: true
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CumulativeUsageDto"
+          description: OK
+      tags:
+      - cumulative-usage-controller
   /api/usage-records/by-case/{caseId}:
     get:
       operationId: listByCaseIdUsageRecord
@@ -4254,42 +4251,6 @@ paths:
       - voice-message-controller
 components:
   schemas:
-    CumulativeUsageDto:
-      type: object
-      properties:
-        liveTokens:
-          type: integer
-          format: int64
-        cost:
-          type: number
-          format: double
-        unknownCostCount:
-          type: integer
-          format: int64
-        totalTokens:
-          type: integer
-          format: int64
-        inputTokens:
-          type: integer
-          format: int64
-        outputTokens:
-          type: integer
-          format: int64
-        cacheReadTokens:
-          type: integer
-          format: int64
-        cacheWriteTokens:
-          type: integer
-          format: int64
-      required:
-      - cost
-      - unknownCostCount
-      - totalTokens
-      - inputTokens
-      - outputTokens
-      - cacheReadTokens
-      - cacheWriteTokens
-      - liveTokens
     Actor:
       type: object
       properties:
@@ -5363,6 +5324,42 @@ components:
           format: double
       required:
       - expectedThreshold
+    CumulativeUsageDto:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        cost:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        liveTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - cost
+      - inputTokens
+      - liveTokens
+      - outputTokens
+      - totalTokens
+      - unknownCostCount
     EnrichmentPhaseTrace:
       type: object
       properties:
