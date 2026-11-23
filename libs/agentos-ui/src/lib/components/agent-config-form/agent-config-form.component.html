@@ -88,8 +88,8 @@
         <div
           class="agent-config-instructions"
           [class.agent-config-instructions--fullscreen]="instructionsFullscreen()"
-          (keydown.escape)="closeInstructionsFullscreen()"
         >
+          <!-- Escape is bound on the focusable children, not on this wrapper: a div is not focusable. -->
           <div class="agent-config-instructions__toolbar">
             <button
               dsButton
@@ -97,6 +97,7 @@
               type="button"
               [attr.aria-pressed]="instructionsFullscreen()"
               (click)="toggleInstructionsFullscreen()"
+              (keydown.escape)="closeInstructionsFullscreen()"
             >
               {{ instructionsFullscreen() ? 'Exit full screen' : 'Full screen' }}
             </button>
@@ -119,6 +120,7 @@
               aria-describedby="agent-config-instructions-hint agent-config-instructions-error"
               [attr.aria-invalid]="instructionsControl.invalid"
               [formControl]="instructionsControl"
+              (keydown.escape)="closeInstructionsFullscreen()"
             ></textarea>
           </ds-form-field>
         </div>
