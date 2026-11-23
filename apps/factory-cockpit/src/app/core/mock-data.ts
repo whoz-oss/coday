@@ -94,13 +94,13 @@ export const SESSION_872641A8: SessionDetail = {
     durationSec: 619,
     owner: 'builder',
     kind: 'agent',
-    attempt: '1/1',
+    attempt: 'No attempt recorded',
     sections: [
-      { label: "Configuration de l'agent" },
+      { label: 'Agent configuration' },
       { label: 'Description' },
-      { label: 'Prompts compilés', count: 2 },
-      { label: 'Gates', count: 0 },
-      { label: 'Sorties', count: 0 },
+      { label: 'Compiled prompts', count: 2 },
+      { label: 'Validations', count: 0 },
+      { label: 'Outputs', count: 0 },
     ],
   },
   events: [

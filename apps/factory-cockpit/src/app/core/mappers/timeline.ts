@@ -623,7 +623,7 @@ export function mapProjectionToRunSummary(
     const hasAnyStartedStep = steps.some((step) => getString(asObject(step), 'startedAt') !== undefined)
     const requestSegment: PhaseSegment = {
       key: 'user-request',
-      label: 'Demande utilisateur',
+      label: 'User request',
       ratio: phases.length > 0 ? Math.min(1 / (phases.length + 1), 0.15) : 1,
       tone: 'amber',
       status: hasAnyStartedStep ? 'done' : 'pending',
@@ -652,10 +652,14 @@ export function mapProjectionToRunSummary(
     cardState,
     currentPhase: currentPhaseName(steps),
     goal,
-    costUsd: realCost?.cost ?? getNumber(projection, 'costUsd') ?? getNumber(snapshot, 'costUsd') ?? 0,
-    unknownCostCount: realCost?.unknownCostCount ?? 0,
+    // Cost is analytics-owned; projection values are legacy/budget data and
+    // must not replace an unavailable analytics result.
+    costUsd: realCost?.cost ?? null,
+    unknownCostCount: realCost?.unknownCostCount ?? null,
     durationSec,
-    tokens: getNumber(projection, 'tokens') ?? 0,
+    // `liveTokens` is not cumulative usage. Only the run-wide realCost total
+    // is safe to surface as Total tokens; otherwise keep the value unknown.
+    tokens: realCost?.totalTokens ?? null,
     phases,
   }
   if (waitingHuman) summary.waitingHuman = true

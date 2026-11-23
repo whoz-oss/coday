@@ -5,6 +5,18 @@ import org.springframework.data.neo4j.repository.query.Query
 import java.time.Instant
 
 interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<DurableAgentAttemptNode, String> {
+    /** Tenant-scoped: attempt and case ids are derived from workflow/step ids and are not unique across tenants. */
+    @Query("""MATCH(a:DurableAgentAttempt) WHERE a.organizationId=${'$'}organizationId AND a.workstreamId=${'$'}workstreamId AND (${'$'}namespaceId IS NULL OR a.namespaceId=${'$'}namespaceId) AND a.caseId=${'$'}caseId AND a.attemptId=${'$'}attemptId RETURN a""")
+    fun findExecutionMetadata(organizationId: String, workstreamId: String, namespaceId: String?, caseId: String, attemptId: String): List<DurableAgentAttemptNode>
+
+    // Metadata does not change the lifecycle revision, lease or verdict. First capture wins.
+    @Query("""MATCH(a:DurableAgentAttempt{id:${'$'}id}) WHERE coalesce(a.modelBaselineCaptured,false)=false AND NOT a.status IN ['succeeded','failed','indeterminate','interrupted','superseded'] SET a.modelBaselineCaptured=true,a.modelBaselineTimestamp=${'$'}timestamp,a.modelBaselineEventId=${'$'}eventId RETURN count(a)""")
+    fun captureModelBaseline(id: String, timestamp: String?, eventId: String?): Long
+
+    @Query("""MATCH(a:DurableAgentAttempt{id:${'$'}id}) WHERE a.modelBaselineCaptured=true AND a.resolvedProvider IS NULL AND a.resolvedModelName IS NULL SET a.resolvedProvider=${'$'}provider,a.resolvedModelName=${'$'}model RETURN count(a)""")
+    @org.springframework.transaction.annotation.Transactional
+    fun captureResolvedModel(id: String, provider: String, model: String): Long
+
     @Query("""
         MERGE (a:DurableAgentAttempt {id:${'$'}id})
         ON CREATE SET a.organizationId=${'$'}organizationId,a.workstreamId=${'$'}workstreamId,a.namespaceId=${'$'}namespaceId,

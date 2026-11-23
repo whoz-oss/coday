@@ -7,6 +7,7 @@ import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
+import io.whozoss.factory.proxy.CumulativeUsageDto
 import io.whozoss.factory.proxy.RunCostDto
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
@@ -17,190 +18,80 @@ import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
-/**
- * Unit tests of the additive `realCost` block exposed by
- * [WorkflowService.metrics]. The aggregation sums AgentOS
- * `GET /api/cases/{caseId}/run-cost` over the workflow's distinct case ids and
- * degrades to a zero block whenever AgentOS is disabled, unreachable or the
- * workflow produced no case at all — `metrics` must never fail because of it.
- */
 class WorkflowRealCostMetricsTest {
-    private val scope = TenantScope("org", "workstream")
-    private val namespace = "00000000-0000-4000-8000-000000000001"
-    private val workflowId = "workflow-1"
-    private val reader = "reader-1"
-
+    private val scope = TenantScope("org", "ws")
     private val repository = mockk<WorkflowRepository>()
-    private val evidenceRepository = mockk<WorkflowEvidenceRepository>()
-    private val interactionRepository = mockk<HumanInteractionRepository>()
+    private val evidence = mockk<WorkflowEvidenceRepository>()
+    private val interactions = mockk<HumanInteractionRepository>()
     private val attempts = mockk<DurableAgentAttemptService>()
     private val proxy = mockk<AgentOsProxyClient>()
+    private val service = WorkflowService(repository, evidence, interactions, mockk<WorkflowSseHub>(relaxed = true),
+        agentOsProxyClient = proxy, durableAgentAttemptService = attempts)
 
-    private val service = WorkflowService(
-        repository,
-        evidenceRepository,
-        interactionRepository,
-        mockk<WorkflowSseHub>(relaxed = true),
-        agentOsProxyClient = proxy,
-        durableAgentAttemptService = attempts,
-    )
-
-    /** Stubs the baseline reads `metrics` performs before the cost aggregation. */
-    private fun stubWorkflow(controllerCaseId: String? = null) {
-        every { repository.findInstance(scope, namespace, workflowId) } returns WorkflowInstanceRecord(
-            namespaceId = namespace,
-            workflowId = workflowId,
-            revision = 1,
-            status = "active",
-            creationCommandHash = null,
-            instance = controllerCaseId
-                ?.let { mapOf("controllerExecution" to mapOf("caseId" to it, "actorId" to "creator-1")) }
-                ?: emptyMap(),
-            projection = emptyMap(),
+    private fun prepare(usage: CumulativeUsageDto?, instance: Map<String, Any?> = mapOf("controllerExecution" to mapOf("caseId" to "parent"))) {
+        every { repository.findInstance(scope, "ns", "wf") } returns WorkflowInstanceRecord(
+            namespaceId = "ns", workflowId = "wf", revision = 1, status = "active", creationCommandHash = null,
+            instance = instance, projection = emptyMap(),
         )
-        every { repository.listTransitionTimestamps(scope, namespace, workflowId) } returns emptyList()
-        every { evidenceRepository.list(scope, namespace, workflowId, null) } returns emptyList()
-        every { interactionRepository.list(scope, namespace, workflowId, false) } returns emptyList()
-    }
-
-    private fun attempt(caseId: String, stepId: String = "step-$caseId") = DurableAgentAttempt(
-        attemptId = "$workflowId#$stepId",
-        caseId = caseId,
-        namespaceId = namespace,
-        workflowId = workflowId,
-        stepId = stepId,
-        attemptNumber = 1,
-        agentName = "agent",
-    )
-
-    private fun runCost(
-        caseId: String,
-        cost: Double,
-        unknownCostCount: Long = 0L,
-        liveTokens: Long = 0L,
-        paused: Boolean = false,
-        active: Boolean = false,
-        runCostThreshold: Double? = null,
-    ) = RunCostDto(caseId, cost, unknownCostCount, runCostThreshold, paused, active, liveTokens)
-
-    @Suppress("UNCHECKED_CAST")
-    private fun realCostOf(metrics: Map<String, Any?>): Map<String, Any?> = metrics["realCost"] as Map<String, Any?>
-
-    @Test
-    fun `realCost aggregates a single known root case and keeps the existing metrics keys`() {
-        stubWorkflow(controllerCaseId = "case-1")
-        every { attempts.findByWorkflow(scope, namespace, workflowId) } returns emptyList()
-        every { proxy.getRunCost("case-1", reader) } returns runCost(
-            "case-1", cost = 12.5, liveTokens = 100, active = true, runCostThreshold = 50.0,
-        )
-
-        val metrics = service.metrics(scope, namespace, workflowId, "test", reader)
-
-        verify(exactly = 1) { proxy.getRunCost("case-1", reader) }
-        verify(exactly = 0) { proxy.getRunCost(any(), "creator-1") }
-        verify(exactly = 0) { proxy.getRunCost(any(), null) }
-        assertThat(metrics.keys).contains(
-            "namespaceId", "workflowId", "scope", "observedAt",
-            "timing", "retries", "evidenceCount", "interactionCount", "realCost",
-        )
-        val realCost = realCostOf(metrics)
-        assertThat(realCost["cost"]).isEqualTo(12.5)
-        assertThat(realCost["unknownCostCount"]).isEqualTo(0L)
-        assertThat(realCost["liveTokens"]).isEqualTo(100L)
-        assertThat(realCost["paused"]).isEqualTo(false)
-        assertThat(realCost["active"]).isEqualTo(true)
-        assertThat(realCost["runCostThreshold"]).isEqualTo(50.0)
+        every { repository.listTransitionTimestamps(scope, "ns", "wf") } returns emptyList()
+        every { evidence.list(scope, "ns", "wf", null) } returns emptyList()
+        every { interactions.list(scope, "ns", "wf", false) } returns emptyList()
+        val first = DurableAgentAttempt("one", "child", "ns", "wf", "step", 1, "Dev")
+        every { attempts.findByWorkflow(scope, "ns", "wf") } returns listOf(first, first.copy(attemptId = "retry", attemptNumber = 2))
+        every { proxy.getRunCost(any(), "reader") } answers {
+            RunCostDto(firstArg(), 999.0, 99, 10.0, true, true, 0)
+        }
+        every { proxy.getCumulativeUsage(listOf("child"), "reader") } returns usage
     }
 
     @Test
-    fun `unknown costs are summed verbatim across distinct cases and never folded into cost`() {
-        stubWorkflow(controllerCaseId = "case-1")
-        every { attempts.findByWorkflow(scope, namespace, workflowId) } returns listOf(attempt("case-2"))
-        every { proxy.getRunCost("case-1", reader) } returns runCost(
-            "case-1", cost = 4.0, unknownCostCount = 3, liveTokens = 10, paused = true, runCostThreshold = 50.0,
-        )
-        every { proxy.getRunCost("case-2", reader) } returns runCost(
-            "case-2", cost = 2.0, unknownCostCount = 1, liveTokens = 20, active = true, runCostThreshold = 30.0,
-        )
-
-        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test", reader))
-
-        verify(exactly = 1) { proxy.getRunCost("case-1", reader) }
-        verify(exactly = 1) { proxy.getRunCost("case-2", reader) }
-        verify(exactly = 2) { proxy.getRunCost(any(), any()) }
-        assertThat(realCost["cost"]).isEqualTo(6.0)
-        assertThat(realCost["unknownCostCount"]).isEqualTo(4L)
-        assertThat(realCost["liveTokens"]).isEqualTo(30L)
-        assertThat(realCost["paused"]).isEqualTo(true)
-        assertThat(realCost["active"]).isEqualTo(true)
-        assertThat(realCost["runCostThreshold"]).isEqualTo(50.0)
+    fun `usage union is the workflow-owned attempt cases and never the shared controller case`() {
+        // The controller case is a shared Run root here: counting its tree would add every sibling fragment.
+        prepare(CumulativeUsageDto(12.5, 2, 100, 60, 20, 15, 5))
+        service.metrics(scope, "ns", "wf", "self", "reader")
+        verify(exactly = 1) { proxy.getCumulativeUsage(listOf("child"), "reader") }
+        verify(exactly = 0) { proxy.getCumulativeUsage(match { "parent" in it }, any()) }
     }
 
     @Test
-    fun `an attempt case id equal to the controller case id is queried only once`() {
-        stubWorkflow(controllerCaseId = "case-1")
-        every { attempts.findByWorkflow(scope, namespace, workflowId) } returns listOf(
-            attempt("case-1", "step-a"),
-            attempt("case-1", "step-b"),
-        )
-        every { proxy.getRunCost("case-1", reader) } returns runCost("case-1", cost = 7.0)
-
-        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test", reader))
-
-        assertThat(realCost["cost"]).isEqualTo(7.0)
-        verify(exactly = 1) { proxy.getRunCost(any(), any()) }
+    fun `a parent Run fragment without attempts reports unavailable instead of its shared root case`() {
+        prepare(null, mapOf("runId" to "run-1", "controllerExecution" to mapOf("caseId" to "shared-root")))
+        every { attempts.findByWorkflow(scope, "ns", "wf") } returns emptyList()
+        val cost = service.metrics(scope, "ns", "wf", "self", "reader")["realCost"] as Map<*, *>
+        assertThat(cost["totalTokens"]).isNull()
+        verify(exactly = 0) { proxy.getCumulativeUsage(any(), any()) }
     }
 
     @Test
-    fun `an unreachable AgentOS or unknown case degrades to the zero block without failing metrics`() {
-        stubWorkflow(controllerCaseId = "case-1")
-        every { attempts.findByWorkflow(scope, namespace, workflowId) } returns listOf(attempt("case-2"))
-        every { proxy.getRunCost(any(), any()) } returns null
-
-        val metrics = service.metrics(scope, namespace, workflowId, "test", reader)
-
-        assertThat(metrics["workflowId"]).isEqualTo(workflowId)
-        val realCost = realCostOf(metrics)
-        assertThat(realCost["cost"]).isEqualTo(0.0)
-        assertThat(realCost["unknownCostCount"]).isEqualTo(0L)
-        assertThat(realCost["liveTokens"]).isEqualTo(0L)
-        assertThat(realCost["paused"]).isEqualTo(false)
-        assertThat(realCost["active"]).isEqualTo(false)
-        assertThat(realCost["runCostThreshold"]).isNull()
+    fun `a standalone workflow without attempts falls back to its own controller case`() {
+        prepare(CumulativeUsageDto(1.0, 0, 10, 6, 4, 0, 0))
+        every { attempts.findByWorkflow(scope, "ns", "wf") } returns emptyList()
+        every { proxy.getCumulativeUsage(listOf("parent"), "reader") } returns CumulativeUsageDto(1.0, 0, 10, 6, 4, 0, 0)
+        val cost = service.metrics(scope, "ns", "wf", "self", "reader")["realCost"] as Map<*, *>
+        assertThat(cost["totalTokens"]).isEqualTo(10L)
     }
 
     @Test
-    fun `a workflow without any case degrades to the zero block and never calls AgentOS`() {
-        stubWorkflow(controllerCaseId = null)
-        every { attempts.findByWorkflow(scope, namespace, workflowId) } returns emptyList()
-
-        val realCost = realCostOf(service.metrics(scope, namespace, workflowId, "test", reader))
-
-        assertThat(realCost["cost"]).isEqualTo(0.0)
-        assertThat(realCost["unknownCostCount"]).isEqualTo(0L)
-        assertThat(realCost["liveTokens"]).isEqualTo(0L)
-        assertThat(realCost["paused"]).isEqualTo(false)
-        assertThat(realCost["active"]).isEqualTo(false)
-        assertThat(realCost["runCostThreshold"]).isNull()
-        verify(exactly = 0) { proxy.getRunCost(any(), any()) }
+    fun `cost and every token counter use one lifetime union including retries and never budget sums`() {
+        prepare(CumulativeUsageDto(12.5, 2, 100, 60, 20, 15, 5))
+        val cost = service.metrics(scope, "ns", "wf", "self", "reader")["realCost"] as Map<*, *>
+        assertThat(cost["cost"]).isEqualTo(12.5)
+        assertThat(cost["unknownCostCount"]).isEqualTo(2L)
+        assertThat(cost["totalTokens"]).isEqualTo(100L)
+        assertThat(cost["inputTokens"]).isEqualTo(60L)
+        assertThat(cost["outputTokens"]).isEqualTo(20L)
+        assertThat(cost["cacheReadTokens"]).isEqualTo(15L)
+        assertThat(cost["cacheWriteTokens"]).isEqualTo(5L)
+        assertThat(cost["paused"]).isEqualTo(true)
+        verify(exactly = 1) { proxy.getCumulativeUsage(listOf("child"), "reader") }
     }
 
     @Test
-    fun `a disabled proxy degrades to the zero block`() {
-        stubWorkflow(controllerCaseId = "case-1")
-        val proxyLessService = WorkflowService(
-            repository,
-            evidenceRepository,
-            interactionRepository,
-            mockk<WorkflowSseHub>(relaxed = true),
-            durableAgentAttemptService = attempts,
-        )
-
-        val realCost = realCostOf(proxyLessService.metrics(scope, namespace, workflowId, "test", reader))
-
-        assertThat(realCost["cost"]).isEqualTo(0.0)
-        assertThat(realCost["unknownCostCount"]).isEqualTo(0L)
-        assertThat(realCost["runCostThreshold"]).isNull()
-        verify(exactly = 0) { proxy.getRunCost(any(), any()) }
+    fun `missing cumulative endpoint never falls back to budget-window cost or fake zero tokens`() {
+        prepare(null)
+        val cost = service.metrics(scope, "ns", "wf", "self", "reader")["realCost"] as Map<*, *>
+        for (field in listOf("cost", "unknownCostCount", "totalTokens", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens")) {
+            assertThat(cost[field]).describedAs(field).isNull()
+        }
     }
 }

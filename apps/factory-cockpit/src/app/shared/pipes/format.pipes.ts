@@ -8,9 +8,10 @@ import { Pipe, PipeTransform } from '@angular/core'
  */
 @Pipe({ name: 'usd' })
 export class UsdPipe implements PipeTransform {
-  transform(value: number | null | undefined, digits = 4, unknownCostCount = 0): string {
+  transform(value: number | null | undefined, digits = 4, unknownCostCount: number | null | undefined = 0): string {
     if (value == null) return '—'
     const formatted = `$${value.toFixed(digits)}`
+    if (unknownCostCount == null) return `? ${formatted}`
     return unknownCostCount > 0 ? `≥ ${formatted}` : formatted
   }
 }

@@ -83,6 +83,8 @@ class WorkflowRunCostReaderHttpTest : Neo4jDomainIntegrationTest() {
         ))
         every { proxy.getRunCost(caseId, reader) } returns
             RunCostDto(caseId, 12.5, 2L, 10.0, true, true, 123L)
+        every { proxy.getCumulativeUsage(listOf(caseId), reader) } returns
+            io.whozoss.factory.proxy.CumulativeUsageDto(12.5, 2, 200, 100, 50, 30, 20, 123)
     }
 
     private fun get(path: String): Map<String, Any?> {
@@ -112,6 +114,7 @@ class WorkflowRunCostReaderHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(cost["paused"]).isEqualTo(true)
         assertThat(cost.keys.map { it.toString() }).containsExactlyInAnyOrder(
             "cost", "unknownCostCount", "liveTokens", "paused", "active", "runCostThreshold",
+            "totalTokens", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens",
         )
     }
 

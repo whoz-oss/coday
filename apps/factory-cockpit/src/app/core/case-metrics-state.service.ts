@@ -9,11 +9,11 @@ import { AgentAttempt } from './models'
 export interface RunCostDto {
   caseId: string
   since: string
-  cost: number
-  unknownCostCount: number
-  active: boolean
-  liveTokens: number
-  paused: boolean
+  cost: number | null
+  unknownCostCount: number | null
+  active: boolean | null
+  liveTokens: number | null
+  paused: boolean | null
   runCostThreshold?: number | null
 }
 
@@ -23,7 +23,8 @@ export interface AttemptMetrics {
   /** Cost reported by run-cost, not the total workflow cost. */
   runCost: number | null
   /** A partial cost is a lower bound. */
-  runCostPartial: boolean
+  /** Null when the endpoint cannot establish cost completeness. */
+  runCostPartial: boolean | null
   /** Completed attempt duration, not total case duration. */
   attemptDurationSec: number | null
   attemptStartedAt: string | null
@@ -52,7 +53,7 @@ export function mapToAttemptMetrics(
   return {
     caseId,
     runCost: run?.cost ?? null,
-    runCostPartial: (run?.unknownCostCount ?? 0) > 0,
+    runCostPartial: run?.unknownCostCount == null ? null : run.unknownCostCount > 0,
     attemptDurationSec: attempt ? computeAttemptDuration(attempt) : null,
     attemptStartedAt: attempt?.startedAt ?? null,
     attemptCompletedAt: attempt?.completedAt ?? null,

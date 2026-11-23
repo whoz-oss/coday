@@ -78,6 +78,8 @@ data class DurableAgentAttemptDto(
     val sealingClass: String = AgentOsRuntimeStateMapping.SealingClass.ACTIVE.name,
     /** Dispatched instructions for authenticated tenant-scoped operator audit; redacted, null before dispatch. */
     val effectiveMandate: String? = null,
+    /** First actual model for the assigned agent; null on unobserved/legacy attempts. */
+    val resolvedModel: ResolvedModel? = null,
 )
 
 /** Map a domain [DurableAgentAttempt] to its bounded public read DTO. */
@@ -105,6 +107,7 @@ fun DurableAgentAttempt.toDto(): DurableAgentAttemptDto = DurableAgentAttemptDto
     terminal = status.terminal,
     sealingClass = AgentOsRuntimeStateMapping.classify(status).name,
     effectiveMandate = if (startedAt != null) redactedMandate() else null,
+    resolvedModel = resolvedModel,
 )
 
 /** Defense in depth: historical/user/plugin instructions may accidentally carry credentials. */

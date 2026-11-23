@@ -22,7 +22,9 @@ import { StatusChipComponent } from '../../shared/ui/status-chip.component'
 type StatusFilter = 'all' | 'working' | 'destroyed'
 
 interface Row extends FactoryRun {
-  cost: number
+  /** Null means Factory explicitly could not obtain run analytics. */
+  cost: number | null
+  unknownCostCount: number | null
 }
 
 @Component({
@@ -65,7 +67,16 @@ export class HistoryPageComponent {
   protected readonly rows = computed<Row[]>(() =>
     this.store.runs().map((run) => ({
       ...run,
-      cost: run.run?.costUsd ?? run.costUsd ?? run.finalCostUsd ?? 0,
+      // Removed (destroyed) runs are not readable through the Factory metrics endpoint (it rejects
+      // a removed workflow), so they only have a cost when a durable final cost exists. Active and
+      // history rows never substitute projection/budget values for unavailable analytics.
+      cost:
+        run.status === 'destroyed' && run.finalCostUsd !== undefined
+          ? run.finalCostUsd
+          : run.run
+            ? run.run.costUsd
+            : run.costUsd,
+      unknownCostCount: run.run?.unknownCostCount ?? null,
     }))
   )
 
@@ -87,17 +98,35 @@ export class HistoryPageComponent {
     )
   })
 
-  protected readonly totalCost = computed(() => this.filtered().reduce((sum, r) => sum + r.cost, 0))
+  protected readonly totalCost = computed<number | null>(() => {
+    const rows = this.filtered()
+    if (rows.some((row) => row.cost === null)) return null
+    return rows.reduce<number>((sum, row) => sum + (row.cost ?? 0), 0)
+  })
+
+  /**
+   * Completeness of {@link totalCost}: the sum of the rows' unknown-cost counts, or null when any
+   * row cannot establish its own completeness (the total is then not known to be exact).
+   */
+  protected readonly totalUnknownCostCount = computed<number | null>(() => {
+    const rows = this.filtered()
+    if (rows.some((row) => row.unknownCostCount === null)) return null
+    return rows.reduce<number>((sum, row) => sum + (row.unknownCostCount ?? 0), 0)
+  })
 
   /** Cost bars per run, sorted from highest to lowest cost. */
   protected readonly costBars = computed(() => {
-    const rows = [...this.filtered()].sort((a, b) => b.cost - a.cost)
-    const max = Math.max(...rows.map((r) => r.cost), 0.0001)
-    return rows.map((r) => ({
-      name: r.title,
-      cost: r.cost,
-      active: r.status !== 'destroyed',
-      pct: Math.max((r.cost / max) * 100, 0.5),
+    // Unknown costs have no meaningful bar height, so leave them out rather
+    // than visually treating them as zero-cost runs.
+    const rows = this.filtered().filter((row): row is Row & { cost: number } => row.cost !== null)
+    const sorted = [...rows].sort((a, b) => b.cost - a.cost)
+    const max = Math.max(...sorted.map((row) => row.cost), 0.0001)
+    return sorted.map((row) => ({
+      name: row.title,
+      cost: row.cost,
+      unknownCostCount: row.unknownCostCount,
+      active: row.status !== 'destroyed',
+      pct: Math.max((row.cost / max) * 100, 0.5),
     }))
   })
 
@@ -106,8 +135,13 @@ export class HistoryPageComponent {
   private readonly paginator = viewChild(MatPaginator)
 
   constructor() {
-    inject(ShellState).crumbs.set([{ label: 'Run history', link: '/historique' }])
+    inject(ShellState).crumbs.set([{ label: 'Run history', link: '/history' }])
     this.historyState.loadNamespaces()
+    // Removed runs are not readable through Factory's metrics endpoint: ask the store (once per run,
+    // bounded) for their lifetime usage whenever the history shows removed runs not yet attempted.
+    effect(() => {
+      if (this.store.runs().some((run) => run.status === 'destroyed')) this.store.enrichRemovedRunsUsage()
+    })
     effect(() => {
       this.dataSource.data = this.filtered()
     })
@@ -128,7 +162,7 @@ export class HistoryPageComponent {
           r.branch ?? '',
           r.status,
           r.run?.workflow ?? r.title,
-          r.cost.toFixed(4),
+          r.cost?.toFixed(4) ?? '',
         ].join(';')
       ),
     ]
