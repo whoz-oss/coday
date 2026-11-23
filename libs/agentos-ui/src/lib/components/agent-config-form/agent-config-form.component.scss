@@ -1,0 +1,45 @@
+// The instructions editor: taller than a regular textarea, and able to cover the screen.
+// Full screen is layout only: the textarea is the same element in both modes, so its value,
+// caret and validation are untouched.
+
+.agent-config-instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+
+  textarea {
+    min-height: 24rem;
+  }
+}
+
+.agent-config-instructions__toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.agent-config-instructions--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  box-sizing: border-box;
+  padding: 1.5rem;
+  background: var(--color-bg, #fff);
+
+  ds-form-field {
+    flex: 1;
+    min-height: 0;
+  }
+
+  textarea {
+    flex: 1;
+    min-height: 0;
+    resize: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .agent-config-instructions--fullscreen {
+    padding: 0.75rem;
+  }
+}
