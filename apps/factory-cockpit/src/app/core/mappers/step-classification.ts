@@ -33,12 +33,17 @@ export function classifyActorKind(step: unknown): ActorKind {
   return 'agent'
 }
 
-/** Resolve the display name of the actor behind a step. */
-export function actorName(step: unknown): string {
+/** Explicit actor name declared on a step (responsibility → agentName → facts), if any. */
+export function explicitActorName(step: unknown): string | undefined {
   const obj = asObject(step)
   const responsibility = asObject(obj?.['responsibility'])
   const facts = asObject(obj?.['facts'])
-  return getString(responsibility, 'name') ?? getString(obj, 'agentName') ?? getString(facts, 'agentName') ?? 'agent'
+  return getString(responsibility, 'name') ?? getString(obj, 'agentName') ?? getString(facts, 'agentName')
+}
+
+/** Resolve the display name of the actor behind a step. */
+export function actorName(step: unknown): string {
+  return explicitActorName(step) ?? 'agent'
 }
 
 /** Classify a step into a concrete lane (human \u2192 engineer, code, agent per name). */
