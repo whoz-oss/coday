@@ -164,7 +164,7 @@ does not bypass tool confirmation gates or authorize launch. The skill and OpenA
 Explicitly attach **FACTORY_AUTHORING** to the authoring agent through the AgentOS agent editor. Attach
 **FACTORY_WORKSTREAM** separately only if the agent should be able to launch/inspect runs. Without an explicit
 integration binding the runtime grants none of its tools. Expected provider log:
-`HTTP_API integration 'FACTORY_AUTHORING': providing 4 tool(s)`:
+`HTTP_API integration 'FACTORY_AUTHORING': providing 5 tool(s)`:
 
 | Tool | Route |
 |---|---|
@@ -172,6 +172,7 @@ integration binding the runtime grants none of its tools. Expected provider log:
 | `FACTORY_AUTHORING__get_definition` | `GET /api/factory/workflow-definitions/{workflowType}/{version}` |
 | `FACTORY_AUTHORING__validate_definition` | `POST /api/factory/workflow-definitions/validate` |
 | `FACTORY_AUTHORING__register_definition` | `POST /api/factory/workflow-definitions` |
+| `FACTORY_AUTHORING__get_expanded_definition` | `GET /api/factory/workflows/{workflowId}/expanded-definition` (read-only draft of a run that added steps) |
 
 Install the existing `factory-workflow-authoring` skill via **one** established mechanism:
 
@@ -186,7 +187,7 @@ Install the existing `factory-workflow-authoring` skill via **one** established 
 
 Verify `GET /api/skills/effective?namespaceId=<uuid>` offers that name, and the agent definition shows the skill
 selector and integration bindings. Recreate/reload the agent on the next invocation after config changes; existing
-instantiated sessions may retain their prior tool set. New deployments should verify the four live tool names,
+instantiated sessions may retain their prior tool set. New deployments should verify the five live tool names,
 not merely the presence of a skill file. The `readSkill` tool loads the selected skill body on demand.
 
 The skill contains exact structured `body` examples for validation→registration→**separate explicitly requested**

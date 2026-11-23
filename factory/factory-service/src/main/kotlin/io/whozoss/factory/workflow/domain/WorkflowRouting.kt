@@ -40,6 +40,7 @@ fun WorkflowStepDefinition.routingJson(): Map<String, Any?> = buildMap {
     decision?.let { put("decision", it.toJson()) }
     join?.let { put("join", it) }
     outcomeTransitions?.let { put("outcomeTransitions", it.toJson()) }
+    expansion?.let { put("expansion", it.toJson()) }
 }
 
 object WorkflowRouting {

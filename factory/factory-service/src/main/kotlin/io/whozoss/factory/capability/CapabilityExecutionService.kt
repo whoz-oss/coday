@@ -520,6 +520,8 @@ class CapabilityExecutionService(
         val a11yScopeFailure: String? = null,
         val pluginSections: List<String> = emptyList(),
         val watchedPaths: List<String> = emptyList(),
+        /** Step ids already used by the run: listed in the brief of a step that declares `expansion`. */
+        val existingStepIds: List<String> = emptyList(),
     )
 
     private fun assembleBrief(
@@ -633,6 +635,7 @@ class CapabilityExecutionService(
             a11yScopeFailure,
             pluginSections,
             watchedPaths,
+            existingStepIds = if (step.expansion != null) projectedSteps(scope, namespaceId, workflowId).map { it.id } else emptyList(),
         )
     }
 
@@ -864,6 +867,7 @@ class CapabilityExecutionService(
                 }
             }
             append(legacyContract.renderDeliverables())
+            append(expansionInstruction(step, assembly))
             append(routingInstruction(step))
             append(resultProtocol())
         }
@@ -903,8 +907,31 @@ class CapabilityExecutionService(
         appendLine("## Factory execution protocol")
         appendLine("- Entry and exit prose are agent obligations, not machine-verified predicates. Factory still validates the structured result and configured validators.")
         appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If unavailable, report the blocker; do not guess.")
+        append(expansionInstruction(step, assembly))
         append(routingInstruction(step))
         append(resultProtocol())
+    }
+
+    /**
+     * Explains how a step that declares `expansion` adds steps to THIS run through the structured result.
+     * Empty for every other step, so existing briefs are unchanged.
+     */
+    private fun expansionInstruction(step: WorkflowStepDefinition, assembly: BriefAssembly): String {
+        if (step.expansion == null) return ""
+        return buildString {
+            appendLine()
+            appendLine("## Workflow expansion")
+            appendLine(
+                "On PASS you MUST add the steps that finish this work by sending `result.continuation = { \"steps\": [...] }` " +
+                    "(1 to 50 steps) through FACTORY_WORKER__submitStepResult. Each step uses the canonical step schema: " +
+                    "id, name, responsibility {kind: agent|human|code, name}, dependsOn, entry, mission, exit.",
+            )
+            appendLine("- An empty dependsOn means \"after this step\". dependsOn may only name this step ('${step.id}') or another step of the continuation.")
+            appendLine("- Step ids must be new. Ids already used by this run: ${assembly.existingStepIds.joinToString(", ")}.")
+            appendLine("- Agent steps must name an agent that is enabled in the namespace. Do not declare `expansion` or `outcomeTransitions` on a continuation step.")
+            appendLine("- Keep the general workflow instructions apart from the details of this ticket, so the workflow can be reused later.")
+            appendLine("- If Factory rejects the continuation (RESULT_SCHEMA_INVALID with violations), fix the listed paths and send the result again in the same turn: the capability is not used up.")
+        }
     }
 
     private fun routingInstruction(step: WorkflowStepDefinition): String = step.decision?.let { decision ->
@@ -1685,6 +1712,7 @@ class CapabilityExecutionService(
                 WorkflowDecision.parse(raw["decision"]),
                 raw["join"] as? String,
                 io.whozoss.factory.workflow.domain.OutcomeTransitions.parse(raw["outcomeTransitions"]),
+                io.whozoss.factory.workflow.domain.WorkflowStepExpansion.parse(raw["expansion"]),
             )
         }
     }

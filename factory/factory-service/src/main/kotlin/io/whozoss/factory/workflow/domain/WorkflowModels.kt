@@ -105,6 +105,8 @@ data class WorkflowStepDefinition(
     /** Decision step whose branches converge here. Ordinary dependencies remain AND. */
     val join: String? = null,
     val outcomeTransitions: OutcomeTransitions? = null,
+    /** Optional capability to append steps to the run executing this (agent) step. */
+    val expansion: WorkflowStepExpansion? = null,
 )
 
 /** Ordered prose obligations, not machine-verified predicates or orchestration commands. */

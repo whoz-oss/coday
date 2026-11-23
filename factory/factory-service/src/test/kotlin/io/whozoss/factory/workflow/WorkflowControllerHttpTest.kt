@@ -284,6 +284,40 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         )
 
     @Test
+    fun `expanded definition of a run without added steps is a 409 WORKFLOW_NOT_EXPANDED`() {
+        registerDefinition()
+        registerWorkstream()
+        val created = createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "not-expanded")
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        val workflowId = data(created.body)["workflowId"] as String
+
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId/expanded-definition?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat((response.body?.get("error") as? Map<*, *>)?.get("code")).isEqualTo("WORKFLOW_NOT_EXPANDED")
+    }
+
+    @Test
+    fun `expanded definition of an unknown run is a 404`() {
+        registerWorkstream()
+
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/unknown-run/expanded-definition?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat((response.body?.get("error") as? Map<*, *>)?.get("code")).isEqualTo("WORKFLOW_NOT_FOUND")
+    }
+
+    @Test
     fun `definition list uses the data envelope`() {
         registerDefinition()
         val response = restTemplate.exchange(

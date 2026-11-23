@@ -26,7 +26,7 @@ import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.SessionRunSubmissionService
 import io.whozoss.factory.workflow.service.WorkflowHttpResult
 import io.whozoss.factory.workflow.service.WorkflowService
-import io.whozoss.factory.workstream.WorkstreamService
+import io.whozoss.factory.workflow.service.WorkflowExpansionServiceimport io.whozoss.factory.workstream.WorkstreamService
 import io.whozoss.factory.workstream.domain.WorkstreamStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -88,6 +88,8 @@ class WorkflowController(
      * otherwise.
      */
     private val bridgeCancellationService: BridgeCancellationService? = null,
+    /** Run-time expansion: read of the draft definition of a run that added steps. */
+    private val workflowExpansionService: WorkflowExpansionService? = null,
 ) {
 
     // ----- collection / detail ------------------------------------------
@@ -141,6 +143,26 @@ class WorkflowController(
     ): WorkflowDataEnvelope<Map<String, Any?>> {
         val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.remove(caller.scope, caller.namespaceId, workflowId).data as Map<String, Any?>)
+    }
+
+    // ----- projection ----------------------------------------------------
+
+    /**
+     * Draft of the definition a run actually followed (base steps + steps added by an expansion),
+     * ready to be reviewed and registered through the existing `POST /workflow-definitions`.
+     * Read-only: nothing is registered here.
+     */
+    @GetMapping(path = ["/{workflowId}/expanded-definition"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Read the draft definition of a run that added steps (not registered).")
+    fun expandedDefinition(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
+        val expansion = workflowExpansionService
+            ?: throw workflowException("WORKFLOW_NOT_EXPANDED", "This run has no steps added by an expansion.")
+        return WorkflowDataEnvelope(expansion.expandedDefinitionDraft(caller.scope, caller.namespaceId, workflowId))
     }
 
     // ----- projection ----------------------------------------------------

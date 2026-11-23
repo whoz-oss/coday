@@ -6,13 +6,14 @@ import io.whozoss.factory.workflow.domain.WorkflowTicket
 /** Strict validation of the structured business result schema. */
 object AgentStepResultValidation {
 
-    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq", "selectedRoutes")
+    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq", "selectedRoutes", "continuation")
     private val ARTIFACT_FIELDS = setOf("kind", "encoding", "content")
     private val CLAIM_FIELDS = setOf("modifiedFiles", "deliveryAnalysis")
     private val DELIVERY_ANALYSIS_FIELDS = setOf("changeType", "ticket", "title", "baseBranch")
     private val FINDING_FIELDS = setOf("severity", "code", "summary", "file", "line")
     private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH")
     private val CHANGE_TYPES = setOf("feature", "bugfix")
+    private const val MAX_CONTINUATION_STEPS = 50
     /** GitHub issue reference (#123, 123, owner/repo#123) or a generic Jira-style project key (ABC-123). */
     private val TICKET = WorkflowTicket.PATTERN
 
@@ -53,6 +54,24 @@ object AgentStepResultValidation {
             ) add("result.selectedRoutes", "INVALID_SELECTION", "must be 1–16 distinct route names, only on PASS")
         }
         requiredText(value, "summary", "result.summary", AgentStepResultLimits.SUMMARY)
+
+        if (value.has("continuation")) {
+            val continuation = value.get("continuation")
+            val steps = continuation?.get("steps")
+            when {
+                status?.asText() != "PASS" -> add("result.continuation", "INVALID_CONTINUATION", "is allowed only on PASS")
+                continuation == null || !continuation.isObject -> add("result.continuation", "INVALID_CONTINUATION", "must be a JSON object")
+                continuation.fieldNames().asSequence().any { it != "steps" } ->
+                    add("result.continuation", "INVALID_CONTINUATION", "contains one or more fields that are not allowed")
+                steps == null || !steps.isArray -> add("result.continuation.steps", "INVALID_CONTINUATION", "must be an array")
+                steps.size() < 1 -> add("result.continuation.steps", "INVALID_CONTINUATION", "must contain at least one step")
+                steps.size() > MAX_CONTINUATION_STEPS ->
+                    add("result.continuation.steps", "MAX_ITEMS", "must contain at most $MAX_CONTINUATION_STEPS steps")
+                else -> steps.forEachIndexed { index, step ->
+                    if (!step.isObject) add("result.continuation.steps[$index]", "INVALID_CONTINUATION", "must be a JSON object")
+                }
+            }
+        }
 
         val claims = value.get("claims")
         when {
@@ -182,6 +201,10 @@ object AgentStepResultValidation {
             findings = findings,
             expectedAmendmentSeq = value.get("expected_amendment_seq")?.asLong() ?: value.get("expectedAmendmentSeq")?.asLong(),
             selectedRoutes = value.get("selectedRoutes")?.map { it.asText() },
+            continuation = value.get("continuation")?.let { CONTINUATION_MAPPER.convertValue(it, CONTINUATION_TYPE) },
         )
     }
+
+    private val CONTINUATION_MAPPER = com.fasterxml.jackson.databind.ObjectMapper()
+    private val CONTINUATION_TYPE = object : com.fasterxml.jackson.core.type.TypeReference<Map<String, Any?>>() {}
 }

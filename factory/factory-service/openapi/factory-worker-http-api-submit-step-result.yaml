@@ -104,13 +104,48 @@ paths:
                       type: integer
                       format: int64
                       minimum: 0
+                    continuation:
+                      type: object
+                      additionalProperties: false
+                      required: [steps]
+                      description: >-
+                        Only for PASS of a step whose definition declares `expansion` (the brief says so). Steps appended to THIS run only; the definition catalog never changes.
+                        Each step uses the canonical workflow step (id, name, responsibility, dependsOn, optional entry/mission/exit together, optional decision/join).
+                        An empty dependsOn means after the expanding step; dependsOn may name only the expanding step or other continuation steps.
+                        Step ids must not exist in the run, agent steps must name an agent enabled in the namespace, and `expansion` / `outcomeTransitions` are not allowed in a continuation.
+                        A rejected continuation answers 400 RESULT_SCHEMA_INVALID with details.violations[] ({path, code, message}); the capability is not used up, so fix the listed paths and send the result again.
+                      properties:
+                        steps:
+                          type: array
+                          minItems: 1
+                          maxItems: 50
+                          items:
+                            type: object
+                            required: [id, name, responsibility, dependsOn]
+                            properties:
+                              id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+                              name: { type: string, minLength: 1, maxLength: 256 }
+                              responsibility:
+                                type: object
+                                required: [kind, name]
+                                properties:
+                                  kind: { type: string, enum: [agent, human, code] }
+                                  name: { type: string, minLength: 1, maxLength: 256 }
+                              dependsOn:
+                                type: array
+                                items: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
+                              entry: { type: array, maxItems: 50, items: { type: string, minLength: 1, maxLength: 4000 } }
+                              mission: { type: string, minLength: 1, maxLength: 16000 }
+                              exit: { type: array, maxItems: 50, items: { type: string, minLength: 1, maxLength: 4000 } }
+                              decision: { type: object }
+                              join: { type: string }
       responses:
         '200':
           description: Identical idempotent replay accepted
         '201':
           description: Result accepted
         '400':
-          description: Invalid schema or inconsistent attempt data
+          description: Invalid schema or inconsistent attempt data; a bad continuation lists details.violations[] and does not use the capability up
         '401':
           description: Missing or invalid credential in auth security mode (never returned in local mode)
         '404':

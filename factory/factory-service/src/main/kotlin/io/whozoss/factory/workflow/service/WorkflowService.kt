@@ -137,6 +137,9 @@ class WorkflowService(
 
     private val logger = KotlinLogging.logger {}
 
+    /** The single computation of the definition a run follows (base + steps added by an expansion). */
+    private val definitionResolver = EffectiveWorkflowDefinitionResolver(repository)
+
     /**
      * Short, isolated transaction boundary for the human reply. `REQUIRES_NEW`
      * guarantees the reply commits durably before [resumeCheckpointSession] runs, so
@@ -1997,19 +2000,8 @@ class WorkflowService(
         }
     }
 
-    private fun resolveDefinition(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowPolicyDefinition {
-        val workflowType = instance.instance["workflowType"] as? String
-        val version = instance.instance["definitionVersion"] as? String
-        val record = if (workflowType != null && version != null) {
-            repository.findDefinition(scope, workflowType, version)
-        } else {
-            null
-        } ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND)
-        if (record.definitionHash != instance.instance["definitionHash"]) {
-            throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH)
-        }
-        return record.toPolicyDefinition()
-    }
+    private fun resolveDefinition(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowPolicyDefinition =
+        definitionResolver.resolve(scope, instance)
 
     private companion object {
         /** Interaction type of a DAG-owned human checkpoint (opened by the capability resolver). */
@@ -2040,6 +2032,7 @@ fun WorkflowDefinitionRecord.toPolicyDefinition(): WorkflowPolicyDefinition {
             decision = WorkflowDecision.parse(step["decision"]),
             join = step["join"] as? String,
             outcomeTransitions = io.whozoss.factory.workflow.domain.OutcomeTransitions.parse(step["outcomeTransitions"]),
+            expansion = io.whozoss.factory.workflow.domain.WorkflowStepExpansion.parse(step["expansion"]),
         )
     }
     return WorkflowPolicyDefinition(workflowType = workflowType, version = version, definitionHash = definitionHash, steps = steps)

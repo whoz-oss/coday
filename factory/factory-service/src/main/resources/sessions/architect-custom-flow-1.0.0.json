@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "1",
+  "workflowType": "architect-custom-flow",
+  "version": "1.0.0",
+  "title": "Architect custom flow — the Architect designs the workflow during the run",
+  "steps": [
+    {
+      "id": "architect-plan",
+      "name": "Architect designs the workflow for this ticket",
+      "responsibility": { "kind": "agent", "name": "Archay" },
+      "dependsOn": [],
+      "entry": [
+        "Read the ticket and the request given with this run.",
+        "Read the code and the documentation that the ticket touches."
+      ],
+      "mission": "Analyse the ticket and the code, then design the workflow that delivers it. Send the steps of that workflow as `result.continuation.steps` with your PASS. Each step needs an id, a name, a responsibility (agent, human or code, with the name of an agent enabled in the namespace), dependsOn, entry, mission and exit. Keep the general instructions of each step (how to work, what to check, what to hand over) apart from the details of this ticket (its number, its files, its names), so the same workflow can be saved and reused for other tickets. Put the ticket details in the mission of the first step as a short reference to the ticket, not in every step. Add a human approval step wherever a person must decide before the work goes on.",
+      "exit": [
+        "A continuation of 1 to 50 steps that Factory accepted.",
+        "No step id that is already used by this run, and no dependency on a step outside the continuation other than this step."
+      ],
+      "expansion": { "mode": "append" }
+    }
+  ]
+}

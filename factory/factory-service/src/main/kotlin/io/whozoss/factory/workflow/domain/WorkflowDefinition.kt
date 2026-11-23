@@ -38,7 +38,7 @@ private val TRUSTED_EXECUTION_FIELDS = setOf("allowedPaths")
 
 /** Allowed keys of the optional top-level `execution` block. */
 private val EXECUTION_FIELDS = setOf("plugin")
-private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn", "entry", "mission", "exit", "decision", "join", "outcomeTransitions")
+private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn", "entry", "mission", "exit", "decision", "join", "outcomeTransitions", "expansion")
 private val RESPONSIBILITY_FIELDS = setOf("kind", "name")
 
 object WorkflowDefinitionValidator {
@@ -51,6 +51,21 @@ object WorkflowDefinitionValidator {
             return null to WorkflowDefinitionError(WorkflowDefinitionErrorCodes.INVALID_VALUE, path)
         }
         return value to null
+    }
+
+    /**
+     * Structural rules of the optional `expansion` declaration: at most one step, an `agent` step,
+     * with no dependents and no `decision`. Returns the offending step index and a stable reason.
+     */
+    private fun expansionRuleError(steps: List<WorkflowStepDefinition>): Pair<Int, String>? {
+        val expanders = steps.withIndex().filter { it.value.expansion != null }
+        if (expanders.isEmpty()) return null
+        if (expanders.size > 1) return expanders[1].index to "multiple_expanders"
+        val (index, step) = expanders.single()
+        if (step.responsibility.kind != ResponsibilityKind.AGENT) return index to "expansion_not_agent"
+        if (step.decision != null) return index to "expansion_with_decision"
+        if (steps.any { step.id in it.dependsOn }) return index to "expansion_not_leaf"
+        return null
     }
 
     /** Validates + normalizes an unknown definition payload. */
@@ -194,6 +209,10 @@ object WorkflowDefinitionValidator {
                 if (error != null) return WorkflowDefinitionValidation.Invalid(error)
                 value
             } else null
+            val expansion = if (step.containsKey("expansion")) {
+                WorkflowStepExpansion.parse(step["expansion"])
+                    ?: return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "$base.expansion")
+            } else null
             steps.add(
                 WorkflowStepDefinition(
                     id = id,
@@ -210,6 +229,7 @@ object WorkflowDefinitionValidator {
                         OutcomeTransitions.parse(step["outcomeTransitions"])
                             ?: return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "$base.outcomeTransitions")
                     } else null,
+                    expansion = expansion,
                 ),
             )
         }
@@ -222,6 +242,9 @@ object WorkflowDefinitionValidator {
 
         WorkflowRouting.topologyError(steps)?.let { reason ->
             return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "steps", mapOf("reason" to reason))
+        }
+        expansionRuleError(steps)?.let { (index, reason) ->
+            return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "steps[$index].expansion", mapOf("reason" to reason))
         }
         val normalizedStepJsons = steps.map { step ->
             linkedMapOf<String, Any?>(

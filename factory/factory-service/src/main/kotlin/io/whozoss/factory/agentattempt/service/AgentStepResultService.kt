@@ -18,6 +18,10 @@ import io.whozoss.factory.agentattempt.persistence.AgentStepResultRepository
 import io.whozoss.factory.agentattempt.persistence.IdempotencyRepository
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.workflow.service.EffectiveWorkflowDefinitionResolver
+import io.whozoss.factory.workflow.service.WorkflowExpansionService
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Lazy
 import io.whozoss.factory.workflow.domain.WorkflowDecision
 import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
@@ -72,6 +76,13 @@ class AgentStepResultService(
     private val attempts: AgentStepAttemptRepository,
     private val objectMapper: ObjectMapper,
     private val workflowRepository: WorkflowRepository? = null,
+    /**
+     * Run-time expansion of a workflow (continuation checks). Optional and lazy: absent in narrow
+     * unit compositions, in which case a continuation is simply not checked here.
+     */
+    @param:Lazy
+    @param:Autowired(required = false)
+    private val expansionService: WorkflowExpansionService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -210,11 +221,9 @@ class AgentStepResultService(
     private fun validateRouting(scope: TenantScope, capability: AgentStepResultCapability, business: JsonNode) {
         val workflows = workflowRepository ?: return
         val workflow = workflows.findInstance(scope, capability.namespaceId, capability.workflowId)
-        val definition = workflow?.instance?.let { instance ->
-            val type = instance["workflowType"] as? String
-            val version = instance["definitionVersion"] as? String
-            if (type != null && version != null) workflows.findDefinition(scope, type, version) else null
-        }
+        // The definition the run actually follows (base + steps added by an expansion), so a decision
+        // declared inside a continuation is validated like any other.
+        val definition = workflow?.let { EffectiveWorkflowDefinitionResolver(workflows).resolveRecordOrNull(scope, it) }
         val declared = (definition?.definition?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>()
             ?.find { it["id"] == capability.stepId }
         val decision = WorkflowDecision.parse(declared?.get("decision"))
@@ -230,6 +239,18 @@ class AgentStepResultService(
         if ((decision != null && parsed.status == AgentStepResultStatus.PASS && !decision.accepts(parsed.selectedRoutes)) ||
             (decision == null && parsed.selectedRoutes != null)
         ) throw ResultSchemaInvalidException("Missing, unknown or out-of-mode route selection")
+        // Continuation: checked here, before anything is stored, so a bad one never uses the capability up.
+        val continuationViolations = expansionService?.validateContinuation(scope, capability, parsed, CanonicalJsonHash.hash(business))
+            .orEmpty()
+        if (continuationViolations.isNotEmpty()) {
+            throw ResultSchemaInvalidException(
+                details = mapOf(
+                    "violations" to continuationViolations.map {
+                        AgentStepResultValidation.Violation(it.path, it.code, it.message)
+                    },
+                ),
+            )
+        }
     }
 
     private fun SubmitOutcome.toSubmission(): AgentStepResultSubmission =

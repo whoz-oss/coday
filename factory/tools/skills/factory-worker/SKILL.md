@@ -37,6 +37,8 @@ Use artifacts for substantive deliverables the brief requires and findings for a
 
 ## Recover safely
 
+- Adding steps to the run (`continuation`): only when the brief contains a "Workflow expansion" section. Then send `result.continuation = {"steps": [...]}` with a `PASS` (never with FAIL or NEEDS_RESEARCH), using the canonical step shape listed in the tool schema. An empty `dependsOn` means "after this step"; `dependsOn` may name only this step or other steps of the continuation. Use new step ids and real agent names of the namespace. If Factory answers `RESULT_SCHEMA_INVALID`, read `error.details.violations` (each has a `path`, a `code` and a `message`), fix exactly those paths and send the result again in the same turn with the same identifiers: a rejected continuation does not use the capability up. Do not remove steps only to get the result accepted if the work needs them.
+
 - `RESULT_SCHEMA_INVALID`: the submission was rejected. Read `error.details.violations`, correct the indicated fields against the tool schema and resubmit using the assigned identifiers. Do not change the business verdict merely to pass structural validation. If details are unavailable, compare the payload with the full schema; avoid repeating an unchanged invalid request.
 - Transport failure or ambiguous response: do not assume acceptance or rejection. If retrying, replay the exact same payload with the same idempotency key. Do not modify the payload while the prior submission's outcome is unknown.
 - `IDEMPOTENCY_KEY_COLLISION` or `RESULT_SEMANTIC_COLLISION`: stop and reconcile the previously submitted result through available authorized inspection or escalation. Never generate a fresh key to bypass a collision.

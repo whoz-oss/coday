@@ -109,6 +109,14 @@ Runtime support is currently standalone only. Parent-Run fragments declaring out
 
 Example: review declares `"outcomeTransitions":{"fail":{"action":"return","target":"analyze","maxCycles":2}}`. Review's accepted FAIL returns to analyze, not to a hard-coded agent. After two failed correction cycles the workflow waits for human intervention. This version does not reset the budget through an approval; inspect the evidence and create a separately authorized successor run for further work. No definition or historical run is migrated automatically.
 
+## Saving a workflow the Architect generated during a run
+
+A run started from `architect-custom-flow` adds its steps to that run only. To keep them as a reusable workflow:
+
+1. Read the draft with `FACTORY_AUTHORING__get_expanded_definition` (`workflowId`, `namespaceId`). It returns the base steps plus the added steps, without the `expansion` declaration. A run without added steps answers 409 `WORKFLOW_NOT_EXPANDED`.
+2. Make the step text generic: replace the ticket-specific details (ticket number, file names, names) by instructions that fit any ticket of the same kind, and keep the meaning of every step.
+3. Choose a NEW `workflowType` and version (the returned ones are placeholders), check it with `FACTORY_AUTHORING__validate_definition`, show the user the flow and register it with `FACTORY_AUTHORING__register_definition` only after the user agrees. Registration never overwrites and never launches a run.
+
 ## Validation, registration and launch
 
 Before registration, show the agreed human-readable flow with roles, key pre/post-actions, dependencies and any remaining assumptions. For a design-only or ambiguous request, provide the draft and ask whether to register; never interpret “design” as permission to save. When registration is already explicitly authorized and the summary reflects the agreed choices, complete it without another redundant confirmation. Material changes still need user validation. Tool confirmation gates remain separate and must be respected.

@@ -19,7 +19,7 @@ private val PROJECTION_FIELDS = setOf("schemaVersion", "workflowId", "workflowTy
 // the cockpit swimlanes. They are pass-through metadata: absent for a v1/v2
 // publication, present once a session run has scheduled/executed the step.
 private val STEP_FIELDS =
-    setOf("id", "name", "status", "description", "dependsOn", "responsibility", "lane", "startedAt", "completedAt", "durationMs", "entry", "mission", "exit", "decision", "join", "activation", "executed", "routeDecision")
+    setOf("id", "name", "status", "description", "dependsOn", "responsibility", "lane", "startedAt", "completedAt", "durationMs", "entry", "mission", "exit", "decision", "join", "expansion", "activation", "executed", "routeDecision")
 private val LANE_VALUES = setOf("agent", "code", "human")
 
 data class ProjectionError(val code: String, val path: String, val details: Map<String, Any?> = emptyMap())
@@ -134,6 +134,11 @@ object WorkflowProjectionValidator {
                 val join = step["join"] as? String
                 if (join == null || !SAFE_ID.matches(join)) return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.join")
                 normalizedStep["join"] = join
+            }
+            if (step.containsKey("expansion")) {
+                val expansion = WorkflowStepExpansion.parse(step["expansion"])
+                    ?: return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.expansion")
+                normalizedStep["expansion"] = expansion.toJson()
             }
             // Runtime activation records are Factory-owned, never accepted from declarative publishers.
             if (step.keys.any { it in setOf("activation", "executed", "routeDecision") }) {

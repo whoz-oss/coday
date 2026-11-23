@@ -207,9 +207,17 @@ class SessionRunService(
     private val runService: RunService? = null,
     private val outboxDrainService: io.whozoss.factory.agentattempt.service.OutboxDrainService? = null,
     private val outcomeTransitionService: OutcomeTransitionService? = null,
+    /**
+     * Optional run-time expansion (steps appended by an agent step that declares `expansion`).
+     * Pure unit tests may omit it; a definition declaring `expansion` then fails closed.
+     */
+    private val expansionService: WorkflowExpansionService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
+
+    /** The single computation of the definition a run follows (base + steps added by an expansion). */
+    private val definitionResolver = EffectiveWorkflowDefinitionResolver(repository)
 
     private val failureTransaction: TransactionTemplate? = transactionManager?.let { manager ->
         TransactionTemplate(manager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
@@ -288,7 +296,8 @@ class SessionRunService(
         // step execution context (agent brief) and be persisted on the instance.
         val effectiveTicket = ticket?.takeIf { it.isNotBlank() } ?: instanceTicket(instance)
         val workflowType = instance.instance["workflowType"] as? String
-        val steps = resolveDefinition(scope, instance).steps
+        // `steps` is reloadable: an expanding step appends steps to this run while the loop is running.
+        var steps = resolveDefinition(scope, instance).steps
         if (steps.isEmpty()) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "The session has no steps.")
         }
@@ -326,10 +335,22 @@ class SessionRunService(
         // caller-provided root and is re-bound to the run's validated worktree
         // before the first code step (once the root case exists).
         var effectiveRepoRoot = repoRoot
-        val guard = steps.size * (if (steps.any { it.outcomeTransitions != null }) 48 else 4) + 8
+        val canExpand = steps.any { it.expansion != null }
+        val guard = { current: List<WorkflowStepDefinition> ->
+            current.size * (if (current.any { it.outcomeTransitions != null }) 48 else 4) + 8
+        }
         var iterations = 0
         run {
-            while (iterations++ < guard) {
+            while (iterations++ < guard(steps)) {
+                if (canExpand) {
+                    // Crash recovery: add the steps of a completed expanding step whose addition did not happen.
+                    if (expansionService?.let { newTransaction { it.reconcile(scope, namespaceId, workflowId, steps) } } == true) {
+                        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+                    }
+                    // Pick up the steps added to this run (single resolver: instance + base definition).
+                    val refreshed = resolveDefinition(scope, activeInstance(scope, namespaceId, workflowId)).steps
+                    if (refreshed.size != steps.size) steps = refreshed
+                }
                 outcomeTransitionService?.advance(scope, namespaceId, workflowId, steps, effectiveRepoRoot.toString(), effectiveTicket)
                 val correction = repository.findInstance(scope, namespaceId, workflowId)?.projection?.get("correction") as? Map<*, *>
                 if (correction?.get("status") == "waiting_human") {
@@ -766,6 +787,18 @@ class SessionRunService(
                 val restored = SessionProgress.fromStates(repository.findStepStates(scope, namespaceId, workflowId).associateBy { it.stepId })
                 statuses.routing.putAll(restored.routing)
                 reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
+                recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision, statuses)
+                return WorkflowStatuses.FAILED
+            }
+        }
+        if (terminal == WorkflowStatuses.COMPLETED && step.expansion != null) {
+            try {
+                val expansion = checkNotNull(expansionService) { "EXPANSION_UNAVAILABLE" }
+                val attemptId = checkNotNull(execution.attemptId) { "EXPANSION_ATTEMPT_MISSING" }
+                // Idempotent on the accepted result: a replay or a crash recovery never adds the steps twice.
+                newTransaction { expansion.graft(scope, namespaceId, workflowId, step, attemptId) }
+                sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+            } catch (error: Exception) {
                 recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision, statuses)
                 return WorkflowStatuses.FAILED
             }
@@ -1548,19 +1581,7 @@ class SessionRunService(
     }
 
     private fun resolveDefinition(scope: TenantScope, instance: WorkflowInstanceRecord) =
-        run {
-            val workflowType = instance.instance["workflowType"] as? String
-            val version = instance.instance["definitionVersion"] as? String
-            val record = if (workflowType != null && version != null) {
-                repository.findDefinition(scope, workflowType, version)
-            } else {
-                null
-            } ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND)
-            if (record.definitionHash != instance.instance["definitionHash"]) {
-                throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH)
-            }
-            record.toPolicyDefinition()
-        }
+        definitionResolver.resolve(scope, instance)
 
     /** Elapsed milliseconds between two ISO-8601 instants, or null when incomplete. */
     private fun elapsedMs(startedAt: String?, completedAt: String?): Long? {

@@ -123,6 +123,13 @@ data class AgentStepResultBusiness(
     val expectedAmendmentSeq: Long? = null,
     @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val selectedRoutes: List<String>? = null,
+    /**
+     * Optional steps appended to the run by a step that declares `expansion`
+     * (`{ "steps": [...] }`, canonical step JSON). PASS only; deeply validated by the
+     * expansion service, never here.
+     */
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    val continuation: Map<String, Any?>? = null,
 )
 
 /** Identity a result store issues a submission capability for. */
@@ -205,6 +212,8 @@ data class AgentStepResultSubmitted(
     val expectedAmendmentSeq: Long? = null,
     @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val selectedRoutes: List<String>? = null,
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    val continuation: Map<String, Any?>? = null,
 )
 
 /** Stored attempt row projection. */

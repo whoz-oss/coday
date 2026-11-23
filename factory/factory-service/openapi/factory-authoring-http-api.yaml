@@ -61,6 +61,29 @@ paths:
         '200': { description: 'data contains workflowType, version, definitionHash and definition.' }
         '401': { description: Operator authentication required. }
         '404': { description: WORKFLOW_DEFINITION_NOT_FOUND in this organization. }
+  /api/factory/workflows/{workflowId}/expanded-definition:
+    get:
+      operationId: get_expanded_definition
+      summary: Read the draft definition of a run that added steps (read-only, nothing is registered).
+      description: >-
+        For a run built from a definition that declares `expansion` (for example architect-custom-flow), returns the base steps
+        plus the steps the run added, with `expansion` removed, as a draft whose workflowType and version are placeholders.
+        Make the step text generic, choose a new workflowType/version, check it with validate_definition, then register it
+        with register_definition (If-None-Match: * never overwrites). Factory never registers it on its own.
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: namespaceId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: 'data contains workflowId, source {workflowType, version, definitionHash}, expansion {sourceStepId, attemptId, resultId, resultHash, stepIds, effectiveDefinitionHash} and definition.' }
+        '401': { description: Operator authentication required. }
+        '404': { description: WORKFLOW_NOT_FOUND. }
+        '409': { description: WORKFLOW_NOT_EXPANDED, the run has no added steps. }
 components:
   requestBodies:
     Definition:
@@ -182,6 +205,15 @@ components:
                   target: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' }
         outcomeTransitions:
           $ref: '#/components/schemas/OutcomeTransitions'
+        expansion:
+          type: object
+          additionalProperties: false
+          required: [mode]
+          description: >-
+            Optional. The (agent) step may append steps to the run that executes it through result.continuation. At most one step per definition,
+            an agent step with no dependents and no decision. Removed from a draft returned by get_expanded_definition.
+          properties:
+            mode: { type: string, enum: [append] }
         join:
           type: string
           pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$'

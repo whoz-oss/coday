@@ -254,6 +254,7 @@ class Neo4jAgentStepResultRepository(
             resultHash = resultHash,
             expectedAmendmentSeq = parsed.expectedAmendmentSeq,
             selectedRoutes = parsed.selectedRoutes,
+            continuation = parsed.continuation,
         )
         val payload = serialize(submitted)
         val resultStatus = DB_RESULT_STATUS.getValue(parsed.status)
