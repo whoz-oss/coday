@@ -282,7 +282,7 @@ describe('FactoryStore', () => {
         const changed = { ...snapshot, revision: 3, projection: { ...snapshot.projection, title: 'Fresh title' } }
         store.refresh()
         const list = (): void => overview([changed])
-        const details = (): void => enrich('wf-1', { realCost: { cost: 4, unknownCostCount: 0, liveTokens: 400 } })
+        const details = (): void => enrich('wf-1', { realCost: { cost: 4, unknownCostCount: 0, totalTokens: 400 } })
         for (const respond of order === 'overview-first' ? [list, details] : [details, list]) {
           respond()
           expect(store.costs().totalUsd).toBeGreaterThan(0)
@@ -314,7 +314,7 @@ describe('FactoryStore', () => {
       expect(store.workstreams()[1]).toBe(groups[1])
       expect(store.workstreams()[1]?.runs).toBe(groups[1]?.runs)
       const afterOverview = store.runs()
-      enrich('wf-1', { realCost: { cost: 0, unknownCostCount: 0, liveTokens: 0 } })
+      enrich('wf-1', { realCost: { cost: 0, unknownCostCount: 0, totalTokens: 0 } })
       expect(store.runs()[0]).not.toBe(afterOverview[0])
       expect(store.runs()[0]?.costUsd).toBe(0)
       expect(store.runs()[0]?.tokens).toBe(0)
@@ -457,8 +457,9 @@ describe('FactoryStore', () => {
       overview([other])
       expect(store.runs()[0]).not.toBe(old)
       expect(store.runs()[0]?.namespaceId).toBe('ns-2')
-      expect(store.costs().totalUsd).toBe(0)
-      enrich('wf-1', { realCost: { cost: 0, unknownCostCount: 0, liveTokens: 0 } })
+      // Not enriched yet: analytics are unavailable, never a false zero.
+      expect(store.costs().totalUsd).toBeNull()
+      enrich('wf-1', { realCost: { cost: 0, unknownCostCount: 0, totalTokens: 0 } })
       expect(store.costs().totalUsd).toBe(0)
     })
   })
@@ -884,7 +885,17 @@ describe('FactoryStore', () => {
 
     store.refresh()
     flushInitialWorkflows([snapshot])
-    flushEnrichment({ workflowId: 'wf-1', realCost: { cost: null, unknownCostCount: null } })
+    // The detail refresh is already in flight (store.refresh): flush it directly, a second
+    // selectSession would only queue a trailing refresh.
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/metrics'))
+      .flush({ data: { workflowId: 'wf-1', realCost: { cost: null, unknownCostCount: null } } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
     expect(store.session('wf-1')?.costUsd).toBeNull()
     expect(store.costs().workflowsUsd).toBeNull()
   })
@@ -1149,7 +1160,7 @@ describe('FactoryStore', () => {
     expect(session?.attempts).toEqual([])
     expect(session?.phase.attempt).toBe('Attempts unavailable')
     expect(session?.attemptsLoadError).toBe(
-      'Http failure response for /api/factory/workflows/wf-1/attempts: 500 Server Error'
+      'Http failure response for /api/factory/workflows/wf-1/attempts?namespaceId=ns-1: 500 Server Error'
     )
     expect(session?.workflow).toBe('Real workflow')
   })

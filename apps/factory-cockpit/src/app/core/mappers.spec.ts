@@ -2249,7 +2249,7 @@ describe('mappers', () => {
       expect(
         session.phaseByExecutionId
           ?.get('exec-1')
-          ?.sections.find((section) => section.label === 'Sorties')
+          ?.sections.find((section) => section.label === 'Outputs')
           ?.items?.map((item) => item.subtitle)
       ).toEqual(['first proof'])
       expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(

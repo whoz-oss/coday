@@ -182,21 +182,24 @@ export class FactoryStore implements OnDestroy {
     return this.workstreamViews
   })
 
-  readonly costs = computed<CostSummary>(() => {
-    const active = this.activeRuns()
-    // Do not turn unavailable analytics into a false zero or fall back to a
-    // legacy snapshot/budget cost. A wholly empty dashboard legitimately totals 0.
-    const realCostOf = (run: FactoryRun): number | null => (run.run ? run.run.costUsd : run.costUsd)
-    const hasUnavailableAnalytics = active.some((run) => realCostOf(run) === null)
-    const hasUnknownCompleteness = active.some((run) => run.run?.unknownCostCount == null)
-    const workflowsUsd = hasUnavailableAnalytics
-      ? null
-      : active.reduce<number>((sum, run) => sum + (realCostOf(run) ?? 0), 0)
-    const unknownCostCount = hasUnknownCompleteness
-      ? null
-      : active.reduce<number>((sum, run) => sum + (run.run?.unknownCostCount ?? 0), 0)
-    return { active: active.length, workflowsUsd, totalUsd: workflowsUsd, unknownCostCount }
-  })
+  readonly costs = computed<CostSummary>(
+    () => {
+      const active = this.activeRuns()
+      // Do not turn unavailable analytics into a false zero or fall back to a
+      // legacy snapshot/budget cost. A wholly empty dashboard legitimately totals 0.
+      const realCostOf = (run: FactoryRun): number | null => (run.run ? run.run.costUsd : run.costUsd)
+      const hasUnavailableAnalytics = active.some((run) => realCostOf(run) === null)
+      const hasUnknownCompleteness = active.some((run) => run.run?.unknownCostCount == null)
+      const workflowsUsd = hasUnavailableAnalytics
+        ? null
+        : active.reduce<number>((sum, run) => sum + (realCostOf(run) ?? 0), 0)
+      const unknownCostCount = hasUnknownCompleteness
+        ? null
+        : active.reduce<number>((sum, run) => sum + (run.run?.unknownCostCount ?? 0), 0)
+      return { active: active.length, workflowsUsd, totalUsd: workflowsUsd, unknownCostCount }
+    },
+    { equal: sameCardData }
+  )
 
   // REAL: latest workflow snapshots from REST, and their mapped session details.
   private readonly workflows = signal<unknown[]>([])
@@ -499,8 +502,8 @@ export class FactoryStore implements OnDestroy {
       tap((usage) => {
         if (generation !== this.namespaceGeneration || !isUsableUsage(usage)) return
         this.removedUsage.set(run.id, usage)
-        this.runs.update((list) =>
-          list.map((candidate) =>
+        this.setRuns(
+          this.runs().map((candidate) =>
             candidate.id === run.id && candidate.status === 'destroyed' ? withRemovedUsage(candidate, usage) : candidate
           )
         )
@@ -696,7 +699,7 @@ export class FactoryStore implements OnDestroy {
     }
     const activeRuns = effectiveActive.map((snapshot) => withKnownEnrichment(snapshot))
     const destroyedRuns = effectiveRemoved.map((snapshot) => withKnownEnrichment(snapshot, 'destroyed'))
-    this.runs.set([...activeRuns, ...destroyedRuns])
+    this.setRuns([...activeRuns, ...destroyedRuns])
 
     // Cards and details share the same enrichment path. A run is enriched on
     // first sight only: later refreshes are driven by the targeted triggers
@@ -1225,7 +1228,7 @@ export class FactoryStore implements OnDestroy {
 
   /** Replace the summary attached to a run once its real cost is known. */
   private updateRun(summary: RunSummary): void {
-    this.runs.update((list) => list.map((run) => (run.id === summary.id ? withSummary(run, summary) : run)))
+    this.setRuns(this.runs().map((run) => (run.id === summary.id ? withSummary(run, summary) : run)))
   }
 }
 
@@ -1275,6 +1278,22 @@ function withRemovedUsage(run: FactoryRun, usage: CumulativeUsage): FactoryRun {
     finalCostUsd: usage.cost,
     tokens,
     ...(run.run ? { run: { ...run.run, costUsd: usage.cost, unknownCostCount: usage.unknownCostCount, tokens } } : {}),
+  }
+}
+
+function sameReferences<T>(previous: T[], next: T[]): boolean {
+  return previous.length === next.length && previous.every((item, index) => item === next[index])
+}
+
+function retainArray<T>(previous: T[], next: T[]): T[] {
+  return sameReferences(previous, next) ? previous : next
+}
+
+/** Cards contain only plain mapped objects, arrays and scalar values (no raw payloads). */
+function sameCardData(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((item, index) => sameCardData(item, right[index]))
   }
   if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
   if (Array.isArray(left) || Array.isArray(right)) return false
