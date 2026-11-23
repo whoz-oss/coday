@@ -262,8 +262,8 @@ mkdir -p "$CONFIG_DIR/agentos/data/database" "$CONFIG_DIR/agentos/data/exchange"
 # Plugins were built by the preflight above.
 # bootRun is invoked via pnpm nx from the worktree root.
 # ---------------------------------------------------------------------------
-printf -v AGENTOS_COMMAND 'cd %q && SERVER_PORT=%q SERVER_ADDRESS=127.0.0.1 AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT=%q SPRING_NEO4J_URI=%q AGENTOS_PERSISTENCE_DATA_DIR=%q AGENTOS_EXCHANGE_MOUNT_ROOT=%q AGENTOS_PLUGINS_DIR=%q AGENTOS_OAUTH_REDIRECT_URI=%q pnpm nx bootRun agentos-service' \
-  "$ROOT_DIR" "$AGENTOS_PORT" "$BOLT_PORT" "bolt://localhost:$BOLT_PORT" "$CONFIG_DIR/agentos/data/database" "$CONFIG_DIR/agentos/data/exchange" "$ROOT_DIR/agentos/plugins" "http://localhost:$SERVER_PORT/oauth/callback"
+printf -v AGENTOS_COMMAND 'cd %q && SERVER_PORT=%q SERVER_ADDRESS=127.0.0.1 AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT=%q SPRING_NEO4J_URI=%q AGENTOS_PERSISTENCE_DATA_DIR=%q AGENTOS_EXCHANGE_MOUNT_ROOT=%q AGENTOS_PLUGINS_DIR=%q AGENTOS_OAUTH_REDIRECT_URI=%q FACTORY_PORT=%q pnpm nx bootRun agentos-service' \
+  "$ROOT_DIR" "$AGENTOS_PORT" "$BOLT_PORT" "bolt://localhost:$BOLT_PORT" "$CONFIG_DIR/agentos/data/database" "$CONFIG_DIR/agentos/data/exchange" "$ROOT_DIR/agentos/plugins" "http://localhost:$SERVER_PORT/oauth/callback" "$FACTORY_PORT"
 tmux new-session -d -s "${SESSION_AGENTOS}" "$AGENTOS_COMMAND"
 
 # ---------------------------------------------------------------------------

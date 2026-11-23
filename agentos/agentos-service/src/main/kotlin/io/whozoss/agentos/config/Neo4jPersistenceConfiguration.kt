@@ -85,6 +85,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
+import org.springframework.core.env.Environment
 import org.springframework.data.neo4j.config.EnableNeo4jAuditing
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
@@ -243,12 +244,14 @@ class Neo4jPersistenceConfiguration {
         neo4jIntegrationConfigRepositoryDelegate: Neo4jIntegrationConfigRepository,
         namespaceRepository: NamespaceRepository,
         @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
+        environment: Environment,
     ): IntegrationConfigRepository {
         logger.info { "[Persistence] Neo4jIntegrationConfigRepository active (filesystem augmentation enabled)" }
         return FilesystemIntegrationConfigRepository(
             delegate = neo4jIntegrationConfigRepositoryDelegate,
             namespaceRepository = namespaceRepository,
             yamlMapper = yamlMapper,
+            environment = environment,
         )
     }
 

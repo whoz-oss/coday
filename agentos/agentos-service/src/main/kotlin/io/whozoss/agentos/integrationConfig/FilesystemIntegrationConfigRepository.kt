@@ -12,7 +12,10 @@ import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.plugin.filesystem.substituteConfigPath
 import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationConfigSource
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.util.substituteJsonTextValues
 import mu.KLogging
+import org.springframework.core.env.Environment
+import org.springframework.core.env.StandardEnvironment
 import java.nio.file.Path
 import java.time.Duration
 import java.util.UUID
@@ -38,6 +41,7 @@ class FilesystemIntegrationConfigRepository(
     private val namespaceRepository: NamespaceRepository,
     private val yamlMapper: ObjectMapper = ObjectMapper(YAMLFactory()).registerModule(KotlinModule.Builder().build()),
     ttl: Duration = Duration.ofMinutes(5),
+    private val environment: Environment = StandardEnvironment(),
 ) : IntegrationConfigRepository by delegate {
 
     private val cacheRegistry =
@@ -200,7 +204,10 @@ class FilesystemIntegrationConfigRepository(
             name = integrationConfigYaml.name,
             integrationType = integrationConfigYaml.integrationType,
             description = integrationConfigYaml.description,
-            parameters = substituteConfigPath(integrationConfigYaml.parameters, configPath),
+            parameters = substituteJsonTextValues(
+                substituteConfigPath(integrationConfigYaml.parameters, configPath),
+                environment::resolveRequiredPlaceholders,
+            ),
             authSettingName = integrationConfigYaml.authSettingName,
             source = IntegrationConfigSource.FILESYSTEM,
             autoGrant = integrationConfigYaml.autoGrant,
