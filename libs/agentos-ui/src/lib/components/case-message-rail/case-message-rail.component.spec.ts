@@ -163,8 +163,10 @@ describe('CaseMessageRailComponent', () => {
     await scrollConversation(400)
     expect(current(host)).toEqual([null, null, 'location'])
 
+    // Nothing scrolls (the message is already on screen at the end): no scroll event, only the next frame.
     dots(host)[1]!.click()
-    await scrollConversation(400)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    fixture.detectChanges()
     expect(current(host)).toEqual([null, 'location', null])
 
     // A new message (same layout here) clears the pick: the usual rule applies again.

@@ -154,6 +154,8 @@ export class CaseMessageRailComponent {
   protected select(id: string): void {
     this.pinnedId = id
     this.messageSelected.emit(id)
+    // At the end a message already on screen does not scroll, so no scroll event re-measures.
+    this.scheduleMeasure()
   }
 
   protected onKeydown(event: KeyboardEvent, index: number): void {
