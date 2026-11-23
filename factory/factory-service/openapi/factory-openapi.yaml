@@ -2119,14 +2119,6 @@ paths:
       tags:
       - workflows
       summary: Per-workflow operational metrics.
-      description: >-
-        realCost.cost (USD known lower bound), unknownCostCount, totalTokens,
-        inputTokens, outputTokens, cacheReadTokens and cacheWriteTokens cover the
-        lifetime union of the workflow's bound AgentOS case trees, including retries,
-        failed turns and live work. These fields are null when unavailable; never
-        substitute zero or the budget window. liveTokens is the deduplicated live
-        subset of totalTokens (null when unavailable). paused, active and
-        runCostThreshold retain AgentOS budget semantics.
       operationId: metricsWorkflow
       parameters:
       - name: workflowId
@@ -3416,22 +3408,9 @@ components:
       - recentChanges
       - sourceRevision
       - workstreamId
-    ResolvedModel:
-      type: object
-      description: First actual assigned-agent execution model after the attempt checkpoint; never current configuration
-      properties:
-        provider:
-          type: string
-        model:
-          type: string
-      required:
-      - provider
-      - model
     DurableAgentAttemptDto:
       type: object
       properties:
-        resolvedModel:
-          $ref: "#/components/schemas/ResolvedModel"
         attemptId:
           type: string
         stepId:
@@ -3489,6 +3468,8 @@ components:
           type: string
         effectiveMandate:
           type: string
+        resolvedModel:
+          $ref: "#/components/schemas/ResolvedModel"
       required:
       - activeDurationMs
       - agentName
@@ -3502,6 +3483,16 @@ components:
       - stepId
       - terminal
       - waitingDurationMs
+    ResolvedModel:
+      type: object
+      properties:
+        provider:
+          type: string
+        model:
+          type: string
+      required:
+      - model
+      - provider
     WorkflowDataEnvelopeListDurableAgentAttemptDto:
       type: object
       properties:
