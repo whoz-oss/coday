@@ -179,6 +179,18 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
     expect(component['currentNamespaceId']()).toBe('ns-from-run')
   })
 
+  it('offers promotion only for a run expanded on the fly', () => {
+    const plain = makeComponent('wf-1', [runWithNs('ns-1')], sessionBase())
+    expect(plain['expansion']()).toBeNull()
+    TestBed.resetTestingModule()
+
+    const expanded = { ...sessionBase(), expansion: { sourceStepId: 'architect-plan', stepIds: ['frontend'] } }
+    const component = makeComponent('wf-1', [runWithNs('ns-1')], expanded)
+    expect(component['expansion']()).toEqual({ sourceStepId: 'architect-plan', stepIds: ['frontend'] })
+    expect(component['savingDraft']()).toBe(false)
+    expect(component['draftError']()).toBeNull()
+  })
+
   it('builds a caseLink with the correct namespace from run.namespaceId', () => {
     const run = runWithNs('ns-real-uuid')
     const component = makeComponent('wf-1', [run], sessionBase())

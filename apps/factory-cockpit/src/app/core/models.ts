@@ -291,6 +291,23 @@ export interface StepExecution {
   triggeringExecutionId?: string
 }
 
+/**
+ * Instance-scoped expansion of a run (`projection.expansion`): steps an agent grafted onto this run only, the
+ * workflow definition in the catalog being untouched.
+ */
+export interface RunExpansion {
+  /** Step that submitted the continuation. */
+  sourceStepId: string
+  /** Ids of the grafted steps. */
+  stepIds: string[]
+  attemptId?: string
+  resultId?: string
+  effectiveDefinitionHash?: string
+  /** False when the namespace agents could not be read: the grafted agents are unverified, not assumed missing. */
+  agentsVerified?: boolean
+  expandedAt?: string
+}
+
 export interface CorrectionCycle {
   cycleId: string
   cycleNumber: number
@@ -597,6 +614,8 @@ export interface SessionDetail {
   stepExecutions?: StepExecution[]
   /** Current bounded correction cycle, when Factory exposes one. */
   correction?: CorrectionCycle
+  /** Present when the run was expanded on the fly: its grafted steps are ordinary entries of `steps`/`lanes`. */
+  expansion?: RunExpansion
   /**
    * Attempt id the cockpit may cancel right now, resolved from real state
    * (a `cancel_attempt` allowed action, else a running attempt). Absent when no

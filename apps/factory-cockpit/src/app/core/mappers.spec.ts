@@ -1506,6 +1506,50 @@ describe('mappers', () => {
       expect(session.allowedActions).toEqual([])
       expect(session.blockers).toEqual([])
     })
+
+    it('exposes the instance-scoped expansion of a run and keeps grafted steps as ordinary steps', () => {
+      const session = mapProjectionToSessionDetail({
+        ...snapshot,
+        projection: {
+          ...projection,
+          expansion: {
+            sourceStepId: 'plan',
+            attemptId: 'attempt-1',
+            resultId: 'result-1',
+            resultHash: 'sha256:abc',
+            stepIds: ['frontend', 'review', 42, ''],
+            effectiveDefinitionHash: 'hash-1',
+            agentsVerified: false,
+            expandedAt: startedAt,
+          },
+          steps: [
+            ...projection.steps,
+            { id: 'frontend', name: 'Frontend', status: 'pending', responsibility: { kind: 'agent', name: 'Frontay' } },
+          ],
+        },
+      })
+      expect(session.expansion).toEqual({
+        sourceStepId: 'plan',
+        attemptId: 'attempt-1',
+        resultId: 'result-1',
+        effectiveDefinitionHash: 'hash-1',
+        stepIds: ['frontend', 'review'],
+        agentsVerified: false,
+        expandedAt: startedAt,
+      })
+      expect(session.steps.map((step) => step.key)).toContain('frontend')
+    })
+
+    it('has no expansion for a plain or malformed projection', () => {
+      expect(mapProjectionToSessionDetail(snapshot).expansion).toBeUndefined()
+      expect(
+        mapProjectionToSessionDetail({ ...snapshot, projection: { ...projection, expansion: { stepIds: ['a'] } } })
+          .expansion
+      ).toBeUndefined()
+      expect(
+        mapProjectionToSessionDetail({ ...snapshot, projection: { ...projection, expansion: 'nope' } }).expansion
+      ).toBeUndefined()
+    })
   })
 
   describe('extractAllowedActions', () => {

@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { Observable, catchError, map, throwError } from 'rxjs'
+import { Observable, catchError, map, of, switchMap, throwError } from 'rxjs'
 import { AgentQuestion, AllowedAction, GetActionsResponse, ParentRunDetail, WorkflowBlocker } from './models'
 
 export type WorkflowState = 'active' | 'removed'
@@ -101,6 +101,24 @@ export interface FullWorkflowDefinition {
   trustedExecution?: boolean
   steps?: FullWorkflowStep[]
   [key: string]: unknown
+}
+
+/**
+ * Unwrapped payload of `GET /api/factory/workflows/:id/expanded-definition`: the base definition of an expanded run
+ * plus its grafted steps, canonical and without the `expansion` marker, ready to be registered as a new definition.
+ */
+export interface ExpandedDefinitionResponse {
+  workflowId: string
+  source: { workflowType: string; version: string; definitionHash: string }
+  expansion: {
+    sourceStepId: string
+    attemptId?: string
+    resultId?: string
+    resultHash?: string
+    stepIds: string[]
+    effectiveDefinitionHash?: string
+  }
+  definition: FullWorkflowDefinition
 }
 
 /** One AgentOS namespace exposed by `GET /api/agentos/api/namespaces`. */
@@ -585,6 +603,34 @@ export class FactoryApiService {
   ): Observable<FullWorkflowDefinition> {
     const path = `/api/factory/workflow-definitions/${encodeURIComponent(workflowType)}/${encodeURIComponent(version)}`
     return this.request<unknown>(path, {}, namespaceId).pipe(map((payload) => normalizeFullWorkflowDefinition(payload)))
+  }
+
+  /**
+   * GET `/api/factory/workflows/:id/expanded-definition?namespaceId=…` — the canonical definition of a run expanded
+   * on the fly (404 WORKFLOW_NOT_FOUND, 409 WORKFLOW_NOT_EXPANDED). Read-only: registering it stays an explicit
+   * {@link createWorkflowDefinition} call by the user.
+   */
+  getExpandedDefinition(workflowId: string, namespaceId: string): Observable<ExpandedDefinitionResponse> {
+    return this.request<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/expanded-definition`,
+      {},
+      requireNamespaceId(namespaceId)
+    ).pipe(
+      switchMap((payload) => {
+        const response = payload as Partial<ExpandedDefinitionResponse> | null
+        const definition = response?.definition
+        if (typeof definition !== 'object' || definition === null || Array.isArray(definition)) {
+          const invalid: FactoryApiError = {
+            code: 'EXPANDED_DEFINITION_INVALID',
+            message: 'The expanded definition response carries no definition.',
+            status: 0,
+            raw: payload,
+          }
+          return throwError(() => invalid)
+        }
+        return of(response as ExpandedDefinitionResponse)
+      })
+    )
   }
 
   /**

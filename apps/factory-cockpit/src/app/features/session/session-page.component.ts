@@ -68,6 +68,9 @@ export class SessionPageComponent implements OnDestroy {
   protected readonly effectiveRunId = computed(() => this.runId() || this.routeRunId())
   protected readonly session = this.pageState.session
   protected readonly parentRun = this.pageState.parentRun
+  protected readonly expansion = this.pageState.expansion
+  protected readonly savingDraft = this.pageState.savingDraft
+  protected readonly draftError = this.pageState.draftError
   private readonly run = this.pageState.run
 
   /**
@@ -187,6 +190,10 @@ export class SessionPageComponent implements OnDestroy {
 
   protected selectRoutingStep(stepId: string): void {
     this.pageState.selectStep(stepId)
+  }
+
+  protected saveAsReusableWorkflow(): void {
+    this.pageState.saveAsReusableWorkflow()
   }
 
   protected selectBlock(b: TimelineBlock): void {

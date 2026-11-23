@@ -14,7 +14,13 @@ import {
   timer,
   map,
 } from 'rxjs'
-import { FactoryApiError, FactoryApiService, NamespaceItem, extractNamespaceOptions } from './factory-api.service'
+import {
+  ExpandedDefinitionResponse,
+  FactoryApiError,
+  FactoryApiService,
+  NamespaceItem,
+  extractNamespaceOptions,
+} from './factory-api.service'
 import { SupervisorCaseFacade } from './supervisor-case.facade'
 import {
   mapProjectionToFactoryRun,
@@ -852,6 +858,14 @@ export class FactoryStore implements OnDestroy {
     return namespace && (this.selectedNamespaceId() === null || namespace === this.selectedNamespaceId())
       ? namespace
       : undefined
+  }
+
+  /**
+   * Read the canonical definition of a run expanded on the fly (`GET .../expanded-definition`). Read-only: nothing is
+   * registered, so no refresh is needed. The caller owns the subscription and the error display.
+   */
+  loadExpandedDefinition(workflowId: string, namespaceId: string): Observable<ExpandedDefinitionResponse> {
+    return this.api.getExpandedDefinition(workflowId, namespaceId)
   }
 
   /** Reply to a human interaction, then re-fetch the authoritative state. */

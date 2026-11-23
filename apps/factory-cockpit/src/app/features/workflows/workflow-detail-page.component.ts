@@ -18,6 +18,7 @@ import { finalize, skip, take } from 'rxjs'
 import { MatDialog } from '@angular/material/dialog'
 import { FactoryApiError } from '../../core/factory-api.service'
 import { WorkflowDefinitionsStateService } from '../../core/workflow-definitions-state.service'
+import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { ConfirmDialogComponent, ConfirmDialogData } from '../admin/confirm-dialog.component'
 import { ShellState } from '../../core/shell-state'
 import { WorkflowStepEditorState, legacyAdoption } from '../../core/workflow-step-editor.state'
@@ -51,6 +52,7 @@ export function formatJson(value: unknown): string {
 export class WorkflowDetailPageComponent {
   readonly state = inject(WorkflowStepEditorState)
   private readonly registry = inject(WorkflowDefinitionsStateService)
+  private readonly draftHandoff = inject(WorkflowDraftHandoffService)
   private readonly dialog = inject(MatDialog)
   private readonly destroyRef = inject(DestroyRef)
   protected readonly deleting = signal(false)
@@ -140,7 +142,7 @@ export class WorkflowDetailPageComponent {
       { label: 'Workflows', link: '/workflows' },
       { label: creating ? 'New workflow' : `${this.workflowType}@${this.version}`, mono: true },
     ])
-    if (creating) this.state.startNew()
+    if (creating) this.state.startNew(this.draftHandoff.take() ?? undefined)
     else this.state.load(this.workflowType, this.version)
 
     // Angular reuses this component when only a definition's route parameters change.

@@ -6,6 +6,7 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router'
 import { of, Subject, throwError } from 'rxjs'
 import { FactoryApiError, FactoryApiService } from '../../core/factory-api.service'
 import { ShellState } from '../../core/shell-state'
+import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { WorkflowDetailPageComponent, formatJson } from './workflow-detail-page.component'
 
 interface ApiStub {
@@ -51,7 +52,8 @@ describe('WorkflowDetailPageComponent', () => {
   async function setup(
     api: ApiStub,
     route: Partial<ActivatedRoute> = createRoute(),
-    confirmation = of(true)
+    confirmation = of(true),
+    seed?: () => void
   ): Promise<{ host: HTMLElement; fixture: ComponentFixture<WorkflowDetailPageComponent> }> {
     await TestBed.configureTestingModule({
       imports: [WorkflowDetailPageComponent],
@@ -64,6 +66,7 @@ describe('WorkflowDetailPageComponent', () => {
       ],
     }).compileComponents()
     jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+    seed?.()
     const fixture = TestBed.createComponent(WorkflowDetailPageComponent)
     fixture.detectChanges()
     return { host: fixture.nativeElement as HTMLElement, fixture }
@@ -146,6 +149,78 @@ describe('WorkflowDetailPageComponent', () => {
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/workflows', 'analysis', '1.0.0'], {
       replaceUrl: true,
     })
+  })
+
+  it('opens the composer prefilled with a draft handed off by an expanded run, then saves it as a new definition', async () => {
+    const api = createApi({
+      createWorkflowDefinition: jest
+        .fn()
+        .mockReturnValue(of({ workflowType: 'reusable-flow', version: '1.0.0', definitionHash: 'draft-hash' })),
+    })
+    const route = createRoute('', '')
+    const draft = {
+      schemaVersion: '1',
+      workflowType: 'architect-custom-flow-derived',
+      version: '1.0.0',
+      title: 'Run title',
+      steps: [
+        {
+          id: 'plan',
+          name: 'Plan',
+          responsibility: { kind: 'agent', name: 'Archay' },
+          dependsOn: [],
+          entry: [],
+          mission: 'Plan the work',
+          exit: [],
+        },
+        {
+          id: 'frontend',
+          name: 'Frontend',
+          responsibility: { kind: 'agent', name: 'Frontay' },
+          dependsOn: ['plan'],
+          entry: [],
+          mission: 'Build the UI',
+          exit: [],
+        },
+      ],
+    }
+    const { host, fixture } = await setup(
+      api,
+      { ...route, snapshot: { ...route.snapshot, data: { create: true } } } as Partial<ActivatedRoute>,
+      of(true),
+      () => TestBed.inject(WorkflowDraftHandoffService).set(draft)
+    )
+    expect(api.getWorkflowDefinition).not.toHaveBeenCalled()
+    expect(host.querySelectorAll('[data-step-node]')).toHaveLength(2)
+    expect(host.querySelector('[data-dependency="plan:frontend"]')).not.toBeNull()
+    expect(fixture.componentInstance.state.dirty()).toBe(true)
+    // The draft is consumed once: a second visit starts blank.
+    expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBeNull()
+
+    edit(host, '[data-workflow-type]', 'reusable-flow')
+    edit(host, '[data-workflow-name]', 'Reusable flow')
+    fixture.detectChanges()
+    query<HTMLButtonElement>(host, '[data-save-contract]').click()
+    fixture.detectChanges()
+    expect(api.createWorkflowDefinition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowType: 'reusable-flow',
+        title: 'Reusable flow',
+        version: '1.0.0',
+        steps: draft.steps,
+      })
+    )
+    expect(host.textContent).toContain('draft-hash')
+  })
+
+  it('starts blank when no draft was handed off', async () => {
+    const route = createRoute('', '')
+    const { fixture } = await setup(createApi(), {
+      ...route,
+      snapshot: { ...route.snapshot, data: { create: true } },
+    } as Partial<ActivatedRoute>)
+    expect(fixture.componentInstance.state.definition()?.steps).toEqual([])
+    expect(fixture.componentInstance.state.dirty()).toBe(false)
   })
 
   it('adds a code step through the closed verifier select without a command field', async () => {

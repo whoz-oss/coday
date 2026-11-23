@@ -243,6 +243,61 @@ describe('FactoryApiService', () => {
     })
   })
 
+  describe('getExpandedDefinition', () => {
+    const payload = {
+      workflowId: 'wf/1',
+      source: { workflowType: 'architect-custom-flow', version: '1.0.0', definitionHash: 'abc' },
+      expansion: { sourceStepId: 'architect-plan', stepIds: ['frontend'] },
+      definition: {
+        schemaVersion: '1',
+        workflowType: 'architect-custom-flow-derived',
+        version: '1.0.0',
+        title: 'Run title',
+        steps: [{ id: 'architect-plan', name: 'Plan' }],
+      },
+    }
+
+    it('reads the namespace-scoped endpoint and unwraps the { data } envelope', () => {
+      let result: unknown
+      service.getExpandedDefinition('wf/1', '  ns-1  ').subscribe((value) => (result = value))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1/expanded-definition')
+      expect(request.request.method).toBe('GET')
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: payload })
+
+      expect(result).toEqual(payload)
+    })
+
+    it('requires a namespace before any request is made', () => {
+      expect(() => service.getExpandedDefinition('wf-1', '  ')).toThrow('requires namespaceId')
+      http.expectNone(() => true)
+    })
+
+    it('rejects a response without a definition as a structured error', () => {
+      let error: FactoryApiError | undefined
+      service.getExpandedDefinition('wf-1', 'ns-1').subscribe({ error: (e: FactoryApiError) => (error = e) })
+      http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/expanded-definition').flush({ data: {} })
+      expect(error).toEqual(expect.objectContaining({ code: 'EXPANDED_DEFINITION_INVALID' }))
+    })
+
+    it('normalizes 409 WORKFLOW_NOT_EXPANDED', () => {
+      let error: FactoryApiError | undefined
+      service.getExpandedDefinition('wf-1', 'ns-1').subscribe({ error: (e: FactoryApiError) => (error = e) })
+      http
+        .expectOne((r) => r.url === '/api/factory/workflows/wf-1/expanded-definition')
+        .flush(
+          { error: { code: 'WORKFLOW_NOT_EXPANDED', message: 'Not expanded' } },
+          { status: 409, statusText: 'Conflict' }
+        )
+      expect(error).toEqual(
+        expect.objectContaining({ code: 'WORKFLOW_NOT_EXPANDED', message: 'Not expanded', status: 409 })
+      )
+    })
+  })
+
   describe('workflow lifecycle endpoints (remove, restore, purge)', () => {
     it('removeWorkflow sends a DELETE to the encoded route with namespace and correlation id', () => {
       let result: unknown

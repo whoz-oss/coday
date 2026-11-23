@@ -255,13 +255,26 @@ export class WorkflowStepEditorState {
       : null
   })
 
-  startNew(): void {
+  /**
+   * Open the composer on a new definition. An optional `draft` (for example the expanded definition of a run) prefills
+   * it: the draft is copied, its version is left for the author to choose (`1.0.0` proposed) and it is registered
+   * through the same validation and create-only save as any other new workflow. Discarding resets to a blank definition.
+   */
+  startNew(draft?: FullWorkflowDefinition): void {
     this.creating.set(true)
     this.editing.set(true)
     this.baseline = { schemaVersion: '1', workflowType: '', version: '', title: '', steps: [] }
-    this.definition.set(this.baseline)
     this.targetVersion.set('1.0.0')
     this.newCodeStepIds.set(new Set())
+    if (!draft) {
+      this.definition.set(this.baseline)
+      return
+    }
+    const copy = JSON.parse(JSON.stringify(draft)) as FullWorkflowDefinition
+    const prefilled: FullWorkflowDefinition = { ...copy, schemaVersion: copy.schemaVersion ?? '1', version: '' }
+    this.definition.set(prefilled)
+    this.structureDirty.set(true)
+    this.selectedId.set(prefilled.steps?.[0]?.id ?? null)
   }
 
   loadDiscovery(): void {

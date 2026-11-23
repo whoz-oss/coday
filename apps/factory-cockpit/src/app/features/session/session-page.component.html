@@ -59,6 +59,33 @@
         <sf-metric icon="menu_book" label="Tokens read">{{ s.tokensRead | tokens }}</sf-metric>
         <sf-metric icon="edit" label="Tokens written">{{ s.tokensWritten | tokens }}</sf-metric>
       </div>
+
+      @if (expansion(); as exp) {
+        <div class="expansion" data-run-expansion>
+          <p class="sf-muted">
+            Expanded on the fly: {{ exp.stepIds.length }} step(s) added to this run only, after
+            <b class="sf-mono">{{ exp.sourceStepId }}</b
+            >. The workflow catalog is unchanged.
+            @if (exp.agentsVerified === false) {
+              The agents of the added steps could not be verified.
+            }
+          </p>
+          <button
+            mat-stroked-button
+            class="sf-secondary"
+            type="button"
+            (click)="saveAsReusableWorkflow()"
+            [disabled]="savingDraft()"
+            title="Open the expanded definition in the workflow composer to register it as a new reusable workflow"
+            data-save-reusable-workflow
+          >
+            {{ savingDraft() ? 'Opening…' : 'Save as reusable workflow' }}
+          </button>
+        </div>
+        @if (draftError(); as message) {
+          <div class="banner banner--warn" role="alert" data-save-reusable-error>{{ message }}</div>
+        }
+      }
     </section>
 
     <!-- Backend-governed actions (allowedActions / blockers) -->

@@ -1,6 +1,10 @@
 import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
+import { Router } from '@angular/router'
+import { Subject, of } from 'rxjs'
+import { FactoryApiError } from '../../core/factory-api.service'
 import { FactoryStore } from '../../core/factory.store'
+import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { SessionPageState } from './session-page.state'
 
 describe('SessionPageState', () => {
@@ -10,6 +14,7 @@ describe('SessionPageState', () => {
     session: jest.fn((id: string) => sessions().get(id)),
     selectSession: jest.fn(),
     clearSessionSelection: jest.fn(),
+    loadExpandedDefinition: jest.fn(),
   }
 
   beforeEach(() => {
@@ -214,5 +219,90 @@ describe('SessionPageState', () => {
     sessions.update((current) => new Map(current).set('run-1', { ...transitioned, phase: { stepId: 'review' } }))
     state.selectDefaultStep()
     expect(state.selection()).toEqual({ stepId: 'frontend' })
+  })
+
+  describe('promotion of an expanded run', () => {
+    const expansion = { sourceStepId: 'architect-plan', stepIds: ['frontend', 'review'], agentsVerified: true }
+    const definition = { schemaVersion: '1', workflowType: 'derived', version: '1.0.0', steps: [{ id: 'a', name: 'A' }] }
+
+    function openExpandedSession(): { state: SessionPageState; navigate: jest.SpyInstance } {
+      sessions.update((current) => new Map(current).set('run-1', { phase: {}, lanes: [], events: [], expansion }))
+      const state = TestBed.inject(SessionPageState)
+      const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+      state.selectSession('run-1')
+      return { state, navigate }
+    }
+
+    it('exposes the expansion only for a run that carries one', () => {
+      sessions.update((current) => new Map(current).set('run-1', { phase: {}, lanes: [], events: [] }))
+      const state = TestBed.inject(SessionPageState)
+      state.selectSession('run-1')
+      expect(state.expansion()).toBeNull()
+
+      sessions.update((current) => new Map(current).set('run-1', { phase: {}, lanes: [], events: [], expansion }))
+      expect(state.expansion()).toEqual(expansion)
+    })
+
+    it('does nothing for a run that was not expanded', () => {
+      sessions.update((current) => new Map(current).set('run-1', { phase: {}, lanes: [], events: [] }))
+      const state = TestBed.inject(SessionPageState)
+      const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+      state.selectSession('run-1')
+      state.saveAsReusableWorkflow()
+      expect(store.loadExpandedDefinition).not.toHaveBeenCalled()
+      expect(navigate).not.toHaveBeenCalled()
+    })
+
+    it('fetches the definition for the run namespace, hands it off and opens the composer', () => {
+      store.loadExpandedDefinition.mockReturnValue(of({ workflowId: 'run-1', definition }))
+      const { state, navigate } = openExpandedSession()
+      state.saveAsReusableWorkflow()
+
+      expect(store.loadExpandedDefinition).toHaveBeenCalledWith('run-1', 'namespace-1')
+      expect(TestBed.inject(WorkflowDraftHandoffService).take()).toEqual(definition)
+      expect(navigate).toHaveBeenCalledWith(['/workflows', 'new'])
+      expect(state.savingDraft()).toBe(false)
+      expect(state.draftError()).toBeNull()
+    })
+
+    it('ignores a second click while the definition is loading', () => {
+      const response = new Subject<unknown>()
+      store.loadExpandedDefinition.mockReturnValue(response)
+      const { state } = openExpandedSession()
+      state.saveAsReusableWorkflow()
+      state.saveAsReusableWorkflow()
+      expect(store.loadExpandedDefinition).toHaveBeenCalledTimes(1)
+      expect(state.savingDraft()).toBe(true)
+    })
+
+    it('shows the backend error, keeps the page and parks no draft on failure', () => {
+      const error: FactoryApiError = {
+        code: 'WORKFLOW_NOT_EXPANDED',
+        message: 'Workflow was not expanded',
+        status: 409,
+        raw: null,
+      }
+      const response = new Subject<unknown>()
+      store.loadExpandedDefinition.mockReturnValue(response)
+      const { state, navigate } = openExpandedSession()
+      state.saveAsReusableWorkflow()
+      response.error(error)
+
+      expect(state.draftError()).toBe('Workflow was not expanded (WORKFLOW_NOT_EXPANDED)')
+      expect(state.savingDraft()).toBe(false)
+      expect(navigate).not.toHaveBeenCalled()
+      expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBeNull()
+    })
+
+    it('clears the previous error when another session is selected', () => {
+      const response = new Subject<unknown>()
+      store.loadExpandedDefinition.mockReturnValue(response)
+      const { state } = openExpandedSession()
+      state.saveAsReusableWorkflow()
+      response.error({ code: 'X', message: 'boom', status: 500, raw: null })
+      expect(state.draftError()).toContain('boom')
+      state.selectSession('run-2')
+      expect(state.draftError()).toBeNull()
+    })
   })
 })

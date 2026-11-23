@@ -39,6 +39,17 @@ h1 {
 .meta-row .sf-workflow {
   font-size: 14px;
 }
+.expansion {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  p {
+    flex: 1 1 320px;
+    margin: 0;
+    font-size: 13px;
+  }
+}
 
 /* Bas de page */
 .bottom {

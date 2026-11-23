@@ -346,6 +346,85 @@ describe('workflow block composition', () => {
     expect(api.createWorkflowDefinition.mock.calls[0][0].steps[0].legacyContract).toBeUndefined()
   })
 
+  describe('starting from a draft (promotion of an expanded run)', () => {
+    const draft = {
+      schemaVersion: '1',
+      workflowType: 'architect-custom-flow-derived',
+      version: '1.0.0',
+      title: 'Run title',
+      steps: [
+        {
+          id: 'architect-plan',
+          name: 'Plan',
+          responsibility: { kind: 'agent', name: 'Archay' },
+          dependsOn: [],
+          entry: [],
+          mission: 'Plan the work',
+          exit: [],
+        },
+        {
+          id: 'frontend',
+          name: 'Frontend',
+          responsibility: { kind: 'agent', name: 'Frontay' },
+          dependsOn: ['architect-plan'],
+          entry: [],
+          mission: 'Build the UI',
+          exit: [],
+        },
+      ],
+    }
+
+    it('prefills the composer with a copy of the draft, dirty, selected and valid', () => {
+      const { state } = setup()
+      state.startNew(draft)
+      expect(state.creating()).toBe(true)
+      expect(state.editing()).toBe(true)
+      expect(state.definition()?.workflowType).toBe('architect-custom-flow-derived')
+      expect(state.definition()?.steps?.map((step) => step.id)).toEqual(['architect-plan', 'frontend'])
+      expect(state.selectedId()).toBe('architect-plan')
+      expect(state.targetVersion()).toBe('1.0.0')
+      expect(state.structureDirty()).toBe(true)
+      expect(state.dirty()).toBe(true)
+      expect(state.validation()).toBeNull()
+      // The caller's object is never mutated by later edits.
+      state.metadata('title', 'Renamed')
+      expect(draft.title).toBe('Run title')
+    })
+
+    it('saves through the create-only registration with the chosen identity and canonical steps', () => {
+      const { state, api } = setup()
+      state.startNew(draft)
+      state.metadata('workflowType', 'reusable-flow')
+      state.metadata('title', 'Reusable flow')
+      state.targetVersion.set('2.1.0')
+      state.save()
+      expect(api.createWorkflowDefinition).toHaveBeenCalledTimes(1)
+      const saved = api.createWorkflowDefinition.mock.calls[0][0]
+      expect(saved).toEqual({
+        ...draft,
+        workflowType: 'reusable-flow',
+        title: 'Reusable flow',
+        version: '2.1.0',
+      })
+      expect(saved.steps).toEqual(draft.steps)
+    })
+
+    it('discarding returns to a blank definition rather than the draft', () => {
+      const { state } = setup()
+      state.startNew(draft)
+      state.discard()
+      expect(state.definition()?.steps).toEqual([])
+      expect(state.dirty()).toBe(false)
+    })
+
+    it('stays blank when no draft is given', () => {
+      const { state } = setup()
+      state.startNew(undefined)
+      expect(state.definition()?.steps).toEqual([])
+      expect(state.structureDirty()).toBe(false)
+    })
+  })
+
   it('starts pristine, tracks version-only edits, and clears dirty on discard', () => {
     const { state } = setup()
     expect(state.creating()).toBe(true)
