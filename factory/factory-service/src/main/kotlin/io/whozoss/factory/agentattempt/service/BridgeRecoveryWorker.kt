@@ -1,5 +1,6 @@
 package io.whozoss.factory.agentattempt.service
 
+import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseEventView
@@ -83,7 +84,7 @@ class BridgeRecoveryWorker(
     private val evidenceRepository: WorkflowEvidenceRepository? = null,
     private val sseHub: WorkflowSseHub? = null,
     private val resultService: AgentStepResultService? = null,
-    private val observationTimeoutMs: Long = DEFAULT_OBSERVATION_TIMEOUT_MS,
+    private val observationTimeoutMs: Long? = null,
     private val leaseTtlMs: Long = DEFAULT_LEASE_TTL_MS,
     private val workflowRepository: WorkflowRepository? = null,
     private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
@@ -93,7 +94,11 @@ class BridgeRecoveryWorker(
     private val capabilityExecutionService: CapabilityExecutionService? = null,
     private val sessionRunSubmissionService: SessionRunSubmissionService? = null,
     private val agentOsProxyClient: AgentOsProxyClient? = null,
+    private val adapterProperties: AgentOsAdapterProperties = AgentOsAdapterProperties(),
 ) {
+
+    private val effectiveObservationTimeoutMs: Long
+        get() = observationTimeoutMs ?: adapterProperties.observationTimeoutMs
 
     private val logger = KotlinLogging.logger {}
     private var terminalReleaseCursor: String? = null
@@ -386,7 +391,7 @@ class BridgeRecoveryWorker(
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         val observation = runCatching {
-            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), observationTimeoutMs)
+            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), effectiveObservationTimeoutMs)
         }.getOrElse {
             AgentOsObservationResult(
                 AgentOsExecutionVerdict.Indeterminate(
@@ -454,7 +459,7 @@ class BridgeRecoveryWorker(
         }
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         val observation = runCatching {
-            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), observationTimeoutMs)
+            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), effectiveObservationTimeoutMs)
         }.getOrElse {
             AgentOsObservationResult(
                 AgentOsExecutionVerdict.Indeterminate(
@@ -658,7 +663,7 @@ class BridgeRecoveryWorker(
         )
 
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
-        const val DEFAULT_OBSERVATION_TIMEOUT_MS = 600_000L
+        const val DEFAULT_OBSERVATION_TIMEOUT_MS = AgentOsAdapterProperties.DEFAULT_OBSERVATION_TIMEOUT_MS
         const val DEFAULT_LEASE_TTL_MS = 3_600_000L
         private const val AGENTOS_RUNTIME_ID = "agentos-primary"
         private const val TERMINAL_RELEASE_SCAN_PAGE = 256

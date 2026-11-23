@@ -200,23 +200,77 @@
     color: var(--color-text, #1d1d1f);
   }
 
-  &__diff {
-    width: 100%;
-    border-collapse: collapse;
+  &__change {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+  }
+
+  &__path {
     font-size: 0.8rem;
+    color: var(--color-text, #1d1d1f);
+  }
 
-    th,
-    td {
-      text-align: left;
-      vertical-align: top;
-      padding: 0.25rem 0.4rem;
-      border-top: 1px solid var(--color-border, rgba(0, 0, 0, 0.08));
+  &__diff {
+    flex: 1 1 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 16rem;
+    overflow: auto;
+    border: 1px solid var(--color-border, rgba(0, 0, 0, 0.12));
+    border-radius: 6px;
+    font-family: var(--font-code, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+    font-size: 0.75rem;
+  }
+
+  &__line {
+    position: relative;
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.1rem 0.5rem;
+    color: var(--color-text-secondary, #6e6e73);
+    white-space: pre-wrap;
+    word-break: break-word;
+
+    &--added {
+      background: color-mix(in srgb, var(--color-success, #249349) 14%, transparent);
+      color: var(--color-text, #1d1d1f);
+
+      .config-change__sign {
+        color: var(--color-success, #249349);
+      }
     }
 
-    th {
-      font-weight: 500;
-      color: var(--color-text-secondary, #6e6e73);
+    &--removed {
+      background: color-mix(in srgb, var(--color-error, #d70015) 14%, transparent);
+      color: var(--color-text, #1d1d1f);
+
+      .config-change__sign {
+        color: var(--color-error, #d70015);
+      }
     }
+
+    &--gap {
+      justify-content: center;
+      font-style: italic;
+      border-top: 1px dashed var(--color-border, rgba(0, 0, 0, 0.12));
+      border-bottom: 1px dashed var(--color-border, rgba(0, 0, 0, 0.12));
+    }
+  }
+
+  &__sign {
+    flex-shrink: 0;
+    width: 1ch;
+    font-weight: 600;
+    user-select: none;
+  }
+
+  &__line-text {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   &__secrets {

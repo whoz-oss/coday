@@ -12,6 +12,7 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepResultClaim
 import io.whozoss.factory.workflow.domain.WorkflowStepContract
 import io.whozoss.factory.workflow.domain.WorkflowDecision
+import io.whozoss.factory.workflow.domain.WorkflowTicket
 import io.whozoss.factory.sdk.spi.WorkspaceCaptureStatus
 import io.whozoss.factory.sdk.spi.NewFinding
 import io.whozoss.factory.sdk.spi.FindingSeverity
@@ -159,8 +160,8 @@ class CapabilityExecutionService(
      * tests may omit it and the phases then run inline.
      */
     private val transactionManager: PlatformTransactionManager? = null,
-    /** Wall-clock observation budget handed to the adapter turn observer. */
-    private val agentObservationTimeoutMs: Long = 600_000L,
+    /** Wall-clock / activity observation budget handed to the adapter turn observer (optional override over [agentOsAdapterProperties]). */
+    private val agentObservationTimeoutMs: Long? = null,
     /** Lease TTL of the durable attempt claim (a live lease fences a competing worker). */
     private val agentLeaseTtlMs: Long? = 3_600_000L,
     /**
@@ -475,14 +476,11 @@ class CapabilityExecutionService(
         namespaceId: String,
         ticket: String?,
         workflowId: String,
-    ): String {
-        val trustedComponent = trustedWorkflowTicket(scope, namespaceId, workflowId)
-            ?.takeIf { TRUSTED_TICKET.matches(it) }
-            ?: ticket?.takeIf { TRUSTED_TICKET.matches(it) }
-            ?: workflowId
-        val sanitized = trustedComponent.replace(Regex("[^A-Za-z0-9._-]"), "-").trim('-', '.').take(100)
-        return "factory/$sanitized"
-    }
+    ): String = WorkflowTicket.branchName(
+        trustedTicket = trustedWorkflowTicket(scope, namespaceId, workflowId),
+        fallbackTicket = ticket,
+        workflowId = workflowId,
+    )
 
     /**
      * Builds the brief handed to the agent persona. It is assembled by Factory
@@ -2040,7 +2038,7 @@ class CapabilityExecutionService(
         val observed = try {
             adapter.observeTurnResult(
                 turn = TurnToken.unbaselined(caseId, reservation.attemptId),
-                timeoutMs = agentObservationTimeoutMs,
+                timeoutMs = agentObservationTimeoutMs ?: agentOsAdapterProperties.observationTimeoutMs,
                 onIntermediateVerdict = { waiting ->
                 if (waitingQuestion != waiting.questionRef) {
                     waitingQuestion = waiting.questionRef
@@ -2753,7 +2751,6 @@ class CapabilityExecutionService(
         private const val RUN_BRIEF_KIND = "run-brief"
         private const val GITAY_AGENT = "Gitay"
         private const val A11Y_REVIEWER_AGENT = "A11yReviewer"
-        private val TRUSTED_TICKET = Regex("^[A-Z][A-Z0-9]{1,15}-[0-9]{1,12}$")
 
         /** Evidence marker of an authoritative NEEDS_RESEARCH verdict (blocked, not failed). */
         const val NEEDS_RESEARCH_MARKER = "NEEDS_RESEARCH"

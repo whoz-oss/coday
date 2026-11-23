@@ -25,6 +25,7 @@ import {
   ReasoningEffort,
   ToolRequestEvent,
   ToolResponseEvent,
+  ThinkingEvent,
   User,
   VoiceMessageControllerService,
   WarnEvent,
@@ -1058,6 +1059,86 @@ describe('CaseChatComponent — submit with attachments', () => {
       })
     )
     expect(timeline.some((item) => item.kind === 'tool')).toBe(false)
+  })
+
+  it('folds two consecutive tool calls into one group, and keeps a lone call as a card', () => {
+    const ref = makeComponent()
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const request = (id: string): ToolRequestEvent => ({
+      id: `req-${id}`,
+      type: 'ToolRequestEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata,
+      toolName: 'FILES__readFile',
+      toolRequestId: id,
+      args: '{"filePath":"a.ts"}',
+    })
+
+    ref.instance['events'].set([request('t-1')])
+    expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['tool'])
+
+    ref.instance['events'].set([request('t-1'), request('t-2')])
+    const timeline = ref.instance['timeline']()
+    expect(timeline.map((item) => item.kind)).toEqual(['toolGroup'])
+    expect(timeline[0]).toEqual(expect.objectContaining({ groupId: 'group-t-1' }))
+    expect(ref.instance['isToolGroupExpanded']('group-t-1')).toBe(false)
+    ref.instance['toggleToolGroup']('group-t-1')
+    expect(ref.instance['isToolGroupExpanded']('group-t-1')).toBe(true)
+  })
+
+  describe('live tool call grouping', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const base = { caseId: 'c-1', namespaceId: 'ns-1', timestamp: '2026-01-01T00:00:00Z', metadata }
+    const request = (id: string): ToolRequestEvent => ({
+      ...base,
+      id: `req-${id}`,
+      type: 'ToolRequestEvent',
+      toolName: 'FILES__readFile',
+      toolRequestId: id,
+      args: '{"filePath":"a.ts"}',
+    })
+    const response = (id: string): ToolResponseEvent => ({
+      ...base,
+      id: `res-${id}`,
+      type: 'ToolResponseEvent',
+      toolName: 'FILES__readFile',
+      toolRequestId: id,
+      output: { content: 'ok' },
+      success: true,
+      images: [],
+      toolMetadata: {},
+    })
+    // The backend streams one after each tool response, but never persists it.
+    const thinking = (): ThinkingEvent => ({ ...base, id: 'thinking-1', type: 'ThinkingEvent' })
+
+    it('stays one group when a transient ThinkingEvent is streamed between two calls, technical logs on', () => {
+      showTechnical.set(true)
+      const ref = makeComponent()
+      ref.instance['events'].set([request('t-1'), response('t-1'), thinking(), request('t-2'), response('t-2')])
+
+      const timeline = ref.instance['timeline']()
+      expect(timeline.map((item) => item.kind)).toEqual(['toolGroup'])
+      const group = timeline[0]
+      expect(group?.kind === 'toolGroup' && group.calls).toHaveLength(2)
+    })
+
+    it('tracks a lone call and the group that grows from it under the same key', () => {
+      const ref = makeComponent()
+
+      ref.instance['events'].set([request('t-1'), response('t-1')])
+      const [lone] = ref.instance['timeline']()
+      expect(lone?.kind).toBe('tool')
+
+      ref.instance['events'].set([request('t-1'), response('t-1'), request('t-2'), response('t-2')])
+      const [group] = ref.instance['timeline']()
+      expect(group?.kind).toBe('toolGroup')
+
+      const track = ref.instance['trackTimelineItem']
+      expect(track(0, lone!)).toBe('group-t-1')
+      expect(track(0, group!)).toBe(track(0, lone!))
+    })
   })
 
   describe('question timeline items', () => {

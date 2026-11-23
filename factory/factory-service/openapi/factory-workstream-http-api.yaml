@@ -91,6 +91,8 @@ paths:
                 ticket:
                   type: string
                   maxLength: 64
+                  pattern: '^(#[1-9][0-9]{0,11}|[A-Za-z0-9][A-Za-z0-9._:/#-]{0,63})$'
+                  description: Optional Jira ticket key (e.g. ABC-123) or GitHub issue reference (e.g. #123, 123, owner/repo#123).
       responses:
         '200': { description: Identical start replayed. }
         '201': { description: Run created, initializing an active namespace workstream if missing. }

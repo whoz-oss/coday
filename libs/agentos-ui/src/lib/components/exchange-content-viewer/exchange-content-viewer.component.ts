@@ -9,21 +9,34 @@ import {
   output,
   signal,
   viewChild,
+  inject,
 } from '@angular/core'
+import { MatDialog } from '@angular/material/dialog'
+import { DomSanitizer } from '@angular/platform-browser'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { MarkdownPipe } from '../../pipes/markdown.pipe'
 import { detectFormat, reindentJson } from '../../services/exchange-content.utils'
 import { injectCopyFeedback } from '../../services/clipboard.utils'
+import { ExchangeHtmlPreviewService } from '../../services/exchange-html-preview.service'
+import { trustPdfBlobUrl, trustSandboxedSrcdoc } from '../../services/exchange-html-srcdoc'
 import { ExchangeFileRef } from '../../services/exchange-state.service'
+import {
+  EXCHANGE_FULL_VIEW_PANEL_CLASS,
+  EXCHANGE_HTML_FULL_VIEW_DOWNLOAD,
+  ExchangeHtmlFullViewComponent,
+  ExchangeHtmlFullViewData,
+} from '../exchange-html-full-view/exchange-html-full-view.component'
 
 /**
  * ExchangeContentViewerComponent — presentational preview pane for a single file.
  *
  * Renders markdown via the `agentosMarkdown` pipe, JSON re-indented, YAML/text in a <pre>,
- * and HTML in a sandboxed <iframe> (with a title — fixing the legacy a11y gap). Non-viewable
- * files (binary or > 20 MB) and load errors show a "Download instead" CTA. Images are shown from an
- * object URL prepared by the parent (`imageUrl`), scaled to fit the pane; if the browser cannot decode
- * one, the same "Preview not available" state is shown rather than a broken-image icon.
+ * and HTML in a sandboxed <iframe> (with a title — fixing the legacy a11y gap) that runs the file's scripts in
+ * an opaque origin (see `trustSandboxedSrcdoc`), with a full-viewport view and an "open in new tab" action. Non-viewable
+ * files (binary or > 20 MB) and load errors show a "Download instead" CTA. Images and PDFs are shown from an
+ * object URL prepared by the parent (`blobUrl`, with its `blob`): an image is scaled to fit the pane, a PDF is
+ * rendered by the browser's PDF viewer in an iframe. If the browser cannot decode an image, the same "Preview not
+ * available" state is shown rather than a broken-image icon.
  *
  * I/O in signals (decision #8). The smart parent owns content loading + the canView decision.
  */
@@ -38,8 +51,10 @@ import { ExchangeFileRef } from '../../services/exchange-state.service'
 export class ExchangeContentViewerComponent {
   readonly file = input.required<ExchangeFileRef>()
   readonly content = input<string | null>(null)
-  /** Object URL of the image to display when the file is an image. */
-  readonly imageUrl = input<string | null>(null)
+  /** Object URL of the image or PDF to display, owned (and revoked) by the parent. */
+  readonly blobUrl = input<string | null>(null)
+  /** The bytes behind `blobUrl`, typed: a new tab gets its own object URL from it. */
+  readonly blob = input<Blob | null>(null)
   readonly status = input<'loading' | 'ready' | 'error'>('loading')
   /** False when the file is binary or too large to preview — only a download is offered. */
   readonly canView = input<boolean>(true)
@@ -53,7 +68,7 @@ export class ExchangeContentViewerComponent {
   constructor() {
     // A new image (or a new file) gets a fresh chance to decode.
     effect(() => {
-      this.imageUrl()
+      this.blobUrl()
       this.file()
       this.imageFailed.set(false)
     })
@@ -87,8 +102,89 @@ export class ExchangeContentViewerComponent {
     return this.format() === 'json' ? reindentJson(raw) : raw
   })
 
+  private readonly sanitizer = inject(DomSanitizer)
+  private readonly dialog = inject(MatDialog)
+  private readonly htmlPreview = inject(ExchangeHtmlPreviewService)
+
+  /**
+   * The HTML file as the `srcdoc` of the sandboxed iframe. Trusting it is safe ONLY because that iframe is
+   * sandboxed without `allow-same-origin` (static attribute in the template): see `trustSandboxedSrcdoc`.
+   */
+  protected readonly htmlSrcdoc = computed(() => trustSandboxedSrcdoc(this.sanitizer, this.displayContent()))
+
+  /**
+   * The PDF as the `src` of the (unsandboxed) iframe, from a `blob:` URL only: see `trustPdfBlobUrl`.
+   * A single place decides what is trusted: the iframe of the template reads nothing else.
+   */
+  protected readonly pdfSrc = computed(() =>
+    this.format() === 'pdf' ? trustPdfBlobUrl(this.sanitizer, this.blobUrl()) : null
+  )
+
+  /** The HTML actions (full view, new tab) need the content to be there and previewable. */
+  protected readonly canOpenHtml = computed(
+    () => this.format() === 'html' && this.status() === 'ready' && this.canView() && this.content() != null
+  )
+
+  /** Same for a PDF: its bytes must be loaded, and it must be typed as such. */
+  protected readonly canOpenPdf = computed(
+    () =>
+      this.format() === 'pdf' &&
+      this.status() === 'ready' &&
+      this.canView() &&
+      this.blobUrl() != null &&
+      this.blob() != null
+  )
+
+  /** Whether the header offers the full view and the new tab. */
+  protected readonly canOpenFull = computed(() => this.canOpenHtml() || this.canOpenPdf())
+
   protected onClose(): void {
     this.closeRequested.emit()
+  }
+
+  /**
+   * Opens the file in a full-viewport dialog. A dialog is an overlay attached to the body: a `position: fixed`
+   * element inside the drawer would be broken by the transforms of mat-sidenav.
+   * The app sets a smaller default size for dialogs, hence the explicit overrides.
+   */
+  protected onOpenFullView(): void {
+    const data = this.fullViewData()
+    if (!data) return
+    this.dialog
+      .open<ExchangeHtmlFullViewComponent, ExchangeHtmlFullViewData, string>(ExchangeHtmlFullViewComponent, {
+        data,
+        width: '100vw',
+        height: '100vh',
+        maxWidth: '100vw',
+        maxHeight: '100vh',
+        panelClass: EXCHANGE_FULL_VIEW_PANEL_CLASS,
+        autoFocus: 'first-tabbable',
+        restoreFocus: true,
+      })
+      .afterClosed()
+      .subscribe((result) => {
+        if (result === EXCHANGE_HTML_FULL_VIEW_DOWNLOAD) this.onDownload()
+      })
+  }
+
+  private fullViewData(): ExchangeHtmlFullViewData | null {
+    if (this.canOpenHtml()) {
+      return { kind: 'html', content: this.displayContent(), filename: this.filename() }
+    }
+    const url = this.blobUrl()
+    const blob = this.blob()
+    if (this.canOpenPdf() && url && blob) return { kind: 'pdf', url, blob, filename: this.filename() }
+    return null
+  }
+
+  /** Synchronous in the click handler, so that popup blockers let the tab open. */
+  protected onOpenInNewTab(): void {
+    if (this.canOpenHtml()) {
+      this.htmlPreview.openInNewTab(this.displayContent(), this.filename())
+      return
+    }
+    const blob = this.blob()
+    if (this.canOpenPdf() && blob) this.htmlPreview.openBlobInNewTab(blob)
   }
 
   protected onDownload(): void {

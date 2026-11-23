@@ -623,12 +623,53 @@
   &__tool-call-icon {
     flex-shrink: 0;
     font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+
+    .material-icons {
+      font-size: 14px;
+    }
+
+    &--success {
+      color: var(--color-success);
+    }
+    &--error {
+      color: var(--color-error);
+    }
   }
+
+  // Spinner of a call (or group) that is still running.
+  &__tool-call-spinner {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+    border: 2px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+    border-top-color: var(--color-warning);
+    border-radius: 50%;
+    animation: case-chat-tool-spin 0.8s linear infinite;
+  }
+
   &__tool-call-name {
     font-family: var(--font-heading);
     color: var(--color-accent-700);
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 500;
+  }
+  // The raw tool name, kept as a secondary hint next to the human sentence.
+  &__tool-call-raw-name {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.65rem;
+    color: var(--color-text-tertiary);
   }
   &__tool-call-args {
     color: var(--color-neutral-500);
@@ -657,6 +698,96 @@
     flex-shrink: 0;
     font-size: 0.6rem;
     color: var(--color-neutral-500);
+  }
+
+  // ── Tool group: a run of consecutive tool calls folded into one card ──
+
+  &__tool-group {
+    flex-shrink: 0;
+    align-self: flex-start;
+    min-width: 0;
+    max-width: 90%;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
+    background: transparent;
+    font-size: 12px;
+    overflow: hidden;
+    transition: border-color 0.15s ease;
+
+    &--failed {
+      border-color: var(--color-error);
+    }
+
+    // Live accent: a shimmering left border while the agent works through the group.
+    &--running {
+      border-color: var(--color-warning);
+      border-left-width: 3px;
+      border-left-color: var(--color-warning);
+      animation: case-chat-tool-group-shimmer 1.6s ease-in-out infinite;
+    }
+  }
+
+  &__tool-group-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    min-width: 0;
+    padding: 5px 11px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--color-accent-700);
+    font-family: var(--font-heading);
+    font-size: 12px;
+
+    &:hover {
+      background: color-mix(in srgb, var(--color-text) 4%, transparent);
+    }
+  }
+
+  &__tool-group-label {
+    flex-shrink: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  &__tool-group-count {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-pill, 0);
+    color: var(--color-neutral-600);
+    font-size: 0.65rem;
+    white-space: nowrap;
+  }
+
+  &__tool-group-detail {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-neutral-500);
+    font-size: 0.7rem;
+  }
+
+  // The calls of an expanded group: the same cards as standalone, slightly indented.
+  &__tool-group-calls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.4rem 0.5rem 0.5rem 1rem;
+    border-top: 1px solid var(--color-divider);
+
+    .case-chat__tool-call {
+      align-self: stretch;
+      max-width: 100%;
+    }
   }
 
   &__tool-call-output {
@@ -1138,6 +1269,29 @@
   &__attachments {
     display: block;
     padding: 0.75rem 0.75rem 0;
+  }
+}
+
+@keyframes case-chat-tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes case-chat-tool-group-shimmer {
+  0%,
+  100% {
+    border-left-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+  }
+  50% {
+    border-left-color: var(--color-warning);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .case-chat__tool-call-spinner,
+  .case-chat__tool-group--running {
+    animation: none;
   }
 }
 

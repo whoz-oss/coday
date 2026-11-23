@@ -8,6 +8,21 @@
     [position]="position()"
     (openedChange)="onOpenedChange($event)"
   >
+    @if (showHandle()) {
+      <div
+        class="ds-drawer__resize-handle"
+        [class.ds-drawer__resize-handle--end]="position() === 'end'"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panel"
+        tabindex="0"
+        [attr.aria-valuenow]="currentWidth()"
+        [attr.aria-valuemin]="minWidth()"
+        [attr.aria-valuemax]="maxWidth()"
+        (mousedown)="onResizeStart($event)"
+        (keydown)="onResizeKeydown($event)"
+      ></div>
+    }
     <ng-content select="[dsDrawerSide]" />
   </mat-sidenav>
 

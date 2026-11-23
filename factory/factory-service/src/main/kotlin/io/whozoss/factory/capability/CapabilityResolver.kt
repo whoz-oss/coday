@@ -6,6 +6,7 @@ import io.whozoss.factory.verification.manifest.VerificationManifestException
 import io.whozoss.factory.verification.manifest.VerificationRunResult
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
+import io.whozoss.factory.workflow.domain.WorkflowTicket
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -72,8 +73,7 @@ class CapabilityResolver(
                 ?: return CapabilityOutcome.CodeRefused(step.id, PREPARE_WORK_BRANCH, BRANCH_PREPARATION_FAILED, "Workflow identity is required for branch preparation.")
             val scope = tenantScope
                 ?: return CapabilityOutcome.CodeRefused(step.id, PREPARE_WORK_BRANCH, BRANCH_PREPARATION_FAILED, "Tenant scope is required for environment binding.")
-            val branchComponent = sanitizeBranchComponent(trustedTicket?.takeIf { TRUSTED_TICKET.matches(it) } ?: stableWorkflowId)
-            val branchName = "factory/$branchComponent"
+            val branchName = WorkflowTicket.branchName(trustedTicket = trustedTicket, workflowId = stableWorkflowId)
             return when (val result = preparation.prepare(scope, stableWorkflowId, branchName)) {
                 is BranchPreparationResult.Prepared -> result.facts.let { facts -> CapabilityOutcome.BranchPrepared(
                     step.id, facts.branch ?: branchName, facts.startingHead ?: "", "environment:${facts.environmentId}",
@@ -242,10 +242,7 @@ class CapabilityResolver(
         }
     }
 
-    private fun sanitizeBranchComponent(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "-").trim('-', '.').take(100)
-
     private companion object {
-        val TRUSTED_TICKET = Regex("^[A-Z][A-Z0-9]{1,15}-[0-9]{1,12}$")
         val GIT_SHA = Regex("^[0-9a-fA-F]{40}$")
     }
 }

@@ -1,6 +1,6 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { JsonPipe } from '@angular/common'
+import { JsonPipe, NgTemplateOutlet } from '@angular/common'
 import { firstValueFrom, Subscription } from 'rxjs'
 import {
   afterNextRender,
@@ -36,7 +36,6 @@ import {
   CaseStatusEvent,
   CaseUpdatedEvent,
   Configuration,
-  EnrichmentPhaseTrace,
   ErrorEvent,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
@@ -66,12 +65,8 @@ import { MarkdownRendererService } from '../../services/markdown-renderer.servic
 import { buildIdeUrl, resolveFilePath } from '../../services/file-link'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
-import { AgentActivity, describeAgentActivity } from '../agent-activity/agent-activity.models'
-import {
-  buildDelegations,
-  DelegationPresentation,
-  isCorrelatedDelegateTool,
-} from '../delegation/models/delegation.models'
+import { AgentActivity, describeAgentActivity, toolActivityLabel } from '../agent-activity/agent-activity.models'
+import { buildDelegations, isCorrelatedDelegateTool } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
 import {
@@ -91,6 +86,7 @@ import {
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
@@ -101,6 +97,8 @@ import { ComposerAttachmentsComponent } from '../composer-attachments/composer-a
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
 import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
+import { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
+import { groupToolCalls, summarizeToolGroup, ToolGroupSummary, toolRunKey } from './tool-call-groups'
 import { CostPipe } from '../../pipes/cost.pipe'
 import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { AudioMessageComponent } from '../audio-message/audio-message.component'
@@ -109,54 +107,8 @@ import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
 
-export interface ToolCall {
-  requestId: string
-  toolName: string
-  args: string | null
-  /** ISO timestamp from the ToolRequestEvent. */
-  timestamp?: string
-  /** undefined = pending, defined = done */
-  response?: ToolResponseEvent
-  /** Enrichment phase traces from multi-step parameter generation (null when no enrichment). */
-  enrichmentPhases?: EnrichmentPhaseTrace[] | null
-}
-
-/** A technical event, displayed only when the technical logs preference is enabled. */
-export interface TechnicalItem {
-  label: string
-  detail?: string
-  /** ISO timestamp of the source event. */
-  timestamp?: string
-}
-
-export interface ExecutionNotice {
-  severity: 'warning' | 'error' | 'terminal'
-  title: string
-  detail?: string
-}
-
-export type TimelineItem =
-  | {
-      kind: 'message'
-      event: CaseMessageEvent
-      html: SafeHtml
-      isFirstInGroup: boolean
-      isLastInGroup: boolean
-      /**
-       * What the agent turn this message closes cost, when the turn reported any usage.
-       *
-       * Set on the last agent message before the turn's `AgentFinishedEvent`, which is where the
-       * reader looks for it: the answer is on screen, the question "what did that cost" is about
-       * that answer.
-       */
-      metrics?: TurnMetrics
-    }
-  | { kind: 'tool'; call: ToolCall }
-  | { kind: 'streaming' }
-  | { kind: 'notice'; notice: ExecutionNotice; eventId: string }
-  | { kind: 'technical'; item: TechnicalItem; eventId: string }
-  | { kind: 'question'; event: QuestionEvent; answer?: AnswerEvent }
-  | { kind: 'delegation'; delegation: DelegationPresentation }
+// The timeline types live in case-chat.models.ts (tool-call-groups.ts needs them too); re-exported for existing importers.
+export type { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -207,6 +159,7 @@ function hasActiveSelection(): boolean {
     KebabMenuComponent,
     CaseUsageComponent,
     JsonPipe,
+    NgTemplateOutlet,
     DrawerComponent,
     ExchangeShellComponent,
     CaseMembersComponent,
@@ -250,6 +203,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
+  /** Width of the right drawer, resizable and shared with the case home. */
+  protected readonly drawerWidth = inject(ExchangeDrawerWidthService)
   /** Exchange files picked in the drawer: shown as chips, referenced (never uploaded) by the next message. */
   protected readonly referencedFiles = signal<ExchangeFileRef[]>([])
   protected readonly exchangeFileCount = this.exchangeState.fileCount
@@ -516,8 +471,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     isNamespaceTargeted(this.inputValue(), this.exchangeState.canWriteNamespace())
   )
 
-  /** Collapsed state per toolRequestId */
+  /** Ids of the tool calls the user expanded (collapsed by default). */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
+
+  /** Ids of the tool groups the user expanded (collapsed by default). */
+  protected readonly expandedToolGroups = signal<Set<string>>(new Set())
 
   /**
    * Whether the user is currently scrolled to (or near) the bottom of the messages area.
@@ -776,7 +734,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       item.isLastInGroup = next?.kind !== 'message' || next.event.actor.role !== item.event.actor.role
     }
 
-    return items
+    return groupToolCalls(items)
   })
 
   /** Id of the latest run stopped at its iteration limit, while no user message has followed it. */
@@ -857,7 +815,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'message':
         return item.event.id
       case 'tool':
-        return item.call.requestId
+        // Same key as the group that starts with this call, so the entry survives the second call joining it.
+        return toolRunKey(item.call.requestId)
+      case 'toolGroup':
+        return item.groupId
       case 'technical':
       case 'notice':
         return item.eventId
@@ -1459,6 +1420,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.confirmingDelete.set(false)
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
+    this.expandedToolGroups.set(new Set())
     this.isAtBottom.set(true)
     this.drawerPanel.set('files')
     this.isEditing.set(false)
@@ -1732,6 +1694,32 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.collapsedTools().has(requestId)
   }
 
+  protected toggleToolGroup(groupId: string): void {
+    this.expandedToolGroups.update((set) => {
+      const next = new Set(set)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      return next
+    })
+  }
+
+  /** Collapsed by default: a group is expanded only when its id is in the set. */
+  protected isToolGroupExpanded(groupId: string): boolean {
+    return this.expandedToolGroups().has(groupId)
+  }
+
+  /** Human sentence for a tool call ("Reading foo.ts"), shown instead of the raw tool name. */
+  protected toolCallLabel(call: ToolCall): string {
+    return toolActivityLabel(call.toolName, call.args)
+  }
+
+  protected toolGroupSummary(calls: ToolCall[]): ToolGroupSummary {
+    return summarizeToolGroup(calls)
+  }
+
   /** Extract plain text from a message item for clipboard copy. */
   protected messageText(item: TimelineItem & { kind: 'message' }): string {
     return this.extractText(item.event)
@@ -1800,6 +1788,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'AnswerEvent':
       case 'CaseUpdatedEvent':
       case 'TextChunkEvent':
+        return true
+      case 'ThinkingEvent':
+        // Transient progress signal, already shown by the agent-activity line and never persisted: rendering it
+        // would make the live timeline differ from the replayed one and split the tool groups.
         return true
       default:
         return false
