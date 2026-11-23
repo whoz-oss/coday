@@ -1508,6 +1508,27 @@ describe('mappers', () => {
     })
   })
 
+  describe('run expansion', () => {
+    it('exposes the steps an Architect continuation added to the run', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'wf-expanded',
+        projection: {
+          status: 'running',
+          expansion: { sourceStepId: 'architect-plan', stepIds: ['implement', 'review', 7, ''], resultId: 'r-1' },
+          steps: [],
+        },
+      })
+      expect(session.expansion).toEqual({ sourceStepId: 'architect-plan', stepIds: ['implement', 'review'] })
+    })
+
+    it('has no expansion for a run that follows its registered definition', () => {
+      expect(mapProjectionToSessionDetail(snapshot).expansion).toBeUndefined()
+      expect(
+        mapProjectionToSessionDetail({ workflowId: 'wf-x', projection: { expansion: 'nope', steps: [] } }).expansion
+      ).toBeUndefined()
+    })
+  })
+
   describe('extractAllowedActions', () => {
     it('maps a bare array defensively and copies identity fields verbatim', () => {
       expect(

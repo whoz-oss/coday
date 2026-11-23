@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing'
 import { of, Subject } from 'rxjs'
-import { FactoryApiService } from './factory-api.service'
+import { FactoryApiService, FullWorkflowDefinition } from './factory-api.service'
 import {
   WorkflowStepEditorState,
   explicitContract,
@@ -344,6 +344,102 @@ describe('workflow block composition', () => {
     state.adopt()
     state.save()
     expect(api.createWorkflowDefinition.mock.calls[0][0].steps[0].legacyContract).toBeUndefined()
+  })
+
+  describe('startNew with a handed-over draft', () => {
+    const draft = (): FullWorkflowDefinition => ({
+      schemaVersion: '1',
+      workflowType: 'architect-custom-flow-derived',
+      version: '1.0.0',
+      title: 'Run title',
+      steps: [
+        {
+          id: 'architect-plan',
+          name: 'Plan',
+          responsibility: { kind: 'agent', name: 'Archay' },
+          dependsOn: [],
+          entry: [],
+          mission: 'Analyse the ticket',
+          exit: [],
+          expansion: { mode: 'append' },
+        },
+        {
+          id: 'implement',
+          name: 'Implement',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          dependsOn: ['architect-plan'],
+          entry: [],
+          mission: 'Build it',
+          exit: [],
+        },
+      ],
+    })
+
+    it('fills the composer with a copy, ready to be named and versioned, without registering anything', () => {
+      const { state, api } = setup()
+      const source = draft()
+      state.startNew(source)
+
+      expect(state.creating()).toBe(true)
+      expect(state.editing()).toBe(true)
+      expect(state.definition()?.workflowType).toBe('architect-custom-flow-derived')
+      expect(state.definition()?.steps?.map((step) => step.id)).toEqual(['architect-plan', 'implement'])
+      expect(state.definition()?.steps?.[1]?.dependsOn).toEqual(['architect-plan'])
+      expect(state.selectedId()).toBe('architect-plan')
+      expect(state.targetVersion()).toBe('1.0.0')
+      expect(state.structureDirty()).toBe(true)
+      expect(state.dirty()).toBe(true)
+      expect(state.validation()).toBeNull()
+      // The caller's object is never mutated, and `expansion` is never authored.
+      expect(source.steps?.[0]?.['expansion']).toEqual({ mode: 'append' })
+      expect(state.definition()?.steps?.[0]?.['expansion']).toBeUndefined()
+      expect(api.createWorkflowDefinition).not.toHaveBeenCalled()
+    })
+
+    it('saves the draft only on request, through the create-only registration', () => {
+      const { state, api } = setup()
+      state.startNew(draft())
+      state.metadata('workflowType', 'ticket-delivery')
+      state.metadata('title', 'Ticket delivery')
+      state.update('mission', 'Analyse the ticket, whatever it is')
+      state.save()
+
+      expect(api.createWorkflowDefinition).toHaveBeenCalledTimes(1)
+      const payload = api.createWorkflowDefinition.mock.calls[0][0]
+      expect(payload).toEqual(
+        expect.objectContaining({
+          schemaVersion: '1',
+          workflowType: 'ticket-delivery',
+          title: 'Ticket delivery',
+          version: '1.0.0',
+        })
+      )
+      expect(payload.steps.map((step: { id: string }) => step.id)).toEqual(['architect-plan', 'implement'])
+      expect(payload.steps[0].mission).toBe('Analyse the ticket, whatever it is')
+      expect(JSON.stringify(payload)).not.toContain('expansion')
+    })
+
+    it('still reports an invalid draft before any save', () => {
+      const { state, api } = setup()
+      const invalid = draft()
+      invalid.steps![1]!.dependsOn = ['missing']
+      state.startNew(invalid)
+
+      expect(state.validation()).toContain('missing predecessor')
+      state.save()
+      expect(api.createWorkflowDefinition).not.toHaveBeenCalled()
+    })
+
+    it('starts blank again when no draft is given', () => {
+      const { state } = setup()
+      state.startNew(draft())
+      state.startNew()
+
+      expect(state.definition()?.steps).toEqual([])
+      expect(state.definition()?.workflowType).toBe('')
+      expect(state.dirty()).toBe(false)
+      expect(state.selectedId()).toBeNull()
+    })
   })
 
   it('starts pristine, tracks version-only edits, and clears dirty on discard', () => {

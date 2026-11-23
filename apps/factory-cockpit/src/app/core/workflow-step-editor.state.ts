@@ -255,13 +255,37 @@ export class WorkflowStepEditorState {
       : null
   })
 
-  startNew(): void {
+  /**
+   * Start composing a new workflow. With a `draft` (for example the definition a run followed after an Architect
+   * expansion), the composer is pre-filled with a copy of it: the version is left to the author, the structure is
+   * dirty so it is validated at once, and nothing is registered until the author saves.
+   */
+  startNew(draft?: FullWorkflowDefinition): void {
     this.creating.set(true)
     this.editing.set(true)
-    this.baseline = { schemaVersion: '1', workflowType: '', version: '', title: '', steps: [] }
-    this.definition.set(this.baseline)
-    this.targetVersion.set('1.0.0')
+    this.drafts.set({})
+    this.error.set(null)
+    this.saved.set(null)
     this.newCodeStepIds.set(new Set())
+    this.targetVersion.set('1.0.0')
+    if (!draft) {
+      this.baseline = { schemaVersion: '1', workflowType: '', version: '', title: '', steps: [] }
+      this.definition.set(this.baseline)
+      this.structureDirty.set(false)
+      this.selectedId.set(null)
+      return
+    }
+    const steps = (draft.steps ?? []).map((step) => {
+      // `expansion` and backend metadata are never authored: the draft is a plain definition.
+      const authored: FullWorkflowStep = { ...step, dependsOn: [...(step.dependsOn ?? [])] }
+      delete authored.legacyContract
+      delete authored['expansion']
+      return authored
+    })
+    this.baseline = { ...draft, schemaVersion: draft.schemaVersion ?? '1', version: '', steps }
+    this.definition.set(this.baseline)
+    this.structureDirty.set(true)
+    this.selectedId.set(steps[0]?.id ?? null)
   }
 
   loadDiscovery(): void {

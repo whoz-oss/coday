@@ -40,6 +40,23 @@ h1 {
   font-size: 14px;
 }
 
+/* Steps added by an Architect continuation: offer to keep the followed workflow. */
+.expansion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 22px;
+}
+.expansion-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 320px;
+}
+
 /* Bas de page */
 .bottom {
   display: grid;

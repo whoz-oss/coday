@@ -905,6 +905,70 @@ describe('FactoryApiService', () => {
     })
   })
 
+  describe('expanded definition', () => {
+    const url = '/api/factory/workflows/wf%2F1/expanded-definition'
+
+    it('reads the draft with the namespace and unwraps the envelope', () => {
+      let result: unknown
+      service.getExpandedDefinition('wf/1', '  ns-1  ').subscribe((value) => (result = value))
+
+      const request = http.expectOne((r) => r.url === url)
+      expect(request.request.method).toBe('GET')
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({
+        data: {
+          workflowId: 'wf/1',
+          source: { workflowType: 'architect-custom-flow', version: '1.0.0', definitionHash: 'abc' },
+          expansion: { sourceStepId: 'architect-plan', stepIds: ['implement'] },
+          definition: {
+            schemaVersion: '1',
+            workflowType: 'architect-custom-flow-derived',
+            version: '1.0.0',
+            title: 'Run',
+            steps: [{ id: 'architect-plan', name: 'Plan' }, { id: 'implement', name: 'Implement' }],
+          },
+        },
+      })
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          workflowId: 'wf/1',
+          expansion: expect.objectContaining({ stepIds: ['implement'] }),
+          definition: expect.objectContaining({ workflowType: 'architect-custom-flow-derived' }),
+        })
+      )
+    })
+
+    it('requires a namespace', () => {
+      expect(() => service.getExpandedDefinition('wf-1', '  ')).toThrow('requires namespaceId')
+    })
+
+    it('normalizes WORKFLOW_NOT_EXPANDED (409) into a structured error', () => {
+      let error: FactoryApiError | undefined
+      service.getExpandedDefinition('wf/1', 'ns-1').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne((r) => r.url === url)
+        .flush(
+          { error: { code: 'WORKFLOW_NOT_EXPANDED', message: 'No steps were added to this run.' } },
+          { status: 409, statusText: 'Conflict' }
+        )
+
+      expect(error).toEqual(expect.objectContaining({ code: 'WORKFLOW_NOT_EXPANDED', status: 409 }))
+    })
+
+    it('rejects a payload without a usable definition', () => {
+      let error: FactoryApiError | undefined
+      service.getExpandedDefinition('wf/1', 'ns-1').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http.expectOne((r) => r.url === url).flush({ data: { workflowId: 'wf/1' } })
+
+      expect(error).toEqual(expect.objectContaining({ code: 'EXPANDED_DEFINITION_INVALID' }))
+    })
+  })
+
   describe('parent Runs API (Lot 5)', () => {
     it('getParentRuns unwraps { data: { items: [...] } } and forwards namespaceId', () => {
       let result: unknown[] | undefined

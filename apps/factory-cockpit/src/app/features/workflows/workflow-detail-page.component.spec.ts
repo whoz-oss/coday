@@ -4,8 +4,9 @@ import { MatDialog } from '@angular/material/dialog'
 import { provideRouter } from '@angular/router'
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router'
 import { of, Subject, throwError } from 'rxjs'
-import { FactoryApiError, FactoryApiService } from '../../core/factory-api.service'
+import { FactoryApiError, FactoryApiService, FullWorkflowDefinition } from '../../core/factory-api.service'
 import { ShellState } from '../../core/shell-state'
+import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { WorkflowDetailPageComponent, formatJson } from './workflow-detail-page.component'
 
 interface ApiStub {
@@ -51,7 +52,8 @@ describe('WorkflowDetailPageComponent', () => {
   async function setup(
     api: ApiStub,
     route: Partial<ActivatedRoute> = createRoute(),
-    confirmation = of(true)
+    confirmation = of(true),
+    handedOverDraft?: FullWorkflowDefinition
   ): Promise<{ host: HTMLElement; fixture: ComponentFixture<WorkflowDetailPageComponent> }> {
     await TestBed.configureTestingModule({
       imports: [WorkflowDetailPageComponent],
@@ -64,6 +66,7 @@ describe('WorkflowDetailPageComponent', () => {
       ],
     }).compileComponents()
     jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+    if (handedOverDraft) TestBed.inject(WorkflowDraftHandoffService).set(handedOverDraft)
     const fixture = TestBed.createComponent(WorkflowDetailPageComponent)
     fixture.detectChanges()
     return { host: fixture.nativeElement as HTMLElement, fixture }
@@ -146,6 +149,54 @@ describe('WorkflowDetailPageComponent', () => {
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/workflows', 'analysis', '1.0.0'], {
       replaceUrl: true,
     })
+  })
+
+  it('opens the composer on the draft handed over by a run, once, and registers nothing by itself', async () => {
+    const draft: FullWorkflowDefinition = {
+      schemaVersion: '1',
+      workflowType: 'architect-custom-flow-derived',
+      version: '1.0.0',
+      title: 'Derived workflow',
+      steps: [
+        {
+          id: 'plan',
+          name: 'Plan',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          dependsOn: [],
+          entry: [],
+          mission: 'Plan the work',
+          exit: [],
+        },
+        {
+          id: 'build',
+          name: 'Build',
+          responsibility: { kind: 'agent', name: 'Dev' },
+          dependsOn: ['plan'],
+          entry: [],
+          mission: 'Build it',
+          exit: [],
+        },
+      ],
+    }
+    const api = createApi()
+    const route = createRoute('', '')
+    const { host, fixture } = await setup(
+      api,
+      { ...route, snapshot: { ...route.snapshot, data: { create: true } } } as Partial<ActivatedRoute>,
+      of(true),
+      draft
+    )
+    expect(api.getWorkflowDefinition).not.toHaveBeenCalled()
+    await fixture.whenStable()
+    fixture.detectChanges()
+    expect(fixture.componentInstance.state.creating()).toBe(true)
+    expect(host.querySelectorAll('[data-step-node]')).toHaveLength(2)
+    expect(host.querySelector('[data-dependency="plan:build"]')).not.toBeNull()
+    expect(query<HTMLInputElement>(host, '[data-workflow-type]').value).toBe('architect-custom-flow-derived')
+    expect(query<HTMLInputElement>(host, '[data-target-version]').value).toBe('1.0.0')
+    expect(api.createWorkflowDefinition).not.toHaveBeenCalled()
+    // The draft is consumed: a later visit to the composer starts blank.
+    expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBeNull()
   })
 
   it('adds a code step through the closed verifier select without a command field', async () => {

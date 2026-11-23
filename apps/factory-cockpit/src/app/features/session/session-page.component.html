@@ -61,6 +61,31 @@
       </div>
     </section>
 
+    @if (canSaveAsWorkflow()) {
+      <section class="expansion sf-panel" aria-label="Steps added to this run" data-expansion-panel>
+        <div class="expansion-text">
+          <strong>This run follows steps added by the Architect.</strong>
+          <span class="sf-muted">
+            They exist for this run only. Save the workflow it followed to reuse it: you choose its type, version and
+            title before anything is registered.
+          </span>
+        </div>
+        <button
+          mat-stroked-button
+          class="sf-secondary"
+          type="button"
+          (click)="saveAsReusableWorkflow()"
+          [disabled]="savingDefinition()"
+          data-save-as-workflow
+        >
+          {{ savingDefinition() ? 'Reading workflow…' : 'Save as reusable workflow' }}
+        </button>
+      </section>
+      @if (saveDefinitionError(); as message) {
+        <div class="banner banner--warn" role="alert" data-save-as-workflow-error>{{ message }}</div>
+      }
+    }
+
     <!-- Backend-governed actions (allowedActions / blockers) -->
     <sf-action-bar
       [allowedActions]="s.allowedActions ?? []"

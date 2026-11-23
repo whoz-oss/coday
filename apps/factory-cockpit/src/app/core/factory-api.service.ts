@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { Observable, catchError, map, throwError } from 'rxjs'
+import { Observable, catchError, map, mergeMap, of, throwError } from 'rxjs'
 import { AgentQuestion, AllowedAction, GetActionsResponse, ParentRunDetail, WorkflowBlocker } from './models'
 
 export type WorkflowState = 'active' | 'removed'
@@ -101,6 +101,18 @@ export interface FullWorkflowDefinition {
   trustedExecution?: boolean
   steps?: FullWorkflowStep[]
   [key: string]: unknown
+}
+
+/**
+ * Unwrapped payload of `GET /api/factory/workflows/:id/expanded-definition`: the draft of the definition a run
+ * actually followed (base steps plus the steps added by an Architect continuation, `expansion` removed).
+ * The draft is not registered: saving goes through the composer and `POST /api/factory/workflow-definitions`.
+ */
+export interface ExpandedDefinitionResponse {
+  workflowId: string
+  source?: { workflowType?: string; version?: string; definitionHash?: string }
+  expansion?: { sourceStepId?: string; stepIds?: string[]; [key: string]: unknown }
+  definition: FullWorkflowDefinition
 }
 
 /** One AgentOS namespace exposed by `GET /api/agentos/api/namespaces`. */
@@ -247,6 +259,34 @@ export class FactoryApiService {
       `/api/factory/workflows/${encodeURIComponent(workflowId)}`,
       {},
       requireNamespaceId(namespaceId)
+    )
+  }
+
+  /**
+   * GET `/api/factory/workflows/:id/expanded-definition?namespaceId=…`.
+   * Fails with `409 WORKFLOW_NOT_EXPANDED` for a run without added steps, and with a local
+   * `EXPANDED_DEFINITION_INVALID` error when the payload carries no usable definition.
+   */
+  getExpandedDefinition(workflowId: string, namespaceId: string): Observable<ExpandedDefinitionResponse> {
+    return this.request<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/expanded-definition`,
+      {},
+      requireNamespaceId(namespaceId)
+    ).pipe(
+      mergeMap((payload) => {
+        const body = (typeof payload === 'object' && payload !== null ? payload : {}) as Partial<ExpandedDefinitionResponse>
+        const definition = body.definition
+        if (typeof definition !== 'object' || definition === null || !Array.isArray(definition.steps)) {
+          const error: FactoryApiError = {
+            code: 'EXPANDED_DEFINITION_INVALID',
+            message: 'Factory returned no usable workflow draft for this run.',
+            status: 0,
+            raw: payload,
+          }
+          return throwError(() => error)
+        }
+        return of({ ...body, workflowId: body.workflowId ?? workflowId, definition } as ExpandedDefinitionResponse)
+      })
     )
   }
 

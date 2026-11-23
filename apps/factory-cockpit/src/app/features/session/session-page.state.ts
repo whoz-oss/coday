@@ -1,13 +1,26 @@
-import { Injectable, computed, inject, signal } from '@angular/core'
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { Router } from '@angular/router'
+import { finalize } from 'rxjs'
+import { FactoryApiError } from '../../core/factory-api.service'
 import { FactoryStore, buildAgentOsCaseUrl } from '../../core/factory.store'
 import { BlockSelection, TimelineBlock } from '../../core/models'
+import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 
 /** Page-scoped selection and derived presentation model for one session. */
 @Injectable()
 export class SessionPageState {
   private readonly store = inject(FactoryStore)
+  private readonly router = inject(Router)
+  private readonly draftHandoff = inject(WorkflowDraftHandoffService)
+  private readonly destroyRef = inject(DestroyRef)
   private readonly runId = signal('')
   private readonly namespace = signal<string | undefined>(undefined)
+
+  /** True while the draft of the followed definition is being read. */
+  readonly savingDefinition = signal(false)
+  /** Failure of the last "save as reusable workflow" attempt, shown in the page banner. */
+  readonly saveDefinitionError = signal<string | null>(null)
 
   readonly selection = signal<BlockSelection | null>(null)
   /**
@@ -62,8 +75,12 @@ export class SessionPageState {
     )
   })
 
+  /** Only a run that received steps from an Architect continuation has a definition worth saving. */
+  readonly canSaveAsWorkflow = computed(() => !!this.session()?.expansion)
+
   selectSession(runId: string, namespaceId?: string): void {
     if (runId === this.runId() && namespaceId === this.namespace()) return
+    this.saveDefinitionError.set(null)
     const previous = this.runId()
     if (previous) this.store.clearSessionSelection(previous)
     this.runId.set(runId)
@@ -126,6 +143,38 @@ export class SessionPageState {
     if (block.caseId) selection.caseId = block.caseId
     if (block.executionId) selection.executionId = block.executionId
     this.selection.set(selection)
+  }
+
+  /**
+   * Read the draft definition of this run, hand it to the workflow composer and open it. The draft is only
+   * pre-filled there: the author picks type, version and title, and registration stays an explicit save.
+   */
+  saveAsReusableWorkflow(): void {
+    const runId = this.runId()
+    const namespaceId = this.namespaceId()
+    if (!this.canSaveAsWorkflow() || !runId || this.savingDefinition()) return
+    if (!namespaceId) {
+      this.saveDefinitionError.set('The namespace of this run is unknown, so its workflow cannot be read.')
+      return
+    }
+    this.savingDefinition.set(true)
+    this.saveDefinitionError.set(null)
+    this.store
+      .expandedDefinition(runId, namespaceId)
+      .pipe(
+        finalize(() => this.savingDefinition.set(false)),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe({
+        next: ({ definition }) => {
+          this.draftHandoff.set(definition)
+          void this.router.navigate(['/workflows', 'new'])
+        },
+        error: (error: FactoryApiError) =>
+          this.saveDefinitionError.set(
+            `${error.message || 'Unable to read the workflow followed by this run.'}${error.code ? ` (${error.code})` : ''}`
+          ),
+      })
   }
 
   caseLink(caseId: string): string {

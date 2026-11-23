@@ -1,6 +1,9 @@
 import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
+import { Router } from '@angular/router'
+import { of, throwError } from 'rxjs'
 import { FactoryStore } from '../../core/factory.store'
+import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { SessionPageState } from './session-page.state'
 
 describe('SessionPageState', () => {
@@ -10,13 +13,103 @@ describe('SessionPageState', () => {
     session: jest.fn((id: string) => sessions().get(id)),
     selectSession: jest.fn(),
     clearSessionSelection: jest.fn(),
+    expandedDefinition: jest.fn(),
   }
+  const router = { navigate: jest.fn() }
 
   beforeEach(() => {
     jest.clearAllMocks()
     sessions.set(new Map())
+    store.runs.mockImplementation(() => [{ id: 'run-1', namespaceId: 'namespace-1' }])
+    router.navigate.mockResolvedValue(true)
     TestBed.configureTestingModule({
-      providers: [SessionPageState, { provide: FactoryStore, useValue: store }],
+      providers: [
+        SessionPageState,
+        { provide: FactoryStore, useValue: store },
+        { provide: Router, useValue: router },
+      ],
+    })
+  })
+
+  describe('save as reusable workflow', () => {
+    const draft = { workflowType: 'architect-custom-flow-derived', version: '1.0.0', steps: [{ id: 'a', name: 'A' }] }
+    const expandedSession = (expansion?: { stepIds: string[] }): any => ({
+      phase: {},
+      lanes: [],
+      events: [],
+      ...(expansion ? { expansion } : {}),
+    })
+
+    it('is offered only for a run that received steps from an Architect continuation', () => {
+      sessions.update((current) =>
+        new Map(current).set('run-1', expandedSession()).set('run-2', expandedSession({ stepIds: ['implement'] }))
+      )
+      const state = TestBed.inject(SessionPageState)
+      state.selectSession('run-1', 'namespace-1')
+      expect(state.canSaveAsWorkflow()).toBe(false)
+      state.saveAsReusableWorkflow()
+      expect(store.expandedDefinition).not.toHaveBeenCalled()
+      expect(router.navigate).not.toHaveBeenCalled()
+
+      state.selectSession('run-2', 'namespace-1')
+      expect(state.canSaveAsWorkflow()).toBe(true)
+    })
+
+    it('reads the draft of the run, hands it over once and opens the composer', () => {
+      sessions.update((current) => new Map(current).set('run-1', expandedSession({ stepIds: ['implement'] })))
+      store.expandedDefinition.mockReturnValue(of({ workflowId: 'run-1', definition: draft }))
+      const state = TestBed.inject(SessionPageState)
+      state.selectSession('run-1', 'namespace-1')
+
+      state.saveAsReusableWorkflow()
+
+      expect(store.expandedDefinition).toHaveBeenCalledWith('run-1', 'namespace-1')
+      expect(router.navigate).toHaveBeenCalledWith(['/workflows', 'new'])
+      const handoff = TestBed.inject(WorkflowDraftHandoffService)
+      expect(handoff.take()).toBe(draft)
+      expect(handoff.take()).toBeNull()
+      expect(state.saveDefinitionError()).toBeNull()
+      expect(state.savingDefinition()).toBe(false)
+    })
+
+    it('shows the backend error and hands nothing over when the draft cannot be read', () => {
+      sessions.update((current) => new Map(current).set('run-1', expandedSession({ stepIds: ['implement'] })))
+      store.expandedDefinition.mockReturnValue(
+        throwError(() => ({ code: 'WORKFLOW_NOT_EXPANDED', message: 'No steps were added to this run.', status: 409 }))
+      )
+      const state = TestBed.inject(SessionPageState)
+      state.selectSession('run-1', 'namespace-1')
+
+      state.saveAsReusableWorkflow()
+
+      expect(state.saveDefinitionError()).toBe('No steps were added to this run. (WORKFLOW_NOT_EXPANDED)')
+      expect(state.savingDefinition()).toBe(false)
+      expect(router.navigate).not.toHaveBeenCalled()
+      expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBeNull()
+    })
+
+    it('never reads a draft without a known namespace', () => {
+      store.runs.mockImplementation(() => [])
+      sessions.update((current) => new Map(current).set('run-1', expandedSession({ stepIds: ['implement'] })))
+      const state = TestBed.inject(SessionPageState)
+      state.selectSession('run-1')
+
+      state.saveAsReusableWorkflow()
+
+      expect(store.expandedDefinition).not.toHaveBeenCalled()
+      expect(state.saveDefinitionError()).toContain('namespace')
+    })
+
+    it('clears a previous error when another session is selected', () => {
+      sessions.update((current) => new Map(current).set('run-1', expandedSession({ stepIds: ['implement'] })))
+      store.expandedDefinition.mockReturnValue(throwError(() => ({ code: 'X', message: 'Boom', status: 500 })))
+      const state = TestBed.inject(SessionPageState)
+      state.selectSession('run-1', 'namespace-1')
+      state.saveAsReusableWorkflow()
+      expect(state.saveDefinitionError()).toBe('Boom (X)')
+
+      state.selectSession('run-2', 'namespace-1')
+      expect(state.saveDefinitionError()).toBeNull()
     })
   })
 

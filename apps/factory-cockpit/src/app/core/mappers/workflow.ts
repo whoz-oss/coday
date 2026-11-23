@@ -3,7 +3,7 @@
  * Orchestrates all sub-modules to produce SessionDetail and FactoryRun.
  */
 
-import { AgentQuestion, CorrectionCycle, FactoryRun, RunStatus, SandboxStatus, SessionDetail, SessionStep, StepExecution } from '../models'
+import { AgentQuestion, CorrectionCycle, FactoryRun, RunStatus, SandboxStatus, SessionDetail, SessionExpansion, SessionStep, StepExecution } from '../models'
 import { asArray, asObject, getString, getNumber } from './utils'
 import { classifyActorKind, resolveStepState, stepDurationSec, toneForActor } from './step-classification'
 import {
@@ -134,6 +134,7 @@ export function mapProjectionToSessionDetail(
   const mappedAttempts = extractAttempts(attempts)
   const stepExecutions = extractStepExecutions(projection['stepExecutions'])
   const correction = extractCorrection(projection['correction'])
+  const expansion = extractExpansion(projection['expansion'])
   const mappedAllowedActions = extractAllowedActions(actions)
   const mappedBlockers = extractBlockers(actions)
   const blockedStepIds = new Set(mappedBlockers.map((blocker) => blocker.stepId).filter((id): id is string => !!id))
@@ -357,6 +358,7 @@ export function mapProjectionToSessionDetail(
     attempts: mappedAttempts,
     ...(stepExecutions.length ? { stepExecutions } : {}),
     ...(correction ? { correction } : {}),
+    ...(expansion ? { expansion } : {}),
     allowedActions: mappedAllowedActions,
     blockers: mappedBlockers,
     agentQuestions: agentQuestions ?? [],
@@ -406,6 +408,14 @@ function extractStepExecutions(value: unknown): StepExecution[] {
       ...(triggeringExecutionId ? { triggeringExecutionId } : {}),
     }]
   })
+}
+
+function extractExpansion(value: unknown): SessionExpansion | undefined {
+  const obj = asObject(value)
+  if (!obj) return undefined
+  const stepIds = asArray(obj['stepIds']).filter((id): id is string => typeof id === 'string' && id.length > 0)
+  const sourceStepId = getString(obj, 'sourceStepId')
+  return { stepIds, ...(sourceStepId ? { sourceStepId } : {}) }
 }
 
 function extractCorrection(value: unknown): CorrectionCycle | undefined {

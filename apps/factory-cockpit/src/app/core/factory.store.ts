@@ -14,7 +14,13 @@ import {
   timer,
   map,
 } from 'rxjs'
-import { FactoryApiError, FactoryApiService, NamespaceItem, extractNamespaceOptions } from './factory-api.service'
+import {
+  ExpandedDefinitionResponse,
+  FactoryApiError,
+  FactoryApiService,
+  NamespaceItem,
+  extractNamespaceOptions,
+} from './factory-api.service'
 import { SupervisorCaseFacade } from './supervisor-case.facade'
 import {
   mapProjectionToFactoryRun,
@@ -1021,6 +1027,14 @@ export class FactoryStore implements OnDestroy {
     const payload: { expectedRevision?: number; reason?: string } = { reason: 'stop' }
     if (expectedRevision !== undefined) payload.expectedRevision = expectedRevision
     this.cancelAttempt(workflowId, attemptId, payload, namespaceId)
+  }
+
+  /**
+   * Read the draft of the definition a run followed after an Architect expansion. Read-only: nothing is
+   * registered; the author saves the draft through the composer (`POST /api/factory/workflow-definitions`).
+   */
+  expandedDefinition(workflowId: string, namespaceId: string): Observable<ExpandedDefinitionResponse> {
+    return this.api.getExpandedDefinition(workflowId, namespaceId)
   }
 
   /** Soft-remove a workflow, then re-fetch the authoritative state. */

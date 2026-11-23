@@ -1,10 +1,14 @@
+import { provideHttpClient } from '@angular/common/http'
+import { provideHttpClientTesting } from '@angular/common/http/testing'
 import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
-import { ActivatedRoute } from '@angular/router'
-import { BehaviorSubject, of } from 'rxjs'
+import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { ActivatedRoute, Router, provideRouter } from '@angular/router'
+import { BehaviorSubject, of, throwError } from 'rxjs'
 import { FactoryStore } from '../../core/factory.store'
 import { AgentQuestion, FactoryRun, SessionDetail } from '../../core/models'
 import { ShellState } from '../../core/shell-state'
+import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { SessionPageComponent } from './session-page.component'
 import { SessionPageState } from './session-page.state'
 
@@ -75,6 +79,7 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
     questionFeedback: ReturnType<typeof signal<null>>
     selectSession: jest.Mock
     clearSessionSelection: jest.Mock
+    expandedDefinition: jest.Mock
   } {
     return {
       session: jest.fn().mockReturnValue(session),
@@ -84,6 +89,7 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
       questionFeedback: signal(null),
       selectSession: jest.fn(),
       clearSessionSelection: jest.fn(),
+      expandedDefinition: jest.fn(),
     }
   }
 
@@ -193,6 +199,81 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
 
     const link = component['caseLink']('case-xyz')
     expect(link).toBe('/agentos/home?case=case-xyz')
+  })
+
+  describe('save as reusable workflow action', () => {
+    const draft = { workflowType: 'architect-custom-flow-derived', version: '1.0.0', steps: [{ id: 'a', name: 'A' }] }
+
+    function render(session: SessionDetail, expandedDefinition: jest.Mock) {
+      const store = {
+        ...makeStore([runWithNs('ns-1')], session),
+        expandedDefinition,
+        parentRunFor: jest.fn(),
+        resumingResearchStepId: signal<string | null>(null),
+        researchResumptionFeedback: signal(null),
+      }
+      TestBed.configureTestingModule({
+        providers: [
+          provideNoopAnimations(),
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideRouter([]),
+          { provide: FactoryStore, useValue: store },
+          {
+            provide: ActivatedRoute,
+            useValue: {
+              paramMap: of(new Map([['runId', 'wf-1']])),
+              queryParamMap: of(new Map<string, string>()),
+            },
+          },
+          { provide: ShellState, useValue: { crumbs: signal([]) } },
+        ],
+      })
+      const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+      const fixture = TestBed.createComponent(SessionPageComponent)
+      fixture.detectChanges()
+      return { fixture, host: fixture.nativeElement as HTMLElement, navigate }
+    }
+
+    it('is absent for a run that follows its registered definition', () => {
+      const { host } = render(sessionBase(), jest.fn())
+      expect(host.querySelector('[data-save-as-workflow]')).toBeNull()
+      expect(host.querySelector('[data-expansion-panel]')).toBeNull()
+    })
+
+    it('reads the draft, hands it over once and opens the composer when clicked', () => {
+      const session = { ...sessionBase(), expansion: { sourceStepId: 'architect-plan', stepIds: ['implement'] } }
+      const expandedDefinition = jest.fn().mockReturnValue(of({ workflowId: 'wf-1', definition: draft }))
+      const { fixture, host, navigate } = render(session, expandedDefinition)
+
+      const button = host.querySelector<HTMLButtonElement>('[data-save-as-workflow]')
+      expect(button?.textContent).toContain('Save as reusable workflow')
+      button?.click()
+      fixture.detectChanges()
+
+      expect(expandedDefinition).toHaveBeenCalledWith('wf-1', 'ns-1')
+      expect(navigate).toHaveBeenCalledWith(['/workflows', 'new'])
+      expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBe(draft)
+      expect(host.querySelector('[data-save-as-workflow-error]')).toBeNull()
+    })
+
+    it('shows the API error in the page banner and stays on the run', () => {
+      const session = { ...sessionBase(), expansion: { stepIds: ['implement'] } }
+      const expandedDefinition = jest
+        .fn()
+        .mockReturnValue(
+          throwError(() => ({ code: 'WORKFLOW_NOT_EXPANDED', message: 'No steps were added to this run.', status: 409 }))
+        )
+      const { fixture, host, navigate } = render(session, expandedDefinition)
+
+      host.querySelector<HTMLButtonElement>('[data-save-as-workflow]')?.click()
+      fixture.detectChanges()
+
+      expect(host.querySelector('[data-save-as-workflow-error]')?.textContent).toContain('No steps were added')
+      expect(host.querySelector('[data-save-as-workflow-error]')?.textContent).toContain('WORKFLOW_NOT_EXPANDED')
+      expect(navigate).not.toHaveBeenCalled()
+      expect(host.querySelector<HTMLButtonElement>('[data-save-as-workflow]')?.disabled).toBe(false)
+    })
   })
 
   it('switches scoped store selection from route A to B and clears on destroy', () => {

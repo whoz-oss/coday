@@ -544,9 +544,22 @@ export interface ParentRunDetail {
   activeEscalation?: ParentRunEscalation | null
 }
 
+/** Summary of the steps a run received from an Architect continuation (`projection.expansion`). */
+export interface SessionExpansion {
+  /** Step that sent the continuation. */
+  sourceStepId?: string
+  /** Ids of the steps added to this run only; never part of the registered definition. */
+  stepIds: string[]
+}
+
 export interface SessionDetail {
   /** Authoritative routing diagram including inactive never-executed steps. */
   routingSteps?: import('./factory-api.service').FullWorkflowStep[]
+  /**
+   * Present only when an Architect continuation added steps to this run (`projection.expansion`). The cockpit
+   * uses its presence to offer saving the followed definition as a reusable workflow.
+   */
+  expansion?: SessionExpansion
   id: string
   sandbox: string
   goal: string
