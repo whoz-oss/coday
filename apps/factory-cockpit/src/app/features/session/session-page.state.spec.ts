@@ -72,6 +72,24 @@ describe('SessionPageState', () => {
       expect(state.savingDefinition()).toBe(false)
     })
 
+    it.each([
+      ['is cancelled or superseded', () => Promise.resolve(false)],
+      ['fails', () => Promise.reject(new Error('navigation failed'))],
+    ])('drops the draft when the navigation %s', async (_label, outcome) => {
+      sessions.update((current) => new Map(current).set('run-1', expandedSession({ stepIds: ['implement'] })))
+      store.expandedDefinition.mockReturnValue(of({ workflowId: 'run-1', definition: draft }))
+      router.navigate.mockImplementation(outcome)
+      const state = TestBed.inject(SessionPageState)
+      state.selectSession('run-1', 'namespace-1')
+
+      state.saveAsReusableWorkflow()
+      await Promise.resolve()
+      await Promise.resolve()
+
+      // A later, unrelated visit to the composer must start blank.
+      expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBeNull()
+    })
+
     it('shows the backend error and hands nothing over when the draft cannot be read', () => {
       sessions.update((current) => new Map(current).set('run-1', expandedSession({ stepIds: ['implement'] })))
       store.expandedDefinition.mockReturnValue(

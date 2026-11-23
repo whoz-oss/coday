@@ -168,7 +168,14 @@ export class SessionPageState {
       .subscribe({
         next: ({ definition }) => {
           this.draftHandoff.set(definition)
-          void this.router.navigate(['/workflows', 'new'])
+          // The draft must not outlive a navigation that does not happen (cancelled, superseded or failed):
+          // a later unrelated visit to the composer would otherwise open pre-filled with this run's steps.
+          this.router.navigate(['/workflows', 'new']).then(
+            (navigated) => {
+              if (!navigated) this.draftHandoff.clear()
+            },
+            () => this.draftHandoff.clear()
+          )
         },
         error: (error: FactoryApiError) =>
           this.saveDefinitionError.set(
