@@ -1704,7 +1704,8 @@ describe('ExchangeShellComponent filters', () => {
     it.each([CASE, NAMESPACE])(
       'hides create, delete-folder and upload on a read-only %s scope',
       fakeAsync((scope) => {
-        const { fixture, el, api, state } = setup()
+        const { fixture, api, state } = setup()
+        const el = fixture.nativeElement as HTMLElement
         const entries = [folder('docs')]
         const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
         browse.mockReturnValue(of({ ...listing, capability: 'READ', entries, totalEntries: 1 }))
@@ -1727,7 +1728,8 @@ describe('ExchangeShellComponent filters', () => {
     )
 
     it('offers the same actions on the namespace scope, wired to the namespace id', fakeAsync(() => {
-      const { fixture, el, api, state, folderApi } = setup()
+      const { fixture, api, state, folderApi } = setup()
+      const el = fixture.nativeElement as HTMLElement
       api.browseNamespaceFilesExchange.mockReturnValue(
         of({ ...listing, capability: 'READ_WRITE', entries: [folder('shared')], totalEntries: 1 })
       )
