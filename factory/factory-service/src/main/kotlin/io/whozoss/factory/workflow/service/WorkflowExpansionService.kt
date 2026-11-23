@@ -29,7 +29,6 @@ import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.persistence.EvidenceAppendResult
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
-import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import io.whozoss.factory.workspace.WorkspacePrecheckPort
 import java.util.UUID
 import mu.KotlinLogging
@@ -43,11 +42,21 @@ import org.springframework.stereotype.Service
  *  - [validateContinuation] checks a continuation when the result is submitted (nothing is stored);
  *  - [graft] adds the accepted steps to the run (instance, projection, step states, evidence). It is
  *    idempotent on the accepted `resultId` and never touches the definition catalog;
- *  - [reconcile] re-runs [graft] after a crash between the step finalization and the addition;
+ *  - [reconcile] is the single path the sequencer uses to add the steps: the expanding step is finalized
+ *    first, then the next sequencer pass adds its steps (this also recovers a crash between the two);
  *  - [expandedDefinitionDraft] returns the base + added steps as a registrable draft.
  *
  * Callers own the transaction boundary of [graft] / [reconcile] (the sequencer wraps them in a short
- * `REQUIRES_NEW` transaction).
+ * `REQUIRES_NEW` transaction) and publish the SSE hint AFTER it commits.
+ *
+ * Trust model (a deliberate decision, not an oversight): the steps are authored by an agent, and Factory does
+ * NOT require a human step or approval before they run. What is checked is structural (graph, contracts,
+ * routing, limits) plus the availability of the named agents (at submission, then again by the workspace
+ * precheck before the added steps run; an unreadable agent list is accepted and recorded as
+ * `agentsVerified=false`). `code` steps are validated against the repository manifest only when they execute.
+ * The control over who can start such a run is the workstream `allowedWorkflowTypes` that lists
+ * `architect-custom-flow`. Ticket text reaches the briefs of the added agents, so the same prompt-injection
+ * caution as for any agent step applies.
  */
 @Service
 class WorkflowExpansionService(
@@ -55,13 +64,12 @@ class WorkflowExpansionService(
     private val evidenceRepository: WorkflowEvidenceRepository,
     private val results: AgentStepResultRepository,
     private val attempts: DurableAgentAttemptService,
-    private val sseHub: WorkflowSseHub,
+    private val resolver: EffectiveWorkflowDefinitionResolver,
     @param:Autowired(required = false)
     private val precheckPort: WorkspacePrecheckPort? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
-    private val resolver = EffectiveWorkflowDefinitionResolver(repository)
 
     // ------------------------------------------------------------------
     // Validation at submission time
@@ -121,7 +129,8 @@ class WorkflowExpansionService(
 
     /**
      * Adds the continuation accepted for [attemptId] to the run. Returns `true` when the steps were
-     * added now, `false` when the same result was already added (idempotent replay).
+     * added now, `false` when the same result was already added (idempotent replay). It does not publish
+     * any SSE hint: the caller does it once the surrounding transaction has committed.
      */
     fun graft(scope: TenantScope, namespaceId: String, workflowId: String, step: WorkflowStepDefinition, attemptId: String): Boolean {
         val instance = repository.findInstance(scope, namespaceId, workflowId)
@@ -227,7 +236,6 @@ class WorkflowExpansionService(
             ),
             expectedRevision = null,
         )
-        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
         logger.info { "Workflow '$workflowId' expanded by step '${step.id}' with ${valid.stepIds.size} step(s)" }
         return true
     }

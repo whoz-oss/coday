@@ -1,6 +1,9 @@
 package io.whozoss.factory.agentattempt.domain
 
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.workflow.domain.WorkflowContinuationValidator
 import io.whozoss.factory.workflow.domain.WorkflowTicket
 
 /** Strict validation of the structured business result schema. */
@@ -13,7 +16,10 @@ object AgentStepResultValidation {
     private val FINDING_FIELDS = setOf("severity", "code", "summary", "file", "line")
     private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH")
     private val CHANGE_TYPES = setOf("feature", "bugfix")
-    private const val MAX_CONTINUATION_STEPS = 50
+    /** Single source of the limit (the OpenAPI `maxItems` documents the same value). */
+    private const val MAX_CONTINUATION_STEPS = WorkflowContinuationValidator.MAX_STEPS
+    private val CONTINUATION_MAPPER = ObjectMapper()
+    private val CONTINUATION_TYPE = object : TypeReference<Map<String, Any?>>() {}
     /** GitHub issue reference (#123, 123, owner/repo#123) or a generic Jira-style project key (ABC-123). */
     private val TICKET = WorkflowTicket.PATTERN
 
@@ -205,6 +211,4 @@ object AgentStepResultValidation {
         )
     }
 
-    private val CONTINUATION_MAPPER = com.fasterxml.jackson.databind.ObjectMapper()
-    private val CONTINUATION_TYPE = object : com.fasterxml.jackson.core.type.TypeReference<Map<String, Any?>>() {}
 }

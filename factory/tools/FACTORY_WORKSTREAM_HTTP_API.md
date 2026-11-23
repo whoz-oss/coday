@@ -72,6 +72,18 @@ Refresh the existing FACTORY_AUTHORING and FACTORY_WORKER HTTP_API spec caches (
 
 Worker PASS results of decisions require `selectedRoutes`, e.g. `["frontend"]`, `["backend"]`, or `["frontend","backend"]` in multiple mode. These are names, never target IDs. Omit the field for ordinary steps, FAIL and NEEDS_RESEARCH. Invalid selections are rejected; routing is accepted only after configured validators/oracles succeed and persisted with result/attempt attribution before downstream execution. Nonselected branches remain skipped/never executed; the join waits for every selected success. The workflow authoring skill includes a full canonical example. Scheduling remains sequential.
 
+## Trust model of a workflow the Architect builds
+
+With `architect-custom-flow`, an agent writes the steps of the run. This is a deliberate decision: Factory does **not**
+require a human step or approval before the added steps run. Factory checks the structure (graph, contracts, routing,
+at most 50 steps) and that the named agents are enabled in the namespace (at submission, and again by the workspace
+precheck before the added steps run; an unreadable agent list is accepted and recorded as `agentsVerified=false`).
+`code` steps are only validated against the repository manifest when they execute.
+
+The control is the workstream: only a workstream whose `allowedWorkflowTypes` lists `architect-custom-flow` can start
+such a run. Do not add it to a workstream whose namespace has agents you would not let an LLM chain without review.
+Ticket text reaches the briefs of the added agents, with the same prompt-injection caution as any agent step.
+
 ## Old tool -> new tool
 
 | Former bridge tool | HTTP_API tool (integration `FACTORY_WORKSTREAM`) | Route |

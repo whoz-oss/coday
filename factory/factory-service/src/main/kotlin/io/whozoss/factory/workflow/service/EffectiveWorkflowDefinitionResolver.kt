@@ -8,6 +8,7 @@ import io.whozoss.factory.workflow.domain.WorkflowPolicyDefinition
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import org.springframework.stereotype.Component
 
 /**
  * The single place that computes the definition a run ACTUALLY follows: the pinned base definition
@@ -21,6 +22,7 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
  * The returned policy definition keeps the BASE definition hash: the instance and the transition
  * policy pin the run to the registered identity, never to a derived one.
  */
+@Component
 class EffectiveWorkflowDefinitionResolver(private val repository: WorkflowRepository) {
 
     /** The pinned base record; fails when it is absent or its hash drifted. */
@@ -44,7 +46,11 @@ class EffectiveWorkflowDefinitionResolver(private val repository: WorkflowReposi
     fun resolveRecord(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowDefinitionRecord =
         applyExpansion(baseRecord(scope, instance), instance)
 
-    /** Lenient resolution: `null` when the base definition cannot be found; appended steps still checked. */
+    /**
+     * Lenient resolution: `null` when the base definition cannot be found. The appended steps are still
+     * integrity-checked and a hash mismatch still throws WORKFLOW_DEFINITION_MISMATCH on purpose: a run whose
+     * added steps were altered must fail loudly, never fall back to its base definition.
+     */
     fun resolveRecordOrNull(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowDefinitionRecord? =
         baseRecordOrNull(scope, instance)?.let { applyExpansion(it, instance) }
 

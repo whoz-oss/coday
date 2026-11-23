@@ -9,6 +9,7 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
+import io.whozoss.factory.workflow.service.toPolicyDefinition
 import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workstream.domain.Workstream
 import io.whozoss.factory.workstream.domain.WorkstreamStatus
@@ -48,6 +49,21 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var workstreamRepository: Neo4jWorkstreamRepository
+
+    @Autowired
+    private lateinit var sessionCatalog: io.whozoss.factory.workflow.service.SessionDefinitionCatalog
+
+    @Autowired
+    private lateinit var expansionService: io.whozoss.factory.workflow.service.WorkflowExpansionService
+
+    @Autowired
+    private lateinit var legacyAttemptRepository: io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+
+    @Autowired
+    private lateinit var stepResultService: io.whozoss.factory.agentattempt.service.AgentStepResultService
+
+    @Autowired
+    private lateinit var jsonMapper: com.fasterxml.jackson.databind.ObjectMapper
 
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
     private val secondNamespace = "1e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
@@ -282,6 +298,59 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             commandId = "cmd-secret",
             brief = "Human-readable step mandate",
         )
+
+    @Test
+    fun `expanded definition of a run that added steps is a 200 draft that validates and registers nothing`() {
+        registerWorkstream()
+        val record = sessionCatalog.load().single { it.workflowType == "architect-custom-flow" }
+        service.registerDefinition(scope, record)
+        val created = createRun(mapOf("namespaceId" to namespace, "workflowType" to "architect-custom-flow"), "expanded-200")
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        val workflowId = data(created.body)["workflowId"] as String
+        val attemptId = "attempt-expanded-200"
+        legacyAttemptRepository.insert(
+            scope,
+            io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord(namespace, workflowId, "architect-plan", attemptId, "agent-1", "running", 1, "{}"),
+        )
+        val token = stepResultService.issue(
+            scope,
+            io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity(
+                attemptId, workflowId, "architect-plan", namespace, "case-expanded-200", "Archay", "sha256:${"d".repeat(64)}",
+            ),
+        ).token
+        val business = jsonMapper.readTree(
+            """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"continuation":{"steps":[
+                {"id":"build","name":"Build","responsibility":{"kind":"agent","name":"Archay"},"dependsOn":[]}]}}""",
+        )
+        stepResultService.submit(
+            scope, token, business,
+            io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity(attemptId, "case-expanded-200", "Archay", namespace),
+            null,
+        )
+        durableAgentAttemptService.register(
+            scope,
+            DurableAgentAttempt(attemptId, "case-expanded-200", namespace, workflowId, "architect-plan", 1, "Archay"),
+        )
+        expansionService.graft(scope, namespace, workflowId, record.toPolicyDefinition().steps.single(), attemptId)
+        val definitionsBefore = (service.listDefinitions(scope)["items"] as List<*>).size
+
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId/expanded-definition?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        @Suppress("UNCHECKED_CAST")
+        val draft = data(response.body)
+        @Suppress("UNCHECKED_CAST")
+        val definition = draft["definition"] as Map<String, Any?>
+        assertThat(WorkflowDefinitionValidator.validate(definition)).isInstanceOf(WorkflowDefinitionValidation.Valid::class.java)
+        assertThat((definition["steps"] as List<*>).filterIsInstance<Map<*, *>>().map { it["id"] }).containsExactly("architect-plan", "build")
+        assertThat((draft["source"] as Map<*, *>)["workflowType"]).isEqualTo("architect-custom-flow")
+        assertThat((service.listDefinitions(scope)["items"] as List<*>).size).isEqualTo(definitionsBefore)
+    }
 
     @Test
     fun `expanded definition of a run without added steps is a 409 WORKFLOW_NOT_EXPANDED`() {

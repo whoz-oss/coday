@@ -212,12 +212,11 @@ class SessionRunService(
      * Pure unit tests may omit it; a definition declaring `expansion` then fails closed.
      */
     private val expansionService: WorkflowExpansionService? = null,
+    /** The single computation of the definition a run follows (base + steps added by an expansion). */
+    private val definitionResolver: EffectiveWorkflowDefinitionResolver = EffectiveWorkflowDefinitionResolver(repository),
 ) {
 
     private val logger = KotlinLogging.logger {}
-
-    /** The single computation of the definition a run follows (base + steps added by an expansion). */
-    private val definitionResolver = EffectiveWorkflowDefinitionResolver(repository)
 
     private val failureTransaction: TransactionTemplate? = transactionManager?.let { manager ->
         TransactionTemplate(manager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
@@ -343,13 +342,29 @@ class SessionRunService(
         run {
             while (iterations++ < guard(steps)) {
                 if (canExpand) {
-                    // Crash recovery: add the steps of a completed expanding step whose addition did not happen.
+                    // The expanding step is finalized first (executeStep); the steps it adds are added here, on the
+                    // next pass. This single path also recovers a crash between the finalization and the addition.
                     if (expansionService?.let { newTransaction { it.reconcile(scope, namespaceId, workflowId, steps) } } == true) {
                         sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
                     }
                     // Pick up the steps added to this run (single resolver: instance + base definition).
-                    val refreshed = resolveDefinition(scope, activeInstance(scope, namespaceId, workflowId)).steps
-                    if (refreshed.size != steps.size) steps = refreshed
+                    val current = activeInstance(scope, namespaceId, workflowId)
+                    val refreshed = resolveDefinition(scope, current).steps
+                    if (refreshed.size != steps.size) {
+                        // Added steps get the same prerequisites check as a registered definition, BEFORE any of
+                        // them runs (a resumed run re-checks the whole effective definition at its start).
+                        val known = steps.map { it.id }.toSet()
+                        workspacePrecheckService?.precheck(
+                            scope = scope,
+                            namespaceId = namespaceId,
+                            callerExternalUserId = callerExternalUserId,
+                            requiredAgents = refreshed
+                                .filter { it.id !in known && it.responsibility.kind == ResponsibilityKind.AGENT }
+                                .mapNotNull { it.responsibility.name },
+                            requireGitWorkspace = requiresGitWorkspace(current, refreshed),
+                        )
+                        steps = refreshed
+                    }
                 }
                 outcomeTransitionService?.advance(scope, namespaceId, workflowId, steps, effectiveRepoRoot.toString(), effectiveTicket)
                 val correction = repository.findInstance(scope, namespaceId, workflowId)?.projection?.get("correction") as? Map<*, *>
@@ -791,18 +806,8 @@ class SessionRunService(
                 return WorkflowStatuses.FAILED
             }
         }
-        if (terminal == WorkflowStatuses.COMPLETED && step.expansion != null) {
-            try {
-                val expansion = checkNotNull(expansionService) { "EXPANSION_UNAVAILABLE" }
-                val attemptId = checkNotNull(execution.attemptId) { "EXPANSION_ATTEMPT_MISSING" }
-                // Idempotent on the accepted result: a replay or a crash recovery never adds the steps twice.
-                newTransaction { expansion.graft(scope, namespaceId, workflowId, step, attemptId) }
-                sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
-            } catch (error: Exception) {
-                recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision, statuses)
-                return WorkflowStatuses.FAILED
-            }
-        }
+        // A step that declares `expansion` is finalized like any other step. Its accepted continuation is added
+        // by `WorkflowExpansionService.reconcile` at the start of the next sequencer pass (idempotent, recoverable).
         if (executionId != null) {
             val durableExecution = repository.findStepStates(scope, namespaceId, workflowId).single { it.stepId == step.id }
                 .payload["execution"] as? Map<*, *>

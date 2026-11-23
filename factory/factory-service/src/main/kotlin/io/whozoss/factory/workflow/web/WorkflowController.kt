@@ -83,14 +83,14 @@ class WorkflowController(
      * question supersedes attempt N and registers the resumption attempt N+1.
      */
     private val agentStepQuestionService: AgentStepQuestionService,
+    /** Run-time expansion: draft definition of a run that added steps. */
+    private val workflowExpansionService: WorkflowExpansionService,
     /**
      * Optional bridge cancellation command. Present only when the AgentOS
      * execution adapter is enabled; the cancellation route reports a clean 503
      * otherwise.
      */
     private val bridgeCancellationService: BridgeCancellationService? = null,
-    /** Run-time expansion: read of the draft definition of a run that added steps. */
-    private val workflowExpansionService: WorkflowExpansionService? = null,
 ) {
 
     // ----- collection / detail ------------------------------------------
@@ -161,12 +161,8 @@ class WorkflowController(
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
         val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
-        val expansion = workflowExpansionService
-            ?: throw workflowException("WORKFLOW_NOT_EXPANDED", "This run has no steps added by an expansion.")
-        return WorkflowDataEnvelope(expansion.expandedDefinitionDraft(caller.scope, caller.namespaceId, workflowId))
+        return WorkflowDataEnvelope(workflowExpansionService.expandedDefinitionDraft(caller.scope, caller.namespaceId, workflowId))
     }
-
-    // ----- projection ----------------------------------------------------
 
     @GetMapping(path = ["/{workflowId}/projection"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Read the current workflow projection.")
