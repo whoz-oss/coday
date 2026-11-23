@@ -62,6 +62,7 @@ import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
 import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
+import { buildIdeUrl, resolveFilePath } from '../../services/file-link'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
 import { AgentActivity, describeAgentActivity, toolActivityLabel } from '../agent-activity/agent-activity.models'
@@ -245,6 +246,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   /**
+   * Root of the namespace project on this machine, from which the file references of the messages open in the IDE.
+   * Null while unknown or when the namespace has no configPath (personal namespace): file references are plain code.
+   */
+  readonly projectRoot = input<string | null>(null)
+
+  /** True when the file references of the messages render as links to the IDE. */
+  protected readonly fileLinks = computed(() => this.projectRoot() !== null)
+
+  /**
    * Reactive case ID — updated in sync with the queryParams subscription so that
    * computed signals that derive from it (e.g. activeCase) are always in sync with
    * the currently displayed case, even when the case list has not changed (no SSE).
@@ -283,11 +293,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected readonly events = signal<CaseEvent[]>([])
 
-  /**
-   * Pre-computed markdown HTML per event id.
-   * Populated at SSE ingestion time so the computed() timeline stays synchronous.
-   */
-  private readonly messageHtmlCache = new Map<string, SafeHtml>()
+  /** Markdown HTML per message event id, rendered once per state of the file links (see messageHtml). */
+  private readonly messageHtmlCache = new Map<string, { fileLinks: boolean; html: SafeHtml }>()
 
   protected inputValue = signal('')
   protected isRunning = signal(false)
@@ -479,6 +486,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Listener cleanup function registered on the messages container. */
   private scrollListenerCleanup: (() => void) | null = null
+  /** Removes the file-link click listener registered on the messages container. */
+  private messagesClickCleanup: (() => void) | null = null
 
   constructor() {
     this.autocomplete.init(this.namespaceId)
@@ -535,6 +544,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // Register DOM-dependent behaviour after the first render.
     afterNextRender(() => {
       this.attachScrollListener()
+      this.attachMessagesClickListener()
       this.resizeComposer()
     })
   }
@@ -655,7 +665,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         items.push({
           kind: 'message',
           event: msg,
-          html: this.messageHtmlCache.get(e.id) ?? '',
+          html: this.messageHtml(msg),
           isFirstInGroup,
           isLastInGroup: false,
         })
@@ -962,6 +972,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
+    this.messagesClickCleanup?.()
   }
 
   // ---------------------------------------------------------------------------
@@ -984,6 +995,34 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     el.addEventListener('scroll', onScroll, { passive: true })
     this.scrollListenerCleanup = () => el.removeEventListener('scroll', onScroll)
+  }
+
+  /**
+   * Delegated click listener on the messages container, for the file references rendered as links in a message.
+   * A native listener (not a template handler): the links are injected HTML, and the template a11y lint wants a key
+   * handler on a clickable div. Enter on a focused link fires its click, which reaches this listener too.
+   */
+  private attachMessagesClickListener(): void {
+    const el = this.messagesContainer()?.nativeElement
+    if (!el) return
+
+    const onClick = (event: MouseEvent): void => this.onMessagesClick(event)
+
+    el.addEventListener('click', onClick)
+    this.messagesClickCleanup = () => el.removeEventListener('click', onClick)
+  }
+
+  /** A file reference rendered in a message opens in the IDE; any other click in the messages is left alone. */
+  private onMessagesClick(event: MouseEvent): void {
+    const link = event.target instanceof Element ? event.target.closest('a.agentos-file-link') : null
+    if (!link) return
+    event.preventDefault()
+    const root = this.projectRoot()
+    if (!root) return
+    const path = resolveFilePath(root, link.getAttribute('data-file') ?? '')
+    const line = Number(link.getAttribute('data-line')) || undefined
+    const column = Number(link.getAttribute('data-column')) || undefined
+    window.location.assign(buildIdeUrl(this.preferences.ideUrlTemplate(), path, line, column))
   }
 
   /** Programmatically scroll the messages container to the very bottom. */
@@ -1073,16 +1112,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
-          // Pre-compute markdown HTML for MessageEvent before adding to signal.
-          if (event.type === 'MessageEvent') {
-            const msg = event as CaseMessageEvent
-            const text = this.extractText(msg)
-            if (!this.messageHtmlCache.has(event.id)) {
-              this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
-            }
-            if (msg.actor.role === 'AGENT') {
-              this.caseState.notifyAgentMessageEvent(msg)
-            }
+          if (event.type === 'MessageEvent' && (event as CaseMessageEvent).actor.role === 'AGENT') {
+            this.caseState.notifyAgentMessageEvent(event as CaseMessageEvent)
           }
 
           this.events.update((prev) => [...prev, event])
@@ -1722,12 +1753,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // Markdown rendering
   // ---------------------------------------------------------------------------
 
-  /**
-   * Render markdown to sanitized SafeHtml synchronously.
-   * Called once per MessageEvent at SSE ingestion time.
-   */
+  /** Render markdown to sanitized SafeHtml, with file links when the project root is known. */
   private renderMarkdown(text: string): SafeHtml {
-    return this.markdown.render(text)
+    return this.markdown.render(text, { fileLinks: this.fileLinks() })
+  }
+
+  /**
+   * The HTML of a message, rendered once and again only when the project root arrives or goes (the file links appear
+   * in the messages already shown). Read by the timeline computed, which then tracks the project root.
+   */
+  private messageHtml(event: CaseMessageEvent): SafeHtml {
+    const fileLinks = this.fileLinks()
+    const cached = this.messageHtmlCache.get(event.id)
+    if (cached?.fileLinks === fileLinks) return cached.html
+    const html = this.renderMarkdown(this.extractText(event))
+    this.messageHtmlCache.set(event.id, { fileLinks, html })
+    return html
   }
 
   // ---------------------------------------------------------------------------

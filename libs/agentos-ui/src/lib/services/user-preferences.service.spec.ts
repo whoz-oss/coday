@@ -78,6 +78,30 @@ describe('AgentosUserPreferencesService', () => {
     })
   })
 
+  describe('IDE file links', () => {
+    const TEMPLATE_KEY = 'agentos.ide.url-template'
+    const DEFAULT_TEMPLATE = 'idea://open?file={file}&line={line}'
+
+    it('has the IntelliJ template when nothing is stored', () => {
+      expect(new AgentosUserPreferencesService().ideUrlTemplate()).toBe(DEFAULT_TEMPLATE)
+    })
+
+    it('reads the stored template on init', () => {
+      localStorage.setItem(TEMPLATE_KEY, 'idea://open?file={file}')
+      expect(new AgentosUserPreferencesService().ideUrlTemplate()).toBe('idea://open?file={file}')
+    })
+
+    it('persists the template and resets a blank one to the default', () => {
+      const service = new AgentosUserPreferencesService()
+      service.setIdeUrlTemplate('idea://open?file={file}&line={line}&column={column}')
+      expect(localStorage.getItem(TEMPLATE_KEY)).toBe('idea://open?file={file}&line={line}&column={column}')
+
+      service.setIdeUrlTemplate('   ')
+      expect(service.ideUrlTemplate()).toBe(DEFAULT_TEMPLATE)
+      expect(localStorage.getItem(TEMPLATE_KEY)).toBe(DEFAULT_TEMPLATE)
+    })
+  })
+
   describe('shouldSend — only a real ENTER press', () => {
     it('never sends for a non-Enter key', () => {
       expect(new AgentosUserPreferencesService().shouldSend(keydown({ key: 'a' }))).toBe(false)

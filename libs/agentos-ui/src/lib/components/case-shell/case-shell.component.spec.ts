@@ -56,6 +56,7 @@ describe('CaseShellComponent', () => {
         name: string
         role: NamespaceListItemRoleEnum
         adminCaseListingEffective?: AdminCaseListing
+        configPath?: string
       }>
     } = {}
   ): CaseShellComponent {
@@ -203,6 +204,21 @@ describe('CaseShellComponent', () => {
     const component = makeComponent({ ns: NS_ID }, [], { namespacesError: true })
     expect(component['namespaces']()).toEqual([])
     expect(component['showNsPicker']()).toBe(false)
+    expect(component['projectRoot']()).toBeNull()
+  })
+
+  it('gives the chat the parent of the configPath of the ?ns namespace as project root, and follows a switch', () => {
+    const member = NamespaceListItemRoleEnum.MEMBER
+    const component = makeComponent({ ns: 'ns-a' }, [], {
+      namespaces: [
+        { id: 'ns-a', name: 'A', role: member, configPath: '/work/a/coday' },
+        { id: 'ns-b', name: 'B', role: member },
+      ],
+    })
+    expect(component['projectRoot']()).toBe('/work/a')
+
+    queryParams$.next({ ns: 'ns-b' })
+    expect(component['projectRoot']()).toBeNull()
   })
 
   it('keeps workspace actions unavailable without a known permission', () => {

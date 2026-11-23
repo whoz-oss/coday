@@ -110,6 +110,7 @@
       <agentos-case-workspace [caseId]="activeCaseId()!" [canWrite]="canWriteActiveCase()" />
       <agentos-case-chat
         [showToolCallsOverride]="showToolCalls()"
+        [projectRoot]="projectRoot()"
         (starToggled)="onStarToggled($event)"
         (deleteRequested)="onDeleteRequested($event)"
         (updateRequested)="onCaseUpdateRequested($event)"

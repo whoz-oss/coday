@@ -114,6 +114,9 @@ export class UserProfileComponent implements OnInit {
     { value: false, label: 'Hidden' },
   ]
 
+  /** URL template of the file links to the IDE, reflected in the IDE links section. */
+  protected readonly ideUrlTemplate = this.preferencesPort.ideUrlTemplate
+
   /**
    * Supported language options offered in the dropdown.
    * Extend this list to add more locales — the backend accepts any valid BCP 47 tag.
@@ -249,6 +252,10 @@ export class UserProfileComponent implements OnInit {
 
   protected setShowTechnical(value: boolean): void {
     this.preferencesPort.setShowTechnical(value)
+  }
+
+  protected setIdeUrlTemplate(value: string): void {
+    this.preferencesPort.setIdeUrlTemplate(value)
   }
 
   protected save(): void {
