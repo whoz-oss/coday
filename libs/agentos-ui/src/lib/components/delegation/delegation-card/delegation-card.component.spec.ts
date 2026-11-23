@@ -207,6 +207,18 @@ describe('DelegationCardComponent', () => {
     expect(MockEventSource.instances).toHaveLength(0)
   })
 
+  it('renders the file references of an opened result as links only with fileLinks', () => {
+    update({ status: 'SUCCESS', result: { delegationId: 'd-1', toolRequestId: 't-1', result: 'Edited `src/a.ts`' } })
+    toggle()
+    const result = (): HTMLElement => (fixture.nativeElement as HTMLElement).querySelector('.delegation-result')!
+    expect(result().querySelector('a')).toBeNull()
+    expect(result().querySelector('code')?.textContent).toBe('src/a.ts')
+
+    fixture.componentRef.setInput('fileLinks', true)
+    fixture.detectChanges()
+    expect(result().querySelector('a.agentos-file-link')?.getAttribute('data-file')).toBe('src/a.ts')
+  })
+
   it('surfaces pending confirmations and clears the highlight when resolved', () => {
     update()
     toggle()

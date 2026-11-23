@@ -64,7 +64,7 @@ import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { questionElementId, QuestionPanelComponent } from '../question-panel/question-panel.component'
 import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
-import { IdeLinkService } from '../../services/ide-link.service'
+import { buildIdeUrl, resolveFilePath } from '../../services/file-link'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
 import { AgentActivity, describeAgentActivity, toolActivityLabel } from '../agent-activity/agent-activity.models'
@@ -224,7 +224,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef)
   private readonly injector = inject(Injector)
   private readonly markdown = inject(MarkdownRendererService)
-  private readonly ideLinks = inject(IdeLinkService)
   private readonly exchangeState = inject(ExchangeStateService)
   private readonly selectionRequests = inject(ExchangeSelectionRequestService)
   /** Id of the selection request whose message was posted, while its first agent answer is awaited. */
@@ -289,6 +288,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   /**
+   * Root of the namespace project on this machine, from which the file references of the messages open in the IDE.
+   * Null while unknown or when the namespace has no configPath (personal namespace): file references are plain code.
+   */
+  readonly projectRoot = input<string | null>(null)
+
+  /** True when the file references of the messages render as links to the IDE. */
+  protected readonly fileLinks = computed(() => this.projectRoot() !== null)
+
+  /**
    * Reactive case ID — updated in sync with the queryParams subscription so that
    * computed signals that derive from it (e.g. activeCase) are always in sync with
    * the currently displayed case, even when the case list has not changed (no SSE).
@@ -339,10 +347,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly wizzRenderTimers = new Set<ReturnType<typeof setTimeout>>()
 
   /**
-   * Pre-computed markdown HTML per event id, of what the message shows as its text (see [bodyOf]).
-   * Populated at SSE ingestion time so the computed() timeline stays synchronous.
+   * Markdown HTML per message event id, of what the message shows as its text (see [bodyOf]), rendered once per state
+   * of the file links (see messageHtml).
    */
-  private readonly messageHtmlCache = new Map<string, SafeHtml>()
+  private readonly messageHtmlCache = new Map<string, { fileLinks: boolean; html: SafeHtml }>()
 
   // ---------------------------------------------------------------------------
   // Edit and re-run of a user message
@@ -786,7 +794,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         items.push({
           kind: 'message',
           event: msg,
-          html: isPending ? this.pendingHtml() : (this.messageHtmlCache.get(e.id) ?? ''),
+          html: isPending ? this.pendingHtml() : this.messageHtml(msg),
           files: role === 'USER' ? splitAttachmentMentions(this.extractText(msg)).files : [],
           isFirstInGroup,
           isLastInGroup: false,
@@ -1223,12 +1231,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const link = event.target instanceof Element ? event.target.closest('a.agentos-file-link') : null
     if (!link) return
     event.preventDefault()
-    const url = this.ideLinks.resolveIdeUrl({
-      path: link.getAttribute('data-file') ?? '',
-      line: Number(link.getAttribute('data-line')) || undefined,
-      column: Number(link.getAttribute('data-column')) || undefined,
-    })
-    if (url) window.location.assign(url)
+    const root = this.projectRoot()
+    if (!root) return
+    const path = resolveFilePath(root, link.getAttribute('data-file') ?? '')
+    const line = Number(link.getAttribute('data-line')) || undefined
+    const column = Number(link.getAttribute('data-column')) || undefined
+    window.location.assign(buildIdeUrl(this.preferences.ideUrlTemplate(), path, line, column))
   }
 
   /** Programmatically scroll the messages container to the very bottom. */
@@ -1318,16 +1326,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             return
           }
 
-          // Pre-compute markdown HTML for MessageEvent before adding to signal.
-          if (event.type === 'MessageEvent') {
-            const msg = event as CaseMessageEvent
-            const text = this.bodyOf(msg)
-            if (!this.messageHtmlCache.has(event.id)) {
-              this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
-            }
-            if (msg.actor.role === 'AGENT') {
-              this.caseState.notifyAgentMessageEvent(msg)
-            }
+          if (event.type === 'MessageEvent' && (event as CaseMessageEvent).actor.role === 'AGENT') {
+            this.caseState.notifyAgentMessageEvent(event as CaseMessageEvent)
           }
 
           this.events.update((prev) => [...prev, event])
@@ -2222,12 +2222,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // Markdown rendering
   // ---------------------------------------------------------------------------
 
-  /**
-   * Render markdown to sanitized SafeHtml synchronously.
-   * Called once per MessageEvent at SSE ingestion time.
-   */
+  /** Render markdown to sanitized SafeHtml, with file links when the project root is known. */
   private renderMarkdown(text: string): SafeHtml {
-    return this.markdown.render(text)
+    return this.markdown.render(text, { fileLinks: this.fileLinks() })
+  }
+
+  /**
+   * The HTML of a message, rendered once and again only when the project root arrives or goes (the file links appear
+   * in the messages already shown). Read by the timeline computed, which then tracks the project root.
+   */
+  private messageHtml(event: CaseMessageEvent): SafeHtml {
+    const fileLinks = this.fileLinks()
+    const cached = this.messageHtmlCache.get(event.id)
+    if (cached?.fileLinks === fileLinks) return cached.html
+    const html = this.renderMarkdown(this.bodyOf(event))
+    this.messageHtmlCache.set(event.id, { fileLinks, html })
+    return html
   }
 
   // ---------------------------------------------------------------------------

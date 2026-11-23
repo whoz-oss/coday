@@ -1,6 +1,14 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
+import {
+  ComponentRef,
+  createComponent,
+  EnvironmentInjector,
+  SecurityContext,
+  signal,
+  WritableSignal,
+} from '@angular/core'
 import { TestBed } from '@angular/core/testing'
+import { DomSanitizer } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
   ActorRoleEnum,
@@ -34,7 +42,6 @@ import { ExchangeSelectionRequestService } from '../../services/exchange-selecti
 import { proposalInstructions } from '../exchange-content-viewer/exchange-selection-message'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { IdeLinkService } from '../../services/ide-link.service'
 import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
@@ -141,8 +148,8 @@ describe('CaseChatComponent — submit with attachments', () => {
             composerHint: () => 'hint',
             showTechnical,
             enterKeyBehavior: signal('send'),
-            ideProjectRoot: signal(''),
-            ideUrlTemplate: signal('idea://open?file={file}&line={line}'),
+            // A same-page URL, so opening a file link changes the hash instead of navigating jsdom away.
+            ideUrlTemplate: signal('#{file}:{line}:{column}'),
           },
         },
       ],
@@ -1959,11 +1966,32 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   describe('file links in messages', () => {
-    /** The code element of a file link, as the sanitized markdown renders it. */
-    const linkCode = (attributes: string): Element => {
+    const agentMessage = (text: string): CaseMessageEvent => ({
+      id: 'm-1',
+      type: 'MessageEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T10:00:00Z',
+      metadata: { id: '', created: '', modified: '', removed: false },
+      actor: { id: 'a-1', role: ActorRoleEnum.AGENT, displayName: 'Agent' },
+      content: [{ type: 'Text', content: text }],
+    })
+
+    /** A chat showing one agent message that references a relative and an absolute file. */
+    const chatWith = (projectRoot: string | null): ComponentRef<CaseChatComponent> => {
+      const ref = makeComponent()
+      ref.setInput('projectRoot', projectRoot)
+      ref.instance['events'].set([agentMessage('See `src/a.ts:10:5` and `/abs/x.kt`')])
+      return ref
+    }
+
+    /** The message as the template injects it: its rendered HTML in a DOM element. */
+    const renderedMessage = (ref: ComponentRef<CaseChatComponent>): HTMLElement => {
+      const item = ref.instance['timeline']().find((entry) => entry.kind === 'message')
       const host = document.createElement('div')
-      host.innerHTML = `<a class="agentos-file-link" href="#" ${attributes}><code>src/a.ts</code></a>`
-      return host.querySelector('code') as Element
+      const html = item?.kind === 'message' ? item.html : ''
+      host.innerHTML = TestBed.inject(DomSanitizer).sanitize(SecurityContext.HTML, html) ?? ''
+      return host
     }
 
     /** Dispatches a click on the target and hands it to the messages click handler. */
@@ -1974,36 +2002,62 @@ describe('CaseChatComponent — submit with attachments', () => {
       return event
     }
 
-    it('opens a file link at its data-file, line and column, and keeps the browser from following the href', () => {
-      const ref = makeComponent()
-      const resolve = jest
-        .spyOn(TestBed.inject(IdeLinkService), 'resolveIdeUrl')
-        // A same-page URL, so jsdom does not try to navigate.
-        .mockReturnValue('#opened-in-ide')
+    afterEach(() => {
+      window.location.hash = ''
+      jest.restoreAllMocks()
+    })
 
-      const event = click(ref, linkCode('data-file="/abs/x.kt" data-line="10" data-column="5"'))
+    it('renders file references as links and opens a relative one from the project root', () => {
+      const ref = chatWith('/Users/ali/app')
+      const links = renderedMessage(ref).querySelectorAll('a.agentos-file-link')
+      expect(links).toHaveLength(2)
 
-      expect(resolve).toHaveBeenCalledWith({ path: '/abs/x.kt', line: 10, column: 5 })
+      const event = click(ref, links[0]!.querySelector('code')!)
+
+      expect(window.location.hash).toBe('#%2FUsers%2Fali%2Fapp%2Fsrc%2Fa.ts:10:5')
       expect(event.defaultPrevented).toBe(true)
     })
 
-    it('reads a link without position as a file at its first line', () => {
-      const ref = makeComponent()
-      const resolve = jest.spyOn(TestBed.inject(IdeLinkService), 'resolveIdeUrl').mockReturnValue(null)
+    it('opens an absolute file reference as it is, at its first line without position', () => {
+      const ref = chatWith('/Users/ali/app')
 
-      click(ref, linkCode('data-file="src/a.ts"'))
+      click(ref, renderedMessage(ref).querySelectorAll('a.agentos-file-link')[1]!)
 
-      expect(resolve).toHaveBeenCalledWith({ path: 'src/a.ts', line: undefined, column: undefined })
+      expect(window.location.hash).toBe('#%2Fabs%2Fx.kt:1:1')
+    })
+
+    it('renders file references as plain code, opening nothing, without a project root', () => {
+      const prompt = jest.spyOn(window, 'prompt')
+      const ref = chatWith(null)
+      const message = renderedMessage(ref)
+      expect(message.querySelector('a')).toBeNull()
+      expect([...message.querySelectorAll('code')].map((code) => code.textContent)).toEqual([
+        'src/a.ts:10:5',
+        '/abs/x.kt',
+      ])
+
+      const event = click(ref, message.querySelector('code')!)
+
+      expect(window.location.hash).toBe('')
+      expect(event.defaultPrevented).toBe(false)
+      expect(prompt).not.toHaveBeenCalled()
+    })
+
+    it('renders the links in the messages already shown once the project root arrives', () => {
+      const ref = chatWith(null)
+      expect(renderedMessage(ref).querySelector('a.agentos-file-link')).toBeNull()
+
+      ref.setInput('projectRoot', '/Users/ali/app')
+
+      expect(renderedMessage(ref).querySelectorAll('a.agentos-file-link')).toHaveLength(2)
     })
 
     it('leaves a click outside a file link alone', () => {
-      const ref = makeComponent()
-      const resolve = jest.spyOn(TestBed.inject(IdeLinkService), 'resolveIdeUrl')
-      const paragraph = document.createElement('p')
+      const ref = chatWith('/Users/ali/app')
 
-      const event = click(ref, paragraph)
+      const event = click(ref, document.createElement('p'))
 
-      expect(resolve).not.toHaveBeenCalled()
+      expect(window.location.hash).toBe('')
       expect(event.defaultPrevented).toBe(false)
     })
   })
@@ -2648,12 +2702,14 @@ describe('CaseChatComponent — submit with attachments', () => {
             })
           )
 
-          const html = String(ref.instance['messageHtmlCache'].get('u2'))
+          // The cache is filled when the timeline renders the message.
+          const item = timelineMessage(ref, 'u2')
+          const html = String(ref.instance['messageHtmlCache'].get('u2')?.html)
           expect(html).toContain('<strong>this</strong>')
           expect(html).not.toContain('Files attached')
           expect(html).not.toContain('Files referenced')
-          expect(String(timelineMessage(ref, 'u2').html)).toBe(html)
-          expect(timelineMessage(ref, 'u2').files).toHaveLength(2)
+          expect(String(item.html)).toBe(html)
+          expect(item.files).toHaveLength(2)
         } finally {
           ref.destroy()
           globalThis.EventSource = original
@@ -3457,9 +3513,10 @@ describe('CaseChatComponent — submit with attachments', () => {
           const voice = userMessage('m-1', [audio, { type: 'Text', content: 'hello **there**' }])
           source.dispatchEvent(new MessageEvent('MessageEvent', { data: JSON.stringify(voice) }))
 
-          expect(ref.instance['messageHtmlCache'].has('m-1')).toBe(true)
           const item = ref.instance['timeline']()[0]!
           expect(item.kind === 'message' && ref.instance['audioOf'](item.event)).toEqual(audio)
+          const html = item.kind === 'message' ? item.html : ''
+          expect(TestBed.inject(DomSanitizer).sanitize(SecurityContext.HTML, html)).toContain('<strong>there</strong>')
         } finally {
           ref.destroy()
           globalThis.EventSource = original

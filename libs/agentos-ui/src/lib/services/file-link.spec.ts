@@ -1,4 +1,11 @@
-import { buildIdeUrl, escapeHtml, parseFileReference, renderFileCodespan, resolveFilePath } from './file-link'
+import {
+  buildIdeUrl,
+  escapeHtml,
+  parseFileReference,
+  projectRootOf,
+  renderFileCodespan,
+  resolveFilePath,
+} from './file-link'
 
 describe('parseFileReference', () => {
   it.each([
@@ -10,6 +17,9 @@ describe('parseFileReference', () => {
     ['./x/y.md', { path: './x/y.md' }],
     ['../lib/z.ts:3', { path: '../lib/z.ts', line: 3 }],
     ['@scope/pkg/index.ts', { path: '@scope/pkg/index.ts' }],
+    ['package.json', { path: 'package.json' }],
+    ['build.gradle', { path: 'build.gradle' }],
+    ['README.md', { path: 'README.md' }],
   ])('reads %s as a file reference', (text, expected) => {
     expect(parseFileReference(text)).toEqual(expected)
   })
@@ -18,6 +28,8 @@ describe('parseFileReference', () => {
     ['user.name'],
     ['foo'],
     ['foo.bar'],
+    ['Node.js'],
+    ['config.properties'],
     ['https://x.com/a.ts'],
     ['a b.ts'],
     ['npm run build'],
@@ -50,6 +62,24 @@ describe('resolveFilePath', () => {
 
   it('joins with exactly one slash when the root ends with one', () => {
     expect(resolveFilePath('/root/proj/', 'src/a.ts')).toBe('/root/proj/src/a.ts')
+  })
+})
+
+describe('projectRootOf', () => {
+  it('is the parent directory of the namespace configPath', () => {
+    expect(projectRootOf('/Users/ali/Workspace/app/version/coday')).toBe('/Users/ali/Workspace/app/version')
+  })
+
+  it('ignores trailing slashes of the configPath', () => {
+    expect(projectRootOf('/Users/ali/app/coday//')).toBe('/Users/ali/app')
+  })
+
+  it('is the filesystem root for a configPath right under it', () => {
+    expect(projectRootOf('/coday')).toBe('/')
+  })
+
+  it.each([undefined, '', '   ', '/', 'relative/coday'])('is null for the configPath %p', (configPath) => {
+    expect(projectRootOf(configPath)).toBeNull()
   })
 })
 

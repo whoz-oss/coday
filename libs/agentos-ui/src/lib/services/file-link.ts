@@ -11,6 +11,9 @@ export interface FileReference {
  */
 const FILE_REFERENCE_PATTERN = /^((?:\.{1,2}\/|\/)?(?:[\w.@+-]+\/)*[\w.@+-]*\.[A-Za-z0-9]{1,10})(?::(\d+)(?::(\d+))?)?$/
 
+/** Extensions a bare name may carry without a `:line`. `js` is left out, so `Node.js` stays plain code. */
+const BARE_FILE_EXTENSION = /\.(?:ts|kt|json|md|scss|ya?ml|html|groovy|sh|java|gradle|xml)$/
+
 const HTML_ESCAPES: Readonly<Record<string, string>> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -21,7 +24,7 @@ const HTML_ESCAPES: Readonly<Record<string, string>> = {
 
 /**
  * Parses the text of a code span as a file reference (`src/a.ts`, `Case.kt:21`, `/abs/x.kt:10:5`), or returns null.
- * A bare name needs a `:line` suffix, so `user.name` and `foo.bar` stay plain code.
+ * A bare name needs a `:line` suffix or a common source extension (`package.json`), so `user.name` stays plain code.
  */
 export function parseFileReference(text: string): FileReference | null {
   if (text.includes('://')) return null
@@ -33,7 +36,7 @@ export function parseFileReference(text: string): FileReference | null {
   // A `.` or `..` segment is not a path, except the leading `./` or `../` the pattern already takes.
   const body = path.replace(/^(?:\.{1,2}\/|\/)/, '')
   if (body.split('/').some((segment) => /^\.+$/.test(segment))) return null
-  if (line === undefined && !path.includes('/')) return null
+  if (line === undefined && !path.includes('/') && !BARE_FILE_EXTENSION.test(path)) return null
   return {
     path,
     line: line === undefined ? undefined : Number(line),
@@ -41,8 +44,18 @@ export function parseFileReference(text: string): FileReference | null {
   }
 }
 
-export function isAbsolutePath(path: string): boolean {
+function isAbsolutePath(path: string): boolean {
   return path.startsWith('/')
+}
+
+/**
+ * Root of the namespace project on this machine: the parent directory of its `configPath`, as the FILES integration
+ * of the namespaces reads it (`{{NAMESPACE_CONFIG_PATH}}/..`). Null without an absolute configPath.
+ */
+export function projectRootOf(configPath: string | undefined): string | null {
+  const path = configPath?.trim().replace(/\/+$/, '') ?? ''
+  if (!isAbsolutePath(path)) return null
+  return path.slice(0, path.lastIndexOf('/')) || '/'
 }
 
 /** Absolute paths are returned as they are; relative ones are joined to the project root with one `/`. */

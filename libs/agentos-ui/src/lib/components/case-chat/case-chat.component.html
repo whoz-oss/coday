@@ -403,7 +403,11 @@
                   }
                 }
               } @else if (item.kind === 'delegation') {
-                <agentos-delegation-card [delegation]="item.delegation" [namespaceId]="namespaceId" />
+                <agentos-delegation-card
+                  [delegation]="item.delegation"
+                  [namespaceId]="namespaceId"
+                  [fileLinks]="fileLinks()"
+                />
               } @else if (item.kind === 'toolGroup') {
                 @let summary = toolGroupSummary(item.calls);
                 <div

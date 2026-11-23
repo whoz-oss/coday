@@ -2,6 +2,8 @@ package io.whozoss.agentos.plugins.bash
 
 import mu.KLogging
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -10,6 +12,12 @@ private const val DEFAULT_MAX_OUTPUT_CHARS = 100_000
 
 /**
  * Executes a bash command in a given working directory with a timeout.
+ *
+ * The shell is `/bin/bash`, or Git Bash on Windows (see [BashShellResolver]). When no Git Bash can be found
+ * on Windows, the execution answers [BashExecutionResult.Error] with an actionable message.
+ *
+ * The command is written to a temporary script file that the shell runs, and the file is deleted afterwards
+ * (see [run] for why it is not passed with `-c`).
  *
  * Output (stdout + stderr) is capped at [maxOutputChars] to avoid overwhelming
  * the LLM context. The pattern mirrors the ripgrep execution in SearchFilesTool:
@@ -43,10 +51,43 @@ object BashCommandExecutor : KLogging() {
             "Running bash command in ${workingDirectory.absolutePath}: $command" +
                 (if (environment.isEmpty()) "" else " (extra environment: ${environment.keys.sorted().joinToString()})")
         }
+        val shell = BashShellResolver.resolve()
+            ?: return BashExecutionResult.Error(BashShellResolver.windowsNotFoundMessage())
         val marker = "__AGENTOS_PWD_${UUID.randomUUID()}__:"
 
+        val script = try {
+            Files.createTempFile("agentos-bash-", ".sh").also {
+                Files.write(it, wrapWithPwdTrap(command, marker, shell.pwdCommand).toByteArray(Charsets.UTF_8))
+            }
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to write the script for command: $command" }
+            return BashExecutionResult.Error(e.message ?: e.javaClass.simpleName)
+        }
+        try {
+            return run(shell, script, marker, command, workingDirectory, timeoutSeconds, maxOutputChars, environment)
+        } finally {
+            Files.deleteIfExists(script)
+        }
+    }
+
+    /**
+     * The script is handed to the shell as a file, never as a `-c` argument: on Windows, `ProcessBuilder` does
+     * not escape the double quotes inside an argument, so the command line is cut at the first one and the rest
+     * of the script is taken for other arguments. A file is immune to that, whatever quotes the command holds.
+     * The path uses forward slashes, which Git Bash and `bash` accept alike.
+     */
+    private fun run(
+        shell: BashShell,
+        script: Path,
+        marker: String,
+        command: String,
+        workingDirectory: File,
+        timeoutSeconds: Long,
+        maxOutputChars: Int,
+        environment: Map<String, String>,
+    ): BashExecutionResult {
         val processBuilder =
-            ProcessBuilder("/bin/bash", "-c", wrapWithPwdTrap(command, marker))
+            ProcessBuilder(shell.executable, script.toAbsolutePath().toString().replace('\\', '/'))
                 .directory(workingDirectory)
                 .redirectErrorStream(false)
         processBuilder.environment().putAll(environment)
@@ -99,8 +140,8 @@ object BashCommandExecutor : KLogging() {
         }
     }
 
-    private fun wrapWithPwdTrap(command: String, marker: String): String =
-        "trap 'printf \"\\n%s%s\\n\" \"$marker\" \"\$(pwd)\"' EXIT; $command"
+    private fun wrapWithPwdTrap(command: String, marker: String, pwdCommand: String): String =
+        "trap 'printf \"\\n%s%s\\n\" \"$marker\" \"\$($pwdCommand)\"' EXIT; $command"
 
     /**
      * Splits the marker line off the end of [stdout]. Returns the untouched stdout and a null
