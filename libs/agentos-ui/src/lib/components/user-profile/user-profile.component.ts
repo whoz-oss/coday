@@ -115,8 +115,7 @@ export class UserProfileComponent implements OnInit {
     { value: false, label: 'Hidden' },
   ]
 
-  /** File links to the IDE (project root and URL template), reflected in the IDE links section. */
-  protected readonly ideProjectRoot = this.preferencesPort.ideProjectRoot
+  /** URL template of the file links to the IDE, reflected in the IDE links section. */
   protected readonly ideUrlTemplate = this.preferencesPort.ideUrlTemplate
 
   /**
@@ -270,10 +269,6 @@ export class UserProfileComponent implements OnInit {
 
   protected setShowTechnical(value: boolean): void {
     this.preferencesPort.setShowTechnical(value)
-  }
-
-  protected setIdeProjectRoot(value: string): void {
-    this.preferencesPort.setIdeProjectRoot(value)
   }
 
   protected setIdeUrlTemplate(value: string): void {

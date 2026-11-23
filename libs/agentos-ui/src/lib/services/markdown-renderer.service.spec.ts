@@ -7,9 +7,9 @@ describe('MarkdownRendererService codespan', () => {
   let service: MarkdownRendererService
   let sanitizer: DomSanitizer
 
-  /** The sanitized HTML of a markdown string, as it reaches innerHTML. */
-  const html = (markdown: string): string =>
-    (sanitizer.sanitize(SecurityContext.HTML, service.render(markdown)) ?? '').trim()
+  /** The sanitized HTML of a markdown string, as it reaches innerHTML (file links on unless told otherwise). */
+  const html = (markdown: string, fileLinks = true): string =>
+    (sanitizer.sanitize(SecurityContext.HTML, service.render(markdown, { fileLinks })) ?? '').trim()
 
   beforeEach(() => {
     TestBed.configureTestingModule({})
@@ -30,6 +30,11 @@ describe('MarkdownRendererService codespan', () => {
     expect(html('See `/abs/x.kt:10:5`')).toContain(
       'data-file="/abs/x.kt" data-line="10" data-column="5" title="Open in IntelliJ IDEA"><code>/abs/x.kt:10:5</code></a>'
     )
+  })
+
+  it('renders a file reference as plain code without file links', () => {
+    expect(html('Edit `src/a.ts:3`', false)).toBe('<p>Edit <code>src/a.ts:3</code></p>')
+    expect(sanitizer.sanitize(SecurityContext.HTML, service.render('`src/a.ts`'))).not.toContain('agentos-file-link')
   })
 
   it('renders a code span that is not a file reference exactly as before', () => {
