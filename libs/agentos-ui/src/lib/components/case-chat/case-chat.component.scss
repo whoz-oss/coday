@@ -895,16 +895,6 @@
     // Markdown arrives through innerHTML, so its elements carry no encapsulation attribute and
     // the rules below never reach them — ::ng-deep is the only selector that does, as
     // action-card already does for its injected chips.
-    //
-    // A fenced code block is the one element wide enough to push the layout: the renderer tags it
-    // but nothing styled it, so it kept the browser default and scrolled sideways. It wraps now,
-    // and `overflow-wrap` folds the tokens no space can break — a path, a URL, a hash — which is
-    // what made a single line overflow in the first place.
-    ::ng-deep pre {
-      text-wrap: wrap;
-      overflow-wrap: anywhere;
-    }
-
     p {
       margin: 0 0 0.5em;
       &:last-child {
@@ -955,6 +945,73 @@
       margin-left: 0.15em;
       vertical-align: super;
     }
+  }
+
+  // Fenced code blocks in chat bubbles only.
+  //
+  // A block is the one element wide enough to push the layout: `pre` wraps instead of scrolling sideways,
+  // and `overflow-wrap` folds the tokens no space can break — a path, a URL, a hash. The block is a flex
+  // row (code, then copy button), so the text can never run under the button.
+  //
+  // `--code-line` pins the code line height. The 28px button is taller
+  // than a line, so a negative block margin splits the overshoot evenly above and below: the button is
+  // centred on the first line, and a one-line block is no taller than its text.
+  &__message-text--markdown {
+    ::ng-deep .agentos-code-block {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.25rem;
+      margin: 0.5em 0;
+      padding: 0.5rem;
+      background: var(--color-surface);
+      border: 1px solid var(--color-divider);
+      border-radius: var(--radius-md, 0);
+      --code-line: 22px;
+    }
+
+    ::ng-deep .agentos-code-block pre {
+      flex: 1;
+      min-width: 0;
+      margin: 0;
+      line-height: var(--code-line);
+      text-wrap: wrap;
+      overflow-wrap: anywhere;
+    }
+
+    ::ng-deep .agentos-code-copy {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      margin-block: calc((var(--code-line) - 28px) / 2);
+      padding: 0;
+      border: 0;
+      border-radius: var(--radius-sm, 0);
+      background: transparent;
+      color: var(--color-text);
+      cursor: pointer;
+      user-select: none;
+
+      &:hover {
+        background: var(--color-bg-hover);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 1px;
+      }
+
+      .material-icons {
+        font-size: 16px;
+      }
+    }
+  }
+
+  // The renderer is shared with delegation cards, which must not offer copy; display:none also drops it from tab order.
+  agentos-delegation-card ::ng-deep .agentos-code-copy {
+    display: none;
   }
 
   // ── Composer ──────────────────────────────────────────────────────────────
