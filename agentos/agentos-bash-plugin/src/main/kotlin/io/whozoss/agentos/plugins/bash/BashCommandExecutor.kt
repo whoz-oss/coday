@@ -11,6 +11,9 @@ private const val DEFAULT_MAX_OUTPUT_CHARS = 100_000
 /**
  * Executes a bash command in a given working directory with a timeout.
  *
+ * The shell is `/bin/bash`, or Git Bash on Windows (see [BashShellResolver]). When no Git Bash can be found
+ * on Windows, the execution answers [BashExecutionResult.Error] with an actionable message.
+ *
  * Output (stdout + stderr) is capped at [maxOutputChars] to avoid overwhelming
  * the LLM context. The pattern mirrors the ripgrep execution in SearchFilesTool:
  * stdout and stderr are drained asynchronously to prevent the process from
@@ -43,10 +46,12 @@ object BashCommandExecutor : KLogging() {
             "Running bash command in ${workingDirectory.absolutePath}: $command" +
                 (if (environment.isEmpty()) "" else " (extra environment: ${environment.keys.sorted().joinToString()})")
         }
+        val shell = BashShellResolver.resolve()
+            ?: return BashExecutionResult.Error(BashShellResolver.windowsNotFoundMessage())
         val marker = "__AGENTOS_PWD_${UUID.randomUUID()}__:"
 
         val processBuilder =
-            ProcessBuilder("/bin/bash", "-c", wrapWithPwdTrap(command, marker))
+            ProcessBuilder(shell.executable, "-c", wrapWithPwdTrap(command, marker, shell.pwdCommand))
                 .directory(workingDirectory)
                 .redirectErrorStream(false)
         processBuilder.environment().putAll(environment)
@@ -99,8 +104,8 @@ object BashCommandExecutor : KLogging() {
         }
     }
 
-    private fun wrapWithPwdTrap(command: String, marker: String): String =
-        "trap 'printf \"\\n%s%s\\n\" \"$marker\" \"\$(pwd)\"' EXIT; $command"
+    private fun wrapWithPwdTrap(command: String, marker: String, pwdCommand: String): String =
+        "trap 'printf \"\\n%s%s\\n\" \"$marker\" \"\$($pwdCommand)\"' EXIT; $command"
 
     /**
      * Splits the marker line off the end of [stdout]. Returns the untouched stdout and a null
