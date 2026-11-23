@@ -26,6 +26,7 @@ import { SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
   Actor,
+  ActorRoleEnum,
   AgentFinishedEvent,
   AgentRunningEvent,
   AgentSelectedEvent,
@@ -105,6 +106,8 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
+import { CaseMessageRailComponent, RailMessage } from '../case-message-rail/case-message-rail.component'
+import { flashMessage, messageAnchors, prefersReducedMotion, scrollTopFor } from '../case-message-rail/message-anchor'
 
 // The timeline types live in case-chat.models.ts (tool-call-groups.ts needs them too); re-exported for existing importers.
 export type { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
@@ -177,6 +180,7 @@ function hasActiveSelection(): boolean {
     AgentActivityComponent,
     AudioMessageComponent,
     VoiceRecorderComponent,
+    CaseMessageRailComponent,
     CostPipe,
     TokenCountPipe,
   ],
@@ -480,6 +484,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Listener cleanup function registered on the messages container. */
   private scrollListenerCleanup: (() => void) | null = null
 
+  /**
+   * Last scroll position of a message-rail jump away from the bottom, while the view is still near it; null otherwise.
+   *
+   * The first frames of a smooth scroll up are still within the bottom threshold: read as "at the bottom", they would
+   * re-engage auto-follow and the next streamed chunk would pull the view back down. Cleared as soon as the view
+   * leaves the bottom zone or moves down again (the reader took over).
+   */
+  private railJumpScrollTop: number | null = null
+
   constructor() {
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
@@ -750,6 +763,26 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   })
 
   /**
+   * The user's messages, in conversation order, for the message rail.
+   *
+   * Equal while ids and texts are: the base timeline is rebuilt on every persisted event, and the rail re-measures (and
+   * forgets the dot picked last) only when its own list really changes.
+   */
+  protected readonly railMessages = computed<RailMessage[]>(
+    () =>
+      this.baseTimeline().flatMap((item) =>
+        item.kind === 'message' && item.event.actor.role === ActorRoleEnum.USER
+          ? [{ id: item.event.id, text: this.extractText(item.event) }]
+          : []
+      ),
+    {
+      equal: (previous, next) =>
+        previous.length === next.length &&
+        previous.every((message, index) => message.id === next[index]?.id && message.text === next[index]?.text),
+    }
+  )
+
+  /**
    * Id of the latest unanswered, non-OAuth question (the one whose answer controls get focus).
    * OAuth questions are excluded: their popup flow must start from an explicit click.
    */
@@ -979,7 +1012,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     const onScroll = () => {
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-      this.isAtBottom.set(distanceFromBottom <= SCROLL_BOTTOM_THRESHOLD)
+      const nearBottom = distanceFromBottom <= SCROLL_BOTTOM_THRESHOLD
+      if (this.railJumpScrollTop !== null) {
+        const leaving = nearBottom && el.scrollTop <= this.railJumpScrollTop
+        this.railJumpScrollTop = leaving ? el.scrollTop : null
+        if (leaving) return
+      }
+      this.isAtBottom.set(nearBottom)
     }
 
     el.addEventListener('scroll', onScroll, { passive: true })
@@ -998,8 +1037,29 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Re-enables the magnetic behaviour and scrolls down.
    */
   protected onScrollToBottomClick(): void {
+    this.railJumpScrollTop = null
     this.isAtBottom.set(true)
     this.scrollToBottom()
+  }
+
+  /**
+   * Brings a user message chosen on the rail just under the top of the messages area, then flashes its bubble.
+   *
+   * A jump that leaves the bottom zone suspends auto-follow first (see [railJumpScrollTop]), so a streaming answer
+   * does not pull the view back down mid-scroll. A jump that stays near the bottom leaves it engaged.
+   */
+  protected scrollToMessage(messageId: string): void {
+    const container = this.messagesContainer()?.nativeElement
+    const anchor = container ? messageAnchors(container).get(messageId) : undefined
+    if (!container || !anchor) return
+
+    const top = scrollTopFor(container, anchor)
+    if (container.scrollHeight - container.clientHeight - top > SCROLL_BOTTOM_THRESHOLD) {
+      this.railJumpScrollTop = container.scrollTop
+      this.isAtBottom.set(false)
+    }
+    container.scrollTo({ top, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
+    flashMessage(anchor.querySelector<HTMLElement>('.case-chat__bubble') ?? anchor)
   }
 
   // ---------------------------------------------------------------------------
@@ -1390,6 +1450,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
     this.expandedToolGroups.set(new Set())
+    this.railJumpScrollTop = null
     this.isAtBottom.set(true)
     this.drawerPanel.set('files')
     this.isEditing.set(false)

@@ -1,0 +1,27 @@
+@if (visible()) {
+  <nav class="message-rail" aria-label="User messages">
+    <ol #list class="message-rail__list" (scroll)="onListScroll()">
+      @for (entry of entries(); track entry.id) {
+        <li class="message-rail__item">
+          <button
+            #dot
+            type="button"
+            class="message-rail__dot"
+            [attr.aria-label]="entry.label"
+            [attr.aria-current]="entry.id === activeId() ? 'location' : null"
+            [tabIndex]="entry.id === tabStopId() ? 0 : -1"
+            (click)="select(entry.id)"
+            (keydown)="onKeydown($event, $index)"
+            (pointerenter)="onPointerEnter(dot, entry)"
+            (pointerleave)="onPointerLeave()"
+            (focus)="onFocus(dot, entry)"
+            (blur)="onBlur()"
+          ></button>
+        </li>
+      }
+    </ol>
+    @if (tooltip(); as tip) {
+      <span class="message-rail__tooltip" aria-hidden="true" [style.top.px]="tip.top">{{ tip.text }}</span>
+    }
+  </nav>
+}

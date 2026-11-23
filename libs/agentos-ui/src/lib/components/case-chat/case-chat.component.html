@@ -166,10 +166,12 @@
           } @else {
             @for (item of timeline(); track trackTimelineItem($index, item)) {
               @if (item.kind === 'message') {
+                <!-- data-message-id anchors a user message for the message rail (MESSAGE_ANCHOR_ATTRIBUTE). -->
                 <div
                   class="case-chat__turn"
                   [class.case-chat__turn--user]="item.event.actor.role === 'USER'"
                   [class.case-chat__turn--agent]="item.event.actor.role === 'AGENT'"
+                  [attr.data-message-id]="item.event.actor.role === 'USER' ? item.event.id : null"
                 >
                   @if (item.isFirstInGroup) {
                     <span class="case-chat__role-label">
@@ -411,6 +413,13 @@
             <agentos-agent-activity [activity]="activity()" />
           }
         </div>
+
+        <!-- One dot per user message, in the gutter on the right; renders nothing under two messages. -->
+        <agentos-case-message-rail
+          [messages]="railMessages()"
+          [scrollContainer]="messagesContainer"
+          (messageSelected)="scrollToMessage($event)"
+        />
 
         <!-- Floating scroll-to-bottom button — visible when not at the bottom -->
         @if (!isAtBottom()) {

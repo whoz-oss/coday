@@ -1,5 +1,15 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
+import {
+  Component,
+  ComponentRef,
+  createComponent,
+  ElementRef,
+  EnvironmentInjector,
+  input,
+  output,
+  signal,
+  WritableSignal,
+} from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -35,6 +45,8 @@ import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
+import { CaseUsageComponent } from '../case-usage/case-usage.component'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseChatComponent } from './case-chat.component'
 
 /**
@@ -2085,6 +2097,275 @@ describe('CaseChatComponent — submit with attachments', () => {
       const a = makeComponent()
       const b = makeComponent()
       expect(a.injector.get(VoiceRecorderService)).not.toBe(b.injector.get(VoiceRecorderService))
+    })
+  })
+
+  describe('message rail', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const message = (id: string, role: ActorRoleEnum, text: string): CaseMessageEvent =>
+      ({
+        id,
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T10:00:00Z',
+        metadata,
+        actor: { id: role === ActorRoleEnum.USER ? 'u-1' : 'agent-1', role, displayName: 'Someone' },
+        content: [{ type: 'Text', content: text }],
+      }) as unknown as CaseMessageEvent
+
+    /**
+     * The messages container as the template renders it, laid out by hand (jsdom has no layout): a 3000px
+     * conversation seen through 500px, user message `u-<n>` anchored at the given content top, its bubble inside.
+     */
+    function fakeMessagesContainer(tops: Record<string, number>): {
+      container: HTMLElement
+      scrollTo: jest.Mock
+      bubble: (id: string) => HTMLElement & { animate: jest.Mock }
+      scroll: (top: number) => void
+    } {
+      let scrollTop = 0
+      const container = document.createElement('div')
+      Object.defineProperties(container, {
+        scrollTop: { get: () => scrollTop, set: (top: number) => (scrollTop = top) },
+        clientHeight: { value: 500 },
+        scrollHeight: { value: 3000 },
+      })
+      container.getBoundingClientRect = () => new DOMRect(0, 0, 800, 500)
+      const scrollTo = jest.fn((options: ScrollToOptions) => (scrollTop = options.top ?? scrollTop))
+      container.scrollTo = scrollTo as unknown as HTMLElement['scrollTo']
+      for (const [id, top] of Object.entries(tops)) {
+        const turn = document.createElement('div')
+        turn.setAttribute('data-message-id', id)
+        turn.getBoundingClientRect = () => new DOMRect(0, top - scrollTop, 800, 80)
+        const bubble = Object.assign(document.createElement('div'), { animate: jest.fn() })
+        bubble.className = 'case-chat__bubble'
+        turn.appendChild(bubble)
+        container.appendChild(turn)
+      }
+      return {
+        container,
+        scrollTo,
+        bubble: (id) =>
+          container.querySelector(`[data-message-id="${id}"] .case-chat__bubble`) as HTMLElement & {
+            animate: jest.Mock
+          },
+        scroll: (top) => {
+          scrollTop = top
+          container.dispatchEvent(new Event('scroll'))
+        },
+      }
+    }
+
+    function withContainer(ref: ComponentRef<CaseChatComponent>, container: HTMLElement): void {
+      // The view is never rendered in this spec: stand in for the #messagesContainer view child.
+      Object.defineProperty(ref.instance, 'messagesContainer', { value: () => new ElementRef(container) })
+    }
+
+    let matchMedia: typeof window.matchMedia | undefined
+    beforeEach(() => {
+      matchMedia = window.matchMedia
+    })
+    afterEach(() => {
+      window.matchMedia = matchMedia as typeof window.matchMedia
+    })
+
+    const reduceMotion = (reduce: boolean): void => {
+      window.matchMedia = jest.fn().mockReturnValue({ matches: reduce }) as unknown as typeof window.matchMedia
+    }
+
+    it('lists the user messages only, in conversation order, with their text', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        message('u-1', ActorRoleEnum.USER, 'first question'),
+        message('a-1', ActorRoleEnum.AGENT, 'an answer'),
+        message('u-2', ActorRoleEnum.USER, 'second question'),
+      ])
+
+      expect(ref.instance['railMessages']()).toEqual([
+        { id: 'u-1', text: 'first question' },
+        { id: 'u-2', text: 'second question' },
+      ])
+    })
+
+    it('scrolls the container smoothly to the chosen message, just under its top, and flashes its bubble', () => {
+      reduceMotion(false)
+      const ref = makeComponent()
+      const dom = fakeMessagesContainer({ 'u-1': 200, 'u-2': 1400 })
+      withContainer(ref, dom.container)
+
+      ref.instance['scrollToMessage']('u-2')
+
+      expect(dom.scrollTo).toHaveBeenCalledWith({ top: 1400 - 12, behavior: 'smooth' })
+      expect(dom.bubble('u-2').animate).toHaveBeenCalledTimes(1)
+      expect(dom.bubble('u-1').animate).not.toHaveBeenCalled()
+    })
+
+    it('jumps without smooth scroll when the reader prefers reduced motion, and still flashes (a fade, not a motion)', () => {
+      reduceMotion(true)
+      const ref = makeComponent()
+      const dom = fakeMessagesContainer({ 'u-1': 200, 'u-2': 1400 })
+      withContainer(ref, dom.container)
+
+      ref.instance['scrollToMessage']('u-1')
+
+      expect(dom.scrollTo).toHaveBeenCalledWith({ top: 200 - 12, behavior: 'auto' })
+      expect(dom.bubble('u-1').animate).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the same rail list while the user messages are unchanged', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        message('u-1', ActorRoleEnum.USER, 'first'),
+        message('u-2', ActorRoleEnum.USER, 'second'),
+      ])
+      const before = ref.instance['railMessages']()
+
+      ref.instance['events'].update((events) => [...events, message('a-1', ActorRoleEnum.AGENT, 'an answer')])
+
+      expect(ref.instance['railMessages']()).toBe(before)
+    })
+
+    it('ignores a message that is not in the container', () => {
+      const ref = makeComponent()
+      const dom = fakeMessagesContainer({ 'u-1': 200 })
+      withContainer(ref, dom.container)
+
+      ref.instance['scrollToMessage']('gone')
+
+      expect(dom.scrollTo).not.toHaveBeenCalled()
+      expect(ref.instance['isAtBottom']()).toBe(true)
+    })
+
+    it('keeps auto-follow off while a jump away from the bottom is still near it', () => {
+      reduceMotion(false)
+      const ref = makeComponent()
+      const dom = fakeMessagesContainer({ 'u-1': 200, 'u-2': 2900 })
+      withContainer(ref, dom.container)
+      ref.instance['attachScrollListener']()
+      dom.scroll(2500)
+      expect(ref.instance['isAtBottom']()).toBe(true)
+      // The fake scrollTo would land at once: hold the view at the bottom, like the start of a smooth scroll.
+      dom.scrollTo.mockImplementation(() => undefined)
+
+      ref.instance['scrollToMessage']('u-1')
+      expect(ref.instance['isAtBottom']()).toBe(false)
+
+      // First frames of the smooth scroll up: still within the bottom threshold.
+      dom.scroll(2480)
+      dom.scroll(2450)
+      expect(ref.instance['isAtBottom']()).toBe(false)
+      // Out of the bottom zone: the usual rule applies again.
+      dom.scroll(1800)
+      expect(ref.instance['isAtBottom']()).toBe(false)
+      dom.scroll(2500)
+      expect(ref.instance['isAtBottom']()).toBe(true)
+    })
+
+    it('gives auto-follow back when the reader scrolls down again during the jump', () => {
+      reduceMotion(false)
+      const ref = makeComponent()
+      const dom = fakeMessagesContainer({ 'u-1': 200 })
+      withContainer(ref, dom.container)
+      ref.instance['attachScrollListener']()
+      dom.scroll(2500)
+      dom.scrollTo.mockImplementation(() => undefined)
+
+      ref.instance['scrollToMessage']('u-1')
+      dom.scroll(2470)
+      dom.scroll(2500)
+
+      expect(ref.instance['isAtBottom']()).toBe(true)
+    })
+
+    it('leaves auto-follow on for a jump that stays near the bottom', () => {
+      reduceMotion(false)
+      const ref = makeComponent()
+      // The last message cannot reach the top: the scroll stops at the end of the conversation.
+      const dom = fakeMessagesContainer({ 'u-1': 200, 'u-2': 2900 })
+      withContainer(ref, dom.container)
+      ref.instance['attachScrollListener']()
+      dom.scroll(2480)
+
+      ref.instance['scrollToMessage']('u-2')
+
+      expect(dom.scrollTo).toHaveBeenCalledWith({ top: 2500, behavior: 'smooth' })
+      expect(ref.instance['isAtBottom']()).toBe(true)
+    })
+
+    it('still follows the scroll as before when no jump is in progress', () => {
+      const ref = makeComponent()
+      const dom = fakeMessagesContainer({ 'u-1': 200 })
+      withContainer(ref, dom.container)
+      ref.instance['attachScrollListener']()
+
+      dom.scroll(1000)
+      expect(ref.instance['isAtBottom']()).toBe(false)
+      dom.scroll(2440)
+      expect(ref.instance['isAtBottom']()).toBe(true)
+    })
+
+    describe('rendered', () => {
+      // The only rendered test of this spec: the two children that load their own data are stubbed, the rest is real.
+      @Component({ selector: 'agentos-exchange-shell', template: '' })
+      class ExchangeShellStub {
+        readonly active = input(false)
+        readonly selectable = input(false)
+        readonly referenced = input<unknown>()
+        readonly referenceToggled = output<unknown>()
+        readonly closeRequested = output<void>()
+      }
+
+      @Component({ selector: 'agentos-case-usage', template: '' })
+      class CaseUsageStub {
+        readonly caseId = input<string>()
+        readonly canWrite = input(false)
+        readonly running = input(false)
+      }
+
+      it('anchors user turns only, and scrolls the messages area when a rail dot is clicked', () => {
+        const original = globalThis.EventSource
+        globalThis.EventSource = jest.fn(() =>
+          Object.assign(new EventTarget(), { close: jest.fn() })
+        ) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        TestBed.overrideProvider(VoiceCapabilityStateService, {
+          useValue: { available: signal(false), load: jest.fn() },
+        })
+        TestBed.overrideComponent(CaseChatComponent, {
+          remove: { imports: [ExchangeShellComponent, CaseUsageComponent] },
+          add: { imports: [ExchangeShellStub, CaseUsageStub] },
+        })
+        try {
+          const fixture = TestBed.createComponent(CaseChatComponent)
+          fixture.detectChanges()
+          fixture.componentInstance['events'].set([
+            message('u-1', ActorRoleEnum.USER, 'first question'),
+            message('a-1', ActorRoleEnum.AGENT, 'an answer'),
+            message('u-2', ActorRoleEnum.USER, 'second question'),
+          ])
+          fixture.detectChanges()
+          const host = fixture.nativeElement as HTMLElement
+
+          const anchors = Array.from(host.querySelectorAll('.case-chat__turn[data-message-id]'))
+          expect(anchors.map((turn) => turn.getAttribute('data-message-id'))).toEqual(['u-1', 'u-2'])
+          expect(host.querySelectorAll('.case-chat__turn')).toHaveLength(3)
+
+          const container = host.querySelector<HTMLElement>('.case-chat__messages')!
+          const scrollTo = jest.fn()
+          container.scrollTo = scrollTo as unknown as HTMLElement['scrollTo']
+          const dots = host.querySelectorAll<HTMLButtonElement>('agentos-case-message-rail button')
+          expect(dots).toHaveLength(2)
+          dots[1]!.click()
+
+          // jsdom has no layout: every top is 0, so the target position is 0.
+          expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+          fixture.destroy()
+        } finally {
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
     })
   })
 })
