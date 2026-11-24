@@ -1,4 +1,6 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
+import { CostPauseCardComponent } from '../cost-pause-card/cost-pause-card.component'
+import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { JsonPipe, NgTemplateOutlet } from '@angular/common'
 import { firstValueFrom, Subscription } from 'rxjs'
@@ -157,6 +159,7 @@ function hasActiveSelection(): boolean {
     IconButtonComponent,
     KebabMenuComponent,
     CaseUsageComponent,
+    CostPauseCardComponent,
     JsonPipe,
     NgTemplateOutlet,
     DrawerComponent,
@@ -180,7 +183,7 @@ function hasActiveSelection(): boolean {
     CostPipe,
     TokenCountPipe,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService, CaseRunCostStateService],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -216,6 +219,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly voiceCapability = inject(VoiceCapabilityStateService)
   /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
   protected readonly canAttach = this.exchangeState.canWriteCase
+  /** Run cost of this case, polled once for the usage strip and the cost pause card (component-scoped, see providers). */
+  private readonly runCost = inject(CaseRunCostStateService)
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   /**
    * Files can be staged (picker + drop) only when the composer itself is usable: staging on
    * a terminal case would be a dead end, and staging during an upload batch would be
@@ -510,6 +516,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       afterNextRender(() => this.focusQuestionControls(questionId), { injector: this.injector })
     })
 
+    // The run cost state follows the case on display, its edit rights and whether it runs.
+    effect(() => {
+      const running = this.isRunning() || this.caseStatus() === 'RUNNING'
+      this.runCost.bind(this._activeCaseId() || null, this.canAttach(), running)
+    })
+
+    // A run reaching its cost threshold is a request to the user: move the focus to its first action, once per pause
+    // (rising edge), under the same guards as a pending question.
+    let wasPaused = false
+    effect(() => {
+      const paused = this.runCost.paused()
+      const appeared = paused && !wasPaused
+      wasPaused = paused
+      if (appeared) afterNextRender(() => this.focusCostPauseControls(), { injector: this.injector })
+    })
+
     // Keep the composer sized to its current content, including after a message is sent
     // or an autocomplete selection changes the input programmatically.
     effect(() => {
@@ -785,7 +807,25 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * typing in another field (a non-empty composer draft included).
    */
   private focusQuestionControls(questionId: string): void {
-    if (hasActiveSelection()) return
+    if (!this.mayMoveFocus()) return
+    const target = this.messagesContainer()?.nativeElement.querySelector<HTMLElement>(
+      `[data-question-controls="${questionId}"] button:not(:disabled), [data-question-controls="${questionId}"] input:not(:disabled)`
+    )
+    target?.focus()
+  }
+
+  /** Focus the first enabled action of the cost pause card, under the guards of {@link mayMoveFocus}. */
+  private focusCostPauseControls(): void {
+    if (!this.mayMoveFocus()) return
+    this.host.nativeElement.querySelector<HTMLElement>('[data-cost-pause-controls] button:not(:disabled)')?.focus()
+  }
+
+  /**
+   * Whether a request to the user may take the keyboard focus: not while the user is selecting text, nor typing in
+   * another field (a non-empty composer draft included).
+   */
+  private mayMoveFocus(): boolean {
+    if (hasActiveSelection()) return false
     const active = document.activeElement
     const composer = this.composerInput()?.nativeElement
     const inOtherField =
@@ -793,11 +833,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         active instanceof HTMLTextAreaElement ||
         active instanceof HTMLSelectElement) &&
       (active !== composer || composer.value.trim().length > 0)
-    if (inOtherField) return
-    const target = this.messagesContainer()?.nativeElement.querySelector<HTMLElement>(
-      `[data-question-controls="${questionId}"] button:not(:disabled), [data-question-controls="${questionId}"] input:not(:disabled)`
-    )
-    target?.focus()
+    return !inOtherField
   }
 
   protected trackTimelineItem(_index: number, item: TimelineItem): string {

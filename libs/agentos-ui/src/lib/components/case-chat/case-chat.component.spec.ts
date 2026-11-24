@@ -18,12 +18,14 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
   ThinkingEvent,
+  UsageConfigurationControllerService,
   User,
   VoiceMessageControllerService,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { of, Observable, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
+import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
@@ -99,6 +101,11 @@ describe('CaseChatComponent — submit with attachments', () => {
           useValue: { snapshot: { queryParams: { case: 'c-1', ns: 'ns-1' } }, queryParams: of({}) },
         },
         { provide: ExchangeStateService, useValue: exchangeState },
+        // The chat owns the run cost state, which reads the usage setting when it is created.
+        {
+          provide: UsageConfigurationControllerService,
+          useValue: { getUsageConfiguration: jest.fn().mockReturnValue(of({ enabled: false })) },
+        },
         {
           provide: CaseStateService,
           useValue: {
@@ -762,6 +769,48 @@ describe('CaseChatComponent — submit with attachments', () => {
     // isTerminal is now a computed derived from _sseStatus; drive it via the signal.
     ref.instance['_sseStatus'].set('KILLED')
     expect(ref.instance['canSend']).toBe(false)
+  })
+
+  describe('cost pause in the composer', () => {
+    let ref: ComponentRef<CaseChatComponent>
+    let host: HTMLElement
+
+    beforeEach(() => {
+      ref = makeComponent()
+      host = ref.location.nativeElement as HTMLElement
+      document.body.appendChild(host)
+    })
+
+    afterEach(() => {
+      host.remove()
+      document.body.querySelectorAll('input.other-field').forEach((el) => el.remove())
+    })
+
+    it('owns one run cost state per chat', () => {
+      const other = makeComponent()
+      expect(ref.injector.get(CaseRunCostStateService)).not.toBe(other.injector.get(CaseRunCostStateService))
+    })
+
+    it('moves the focus to the first enabled action of the cost pause card', () => {
+      host.innerHTML =
+        '<div data-cost-pause-controls><button disabled>Disabled</button><button id="go">Continue</button><button>Stop</button></div>'
+
+      ref.instance['focusCostPauseControls']()
+
+      expect(document.activeElement?.id).toBe('go')
+    })
+
+    it('leaves the focus alone while the user types in another field', () => {
+      host.innerHTML = '<div data-cost-pause-controls><button id="go">Continue</button></div>'
+      const other = document.createElement('input')
+      other.className = 'other-field'
+      document.body.appendChild(other)
+      other.focus()
+
+      ref.instance['focusCostPauseControls']()
+
+      expect(document.activeElement).toBe(other)
+    })
   })
 
   describe('case header overflow menu', () => {

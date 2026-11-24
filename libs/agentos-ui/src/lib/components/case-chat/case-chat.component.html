@@ -136,11 +136,7 @@
       }
     </header>
     @if (caseId) {
-      <agentos-case-usage
-        [caseId]="caseId"
-        [canWrite]="canAttach()"
-        [running]="isRunning() || caseStatus() === 'RUNNING'"
-      />
+      <agentos-case-usage />
     }
 
     <div
@@ -426,6 +422,8 @@
       </div>
 
       <div class="case-chat__composer" dsBlueprint>
+        <!-- A run stopped at its cost threshold asks its decision here, like a question to the user. -->
+        <agentos-cost-pause-card />
         @if (autocomplete.atSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
             <agentos-agent-autocomplete
