@@ -772,44 +772,12 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   describe('cost pause in the composer', () => {
-    let ref: ComponentRef<CaseChatComponent>
-    let host: HTMLElement
-
-    beforeEach(() => {
-      ref = makeComponent()
-      host = ref.location.nativeElement as HTMLElement
-      document.body.appendChild(host)
-    })
-
-    afterEach(() => {
-      host.remove()
-      document.body.querySelectorAll('input.other-field').forEach((el) => el.remove())
-    })
-
+    // Placement in the composer and the focus on the pause are covered by case-chat.cost-pause.spec.ts, which renders
+    // the real template: this spec never does.
     it('owns one run cost state per chat', () => {
+      const ref = makeComponent()
       const other = makeComponent()
       expect(ref.injector.get(CaseRunCostStateService)).not.toBe(other.injector.get(CaseRunCostStateService))
-    })
-
-    it('moves the focus to the first enabled action of the cost pause card', () => {
-      host.innerHTML =
-        '<div data-cost-pause-controls><button disabled>Disabled</button><button id="go">Continue</button><button>Stop</button></div>'
-
-      ref.instance['focusCostPauseControls']()
-
-      expect(document.activeElement?.id).toBe('go')
-    })
-
-    it('leaves the focus alone while the user types in another field', () => {
-      host.innerHTML = '<div data-cost-pause-controls><button id="go">Continue</button></div>'
-      const other = document.createElement('input')
-      other.className = 'other-field'
-      document.body.appendChild(other)
-      other.focus()
-
-      ref.instance['focusCostPauseControls']()
-
-      expect(document.activeElement).toBe(other)
     })
   })
 
