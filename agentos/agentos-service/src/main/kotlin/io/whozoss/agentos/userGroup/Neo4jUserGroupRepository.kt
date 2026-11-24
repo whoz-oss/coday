@@ -13,6 +13,30 @@ private data class UserExternalIdGroupRow(
     val groupName: String,
 )
 
+// Sorts and limits the users before resolving their role. The roster is expanded from the group, so a page costs
+// O(roster) db hits, not O(all users): there is no index order to walk from the group side.
+internal fun membersPageCypher(
+    userGroupId: UUID,
+    afterExternalId: String?,
+    limit: Int,
+): Pair<String, Map<String, Any>> =
+    $$"""
+    MATCH (g:UserGroup {id: $userGroupId})
+    WHERE NOT COALESCE(g.removed, false)
+    MATCH (u:User)-[:MEMBER|ADMIN]->(g)
+    WHERE NOT COALESCE(u.removed, false) $${if (afterExternalId != null) "AND u.externalId > \$afterExternalId" else ""}
+    WITH DISTINCT u, g ORDER BY u.externalId ASC LIMIT $limit
+    RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
+           u.firstname AS firstname, u.lastname AS lastname,
+           CASE WHEN EXISTS { (u)-[:ADMIN]->(g) } THEN 'ADMIN' ELSE 'MEMBER' END AS role
+    ORDER BY u.externalId ASC
+    """.trimIndent() to
+        buildMap {
+            put("userGroupId", userGroupId.toString())
+            put("limit", limit)
+            afterExternalId?.let { put("afterExternalId", it) }
+        }
+
 open class Neo4jUserGroupRepository(
     private val neo4jRepository: UserGroupNodeNeo4jRepository,
     private val childLinkService: Neo4jChildLinkService,
@@ -76,6 +100,38 @@ open class Neo4jUserGroupRepository(
             .mappedBy(MEMBER_MAPPER)
             .all()
             .toList()
+
+    override fun findMembersPage(
+        userGroupId: UUID,
+        afterExternalId: String?,
+        limit: Int,
+    ): List<UserGroupMember> {
+        val (cypher, params) = membersPageCypher(userGroupId, afterExternalId, limit)
+        return neo4jClient
+            .query(cypher)
+            .bindAll(params)
+            .fetchAs(UserGroupMember::class.java)
+            .mappedBy(MEMBER_MAPPER)
+            .all()
+            .toList()
+    }
+
+    override fun countMembers(userGroupId: UUID): Long =
+        neo4jClient
+            .query(
+                $$"""
+                    MATCH (g:UserGroup {id: $userGroupId})
+                    WHERE NOT COALESCE(g.removed, false)
+                    MATCH (u:User)-[:MEMBER|ADMIN]->(g)
+                    WHERE NOT COALESCE(u.removed, false)
+                    RETURN count(DISTINCT u) AS memberCount
+                """.trimIndent(),
+            ).bind(userGroupId.toString())
+            .to("userGroupId")
+            .fetchAs(Long::class.java)
+            .mappedBy { _, record -> record["memberCount"].asLong() }
+            .one()
+            .orElse(0L)
 
     private fun querySearchResults(
         whereClause: String,

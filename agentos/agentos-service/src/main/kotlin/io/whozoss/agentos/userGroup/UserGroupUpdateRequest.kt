@@ -18,4 +18,9 @@ data class UserGroupUpdateRequest(
     val adminExternalIds: Set<@NotBlank String> = emptySet(),
     @field:Size(max = 200)
     val agentIds: Set<UUID> = emptySet(),
+    /** Delta mode when either this or [adminExternalIdsToRemove] is non-null; see the SDK request. */
+    @field:Size(max = 200)
+    val adminExternalIdsToAdd: Set<@NotBlank String>? = null,
+    @field:Size(max = 200)
+    val adminExternalIdsToRemove: Set<@NotBlank String>? = null,
 )

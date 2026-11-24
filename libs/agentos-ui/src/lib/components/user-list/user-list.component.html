@@ -2,13 +2,14 @@
   title="Users"
   [hideTitle]="hideTitle()"
   [items]="userItems()"
-  [loading]="isLoading()"
+  [loading]="state.isLoading() && state.users().length === 0"
   [showCreate]="true"
-  emptyMessage="No users found."
+  [emptyMessage]="emptyMessage()"
   cardMinWidth="320px"
-  [pageSize]="100"
+  [disableInternalFilter]="true"
   [itemTemplate]="userItemTpl"
   (createRequested)="navigateToCreate()"
+  (searchChanged)="search$.next($event)"
 >
   @if (namespaces(); as namespaceOptions) {
     <agentos-namespace-select
@@ -21,6 +22,15 @@
   } @else if (showBackButton()) {
     <ds-icon-button toolbar-start icon="arrow_back" title="Back" (action)="goBack()" />
   }
+  <agentos-list-footer
+    list-footer
+    [hasMore]="state.nextCursor() !== null"
+    [loading]="state.isLoading() || state.isLoadingMore()"
+    [error]="state.loadError()"
+    [loaded]="state.users().length"
+    [total]="state.totalCount()"
+    (loadMoreRequested)="state.loadMore()"
+  />
 </ds-entity-list>
 
 <!-- Item template: renders UserItemComponent for each entity-list card slot -->

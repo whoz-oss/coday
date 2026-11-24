@@ -104,6 +104,15 @@
           </ul>
         }
 
+        <agentos-list-footer
+          [hasMore]="nextCursor() !== null"
+          [loading]="isLoadingMoreMembers()"
+          [error]="loadMoreMembersFailed()"
+          [loaded]="baseline().size"
+          [total]="totalMembers()"
+          (loadMoreRequested)="loadMoreMembers()"
+        />
+
         <ds-autocomplete-input
           [dataSource]="memberDataSource"
           placeholder="Add a member…"

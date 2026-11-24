@@ -5,8 +5,14 @@ import {
   NamespaceMembershipControllerService,
   UserGroupControllerService,
 } from '@whoz-oss/agentos-api-client'
-import { of } from 'rxjs'
+import { of, throwError } from 'rxjs'
 import { UserGroupFormComponent } from './user-group-form.component'
+
+const member = (externalId: string, role = 'MEMBER') => ({ externalId, userId: `id-${externalId}`, role })
+const page = (data: ReturnType<typeof member>[], next: string | null, totalCount: number) => ({
+  data,
+  metadata: { next, totalCount },
+})
 
 describe('UserGroupFormComponent agent sharing', () => {
   let fixture: ComponentFixture<UserGroupFormComponent>
@@ -15,7 +21,7 @@ describe('UserGroupFormComponent agent sharing', () => {
   let groups: {
     findByNamespaceIdUserGroup: jest.Mock
     getByIdUserGroup: jest.Mock
-    getMembersUserGroup: jest.Mock
+    listMembersUserGroup: jest.Mock
     createUserGroup: jest.Mock
     updateUserGroup: jest.Mock
   }
@@ -37,7 +43,7 @@ describe('UserGroupFormComponent agent sharing', () => {
       getByIdUserGroup: jest
         .fn()
         .mockImplementation(() => of({ userGroupId: groupId, name: 'Presales', agentIds: existingAgentIds })),
-      getMembersUserGroup: jest.fn().mockReturnValue(of([])),
+      listMembersUserGroup: jest.fn().mockReturnValue(of(page([], null, 0))),
       createUserGroup: jest.fn().mockReturnValue(of({})),
       updateUserGroup: jest.fn().mockReturnValue(of({})),
     }
@@ -113,7 +119,12 @@ describe('UserGroupFormComponent agent sharing', () => {
       expect(groups.createUserGroup).toHaveBeenCalledWith({ ...payload, namespaceId: 'ns-1' })
       expect(groups.updateUserGroup).not.toHaveBeenCalled()
     } else {
-      expect(groups.updateUserGroup).toHaveBeenCalledWith('presales', { ...payload, userExternalIdsToRemove: [] })
+      expect(groups.updateUserGroup).toHaveBeenCalledWith('presales', {
+        ...payload,
+        userExternalIdsToRemove: [],
+        adminExternalIdsToAdd: [],
+        adminExternalIdsToRemove: [],
+      })
       expect(groups.createUserGroup).not.toHaveBeenCalled()
     }
   })
@@ -136,5 +147,122 @@ describe('UserGroupFormComponent agent sharing', () => {
     expect(groups.updateUserGroup).toHaveBeenCalledTimes(1)
     expect(groups.updateUserGroup).toHaveBeenCalledWith('presales', expect.objectContaining({ agentIds: [] }))
     expect(groups.createUserGroup).not.toHaveBeenCalled()
+  })
+
+  it('appends the next page with the cursor, and a failed load-more retries the same cursor', () => {
+    groupId = 'presales'
+    jest.spyOn(console, 'error').mockImplementation()
+    groups.listMembersUserGroup
+      .mockReturnValueOnce(of(page([member('alice')], 'cursor-1', 2)))
+      .mockReturnValueOnce(throwError(() => new Error('boom')))
+      .mockReturnValueOnce(of(page([member('bob')], null, 2)))
+    render()
+    const loadMore = () => (fixture.componentInstance as unknown as { loadMoreMembers: () => void }).loadMoreMembers()
+
+    loadMore()
+    loadMore()
+
+    expect(groups.listMembersUserGroup).toHaveBeenNthCalledWith(2, 'presales', { next: 'cursor-1' })
+    expect(groups.listMembersUserGroup).toHaveBeenNthCalledWith(3, 'presales', { next: 'cursor-1' })
+  })
+
+  it('partial roster edit sends a delta, never the full admin set, and no removals for unloaded members', () => {
+    groupId = 'presales'
+    groups.listMembersUserGroup.mockReturnValue(of(page([member('alice', 'ADMIN'), member('bob')], 'cursor-1', 300)))
+    render()
+    const [alice, bob] = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLSelectElement>('.user-group-form__member-role')
+    )
+    alice!.value = 'MEMBER'
+    alice!.dispatchEvent(new Event('change'))
+    bob!.value = 'ADMIN'
+    bob!.dispatchEvent(new Event('change'))
+    submit()
+
+    expect(groups.updateUserGroup).toHaveBeenCalledWith('presales', {
+      name: 'Presales',
+      agentIds: [],
+      userExternalIdsToAdd: [],
+      userExternalIdsToRemove: [],
+      adminExternalIds: [],
+      adminExternalIdsToAdd: ['bob'],
+      adminExternalIdsToRemove: ['alice'],
+    })
+  })
+
+  describe('member picked while other pages are not loaded', () => {
+    const pick = (externalId: string) => {
+      const form = fixture.componentInstance as unknown as {
+        onMemberSelected: (item: { id: string; name: string }) => void
+      }
+      form.onMemberSelected({ id: externalId, name: externalId })
+      fixture.detectChanges()
+    }
+    const selects = () =>
+      Array.from(
+        (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLSelectElement>('.user-group-form__member-role')
+      )
+    const loadMore = () => (fixture.componentInstance as unknown as { loadMoreMembers: () => void }).loadMoreMembers()
+
+    beforeEach(() => {
+      groupId = 'presales'
+      groups.listMembersUserGroup.mockReturnValue(of(page([member('alice', 'ADMIN')], 'cursor-1', 300)))
+      render()
+    })
+
+    it('demotes an unloaded server admin added as MEMBER', () => {
+      pick('zed')
+      submit()
+
+      expect(groups.updateUserGroup).toHaveBeenCalledWith(
+        'presales',
+        expect.objectContaining({
+          userExternalIdsToAdd: ['zed'],
+          adminExternalIdsToAdd: [],
+          adminExternalIdsToRemove: ['zed'],
+        })
+      )
+    })
+
+    it('promotes it when picked as ADMIN', () => {
+      pick('zed')
+      const zed = selects()[1]!
+      zed.value = 'ADMIN'
+      zed.dispatchEvent(new Event('change'))
+      submit()
+
+      expect(groups.updateUserGroup).toHaveBeenCalledWith(
+        'presales',
+        expect.objectContaining({ adminExternalIdsToAdd: ['zed'], adminExternalIdsToRemove: [] })
+      )
+    })
+
+    it('keeps the chosen role when the page holding that member loads later', () => {
+      pick('zed')
+      groups.listMembersUserGroup.mockReturnValue(of(page([member('zed', 'ADMIN')], null, 300)))
+      loadMore()
+      fixture.detectChanges()
+      submit()
+
+      expect(selects().map((select) => select.value)).toEqual(['ADMIN', 'MEMBER'])
+      expect(groups.updateUserGroup).toHaveBeenCalledWith(
+        'presales',
+        expect.objectContaining({
+          userExternalIdsToAdd: [],
+          adminExternalIdsToAdd: [],
+          adminExternalIdsToRemove: ['zed'],
+        })
+      )
+    })
+
+    it('leaves loaded members unchanged', () => {
+      pick('zed')
+      submit()
+
+      expect(groups.updateUserGroup).toHaveBeenCalledWith(
+        'presales',
+        expect.objectContaining({ adminExternalIdsToRemove: ['zed'], userExternalIdsToRemove: [] })
+      )
+    })
   })
 })

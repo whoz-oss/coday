@@ -62,6 +62,7 @@ model/case-workspace-view.ts
 model/case.ts
 model/confirmation-resolved-event.ts
 model/continue-cost-request.ts
+model/cursor-page-request.ts
 model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts
@@ -90,6 +91,7 @@ model/integration-type-descriptor.ts
 model/intention-generated-event.ts
 model/list-auth-setting200-response-inner.ts
 model/list-by-user-in-namespace-request.ts
+model/list-metadata.ts
 model/llm-usage.ts
 model/loop-config-generation-request.ts
 model/loop-config-generation-result.ts
@@ -153,11 +155,15 @@ model/usage-configuration.ts
 model/usage-record.ts
 model/user-group-create-request.ts
 model/user-group-member.ts
+model/user-group-members-list-response.ts
 model/user-group-search-result.ts
 model/user-group-summary.ts
 model/user-group-update-request.ts
 model/user-membership-role.ts
 model/user.ts
+model/users-list-filters.ts
+model/users-list-request.ts
+model/users-list-response.ts
 model/warn-event.ts
 model/workspace-retry-request.ts
 param.ts
