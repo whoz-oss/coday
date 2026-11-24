@@ -164,12 +164,12 @@ describe('ConfigChangeCardComponent', () => {
     expect(root.textContent).toContain('Deployed on Copy so its members can use it.')
   })
 
-  it('folds the fields of each step and gathers the secrets next to Apply, saying why it is disabled', () => {
+  it('opens each step, lets the user fold it, and gathers the secrets next to Apply, saying why it is disabled', () => {
     const root = render(plan())
 
     const steps = Array.from(root.querySelectorAll('details'))
     expect(steps.length).toBe(2)
-    expect(steps.every((step) => !step.open)).toBe(true)
+    expect(steps.every((step) => step.open)).toBe(true)
     expect(root.querySelector('fieldset')?.textContent).toContain('Acme API key')
     expect(root.textContent).toContain('Secret needed')
     expect(root.textContent).toContain('Type the Acme API key above to apply.')
@@ -181,6 +181,90 @@ describe('ConfigChangeCardComponent', () => {
 
     expect(root.textContent).not.toContain('Type the Acme API key above to apply.')
     expect(root.textContent).not.toContain('Secret needed')
+  })
+
+  it('keeps a step collapsed by the user collapsed after a refresh of the view', () => {
+    const root = render(plan())
+    const summary = root.querySelector('details summary') as HTMLElement
+
+    summary.click()
+    fixture.detectChanges()
+    expect((root.querySelector('details') as HTMLDetailsElement).open).toBe(false)
+    ;(fixture.componentInstance as unknown as { load: () => void }).load()
+    fixture.detectChanges()
+
+    const steps = Array.from(root.querySelectorAll('details'))
+    expect(steps[0].open).toBe(false)
+    expect(steps[1].open).toBe(true)
+  })
+
+  describe('diff of an update', () => {
+    const update = (change: Record<string, unknown>): ConfigChangeViewDto =>
+      plan({
+        operations: [
+          {
+            ref: 'dev',
+            order: 1,
+            kind: 'AGENT',
+            action: 'UPDATE',
+            name: 'dev',
+            affects: 'NAMESPACE_MEMBERS',
+            changes: [{ path: '/instructions', remove: false, ...change }],
+            secretInputs: [],
+            status: 'PENDING',
+          },
+        ],
+      } as Partial<ConfigChangeViewDto>)
+
+    const texts = (root: HTMLElement, selector: string): (string | undefined)[] =>
+      Array.from(root.querySelectorAll(selector)).map(
+        (el) => el.querySelector('.config-change__line-text')?.textContent
+      )
+
+    it('shows the old value as a removed line and the new one as an added line', () => {
+      const root = render(update({ before: 'old', after: 'new' }))
+
+      expect(texts(root, '.config-change__line--removed')).toEqual(['old'])
+      expect(texts(root, '.config-change__line--added')).toEqual(['new'])
+    })
+
+    it('keeps the context around one changed line and collapses the rest', () => {
+      const lines = (changed: string) =>
+        Array.from({ length: 20 }, (_, i) => (i === 9 ? changed : `line ${i + 1}`)).join('\n')
+      const root = render(update({ before: lines('old'), after: lines('new') }))
+
+      expect(root.querySelectorAll('.config-change__line--context').length).toBe(6)
+      const gaps = Array.from(root.querySelectorAll('.config-change__line--gap')).map((el) => el.textContent?.trim())
+      expect(gaps).toEqual(['… 6 unchanged lines', '… 7 unchanged lines'])
+    })
+
+    it('shows a removal as removed lines only, with its badge', () => {
+      const root = render(update({ before: 'a\nb', remove: true }))
+
+      expect(texts(root, '.config-change__line--removed')).toEqual(['a', 'b'])
+      expect(root.querySelector('.config-change__line--added')).toBeNull()
+      expect(root.querySelector('.config-change__change .config-change__badge')?.textContent).toContain('removed')
+    })
+
+    it('shows a value with nothing before as added lines only', () => {
+      const root = render(update({ after: 'a\nb' }))
+
+      expect(texts(root, '.config-change__line--added')).toEqual(['a', 'b'])
+      expect(root.querySelector('.config-change__line--removed')).toBeNull()
+    })
+
+    it('reads an integration before like its after', () => {
+      const root = render(update({ path: '/integrations/jira', before: ['search', 'read'], after: [] }))
+
+      expect(texts(root, '.config-change__line--removed')).toEqual(['only search, read'])
+      expect(texts(root, '.config-change__line--added')).toEqual(['no tools'])
+    })
+
+    it('keeps the plain dash when there is nothing to compare', () => {
+      const root = render(update({ remove: true }))
+
+      expect(texts(root, '.config-change__line')).toEqual(['—'])
+    })
   })
 
   it('shows a reference to another step as that step, not as JSON', () => {

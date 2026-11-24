@@ -62,8 +62,10 @@ sealed interface CapabilityOutcome {
         val observedHead: String? = null,
         /** Stable hash of the canonical root path for cross-log correlation. */
         val rootIdentity: String? = null,
+        val observedHeadAfter: String? = null,
+        val workspaceStable: Boolean = true,
     ) : CapabilityOutcome {
-        val verdict: Boolean get() = exitCode == 0 && !timedOut
+        val verdict: Boolean get() = exitCode == 0 && !timedOut && workspaceStable
     }
 
     /**

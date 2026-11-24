@@ -1,5 +1,6 @@
 package io.whozoss.factory.agentattempt.service
 
+import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseEventView
@@ -83,7 +84,7 @@ class BridgeRecoveryWorker(
     private val evidenceRepository: WorkflowEvidenceRepository? = null,
     private val sseHub: WorkflowSseHub? = null,
     private val resultService: AgentStepResultService? = null,
-    private val observationTimeoutMs: Long = DEFAULT_OBSERVATION_TIMEOUT_MS,
+    private val observationTimeoutMs: Long? = null,
     private val leaseTtlMs: Long = DEFAULT_LEASE_TTL_MS,
     private val workflowRepository: WorkflowRepository? = null,
     private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
@@ -93,7 +94,11 @@ class BridgeRecoveryWorker(
     private val capabilityExecutionService: CapabilityExecutionService? = null,
     private val sessionRunSubmissionService: SessionRunSubmissionService? = null,
     private val agentOsProxyClient: AgentOsProxyClient? = null,
+    private val adapterProperties: AgentOsAdapterProperties = AgentOsAdapterProperties(),
 ) {
+
+    private val effectiveObservationTimeoutMs: Long
+        get() = observationTimeoutMs ?: adapterProperties.observationTimeoutMs
 
     private val logger = KotlinLogging.logger {}
     private var terminalReleaseCursor: String? = null
@@ -386,7 +391,7 @@ class BridgeRecoveryWorker(
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         val observation = runCatching {
-            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), observationTimeoutMs)
+            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), effectiveObservationTimeoutMs)
         }.getOrElse {
             AgentOsObservationResult(
                 AgentOsExecutionVerdict.Indeterminate(
@@ -402,7 +407,6 @@ class BridgeRecoveryWorker(
     private fun redrive(candidate: ScopedDurableAgentAttempt): Outcome {
         val attempt = candidate.attempt
         val brief = attempt.brief ?: return Outcome.SKIPPED
-        val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
         // The binding carries the full trusted identity of the attempt —
         // including the Lot B case-family parent — so a re-driven turn lands in
         // the exact same case family it was originally dispatched into.
@@ -412,10 +416,19 @@ class BridgeRecoveryWorker(
             // Recovery cannot prove that an unknown workflow is autonomous; never create or redrive.
             return Outcome.SKIPPED
         }
+        val externalUserId = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef)
+        val parentRun = (instance.instance["runId"] as? String)
+            ?: ((instance.instance["relations"] as? Map<*, *>)?.get("runId") as? String)
+        val adopted = workEnvironmentRepository?.findLatestByWorkflowId(candidate.scope, instance.workflowId)?.envType ==
+            io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService.ENV_TYPE
+        if ((!parentRun.isNullOrBlank() || adopted) && externalUserId.isNullOrBlank()) {
+            logger.warn { "Recovery refused before claim: authenticated workspace actor missing for ${attempt.attemptId}" }
+            return Outcome.SKIPPED
+        }
+        val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
         acquireRecoveryOccupancy(candidate)
         val boundAttempt = attempts.find(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)
             ?: error("Recovery attempt disappeared after occupancy binding")
-        val externalUserId = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef)
         val binding = TrustedCaseBinding(
             caseId = attempt.caseId,
             attemptId = attempt.attemptId,
@@ -446,7 +459,7 @@ class BridgeRecoveryWorker(
         }
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         val observation = runCatching {
-            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), observationTimeoutMs)
+            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), effectiveObservationTimeoutMs)
         }.getOrElse {
             AgentOsObservationResult(
                 AgentOsExecutionVerdict.Indeterminate(
@@ -466,8 +479,9 @@ class BridgeRecoveryWorker(
         val instance = workflowRepository?.findInstance(candidate.scope, attempt.namespaceId, attempt.workflowId) ?: return
         val parentRun = (instance.instance["runId"] as? String)
             ?: ((instance.instance["relations"] as? Map<*, *>)?.get("runId") as? String)
-            ?: return
-        if (parentRun.isBlank()) return
+        val standalone = workEnvironmentRepository?.findLatestByWorkflowId(candidate.scope, instance.workflowId)?.envType ==
+            io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService.ENV_TYPE
+        if (parentRun.isNullOrBlank() && !standalone) return
         val service = worktreeOccupancyService
             ?: error("Worktree execution occupancy service is required for parent Run recovery")
         val environment = attempt.environmentRef
@@ -635,14 +649,8 @@ class BridgeRecoveryWorker(
         environmentRef: String?,
     ): String? {
         if (instance != null) {
-            val controllerExecution = instance.instance["controllerExecution"] as? Map<*, *>
-            (controllerExecution?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
             val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
             (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }?.let { return it }
-        }
-        if (!environmentRef.isNullOrBlank()) {
-            val env = workEnvironmentRepository?.findByEnvironmentId(scope, environmentRef)
-            env?.createdBy?.takeIf { it.isNotBlank() }?.let { return it }
         }
         return null
     }
@@ -655,7 +663,7 @@ class BridgeRecoveryWorker(
         )
 
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
-        const val DEFAULT_OBSERVATION_TIMEOUT_MS = 600_000L
+        const val DEFAULT_OBSERVATION_TIMEOUT_MS = AgentOsAdapterProperties.DEFAULT_OBSERVATION_TIMEOUT_MS
         const val DEFAULT_LEASE_TTL_MS = 3_600_000L
         private const val AGENTOS_RUNTIME_ID = "agentos-primary"
         private const val TERMINAL_RELEASE_SCAN_PAGE = 256

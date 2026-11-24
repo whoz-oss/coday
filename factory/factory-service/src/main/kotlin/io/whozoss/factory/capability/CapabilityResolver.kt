@@ -6,6 +6,7 @@ import io.whozoss.factory.verification.manifest.VerificationManifestException
 import io.whozoss.factory.verification.manifest.VerificationRunResult
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
+import io.whozoss.factory.workflow.domain.WorkflowTicket
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -72,8 +73,7 @@ class CapabilityResolver(
                 ?: return CapabilityOutcome.CodeRefused(step.id, PREPARE_WORK_BRANCH, BRANCH_PREPARATION_FAILED, "Workflow identity is required for branch preparation.")
             val scope = tenantScope
                 ?: return CapabilityOutcome.CodeRefused(step.id, PREPARE_WORK_BRANCH, BRANCH_PREPARATION_FAILED, "Tenant scope is required for environment binding.")
-            val branchComponent = sanitizeBranchComponent(trustedTicket?.takeIf { TRUSTED_TICKET.matches(it) } ?: stableWorkflowId)
-            val branchName = "factory/$branchComponent"
+            val branchName = WorkflowTicket.branchName(trustedTicket = trustedTicket, workflowId = stableWorkflowId)
             return when (val result = preparation.prepare(scope, stableWorkflowId, branchName)) {
                 is BranchPreparationResult.Prepared -> result.facts.let { facts -> CapabilityOutcome.BranchPrepared(
                     step.id, facts.branch ?: branchName, facts.startingHead ?: "", "environment:${facts.environmentId}",
@@ -88,8 +88,10 @@ class CapabilityResolver(
                 ) }
             }
         }
+        val headBefore = observedGitHead(repoRoot)
+        val branchBefore = observedGitBranch(repoRoot)
         when (val central = frontVerificationRegistry?.resolve(step.responsibility.name ?: "", repoRoot, modifiedFiles)) {
-            is FactoryFrontVerificationResolution.Executed -> return central.run.toOutcome(step.id, repoRoot)
+            is FactoryFrontVerificationResolution.Executed -> return central.run.toOutcome(step.id, repoRoot, headBefore, branchBefore)
             is FactoryFrontVerificationResolution.Refused -> return CapabilityOutcome.CodeRefused(
                 stepId = step.id,
                 verificationName = step.responsibility.name ?: "",
@@ -115,37 +117,43 @@ class CapabilityResolver(
                 code = run.code,
                 message = "Verification '${run.name}' is not declared in factory/verification.json.",
             )
-            is VerificationRunResult.Executed -> CapabilityOutcome.CodeExecuted(
-                stepId = step.id,
-                verificationName = run.name,
-                command = run.command,
-                timeoutMs = run.timeoutMs,
-                exitCode = run.exitCode,
-                timedOut = run.timedOut,
-                durationMs = run.durationMs,
-                stdout = run.stdout,
-                stderr = run.stderr,
-                cwd = observedRoot(repoRoot),
-                observedHead = observedGitHead(repoRoot),
-                rootIdentity = rootIdentity(repoRoot),
-            )
+            is VerificationRunResult.Executed -> run.toOutcome(step.id, repoRoot, headBefore, branchBefore)
         }
     }
 
-    private fun VerificationRunResult.Executed.toOutcome(stepId: String, repoRoot: Path) = CapabilityOutcome.CodeExecuted(
-        stepId = stepId,
-        verificationName = name,
-        command = command,
-        timeoutMs = timeoutMs,
-        exitCode = exitCode,
-        timedOut = timedOut,
-        durationMs = durationMs,
-        stdout = stdout,
-        stderr = stderr,
-        cwd = observedRoot(repoRoot),
-        observedHead = observedGitHead(repoRoot),
-        rootIdentity = rootIdentity(repoRoot),
-    )
+    private fun observedGitBranch(repoRoot: Path): String? = runCatching {
+        val dotGit = repoRoot.resolve(".git")
+        val gitDir = if (Files.isDirectory(dotGit)) dotGit else {
+            val line = Files.readString(dotGit).trim()
+            check(line.startsWith("gitdir:"))
+            repoRoot.resolve(line.removePrefix("gitdir:").trim()).normalize()
+        }
+        Files.readString(gitDir.resolve("HEAD")).trim()
+    }.getOrNull()
+
+    private fun VerificationRunResult.Executed.toOutcome(
+        stepId: String, repoRoot: Path, headBefore: String?, branchBefore: String?,
+    ): CapabilityOutcome.CodeExecuted {
+        val headAfter = observedGitHead(repoRoot)
+        val branchAfter = observedGitBranch(repoRoot)
+        return CapabilityOutcome.CodeExecuted(
+            stepId = stepId,
+            verificationName = name,
+            command = command,
+            timeoutMs = timeoutMs,
+            exitCode = exitCode,
+            timedOut = timedOut,
+            durationMs = durationMs,
+            stdout = stdout,
+            stderr = stderr,
+            cwd = observedRoot(repoRoot),
+            observedHead = headBefore,
+            rootIdentity = rootIdentity(repoRoot),
+            observedHeadAfter = headAfter,
+            workspaceStable = headBefore == headAfter && branchBefore == branchAfter &&
+                (!Files.exists(repoRoot.resolve(".git")) || (headBefore != null && branchBefore != null)),
+        )
+    }
 
     private fun observedRoot(repoRoot: Path): String =
         runCatching { repoRoot.toRealPath().toString() }.getOrElse { repoRoot.toAbsolutePath().normalize().toString() }
@@ -234,10 +242,7 @@ class CapabilityResolver(
         }
     }
 
-    private fun sanitizeBranchComponent(value: String): String = value.replace(Regex("[^A-Za-z0-9._-]"), "-").trim('-', '.').take(100)
-
     private companion object {
-        val TRUSTED_TICKET = Regex("^[A-Z][A-Z0-9]{1,15}-[0-9]{1,12}$")
         val GIT_SHA = Regex("^[0-9a-fA-F]{40}$")
     }
 }

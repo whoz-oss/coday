@@ -82,7 +82,7 @@ class AgentStepResultService(
         scope: TenantScope,
         identity: AgentStepResultCapabilityIdentity,
         now: Instant = Instant.now(),
-        ttlSeconds: Long = 15L * 60L,
+        ttlSeconds: Long = AgentStepResultLimits.CAPABILITY_TTL_SECONDS,
     ): IssuedCapability = results.issue(scope, identity, now, ttlSeconds)
 
     /**

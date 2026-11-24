@@ -463,7 +463,7 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `start creates a run without any runtime case attribution and is idempotent`() {
         registerDefinition()
-        val body = mapOf("workflowType" to "wf-svc", "title" to "From service")
+        val body = mapOf("workflowType" to "wf-svc", "title" to "From service", "ticket" to "#1731")
 
         val first = post("$base/workflows", body, key = "start-key-1")
         val replay = post("$base/workflows", body, key = "start-key-1")

@@ -72,8 +72,8 @@ paths:
                             changeType: { type: string, enum: [feature, bugfix] }
                             ticket:
                               type: string
-                              pattern: '^(#[1-9][0-9]*|[A-Z][A-Z0-9]{1,15}-[1-9][0-9]*)$'
-                              description: GitHub issue shorthand such as #123 or Jira-style key such as ABC-123.
+                              pattern: '^((#|[A-Za-z0-9][A-Za-z0-9._-]{0,38}/[A-Za-z0-9._-]{1,48}#)?[1-9][0-9]{0,11}|[A-Z][A-Z0-9]{1,15}-[1-9][0-9]{0,11})$'
+                              description: GitHub issue reference such as #123, 123, owner/repo#123, or Jira-style key such as ABC-123.
                             title: { type: string, minLength: 1, maxLength: 200 }
                             baseBranch: { type: string, minLength: 1, maxLength: 255 }
                     artifacts:

@@ -38,7 +38,7 @@ private val TRUSTED_EXECUTION_FIELDS = setOf("allowedPaths")
 
 /** Allowed keys of the optional top-level `execution` block. */
 private val EXECUTION_FIELDS = setOf("plugin")
-private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn", "entry", "mission", "exit", "decision", "join")
+private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn", "entry", "mission", "exit", "decision", "join", "outcomeTransitions")
 private val RESPONSIBILITY_FIELDS = setOf("kind", "name")
 
 object WorkflowDefinitionValidator {
@@ -206,6 +206,10 @@ object WorkflowDefinitionValidator {
                     contract = contract,
                     decision = decision,
                     join = join,
+                    outcomeTransitions = if (step.containsKey("outcomeTransitions")) {
+                        OutcomeTransitions.parse(step["outcomeTransitions"])
+                            ?: return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "$base.outcomeTransitions")
+                    } else null,
                 ),
             )
         }

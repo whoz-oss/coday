@@ -39,6 +39,7 @@ data class WorkflowDecision(val mode: String, val routes: List<WorkflowRoute>) {
 fun WorkflowStepDefinition.routingJson(): Map<String, Any?> = buildMap {
     decision?.let { put("decision", it.toJson()) }
     join?.let { put("join", it) }
+    outcomeTransitions?.let { put("outcomeTransitions", it.toJson()) }
 }
 
 object WorkflowRouting {

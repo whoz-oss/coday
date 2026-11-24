@@ -249,7 +249,7 @@ class AgentStepResultValidationTest {
 
     @Test
     fun `accepts GitHub and generic Jira ticket identifiers`() {
-        listOf("#1234", "WZ-123", "ABC-123").forEach { ticket ->
+        listOf("#1234", "1234", "whoz-oss/coday#1234", "WZ-123", "ABC-123").forEach { ticket ->
             val node = json(
                 """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[],"deliveryAnalysis":{"changeType":"bugfix","ticket":"$ticket","title":"title"}}}""",
             )
@@ -263,9 +263,9 @@ class AgentStepResultValidationTest {
         val invalid = listOf(
             """{"changeType":"chore","ticket":"WZ-33157","title":"title"}""",
             """{"changeType":"bugfix","ticket":"#0","title":"title"}""",
+            """{"changeType":"bugfix","ticket":"0","title":"title"}""",
             """{"changeType":"bugfix","ticket":"ABC-0","title":"title"}""",
             """{"changeType":"bugfix","ticket":"abc-123","title":"title"}""",
-            """{"changeType":"bugfix","ticket":"1234","title":"title"}""",
             """{"changeType":"bugfix","ticket":"#123x","title":"title"}""",
             """{"changeType":"bugfix","ticket":33157,"title":"title"}""",
             """{"changeType":"bugfix","ticket":"WZ-33157","title":""}""",

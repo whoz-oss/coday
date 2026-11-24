@@ -1,4 +1,11 @@
-<ds-drawer position="end" [(open)]="exchangeOpen" drawerWidth="400px" [mobileFullWidth]="true">
+<ds-drawer
+  position="end"
+  [(open)]="exchangeOpen"
+  [drawerWidth]="drawerWidth.width() + 'px'"
+  [mobileFullWidth]="true"
+  [resizable]="true"
+  (widthChange)="drawerWidth.setWidth($event)"
+>
   <div dsDrawerSide class="case-chat__drawer-side">
     @if (drawerPanel() === 'members') {
       <agentos-case-members [caseId]="caseId" [namespaceId]="namespaceId" (closeRequested)="exchangeOpen.set(false)" />
@@ -349,141 +356,53 @@
                 }
               } @else if (item.kind === 'delegation') {
                 <agentos-delegation-card [delegation]="item.delegation" [namespaceId]="namespaceId" />
-              } @else {
+              } @else if (item.kind === 'toolGroup') {
+                @let summary = toolGroupSummary(item.calls);
                 <div
-                  class="case-chat__tool-call"
-                  [class.case-chat__tool-call--pending]="!item.call.response"
-                  [class.case-chat__tool-call--success]="item.call.response?.success === true"
-                  [class.case-chat__tool-call--error]="item.call.response?.success === false"
+                  class="case-chat__tool-group"
+                  [class.case-chat__tool-group--running]="summary.pending > 0"
+                  [class.case-chat__tool-group--failed]="summary.pending === 0 && summary.failed > 0"
                 >
                   <button
                     type="button"
-                    class="case-chat__tool-call-header"
-                    (click)="toggleToolCall(item.call.requestId)"
-                    [attr.aria-expanded]="isToolCallExpanded(item.call.requestId)"
+                    class="case-chat__tool-group-header"
+                    (click)="toggleToolGroup(item.groupId)"
+                    [attr.aria-expanded]="isToolGroupExpanded(item.groupId)"
                   >
-                    <span class="case-chat__tool-call-icon">
-                      @if (!item.call.response) {
-                        ⏳
-                      } @else if (item.call.response.success) {
-                        ✅
+                    <span class="case-chat__tool-call-icon" aria-hidden="true">
+                      @if (summary.pending > 0) {
+                        <span class="case-chat__tool-call-spinner"></span>
+                      } @else if (summary.failed > 0) {
+                        <span class="material-icons case-chat__tool-call-icon--error">error</span>
                       } @else {
-                        ❌
+                        <span class="material-icons case-chat__tool-call-icon--success">check_circle</span>
                       }
                     </span>
-                    <span class="case-chat__tool-call-name">{{ item.call.toolName }}</span>
-                    <span class="case-chat__tool-call-status">
-                      @if (!item.call.response) {
-                        Running
-                      } @else if (item.call.response.success) {
-                        Completed
-                      } @else {
-                        Failed
+                    <span class="case-chat__tool-group-label">{{ summary.label }}</span>
+                    <span class="case-chat__tool-group-count">
+                      {{ summary.total }} tools
+                      @if (summary.failed > 0) {
+                        · {{ summary.failed }} failed
                       }
                     </span>
-                    @if (item.call.timestamp) {
-                      <time
-                        class="case-chat__tool-call-time"
-                        [attr.datetime]="item.call.timestamp"
-                        [title]="formatMessageTimestampTitle(item.call.timestamp)"
-                        >{{ formatMessageTime(item.call.timestamp) }}</time
-                      >
+                    @if (summary.detail) {
+                      <span class="case-chat__tool-group-detail">{{ summary.detail }}</span>
                     }
                     <span class="case-chat__tool-call-chevron">{{
-                      isToolCallExpanded(item.call.requestId) ? '▼' : '▶'
+                      isToolGroupExpanded(item.groupId) ? '▼' : '▶'
                     }}</span>
                   </button>
 
-                  @if (isToolCallExpanded(item.call.requestId)) {
-                    <div class="case-chat__tool-call-output">
-                      @if (showTechnical()) {
-                        <div class="case-chat__tool-call-section case-chat__enrichment-section">
-                          <span class="case-chat__tool-call-label">Enrichment phases</span>
-                          @if (item.call.enrichmentPhases?.length) {
-                            @for (phase of item.call.enrichmentPhases; track phase.phaseIndex) {
-                              <div
-                                class="case-chat__enrichment-phase"
-                                [class.case-chat__enrichment-phase--failed]="!phase.success"
-                              >
-                                <div class="case-chat__enrichment-phase-header">
-                                  <span class="case-chat__enrichment-phase-index">Phase {{ phase.phaseIndex }}</span>
-                                  <span class="case-chat__enrichment-phase-status">{{
-                                    phase.success ? '✅' : '❌'
-                                  }}</span>
-                                </div>
-                                <div class="case-chat__enrichment-phase-row">
-                                  <span class="case-chat__enrichment-phase-label">Prompt</span>
-                                  <pre>{{ phase.prompt }}</pre>
-                                </div>
-                                <div class="case-chat__enrichment-phase-row">
-                                  <span class="case-chat__enrichment-phase-label">LLM output</span>
-                                  <pre>{{ phase.llmOutput }}</pre>
-                                </div>
-                                @if (phase.enrichmentContent) {
-                                  <div class="case-chat__enrichment-phase-row">
-                                    <span class="case-chat__enrichment-phase-label">Enrichment content</span>
-                                    <pre>{{ phase.enrichmentContent }}</pre>
-                                  </div>
-                                }
-                              </div>
-                            }
-                          } @else {
-                            <span class="case-chat__tool-call-empty">No enrichment trace was provided.</span>
-                          }
-                        </div>
-                      }
-                      @if (formatToolArguments(item.call.args); as args) {
-                        <div class="case-chat__tool-call-section">
-                          <span class="case-chat__tool-call-label">
-                            Arguments
-                            @if (!isStructuredPayload(item.call.args)) {
-                              · Text
-                            }
-                          </span>
-                          <pre [class.case-chat__tool-call-code--text]="!isStructuredPayload(item.call.args)">{{
-                            args
-                          }}</pre>
-                        </div>
-                      }
-                      @if (showTechnical() && formatToolDuration(item.call); as duration) {
-                        <div class="case-chat__tool-call-section">
-                          <span class="case-chat__tool-call-label">Duration</span>
-                          <span>{{ duration }}</span>
-                        </div>
-                      }
-                      <div class="case-chat__tool-call-section">
-                        <span class="case-chat__tool-call-label">
-                          {{ item.call.response?.success === false ? 'Error' : 'Output' }}
-                          @if (!isToolOutputStructured(item.call)) {
-                            · Text
-                          }
-                        </span>
-                        @if (extractToolOutput(item.call); as output) {
-                          <pre [class.case-chat__tool-call-code--text]="!isToolOutputStructured(item.call)">{{
-                            output
-                          }}</pre>
-                        } @else if (!item.call.response) {
-                          <span class="case-chat__tool-call-pending">Running…</span>
-                        } @else {
-                          <span class="case-chat__tool-call-empty">No output</span>
-                        }
-                      </div>
-                      @if (showTechnical() && formatToolMetadata(item.call); as metadata) {
-                        <div class="case-chat__tool-call-section">
-                          <span class="case-chat__tool-call-label">
-                            Metadata
-                            @if (!isToolMetadataStructured(item.call)) {
-                              · Text
-                            }
-                          </span>
-                          <pre [class.case-chat__tool-call-code--text]="!isToolMetadataStructured(item.call)">{{
-                            metadata
-                          }}</pre>
-                        </div>
+                  @if (isToolGroupExpanded(item.groupId)) {
+                    <div class="case-chat__tool-group-calls">
+                      @for (call of item.calls; track call.requestId) {
+                        <ng-container *ngTemplateOutlet="toolCallCard; context: { $implicit: call }" />
                       }
                     </div>
                   }
                 </div>
+              } @else {
+                <ng-container *ngTemplateOutlet="toolCallCard; context: { $implicit: item.call }" />
               }
             }
           }
@@ -639,6 +558,133 @@
     </div>
   </div>
 </ds-drawer>
+
+<!-- One tool call: standalone in the timeline, or inside an expanded group. -->
+<ng-template #toolCallCard let-call>
+  <div
+    class="case-chat__tool-call"
+    [class.case-chat__tool-call--pending]="!call.response"
+    [class.case-chat__tool-call--success]="call.response?.success === true"
+    [class.case-chat__tool-call--error]="call.response?.success === false"
+  >
+    <button
+      type="button"
+      class="case-chat__tool-call-header"
+      (click)="toggleToolCall(call.requestId)"
+      [attr.aria-expanded]="isToolCallExpanded(call.requestId)"
+      [title]="call.toolName"
+    >
+      <span class="case-chat__tool-call-icon" aria-hidden="true">
+        @if (!call.response) {
+          <span class="case-chat__tool-call-spinner"></span>
+        } @else if (call.response.success) {
+          <span class="material-icons case-chat__tool-call-icon--success">check_circle</span>
+        } @else {
+          <span class="material-icons case-chat__tool-call-icon--error">error</span>
+        }
+      </span>
+      <span class="case-chat__tool-call-name">{{ toolCallLabel(call) }}</span>
+      <span class="case-chat__tool-call-raw-name">{{ call.toolName }}</span>
+      <span class="case-chat__tool-call-status">
+        @if (!call.response) {
+          Running
+        } @else if (call.response.success) {
+          Completed
+        } @else {
+          Failed
+        }
+      </span>
+      @if (call.timestamp) {
+        <time
+          class="case-chat__tool-call-time"
+          [attr.datetime]="call.timestamp"
+          [title]="formatMessageTimestampTitle(call.timestamp)"
+          >{{ formatMessageTime(call.timestamp) }}</time
+        >
+      }
+      <span class="case-chat__tool-call-chevron">{{ isToolCallExpanded(call.requestId) ? '▼' : '▶' }}</span>
+    </button>
+
+    @if (isToolCallExpanded(call.requestId)) {
+      <div class="case-chat__tool-call-output">
+        @if (showTechnical()) {
+          <div class="case-chat__tool-call-section case-chat__enrichment-section">
+            <span class="case-chat__tool-call-label">Enrichment phases</span>
+            @if (call.enrichmentPhases?.length) {
+              @for (phase of call.enrichmentPhases; track phase.phaseIndex) {
+                <div class="case-chat__enrichment-phase" [class.case-chat__enrichment-phase--failed]="!phase.success">
+                  <div class="case-chat__enrichment-phase-header">
+                    <span class="case-chat__enrichment-phase-index">Phase {{ phase.phaseIndex }}</span>
+                    <span class="case-chat__enrichment-phase-status">{{ phase.success ? '✅' : '❌' }}</span>
+                  </div>
+                  <div class="case-chat__enrichment-phase-row">
+                    <span class="case-chat__enrichment-phase-label">Prompt</span>
+                    <pre>{{ phase.prompt }}</pre>
+                  </div>
+                  <div class="case-chat__enrichment-phase-row">
+                    <span class="case-chat__enrichment-phase-label">LLM output</span>
+                    <pre>{{ phase.llmOutput }}</pre>
+                  </div>
+                  @if (phase.enrichmentContent) {
+                    <div class="case-chat__enrichment-phase-row">
+                      <span class="case-chat__enrichment-phase-label">Enrichment content</span>
+                      <pre>{{ phase.enrichmentContent }}</pre>
+                    </div>
+                  }
+                </div>
+              }
+            } @else {
+              <span class="case-chat__tool-call-empty">No enrichment trace was provided.</span>
+            }
+          </div>
+        }
+        @if (formatToolArguments(call.args); as args) {
+          <div class="case-chat__tool-call-section">
+            <span class="case-chat__tool-call-label">
+              Arguments
+              @if (!isStructuredPayload(call.args)) {
+                · Text
+              }
+            </span>
+            <pre [class.case-chat__tool-call-code--text]="!isStructuredPayload(call.args)">{{ args }}</pre>
+          </div>
+        }
+        @if (showTechnical() && formatToolDuration(call); as duration) {
+          <div class="case-chat__tool-call-section">
+            <span class="case-chat__tool-call-label">Duration</span>
+            <span>{{ duration }}</span>
+          </div>
+        }
+        <div class="case-chat__tool-call-section">
+          <span class="case-chat__tool-call-label">
+            {{ call.response?.success === false ? 'Error' : 'Output' }}
+            @if (!isToolOutputStructured(call)) {
+              · Text
+            }
+          </span>
+          @if (extractToolOutput(call); as output) {
+            <pre [class.case-chat__tool-call-code--text]="!isToolOutputStructured(call)">{{ output }}</pre>
+          } @else if (!call.response) {
+            <span class="case-chat__tool-call-pending">Running…</span>
+          } @else {
+            <span class="case-chat__tool-call-empty">No output</span>
+          }
+        </div>
+        @if (showTechnical() && formatToolMetadata(call); as metadata) {
+          <div class="case-chat__tool-call-section">
+            <span class="case-chat__tool-call-label">
+              Metadata
+              @if (!isToolMetadataStructured(call)) {
+                · Text
+              }
+            </span>
+            <pre [class.case-chat__tool-call-code--text]="!isToolMetadataStructured(call)">{{ metadata }}</pre>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</ng-template>
 
 <ds-confirm-dialog
   [open]="confirmingKill()"

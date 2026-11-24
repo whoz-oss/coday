@@ -16,12 +16,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * | required agents available   | `GET /api/agent-configs/by-parentId/{id}`                  | yes       |
  * | auto worktree for root cases| **no AgentOS read API** — this Factory policy is the source | documented |
  *
- * AgentOS exposes **no** read endpoint for `autoWorktreeForRootCases`, nor for a
- * case's `CaseResourceBinding` status/worktree path (the binding is only
- * persisted, never served). Those values are therefore NOT invented: the
- * pre-check consults this Factory policy for the auto-worktree flag and records
- * every unavailable check as *unverified* in the report instead of assuming it is
- * satisfied.
+ * The pre-check consults Factory policy for the auto-worktree flag and records
+ * unavailable checks as unverified. Actual root creation requires `worktree=true`;
+ * adoption then reads equipped/status/path from the authenticated case
+ * `/workspace/changes` endpoint rather than inventing a local worktree path.
  */
 @ConfigurationProperties(prefix = "factory.workspace")
 data class WorkspaceProperties(
@@ -29,7 +27,9 @@ data class WorkspaceProperties(
      * Master switch of the Lot F orchestration. When `false`, the pre-check and
      * the workspace waiter are disabled (every run keeps the caller-provided
      * `repoRoot`), which is the explicit configuration used by the shared
-     * integration-test profile. Production leaves it `true`.
+     * integration-test profile. Production leaves it `true`. Every code step,
+     * including standalone sessions, requires a persisted environment when enabled.
+     * Disabling is an explicit opt-out, reported as workspace-disabled in evidence.
      */
     val enabled: Boolean = true,
     /**
