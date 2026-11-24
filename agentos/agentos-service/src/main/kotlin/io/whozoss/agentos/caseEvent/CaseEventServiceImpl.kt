@@ -56,5 +56,10 @@ class CaseEventServiceImpl(
     override fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant> =
         repository.findLastMessageTimestamps(caseIds)
 
+    override fun deleteFrom(
+        caseId: UUID,
+        eventId: UUID,
+    ): Int = repository.deleteFrom(caseId, eventId)
+
     companion object : KLogging()
 }

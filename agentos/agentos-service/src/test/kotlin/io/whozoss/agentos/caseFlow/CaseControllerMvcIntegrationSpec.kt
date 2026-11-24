@@ -1,9 +1,19 @@
 package io.whozoss.agentos.caseFlow
 
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserRepository
@@ -45,6 +55,8 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
     @Autowired lateinit var userService: UserService
+    @Autowired lateinit var caseService: CaseService
+    @Autowired lateinit var caseEventService: CaseEventService
     @Autowired lateinit var userRepository: UserRepository
     @Autowired lateinit var permissionNodeRepository: PermissionNodeNeo4jRepository
 
@@ -328,8 +340,84 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // DELETE /api/cases/{id} returns 404 on a second attempt (already soft-deleted)
+        // POST /api/cases/{caseId}/rewind
         // -------------------------------------------------------------------------
+
+        "POST /api/cases/{id}/rewind returns 200 with status IDLE and removes the message and what follows" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-rewind"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = UUID.fromString(Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1])
+            val actor = Actor(id = UUID.randomUUID().toString(), displayName = "User", role = ActorRole.USER)
+            val message = caseEventService.create(
+                MessageEvent(namespaceId = ns.id, caseId = caseId, actor = actor, content = listOf(MessageContent.Text("hi"))),
+            )
+            caseEventService.create(WarnEvent(namespaceId = ns.id, caseId = caseId, message = "after"))
+
+            mockMvc.perform(
+                post("/api/cases/$caseId/rewind")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "eventId": "${message.id}" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.id").value(caseId.toString()))
+                .andExpect(jsonPath("$.status").value("IDLE"))
+
+            caseEventService.findByParent(caseId).none { it is MessageEvent || it is WarnEvent } shouldBe true
+            caseEventService.findByParent(caseId).last().shouldBeInstanceOf<CaseStatusEvent>().status shouldBe CaseStatus.IDLE
+        }
+
+        "POST /api/cases/{id}/rewind returns 409 on a KILLED case" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-rewind-killed"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = UUID.fromString(Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1])
+            val actor = Actor(id = UUID.randomUUID().toString(), displayName = "User", role = ActorRole.USER)
+            val message = caseEventService.create(
+                MessageEvent(namespaceId = ns.id, caseId = caseId, actor = actor, content = listOf(MessageContent.Text("hi"))),
+            )
+            caseService.killCase(caseId)
+
+            mockMvc.perform(
+                post("/api/cases/$caseId/rewind")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "eventId": "${message.id}" }""")
+            ).andExpect(status().isConflict)
+        }
+
+        "POST /api/cases/{id}/rewind returns 404 for an unknown event and 400 for a non-user-message event" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-rewind-errors"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = UUID.fromString(Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1])
+            val warn = caseEventService.create(WarnEvent(namespaceId = ns.id, caseId = caseId, message = "warn"))
+
+            mockMvc.perform(
+                post("/api/cases/$caseId/rewind")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "eventId": "${UUID.randomUUID()}" }""")
+            ).andExpect(status().isNotFound)
+            mockMvc.perform(
+                post("/api/cases/$caseId/rewind")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "eventId": "${warn.id}" }""")
+            ).andExpect(status().isBadRequest)
+        }
 
         // -------------------------------------------------------------------------
         // PUT /api/cases/{id}/star and DELETE /api/cases/{id}/star

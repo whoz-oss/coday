@@ -205,6 +205,23 @@ interface CaseService : EntityService<Case, UUID> {
     fun reopenCase(caseId: UUID): Case
 
     /**
+     * Rewind an idle case to the user message [eventId]: that message and every event after it are
+     * soft-deleted, in persistence and in the live runtime's history if there is one, and the case
+     * goes back to [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE] with a fresh persisted status event.
+     * Nothing is sent to an agent. Sub-cases, exchange files and usage records are left as they are.
+     *
+     * @return The updated case
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist, or the event
+     *   is unknown, already removed or belongs to another case
+     * @throws [io.whozoss.agentos.exception.ConflictException] if the case is RUNNING, PENDING or terminated
+     * @throws [io.whozoss.agentos.exception.BadRequestException] if the event is not a user message
+     */
+    fun rewindCase(
+        caseId: UUID,
+        eventId: UUID,
+    ): Case
+
+    /**
      * Set the case-level reasoning effort ([Case.reasoningEffort]), or remove it with null.
      *
      * Goes through [edit], so only that field changes: the status stays as the runtime left it, and

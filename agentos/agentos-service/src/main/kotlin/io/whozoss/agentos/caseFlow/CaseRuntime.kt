@@ -298,6 +298,23 @@ class CaseRuntime(
     fun isRunning(): Boolean = runInFlight.get()
 
     /**
+     * Drop the event [eventId] and every later one from the in-memory history, so the next agent run no
+     * longer sees them, and forget the commands queued from the removed turn. Returns the number of events
+     * dropped, 0 when [eventId] is not in the history.
+     *
+     * Plain truncation: holds no admission lock and does no I/O. Checking that the case is idle is the
+     * caller's job ([CaseServiceImpl.rewindCase]).
+     */
+    fun rewindFrom(eventId: UUID): Int {
+        val removed = eventList.removeFrom(eventId)
+        if (removed > 0) {
+            commandQueue.clear()
+            pendingQuestionResumptions.clear()
+        }
+        return removed
+    }
+
+    /**
      * Claim the [CaseStatus.PENDING] transition atomically, in memory only: a turn is queued and has not
      * started. [GatedRunLauncher] claims it for a turn its gate holds back, then publishes it.
      * [CaseServiceImpl.resumeSubCase] claims it without a gate and does not publish it: [run] replaces it
