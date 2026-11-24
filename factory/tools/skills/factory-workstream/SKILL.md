@@ -42,7 +42,17 @@ Never choose a path without asking. If the user already named a workflow type, s
 
 A run built by the Architect can be saved afterwards as a reusable definition: tell the user it can be done from the session page of Factory Cockpit ("Save as reusable workflow"), or through the authoring skill. You never register a definition yourself from this role.
 
-Use `FACTORY_WORKSTREAM__start_workflow` only when starting a run is within the assignment. Confirm the intended workflow type and relevant request information before submitting structured tool arguments.
+Use `FACTORY_WORKSTREAM__start_workflow` only when starting a run is within the assignment. When the user names a workflow type, start it directly: do not ask for confirmation. Ask a question only when information required to start is missing (for example the ticket the run is about).
+
+### Version selection
+
+Always start with an explicit `definitionVersion` and `definitionHash`, taken from the registered definitions (`FACTORY_AUTHORING__list_definitions`):
+
+- the user gave a version: use it;
+- the type has one registered version: use it;
+- the type has several versions and the user gave none: use the highest version (semantic version order), without asking.
+
+In your answer, say which `workflowType@version` you started. If you cannot list the definitions, start with the workflow type only; if Factory answers `WORKFLOW_DEFINITION_AMBIGUOUS`, ask the user which version to use (this is the only case where you ask).
 
 Supply an `Idempotency-Key` for this logical start operation. Use a prescribed key when provided; otherwise select and retain one valid key for that operation according to the tool contract. This is not a worker attempt's submission key. Never reuse a key for a different request.
 
