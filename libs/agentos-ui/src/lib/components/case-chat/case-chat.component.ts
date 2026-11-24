@@ -358,6 +358,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Whether the kill confirmation dialog is showing. */
   protected readonly confirmingKill = signal(false)
 
+  /** The user message the rewind confirmation dialog is asking about, or null when it is closed. */
+  protected readonly rewindTarget = signal<CaseMessageEvent | null>(null)
+
+  /** A rewind request is in flight: a second one would race the first on the same history. */
+  private rewinding = false
+
   /**
    * Overflow menu of the case header: the destructive actions, kept out of the always-visible icons. Both open a
    * confirmation (dialog for stop, inline for delete) rather than acting directly. Stop is disabled once the case ended.
@@ -1387,6 +1393,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // isTerminal is now computed; clearing _sseStatus is sufficient.
     this._sseStatus.set('')
     this.confirmingDelete.set(false)
+    this.rewindTarget.set(null)
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
     this.expandedToolGroups.set(new Set())
@@ -1512,6 +1519,61 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       },
       error: (err) => console.error('[CaseChat] Failed to reopen case', err),
     })
+  }
+
+  /**
+   * Rewinding rewrites the history, so it is offered only when nothing else is moving on the case: the agent
+   * is idle, the case is open (a terminal case is reopened first), nothing is being posted, and the user
+   * can write to it.
+   */
+  protected canRewind(): boolean {
+    return (
+      this.canAttach() &&
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      !this.attachments.isUploading() &&
+      !this.voice.isBusy() &&
+      !this.submitting &&
+      !this.rewinding
+    )
+  }
+
+  /** Opens the confirmation for a user message; rewinding is destructive, so it never acts directly. */
+  protected askRewind(event: CaseMessageEvent): void {
+    if (event.actor.role !== 'USER' || !this.canRewind()) return
+    this.rewindTarget.set(event)
+  }
+
+  /**
+   * Removes the confirmed message and everything after it, then puts its text back in the composer.
+   * The server answers with the case back to IDLE; the history is then replayed from a fresh stream, which
+   * no longer carries the removed events. Nothing is sent: the user edits the text and posts it again.
+   */
+  protected rewind(): void {
+    const target = this.rewindTarget()
+    this.rewindTarget.set(null)
+    if (!target || !this.canRewind()) return
+    const caseIdAtRewind = this.caseId
+    const text = this.extractText(target)
+    this.rewinding = true
+    this.http
+      .post(`${this.config.basePath}/api/cases/${caseIdAtRewind}/rewind`, { eventId: target.id })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.rewinding = false
+          // The user moved to another case meanwhile: its composer is not ours to fill.
+          if (this.caseId !== caseIdAtRewind) return
+          this.caseState.updateCaseStatus(caseIdAtRewind, 'IDLE')
+          this.reinitialise()
+          this.inputValue.set(text)
+          afterNextRender(() => this.composerInput()?.nativeElement.focus(), { injector: this.injector })
+        },
+        error: (err) => {
+          this.rewinding = false
+          console.error('[CaseChat] Failed to rewind case', err)
+        },
+      })
   }
 
   protected extractText(event: CaseMessageEvent): string {

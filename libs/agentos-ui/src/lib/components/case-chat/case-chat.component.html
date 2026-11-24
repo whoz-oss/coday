@@ -206,6 +206,15 @@
                       <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
                     }
                     <ds-copy-button class="case-chat__bubble-copy" [text]="messageText(item)" title="Copy message" />
+                    @if (item.event.actor.role === 'USER' && canRewind()) {
+                      <ds-icon-button
+                        class="case-chat__bubble-rewind"
+                        icon="history"
+                        variant="default"
+                        title="Rewind to this message"
+                        (action)="askRewind(item.event)"
+                      />
+                    }
                     @if (item.isLastInGroup) {
                       <time
                         class="case-chat__message-time"
@@ -694,4 +703,14 @@
   cancelLabel="Cancel"
   (confirmed)="kill()"
   (cancelled)="confirmingKill.set(false)"
+/>
+
+<ds-confirm-dialog
+  [open]="rewindTarget() !== null"
+  title="Rewind to this message?"
+  message="This message and everything after it will be removed from the conversation. Its text goes back in the composer so you can edit and resend it. Files, sub-cases and costs already spent are kept."
+  confirmLabel="Rewind"
+  cancelLabel="Cancel"
+  (confirmed)="rewind()"
+  (cancelled)="rewindTarget.set(null)"
 />
