@@ -18,6 +18,8 @@ import { AddMessageRequest } from '../model/add-message-request'
 // @ts-ignore
 import { Case } from '../model/case'
 // @ts-ignore
+import { CaseKeepAliveRequest } from '../model/case-keep-alive-request'
+// @ts-ignore
 import { CaseReasoningEffortRequest } from '../model/case-reasoning-effort-request'
 // @ts-ignore
 import { GetByIdsRequest } from '../model/get-by-ids-request'
@@ -1137,6 +1139,93 @@ export class CaseControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<Case>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Turn the prompt cache keep-alive of a case on or off
+   * PUT /api/cases/{id}/keep-alive — while the case is idle, keep the provider\&#39;s prompt cache of its conversation warm by re-sending the agent\&#39;s last request with a 1-token answer before the cache expires (its model\&#39;s cache TTL less 40 s; never without a TTL), for up to the platform\&#39;s maximum idle duration after the last agent turn. Each refresh is recorded as usage of the case; no refresh is sent while usage tracking is off. 400 when keepAlive is missing. Returns the updated Case DTO.
+   * @param id
+   * @param caseKeepAliveRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public setKeepAliveCase(
+    id: string,
+    caseKeepAliveRequest: CaseKeepAliveRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Case>
+  public setKeepAliveCase(
+    id: string,
+    caseKeepAliveRequest: CaseKeepAliveRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Case>>
+  public setKeepAliveCase(
+    id: string,
+    caseKeepAliveRequest: CaseKeepAliveRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Case>>
+  public setKeepAliveCase(
+    id: string,
+    caseKeepAliveRequest: CaseKeepAliveRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (id === null || id === undefined) {
+      throw new Error('Required parameter id was null or undefined when calling setKeepAliveCase.')
+    }
+    if (caseKeepAliveRequest === null || caseKeepAliveRequest === undefined) {
+      throw new Error('Required parameter caseKeepAliveRequest was null or undefined when calling setKeepAliveCase.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'id', value: id, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/keep-alive`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Case>('put', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: caseKeepAliveRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

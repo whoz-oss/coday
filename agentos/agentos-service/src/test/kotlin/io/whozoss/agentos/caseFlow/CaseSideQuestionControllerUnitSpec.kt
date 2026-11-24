@@ -1,0 +1,65 @@
+package io.whozoss.agentos.caseFlow
+
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.user.User
+import io.whozoss.agentos.user.UserService
+import org.springframework.security.access.prepost.PreAuthorize
+import java.util.UUID
+
+/** The controller checks the question and hands it over: the answering is [CaseSideQuestionService]'s own spec. */
+class CaseSideQuestionControllerUnitSpec :
+    StringSpec({
+        val caseId = UUID.randomUUID()
+        val currentUser = User(externalId = "alice@example.com")
+        val userService = mockk<UserService> { every { getCurrentUser() } returns currentUser }
+
+        "hands the trimmed question and the current user to the service and answers its answer" {
+            val service =
+                mockk<CaseSideQuestionService> { every { answer(caseId, "What is the plan?", currentUser.id) } returns "The plan is X." }
+
+            val response =
+                CaseSideQuestionController(service, userService).askSideQuestion(caseId, SideQuestionRequest("  What is the plan?  "))
+
+            response shouldBe SideQuestionResponse(answer = "The plan is X.")
+        }
+
+        "needs WRITE on the case, as posting a message does: the question spends its budget" {
+            val method = CaseSideQuestionController::class.java.methods.single { it.name == "askSideQuestion" }
+
+            method.getAnnotation(PreAuthorize::class.java).value shouldBe "hasPermission(#caseId, 'Case', 'WRITE')"
+            // A reader without WRITE is told so (403), as for a message, rather than that the case does not exist.
+            method.getAnnotation(HideOnAccessDenied::class.java) shouldBe null
+        }
+
+        "refuses a blank question with a 400, without calling the service" {
+            val service = mockk<CaseSideQuestionService>()
+
+            listOf("", "   ", "\n\t").forEach { blank ->
+                shouldThrow<BadRequestException> {
+                    CaseSideQuestionController(service, userService).askSideQuestion(caseId, SideQuestionRequest(blank))
+                }
+            }
+
+            verify(exactly = 0) { service.answer(any(), any(), any()) }
+        }
+
+        "accepts a question of exactly the maximum length, and refuses one character more" {
+            val limit = CaseSideQuestionController.MAX_QUESTION_LENGTH
+            val service = mockk<CaseSideQuestionService> { every { answer(any(), any(), any()) } returns "ok" }
+            val controller = CaseSideQuestionController(service, userService)
+
+            controller.askSideQuestion(caseId, SideQuestionRequest("a".repeat(limit))).answer shouldBe "ok"
+
+            shouldThrow<BadRequestException> {
+                controller.askSideQuestion(caseId, SideQuestionRequest("a".repeat(limit + 1)))
+            }
+            verify(exactly = 1) { service.answer(any(), any(), any()) }
+        }
+    })

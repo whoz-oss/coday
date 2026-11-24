@@ -9,6 +9,8 @@ provider: requesty
 description: Claude Haiku tier via your Requesty policy; backing model may change
 priority: 10
 contextWindow: 200000
+cacheTtlMinutes: 5
+extendedCacheTtlMinutes: 60
 pricing:
   inputMTokens: 1
   outputMTokens: 5

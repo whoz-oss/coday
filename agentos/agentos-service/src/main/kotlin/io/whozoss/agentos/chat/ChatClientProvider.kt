@@ -5,6 +5,7 @@ import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.stereotype.Service
 
@@ -20,11 +21,24 @@ import org.springframework.stereotype.Service
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
  *
  * When usage is enabled, tracking is applied to the model so every call/stream terminal and internal tool
- * round goes through accounting and the cost gate. Clients outside agent execution
- * (no accumulator) retain their existing behaviour.
+ * round goes through accounting and the cost gate. A cost reported by the provider (e.g. Requesty
+ * `usage.cost`) replaces the estimate computed from [AiModel.pricing] for that request. Clients outside
+ * agent execution (no accumulator) retain their existing behaviour.
  *
  * The cap on tool rounds is the caller's [getChatClient] `maxToolRounds` (the namespace's override)
  * when given, else the platform's `agentos.limits.agent-max-iterations`.
+ *
+ * With `runTools` false, the client never executes a tool, whatever the model answers: the model always goes
+ * through [UsageTrackingChatModel], which returns a response asking for tools as it is (and turns Spring AI's
+ * internal tool execution off). Without an accumulator to record into (usage disabled), its usage is discarded.
+ *
+ * `exchangeRecorder` keeps the last request sent to the provider, tool rounds included, and the text of its
+ * response. It is only fed through [UsageTrackingChatModel] (usage tracked, or `runTools` false): an untracked
+ * model runs its tool rounds out of sight.
+ *
+ * The prompt cache choice ([getChatClient] `promptCacheTtl`) is required so every caller decides it: agent
+ * runs pass the choice of the user they run for, utility calls (case naming, summary, prompt translation) pass
+ * [PromptCacheTtl.STANDARD]. Only [PromptCacheTtl.EXTENDED] for Claude models via Requesty changes the request.
  */
 @Service
 class ChatClientProvider(
@@ -38,7 +52,12 @@ class ChatClientProvider(
         caseId: String? = null,
         accumulator: UsageAccumulator? = null,
         maxToolRounds: Int? = null,
+        promptCacheTtl: PromptCacheTtl,
+        runTools: Boolean = true,
+        exchangeRecorder: LlmExchangeRecorder? = null,
     ): ChatClient {
+        val trackedAccumulator = accumulator?.takeIf { usageConfig.enabled }
+        val providerCost = trackedAccumulator?.let { ProviderReportedCost() }
         val chatModel =
             chatModelFactory.createChatModel(
                 apiType = providerConfig.apiType,
@@ -49,15 +68,21 @@ class ChatClientProvider(
                 maxCompletionTokens = modelConfig.maxCompletionTokens,
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
                 reasoningEffort = modelConfig.reasoningEffort,
+                promptCacheTtl = promptCacheTtl,
+                providerCost = providerCost,
             )
+        val tracked = usageConfig.enabled && accumulator != null
         val trackedModel =
-            if (usageConfig.enabled && accumulator != null) {
+            if (tracked || !runTools) {
                 UsageTrackingChatModel(
                     chatModel,
-                    accumulator,
+                    accumulator?.takeIf { tracked } ?: UsageAccumulator(),
                     providerConfig.apiType,
                     modelConfig,
                     maxToolRounds = maxToolRounds ?: limits.agentMaxIterations,
+                    runTools = runTools,
+                    exchangeRecorder = exchangeRecorder,
+                    providerCost = providerCost,
                 )
             } else {
                 chatModel

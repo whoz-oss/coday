@@ -19,6 +19,7 @@ import java.util.UUID
  * save based on a stale read is refused, and so is the creation of a case whose id already exists.
  *
  * [reasoningEffort] is stored as its enum name string and round-tripped via [ReasoningEffort.valueOf].
+ * [keepAlive] is only stored when true: null (existing nodes included) reads as false.
  */
 @Node("Case")
 data class CaseNode(
@@ -32,6 +33,7 @@ data class CaseNode(
     val originCaseId: String? = null,
     val runCostThreshold: Double? = null,
     val reasoningEffort: String? = null,
+    val keepAlive: Boolean? = null,
     val summary: String? = null,
     val summaryMessageCount: Int? = null,
     val created: Instant = Instant.now(),
@@ -63,6 +65,7 @@ data class CaseNode(
             originCaseId = originCaseId?.let { UUID.fromString(it) },
             runCostThreshold = runCostThreshold,
             reasoningEffort = reasoningEffort?.let(ReasoningEffort::valueOf),
+            keepAlive = keepAlive ?: false,
             summary = summary,
             summaryMessageCount = summaryMessageCount,
         )
@@ -79,6 +82,7 @@ data class CaseNode(
                 originCaseId = case.originCaseId?.toString(),
                 runCostThreshold = case.runCostThreshold,
                 reasoningEffort = case.reasoningEffort?.name,
+                keepAlive = case.keepAlive.takeIf { it },
                 summary = case.summary,
                 summaryMessageCount = case.summaryMessageCount,
                 created = case.metadata.created,

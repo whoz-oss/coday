@@ -14,8 +14,16 @@ export interface AiModel {
   aiProviderId: string
   alias?: string
   apiModelName: string
+  /**
+   * Prompt cache TTL after the last use, in minutes; null: no cache indicator nor keep-alive. The keep-alive only refreshes a TTL of up to 65 minutes.
+   */
+  cacheTtlMinutes?: number
   contextWindow?: number
   description?: string
+  /**
+   * cacheTtlMinutes when the request got the 1-hour cache markers (Extended, Claude via Requesty).
+   */
+  extendedCacheTtlMinutes?: number
   id?: string
   maxCompletionTokens?: number
   namespaceId?: string

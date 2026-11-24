@@ -62,6 +62,8 @@ describe('ensurePlatformModels', () => {
       contextWindow: 1_000_000,
       maxCompletionTokens: 128_000,
       pricing: { inputMTokens: 0.1, outputMTokens: 0.5 },
+      cacheTtlMinutes: 5,
+      extendedCacheTtlMinutes: 60,
     })
   })
 

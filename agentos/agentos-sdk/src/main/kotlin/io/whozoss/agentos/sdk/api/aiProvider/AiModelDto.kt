@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Positive
 import java.util.UUID
 
 /**
@@ -56,6 +57,25 @@ data class AiModelDto(
      * for field semantics.
      */
     val pricing: io.whozoss.agentos.sdk.aiProvider.ModelPricing? = null,
+    /**
+     * How long the provider keeps a prompt cached after its last use, in minutes; null: no cache indicator nor
+     * keep-alive. The keep-alive only refreshes a cache whose TTL fits in the 65 minutes a request is kept for it.
+     */
+    @field:Positive
+    @field:Schema(
+        description =
+            "Prompt cache TTL after the last use, in minutes; null: no cache indicator nor keep-alive. The keep-alive " +
+                "only refreshes a TTL of up to 65 minutes.",
+        minimum = "1",
+    )
+    val cacheTtlMinutes: Int? = null,
+    /** The same when the request got the one-hour cache markers (the user chose Extended, Claude via Requesty). */
+    @field:Positive
+    @field:Schema(
+        description = "cacheTtlMinutes when the request got the 1-hour cache markers (Extended, Claude via Requesty).",
+        minimum = "1",
+    )
+    val extendedCacheTtlMinutes: Int? = null,
     /**
      * Reasoning effort sent to the provider. Null = provider default. Rejected with a 400 for
      * Anthropic and Gemini providers, where the service cannot send it reliably yet.

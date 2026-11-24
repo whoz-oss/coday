@@ -38,6 +38,8 @@ const CATCH_UP_MODELS: CatchUpModel[] = [
         pricing: model.pricing,
         ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
         ...(model.maxCompletionTokens ? { maxCompletionTokens: model.maxCompletionTokens } : {}),
+        ...(model.cacheTtlMinutes ? { cacheTtlMinutes: model.cacheTtlMinutes } : {}),
+        ...(model.extendedCacheTtlMinutes ? { extendedCacheTtlMinutes: model.extendedCacheTtlMinutes } : {}),
       }
     },
   },

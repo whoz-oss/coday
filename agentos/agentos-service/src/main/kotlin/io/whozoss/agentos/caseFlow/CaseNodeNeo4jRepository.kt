@@ -132,6 +132,14 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     )
     fun countAncestorDepth(caseId: String): Int
 
+    /** Ids of the cases, not removed, with the prompt cache keep-alive on. */
+    @Query(
+        """MATCH (c:Case) WHERE c.keepAlive = true AND (c.removed IS NULL OR c.removed = false)
+            RETURN c.id
+            """,
+    )
+    fun findKeepAliveIds(): List<String>
+
     /**
      * Find all active, non-terminal descendants of [caseId] via the [:PARENT_OF] graph edges,
      * up to a maximum depth of 10 hops.

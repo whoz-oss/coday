@@ -19,6 +19,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -118,7 +119,7 @@ class CaseSummaryServiceUnitSpec :
         }
 
         fun ChatClientProvider.stub(chatClient: ChatClient) {
-            every { getChatClient(any(), any(), any()) } returns chatClient
+            every { getChatClient(any(), any(), any(), promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClient
         }
 
         // -------------------------------------------------------------------------
@@ -233,6 +234,7 @@ class CaseSummaryServiceUnitSpec :
                     effortModel.copy(reasoningEffort = ReasoningEffort.LOW),
                     provider,
                     case.id.toString(),
+                    promptCacheTtl = PromptCacheTtl.STANDARD,
                 )
             }
         }

@@ -7,6 +7,7 @@ import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.forUtilityCall
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import mu.KLogging
 import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.stereotype.Service
@@ -62,7 +63,7 @@ class PromptTranslationServiceImpl(
         namespaceId: UUID,
     ): List<String> {
         val (model, provider) = resolveModelAndProvider(namespaceId)
-        val chatClient = chatClientProvider.getChatClient(model, provider)
+        val chatClient = chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD)
         return content.map { element ->
             translateText(
                 text = element,
@@ -82,7 +83,7 @@ class PromptTranslationServiceImpl(
         namespaceId: UUID,
     ): String {
         val (model, provider) = resolveModelAndProvider(namespaceId)
-        val chatClient = chatClientProvider.getChatClient(model, provider)
+        val chatClient = chatClientProvider.getChatClient(model, provider, promptCacheTtl = PromptCacheTtl.STANDARD)
         return translateText(
             text = title,
             sourceLanguage = sourceLanguage,

@@ -505,6 +505,87 @@ class UsageTrackingChatModelSpec :
             sent.cacheOptions.strategy shouldBe AnthropicCacheStrategy.CONVERSATION_HISTORY
             sent.internalToolExecutionEnabled shouldBe false
         }
+
+        listOf(false, true).forEach { streaming ->
+            "with runTools off, a ${if (streaming) "streamed" else "synchronous"} response asking for a tool is returned as is and no tool runs" {
+                val toolsExecuted = AtomicInteger()
+                val callback =
+                    toolCallback {
+                        toolsExecuted.incrementAndGet()
+                        "ok"
+                    }
+                val options = ToolCallingChatOptions.builder().toolCallbacks(callback).build()
+                val sent = CopyOnWriteArrayList<Prompt>()
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns options
+                every { raw.call(any<Prompt>()) } answers { response(tool = true, text = "Let me check.").also { sent.add(firstArg()) } }
+                every { raw.stream(any<Prompt>()) } answers { Flux.just(response(tool = true, text = "Let me check.")).also { sent.add(firstArg()) } }
+                val accumulator = UsageAccumulator()
+                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model, runTools = false)
+                val prompt = Prompt(listOf(UserMessage("Hello")), options)
+
+                val result =
+                    if (streaming) {
+                        tracked.stream(prompt).collectList().block(Duration.ofSeconds(2))!!.last()
+                    } else {
+                        tracked.call(prompt)
+                    }
+
+                result.hasToolCalls() shouldBe true
+                result.result.output.text shouldBe "Let me check."
+                toolsExecuted.get() shouldBe 0
+                sent.size shouldBe 1
+                (sent.single().options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe false
+                accumulator.total.totalTokens shouldBe 15L
+                accumulator.failed shouldBe false
+            }
+
+            "the exchange recorder keeps the last ${if (streaming) "streamed" else "synchronous"} request as sent, tool rounds included, and its answer" {
+                val callback = toolCallback { "tool output" }
+                val options = ToolCallingChatOptions.builder().toolCallbacks(callback).build()
+                val sent = CopyOnWriteArrayList<Prompt>()
+                val requests = AtomicInteger()
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns options
+                every { raw.call(any<Prompt>()) } answers {
+                    sent.add(firstArg())
+                    response(tool = requests.getAndIncrement() == 0, text = "Round ${requests.get()}")
+                }
+                every { raw.stream(any<Prompt>()) } answers {
+                    sent.add(firstArg())
+                    Flux.just(response(tool = requests.getAndIncrement() == 0, text = "Round ${requests.get()}"))
+                }
+                val recorder = LlmExchangeRecorder()
+                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, exchangeRecorder = recorder)
+                val prompt = Prompt(listOf(UserMessage("Hello")), options)
+
+                if (streaming) tracked.stream(prompt).blockLast(Duration.ofSeconds(2)) else tracked.call(prompt)
+
+                sent.size shouldBe 2
+                val exchange = recorder.lastExchange!!
+                exchange.messages shouldBe sent.last().instructions
+                exchange.messages.map { it.messageType.name } shouldBe listOf("USER", "ASSISTANT", "TOOL")
+                // Only the answer to the last request, not the text of the tool round.
+                exchange.responseText shouldBe "Round 2"
+                // What a follow-up request re-sends, as reported by the provider: its 10 prompt and 5 answer tokens.
+                exchange.prefixTokens shouldBe 15L
+            }
+
+            "a ${if (streaming) "streamed" else "synchronous"} response without usage leaves the recorded size unknown" {
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                every { raw.call(any<Prompt>()) } returns response(withUsage = false)
+                every { raw.stream(any<Prompt>()) } returns Flux.just(response(withUsage = false))
+                val recorder = LlmExchangeRecorder()
+                val tracked = UsageTrackingChatModel(raw, UsageAccumulator(), AiApiType.OpenAI, model, exchangeRecorder = recorder)
+                val prompt = Prompt(listOf(UserMessage("Hello")))
+
+                if (streaming) tracked.stream(prompt).blockLast(Duration.ofSeconds(2)) else tracked.call(prompt)
+
+                recorder.lastExchange!!.responseText shouldBe "Done"
+                recorder.lastExchange!!.prefixTokens shouldBe null
+            }
+        }
     })
 
 private data class LoopingRun(

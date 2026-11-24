@@ -66,6 +66,8 @@ class AiModelController(
                     maxCompletionTokens = resource.maxCompletionTokens,
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
+                    cacheTtlMinutes = resource.cacheTtlMinutes,
+                    extendedCacheTtlMinutes = resource.extendedCacheTtlMinutes,
                     reasoningEffort = resource.reasoningEffort,
                     supportsAdvancedExecution = resource.supportsAdvancedExecution ?: false,
                 )
@@ -116,6 +118,8 @@ class AiModelController(
                     maxCompletionTokens = resource.maxCompletionTokens,
                     contextWindow = resource.contextWindow,
                     pricing = resource.pricing,
+                    cacheTtlMinutes = resource.cacheTtlMinutes,
+                    extendedCacheTtlMinutes = resource.extendedCacheTtlMinutes,
                     reasoningEffort = resource.reasoningEffort,
                     supportsAdvancedExecution = resource.supportsAdvancedExecution ?: existing.supportsAdvancedExecution,
                 ),
@@ -162,6 +166,8 @@ internal fun toDto(entity: AiModel) =
         maxCompletionTokens = entity.maxCompletionTokens,
         contextWindow = entity.contextWindow,
         pricing = entity.pricing,
+        cacheTtlMinutes = entity.cacheTtlMinutes,
+        extendedCacheTtlMinutes = entity.extendedCacheTtlMinutes,
         reasoningEffort = entity.reasoningEffort,
         supportsAdvancedExecution = entity.supportsAdvancedExecution,
     )

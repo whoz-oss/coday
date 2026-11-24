@@ -133,6 +133,8 @@ class FilesystemAiModelRepository(
             maxCompletionTokens = yaml.maxCompletionTokens,
             contextWindow = yaml.contextWindow,
             pricing = yaml.pricing,
+            cacheTtlMinutes = yaml.cacheTtlMinutes,
+            extendedCacheTtlMinutes = yaml.extendedCacheTtlMinutes,
             supportsAdvancedExecution = yaml.supportsAdvancedExecution,
         )
     }
@@ -155,6 +157,8 @@ class FilesystemAiModelRepository(
  * provider: requesty
  * priority: 10
  * contextWindow: 1000000
+ * cacheTtlMinutes: 5           # optional: how long the provider keeps a prompt cached after its last use
+ * extendedCacheTtlMinutes: 60  # optional: the same with the one-hour cache markers (Claude via Requesty)
  * pricing:
  *   inputMTokens: 2
  *   outputMTokens: 10
@@ -174,5 +178,7 @@ private data class AiModelYamlModel(
     val maxCompletionTokens: Int? = null,
     val contextWindow: Long? = null,
     val pricing: ModelPricing? = null,
+    val cacheTtlMinutes: Int? = null,
+    val extendedCacheTtlMinutes: Int? = null,
     val supportsAdvancedExecution: Boolean = false,
 )

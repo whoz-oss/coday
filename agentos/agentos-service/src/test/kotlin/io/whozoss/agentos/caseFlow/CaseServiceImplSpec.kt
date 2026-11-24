@@ -22,11 +22,15 @@ import io.mockk.verify
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agent.LastLlmRequest
+import io.whozoss.agentos.agent.LastLlmRequestRegistry
+import io.whozoss.agentos.agent.putCurrent
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
+import io.whozoss.agentos.chat.LlmRequestOptions
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.delegation.DelegationTool
@@ -54,6 +58,7 @@ import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -265,6 +270,8 @@ class CaseServiceImplSpec :
                 },
             coroutineContext: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
             namespaceRunCostThreshold: Double? = null,
+            lastLlmRequestRegistry: LastLlmRequestRegistry = LastLlmRequestRegistry(),
+            keepAliveCaseIds: CaseKeepAliveIds? = null,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -297,7 +304,100 @@ class CaseServiceImplSpec :
                 caseWorkspaceProvisioning = caseWorkspaceProvisioning,
                 runCostService = runCostService,
                 coroutineContext = coroutineContext,
+                lastLlmRequestRegistry = lastLlmRequestRegistry,
+                keepAliveCaseIds = keepAliveCaseIds,
             )
+        }
+
+        // -------------------------------------------------------------------------
+        // Prompt cache keep-alive flag
+        // -------------------------------------------------------------------------
+
+        "setKeepAlive changes only the keep-alive, keeps a status changed since the caller's read, and updates the ids" {
+            val repository = InMemoryCaseRepository()
+            val ids = CaseKeepAliveIds(repository)
+            val service = buildService(caseRepository = repository, keepAliveCaseIds = ids)
+            val case = service.create(Case(namespaceId = namespaceId))
+            repository.save(repository.findByIds(listOf(case.id)).single().copy(status = CaseStatus.RUNNING))
+
+            service.setKeepAlive(case.id, true).keepAlive shouldBe true
+            val stored = repository.findByIds(listOf(case.id)).single()
+            stored.status shouldBe CaseStatus.RUNNING
+            stored.keepAlive shouldBe true
+            ids.current() shouldBe setOf(case.id)
+
+            service.setKeepAlive(case.id, false)
+            repository.findByIds(listOf(case.id)).single().keepAlive shouldBe false
+            ids.current() shouldBe emptySet()
+            service.shutdown()
+        }
+
+        "setKeepAlive rejects an unknown case" {
+            val service = buildService()
+            shouldThrow<ResourceNotFoundException> { service.setKeepAlive(UUID.randomUUID(), true) }
+            service.shutdown()
+        }
+
+        "the keep-alive ids are loaded from the store once, then kept up to date" {
+            val repository = InMemoryCaseRepository()
+            val on = repository.save(Case(namespaceId = namespaceId, keepAlive = true))
+            repository.save(Case(namespaceId = namespaceId))
+            val ids = CaseKeepAliveIds(repository)
+
+            ids.current() shouldBe setOf(on.id)
+            ids.set(on.id, false)
+            ids.current() shouldBe emptySet()
+        }
+
+        // -------------------------------------------------------------------------
+        // The last LLM request of a case (side questions) is forgotten when the conversation moves on
+        // -------------------------------------------------------------------------
+
+        fun lastRequestOf(caseId: UUID) =
+            LastLlmRequest(
+                caseId = caseId,
+                namespaceId = namespaceId,
+                userId = userId,
+                messages = listOf(org.springframework.ai.chat.messages.UserMessage("hello")),
+                toolDefinitions = emptyList(),
+                modelId = UUID.randomUUID(),
+                providerId = UUID.randomUUID(),
+                requestOptions = LlmRequestOptions(AiApiType.OpenAI, null, "model", null, null, null, null, ""),
+                finalText = "Hi.",
+                agentName = agentName,
+                agentConfigId = agentId,
+                coveredEventCount = 2,
+                lastCoveredEventId = UUID.randomUUID(),
+            )
+
+        "the last request of a case is forgotten as soon as an agent run starts on it" {
+            val registry = LastLlmRequestRegistry()
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, lastLlmRequestRegistry = registry)
+            val case = service.create(Case(namespaceId = namespaceId))
+            registry.putCurrent(lastRequestOf(case.id))
+
+            service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
+
+            verify(timeout = 3_000) { agent.run(any(), any()) }
+            registry.get(case.id) shouldBe null
+            service.shutdown()
+        }
+
+        "the last request of a case is forgotten when the case is killed or deleted" {
+            val registry = LastLlmRequestRegistry()
+            val service = buildService(lastLlmRequestRegistry = registry)
+            val killed = service.create(Case(namespaceId = namespaceId))
+            val deleted = service.create(Case(namespaceId = namespaceId))
+            registry.putCurrent(lastRequestOf(killed.id))
+            registry.putCurrent(lastRequestOf(deleted.id))
+
+            service.killCase(killed.id)
+            service.delete(deleted.id)
+
+            registry.get(killed.id) shouldBe null
+            registry.get(deleted.id) shouldBe null
+            service.shutdown()
         }
 
         // -------------------------------------------------------------------------

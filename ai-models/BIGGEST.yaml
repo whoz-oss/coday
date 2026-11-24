@@ -9,6 +9,8 @@ provider: requesty
 description: Claude Opus tier via your Requesty policy; backing model may change
 priority: 10
 contextWindow: 1000000
+cacheTtlMinutes: 5
+extendedCacheTtlMinutes: 60
 pricing:
   inputMTokens: 4
   outputMTokens: 20

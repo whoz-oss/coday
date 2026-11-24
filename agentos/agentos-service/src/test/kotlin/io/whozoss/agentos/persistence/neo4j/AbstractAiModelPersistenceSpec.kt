@@ -252,6 +252,21 @@ abstract class AbstractAiModelPersistenceSpec : StringSpec() {
             repo.findByIds(listOf(plain.id)).single().supportsAdvancedExecution.shouldBeFalse()
         }
 
+        "the prompt cache lifetimes round-trip through persistence, absent by default" {
+            val provider = providerRepo.save(aiProvider())
+            val saved = repo.save(aiModel(aiProviderId = provider.id).copy(cacheTtlMinutes = 5, extendedCacheTtlMinutes = 60))
+            val plain = repo.save(aiModel(aiProviderId = provider.id, apiName = "gpt-4o"))
+
+            repo.findByIds(listOf(saved.id)).single().run {
+                cacheTtlMinutes shouldBe 5
+                extendedCacheTtlMinutes shouldBe 60
+            }
+            repo.findByIds(listOf(plain.id)).single().run {
+                cacheTtlMinutes shouldBe null
+                extendedCacheTtlMinutes shouldBe null
+            }
+        }
+
         "a node persisted without the supportsAdvancedExecution property reads as false" {
             val provider = providerRepo.save(aiProvider())
             val saved = repo.save(aiModel(aiProviderId = provider.id))

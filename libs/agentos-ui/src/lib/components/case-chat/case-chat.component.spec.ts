@@ -1,5 +1,13 @@
+import { JsonPipe } from '@angular/common'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
+import {
+  ComponentRef,
+  createComponent,
+  EnvironmentInjector,
+  NO_ERRORS_SCHEMA,
+  signal,
+  WritableSignal,
+} from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -22,7 +30,10 @@ import {
   VoiceMessageControllerService,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
+import { CheckDirective } from '@whoz-oss/design-system'
 import { of, Observable, Subject, throwError } from 'rxjs'
+import { CostPipe } from '../../pipes/cost.pipe'
+import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { CaseStateService } from '../../services/case-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
@@ -35,6 +46,7 @@ import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
+import { SideQuestionApiService } from '../../services/side-question-api.service'
 import { CaseChatComponent } from './case-chat.component'
 
 /**
@@ -45,7 +57,7 @@ import { CaseChatComponent } from './case-chat.component'
  * ExchangeStateService.
  */
 describe('CaseChatComponent — submit with attachments', () => {
-  let http: { post: jest.Mock; get: jest.Mock }
+  let http: { post: jest.Mock; get: jest.Mock; request?: jest.Mock }
   let exchangeState: {
     uploadFile: jest.Mock
     canWriteCase: ReturnType<typeof signal<boolean>>
@@ -108,6 +120,7 @@ describe('CaseChatComponent — submit with attachments', () => {
             updateCaseStatus: jest.fn(),
             notifyAgentMessageEvent: jest.fn(),
             setReasoningEffort: jest.fn().mockReturnValue(of({})),
+            setKeepAlive: jest.fn().mockReturnValue(of({})),
           },
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
@@ -654,6 +667,289 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
   })
 
+  describe('/btw side question', () => {
+    let sideApi: { ask: jest.Mock }
+    let answer: Subject<{ answer: string }>
+
+    beforeEach(() => {
+      answer = new Subject<{ answer: string }>()
+      sideApi = { ask: jest.fn().mockReturnValue(answer) }
+      TestBed.overrideProvider(SideQuestionApiService, { useValue: sideApi })
+    })
+
+    it('asks aside, posts nothing to the case and does not set the case running', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'what is the plan?')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['sideQuestions'].pending()).toBe(true)
+      expect(ref.instance['events']()).toEqual([])
+    })
+
+    it('keeps the draft in the composer while the side question is pending', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+
+      await ref.instance['submit']()
+
+      expect(ref.instance['inputValue']()).toBe('/btw what is the plan?')
+    })
+
+    it('clears the composer once the side question is answered', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+
+      answer.next({ answer: 'The plan is X.' })
+
+      expect(ref.instance['sideQuestions'].answer()).toBe('The plan is X.')
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('keeps the draft in the composer when the side question fails', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+
+      answer.error(new HttpErrorResponse({ status: 502 }))
+
+      expect(ref.instance['sideQuestions'].error()).toContain('could not answer')
+      expect(ref.instance['sideQuestions'].error()).toContain('still in the composer')
+      expect(ref.instance['inputValue']()).toBe('/btw what is the plan?')
+    })
+
+    it('does not clear a composer edited while the side question was pending', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('a new message being typed')
+
+      answer.next({ answer: 'The plan is X.' })
+
+      expect(ref.instance['inputValue']()).toBe('a new message being typed')
+    })
+
+    it('sends no question over 4000 characters: the aside says why and the draft stays', async () => {
+      const ref = makeComponent()
+      const draft = `/btw ${'a'.repeat(4001)}`
+      ref.instance['inputValue'].set(draft)
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['sideQuestions'].error()).toContain('too long')
+      expect(ref.instance['inputValue']()).toBe(draft)
+    })
+
+    it('Enter again on the same pending /btw asks nothing more', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledTimes(1)
+      expect(ref.instance['sideQuestions'].pending()).toBe(true)
+    })
+
+    it('a different /btw while one is pending replaces it, and only its answer clears the composer', async () => {
+      const second = new Subject<{ answer: string }>()
+      sideApi.ask.mockReturnValueOnce(answer).mockReturnValueOnce(second)
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw first?')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('/btw second?')
+      await ref.instance['submit']()
+
+      answer.next({ answer: 'stale' })
+
+      expect(answer.observed).toBe(false)
+      expect(ref.instance['sideQuestions'].question()).toBe('second?')
+      expect(ref.instance['inputValue']()).toBe('/btw second?')
+    })
+
+    it('dismissing a pending /btw cancels it and leaves the draft in the composer', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+
+      ref.instance['sideQuestions'].dismiss()
+
+      expect(answer.observed).toBe(false)
+      expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      expect(ref.instance['inputValue']()).toBe('/btw what is the plan?')
+    })
+
+    it('destroying the chat cancels a pending /btw', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+      await ref.instance['submit']()
+
+      ref.destroy()
+
+      expect(answer.observed).toBe(false)
+    })
+
+    it('works while the agent runs: the case stays running and nothing is posted or interrupted', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('/btw how long will it take?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'how long will it take?')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['isRunning']()).toBe(true)
+    })
+
+    it('while the agent runs, any other text is not sent and stays in the composer', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('please also fix the tests')
+
+      await ref.instance['submit']()
+
+      expect(http.post).not.toHaveBeenCalled()
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('please also fix the tests')
+    })
+
+    it('while the agent runs, a typed /effort command is not applied and nothing is sent', async () => {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'RUNNING' } as Case])
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('/effort high')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/effort high')
+    })
+
+    it('while the agent runs, staged attachments and references are not sent either', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+      ref.instance['inputValue'].set('with a file')
+
+      await ref.instance['submit']()
+
+      expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('with a file')
+    })
+
+    it('while the agent runs, the mic and the Continue button stay out of reach', () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+
+      expect(ref.instance['canRecord']).toBe(false)
+      ref.instance['continueAfterLimit']()
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('a /btw without a question asks nothing and keeps the text to be completed', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/btw')
+    })
+
+    it('asks nothing on a case that has ended or is gone', async () => {
+      const ref = makeComponent()
+      ref.instance['caseGone'].set(true)
+      ref.instance['inputValue'].set('/btw still there?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/btw still there?')
+    })
+
+    it('a new /btw replaces the previous aside', async () => {
+      const second = new Subject<{ answer: string }>()
+      sideApi.ask.mockReturnValueOnce(answer).mockReturnValueOnce(second)
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw first?')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('/btw second?')
+      await ref.instance['submit']()
+
+      answer.next({ answer: 'stale' })
+
+      expect(ref.instance['sideQuestions'].question()).toBe('second?')
+      expect(ref.instance['sideQuestions'].answer()).toBeNull()
+    })
+
+    it('Escape dismisses the aside, and leaves the composer text alone', () => {
+      const ref = makeComponent()
+      ref.instance['sideQuestions'].ask('c-1', 'q')
+      ref.instance['inputValue'].set('typing')
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+
+      ref.instance['onKeydown'](escape)
+
+      expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      expect(escape.defaultPrevented).toBe(true)
+      expect(ref.instance['inputValue']()).toBe('typing')
+    })
+
+    it('Escape does nothing special without an aside', () => {
+      const ref = makeComponent()
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+
+      ref.instance['onKeydown'](escape)
+
+      expect(escape.defaultPrevented).toBe(false)
+    })
+
+    it('a case switch closes the aside', () => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        ref.instance['sideQuestions'].ask('c-1', 'q')
+
+        ref.instance['reinitialise']()
+
+        expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        log.mockRestore()
+      }
+    })
+
+    it('renders the answer with the markdown of the agent messages', () => {
+      const ref = makeComponent()
+      ref.instance['sideQuestions'].ask('c-1', 'q')
+      answer.next({ answer: 'It is **bold**' })
+
+      expect(String(ref.instance['sideAnswerHtml']())).toContain('bold')
+    })
+
+    it('is component-scoped: each chat gets its own aside', () => {
+      const a = makeComponent()
+      const b = makeComponent()
+      a.instance['sideQuestions'].ask('c-1', 'q')
+
+      expect(b.instance['sideQuestions'].visible()).toBe(false)
+    })
+  })
+
   describe('/effort command', () => {
     const loadCase = (): void => {
       TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'IDLE' } as Case])
@@ -692,6 +988,143 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(ref.injector.get(ComposerAutocompleteService).effortSuggestions()).toHaveLength(EFFORT_OPTIONS.length)
       expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
       expect(http.post).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('keep-alive checkbox', () => {
+    let originalEventSource: typeof EventSource
+    let log: jest.SpyInstance
+
+    beforeEach(() => {
+      // Rendering runs ngOnInit, which opens the case event stream: a silent one stands in for it.
+      originalEventSource = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      // Only the template of the chat itself is rendered: its child components are left as unknown elements.
+      TestBed.overrideComponent(CaseChatComponent, {
+        set: { imports: [CheckDirective, JsonPipe, CostPipe, TokenCountPipe], schemas: [NO_ERRORS_SCHEMA] },
+      })
+      // ngOnInit loads through the generated API services, which need a real configuration.
+      TestBed.overrideProvider(Configuration, { useValue: new Configuration({ basePath: '' }) })
+      http.request = jest.fn().mockReturnValue(of([]))
+    })
+
+    afterEach(() => {
+      globalThis.EventSource = originalEventSource
+      log.mockRestore()
+    })
+
+    const loadCase = (fields: Partial<Case> = {}): void => {
+      TestBed.inject(CaseStateService).cases.set([
+        { id: 'c-1', namespaceId: 'ns-1', status: 'IDLE', ...fields } as Case,
+      ])
+    }
+
+    /** What a click does to a checkbox: it toggles, then fires `change`. */
+    function toggle(input: HTMLInputElement): void {
+      input.checked = !input.checked
+      input.dispatchEvent(new Event('change'))
+    }
+
+    function render(): { ref: ComponentRef<CaseChatComponent>; checkbox: () => HTMLInputElement | null } {
+      const ref = makeComponent()
+      ref.changeDetectorRef.detectChanges()
+      const host = ref.location.nativeElement as HTMLElement
+      return { ref, checkbox: () => host.querySelector<HTMLInputElement>('[data-testid="keep-alive"]') }
+    }
+
+    it('is not rendered without an active case', () => {
+      const { ref, checkbox } = render()
+      try {
+        expect(checkbox()).toBeNull()
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('is rendered next to the composer hint, labelled and explained, and reflects the case', () => {
+      loadCase({ keepAlive: true })
+      const { ref, checkbox } = render()
+      try {
+        const input = checkbox()!
+        expect(input).not.toBeNull()
+        expect(input.checked).toBe(true)
+        const label = input.closest('label')!
+        expect(label.textContent?.trim()).toBe('Keep alive')
+        expect(label.getAttribute('title')).toBe(
+          "Keeps this conversation's prompt cache warm while idle, for a limited time after the last reply. Each refresh " +
+            'costs a cache read. Works only if the AI model has a cache TTL (Namespace settings → AI models, or ' +
+            'Administration → Platform AI models).'
+        )
+        expect(input.disabled).toBe(false)
+        expect(label.nextElementSibling?.classList.contains('case-chat__actions-hint')).toBe(true)
+
+        TestBed.inject(CaseStateService).cases.set([
+          { id: 'c-1', namespaceId: 'ns-1', status: 'IDLE', keepAlive: false } as Case,
+        ])
+        ref.changeDetectorRef.detectChanges()
+        expect(checkbox()!.checked).toBe(false)
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('is disabled on an ended case (KILLED or ERROR), on a case that is gone, and without write access', () => {
+      for (const block of [
+        (ref: ComponentRef<CaseChatComponent>) => ref.instance['_sseStatus'].set('KILLED'),
+        (ref: ComponentRef<CaseChatComponent>) => ref.instance['_sseStatus'].set('ERROR'),
+        (ref: ComponentRef<CaseChatComponent>) => ref.instance['caseGone'].set(true),
+        () => exchangeState.canWriteCase.set(false),
+      ]) {
+        exchangeState.canWriteCase.set(true)
+        loadCase()
+        const { ref, checkbox } = render()
+        try {
+          block(ref)
+          ref.changeDetectorRef.detectChanges()
+          expect(checkbox()!.disabled).toBe(true)
+          toggle(checkbox()!)
+          expect(TestBed.inject(CaseStateService).setKeepAlive).not.toHaveBeenCalled()
+          expect(checkbox()!.checked).toBe(false)
+        } finally {
+          ref.destroy()
+        }
+      }
+    })
+
+    it('saves the new value through the case state when toggled', () => {
+      loadCase()
+      const { ref, checkbox } = render()
+      try {
+        const input = checkbox()!
+        expect(input.checked).toBe(false)
+
+        toggle(input)
+
+        expect(TestBed.inject(CaseStateService).setKeepAlive).toHaveBeenCalledWith('c-1', true)
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('rolls the checkbox back when the save fails', () => {
+      loadCase()
+      const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      ;(TestBed.inject(CaseStateService).setKeepAlive as jest.Mock).mockReturnValueOnce(
+        throwError(() => new Error('forbidden'))
+      )
+      const { ref, checkbox } = render()
+      try {
+        toggle(checkbox()!)
+
+        expect(TestBed.inject(CaseStateService).setKeepAlive).toHaveBeenCalledWith('c-1', true)
+        expect(checkbox()!.checked).toBe(false)
+      } finally {
+        ref.destroy()
+        error.mockRestore()
+      }
     })
   })
 

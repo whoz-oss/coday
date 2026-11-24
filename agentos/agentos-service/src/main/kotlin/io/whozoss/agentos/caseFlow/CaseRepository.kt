@@ -81,4 +81,7 @@ interface CaseRepository : EntityRepository<Case, UUID> {
         parentCaseId: UUID,
         childCaseId: UUID,
     )
+
+    /** The ids of the cases, not removed, whose prompt cache keep-alive is on ([Case.keepAlive]). */
+    fun findKeepAliveIds(): List<UUID>
 }

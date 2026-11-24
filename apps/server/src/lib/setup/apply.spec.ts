@@ -603,6 +603,49 @@ describe('runApply pricing', () => {
   })
 })
 
+describe('runApply cache TTLs', () => {
+  it('sends the catalogue cache TTLs with every created chat model, none with WHISPER', async () => {
+    const { fake, deps } = setup()
+    await runApply(
+      input([
+        { id: 'anthropic', rank: 1 },
+        { id: 'openai', rank: 2 },
+      ]),
+      deps
+    )
+    const ttls = (name: string) =>
+      fake.models
+        .filter((m) => m['aiProviderId'] === fake.providers.find((p) => p['name'] === name)?.['id'])
+        .map((m) => [m['alias'], m['cacheTtlMinutes'], m['extendedCacheTtlMinutes']])
+    expect(ttls('anthropic')).toEqual(['FRONTIER', 'BIGGEST', 'BIG', 'SMALL', 'default'].map((alias) => [alias, 5, 60]))
+    expect(ttls('openai')).toEqual([
+      ...['FRONTIER', 'BIGGEST', 'BIG', 'SMALL', 'default'].map((alias) => [alias, 30, undefined]),
+      [TRANSCRIPTION_ALIAS, undefined, undefined],
+    ])
+  })
+
+  it('puts back a TTL changed or cleared since, once, like a price; null reads as no TTL', async () => {
+    const { fake, deps } = setup()
+    const run = () => runApply(input([{ id: 'openai', rank: 1 }]), deps)
+    await run()
+    const big = fake.models.find((m) => m['alias'] === 'BIG')!
+    big['cacheTtlMinutes'] = 10
+    const small = fake.models.find((m) => m['alias'] === 'SMALL')!
+    delete small['cacheTtlMinutes']
+    for (const model of fake.models)
+      if (model['extendedCacheTtlMinutes'] === undefined) model['extendedCacheTtlMinutes'] = null
+
+    expect(await run()).toBe(true)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(2)
+    // The fake AgentOS replaces a model on PUT: read them again.
+    for (const alias of ['BIG', 'SMALL'])
+      expect(fake.models.find((m) => m['alias'] === alias)?.['cacheTtlMinutes']).toBe(30)
+
+    expect(await run()).toBe(true)
+    expect(fake.count('PUT', /^\/api\/ai-models\//)).toBe(2)
+  })
+})
+
 describe('runApply as the first-run user', () => {
   it('starts with a call as that user, so AgentOS creates the user and its personal namespace first', async () => {
     const { fake, deps } = setup()

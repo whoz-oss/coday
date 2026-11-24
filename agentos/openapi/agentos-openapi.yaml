@@ -1541,6 +1541,29 @@ paths:
       summary: Add a message
       tags:
       - case-controller
+  /api/cases/{caseId}/prompt-cache:
+    get:
+      description: "GET /api/cases/{caseId}/prompt-cache: when the provider's prompt\
+        \ cache of the case's last request expires, and what writing its prompt to\
+        \ the cache again would cost. Both null when unknown."
+      operationId: getPromptCacheStatusCasePromptCache
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptCacheStatus"
+          description: OK
+      summary: Whether the prompt cache of a case is warm or cold
+      tags:
+      - case-prompt-cache-controller
   /api/cases/{caseId}/read:
     post:
       description: "POST /api/cases/{caseId}/read — record that the current user has\
@@ -1646,6 +1669,40 @@ paths:
           description: No Content
       tags:
       - run-cost-controller
+  /api/cases/{caseId}/side-questions:
+    post:
+      description: "POST /api/cases/{caseId}/side-questions: answers a quick question\
+        \ from the conversation of the case, without running any tool. Nothing is\
+        \ added to the conversation of the case or broadcast, and a running turn is\
+        \ not interrupted; its LLM usage is recorded on the case and counts toward\
+        \ its run cost, so it needs WRITE on the case. 400 for a blank or too long\
+        \ question, 409 when the namespace has no default AI model or the case is\
+        \ stopped, waiting for a cost confirmation or at its run cost limit, 502 when\
+        \ the model fails to answer."
+      operationId: askSideQuestionCaseSideQuestion
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SideQuestionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SideQuestionResponse"
+          description: OK
+      summary: Ask a side question about a case
+      tags:
+      - case-side-question-controller
   /api/cases/{caseId}/voice-messages:
     post:
       operationId: postVoiceMessage
@@ -1909,6 +1966,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/Case"
           description: OK
+      tags:
+      - case-controller
+  /api/cases/{id}/keep-alive:
+    put:
+      description: "PUT /api/cases/{id}/keep-alive — while the case is idle, keep\
+        \ the provider's prompt cache of its conversation warm by re-sending the agent's\
+        \ last request with a 1-token answer before the cache expires (its model's\
+        \ cache TTL less 40 s; never without a TTL), for up to the platform's maximum\
+        \ idle duration after the last agent turn. Each refresh is recorded as usage\
+        \ of the case; no refresh is sent while usage tracking is off. 400 when keepAlive\
+        \ is missing. Returns the updated Case DTO."
+      operationId: setKeepAliveCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseKeepAliveRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Turn the prompt cache keep-alive of a case on or off
       tags:
       - case-controller
   /api/cases/{id}/reasoning-effort:
@@ -4550,11 +4640,24 @@ components:
         apiModelName:
           type: string
           minLength: 1
+        cacheTtlMinutes:
+          type: integer
+          format: int32
+          description: "Prompt cache TTL after the last use, in minutes; null: no\
+            \ cache indicator nor keep-alive. The keep-alive only refreshes a TTL\
+            \ of up to 65 minutes."
+          minimum: 1
         contextWindow:
           type: integer
           format: int64
         description:
           type: string
+        extendedCacheTtlMinutes:
+          type: integer
+          format: int32
+          description: "cacheTtlMinutes when the request got the 1-hour cache markers\
+            \ (Extended, Claude via Requesty)."
+          minimum: 1
         id:
           type: string
           format: uuid
@@ -4797,6 +4900,11 @@ components:
         id:
           type: string
           format: uuid
+        keepAlive:
+          type: boolean
+          description: "Whether the provider's prompt cache of the conversation is\
+            \ kept warm while the case is idle. Changed through PUT /api/cases/{id}/keep-alive\
+            \ only: ignored on create and update."
         lastMessageAt:
           type: string
           format: date-time
@@ -4917,6 +5025,15 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseKeepAliveRequest:
+      type: object
+      properties:
+        keepAlive:
+          type: boolean
+          description: "True to keep the prompt cache warm while the case is idle,\
+            \ false to stop."
+      required:
+      - keepAlive
     CaseReasoningEffortRequest:
       type: object
       properties:
@@ -6496,6 +6613,26 @@ components:
       required:
       - content
       - id
+    PromptCacheStatus:
+      type: object
+      properties:
+        coldCostEstimate:
+          type: number
+          format: double
+          description: "Estimated cost of writing the prompt of the last request to\
+            \ the cache again, in the platform currency. Null when unknown (no pricing\
+            \ for the model, or no recorded prompt size)."
+        expiresAt:
+          type: string
+          format: date-time
+          description: "When the provider's prompt cache of the case's last request\
+            \ expires; in the past once it is cold. Null when unknown: no recent request\
+            \ of the case, or no cache TTL on its model."
+    PromptCacheTtl:
+      type: string
+      enum:
+      - STANDARD
+      - EXTENDED
     PromptEffectiveRequest:
       type: object
       properties:
@@ -6799,6 +6936,25 @@ components:
         withRemoved:
           type: boolean
           default: false
+    SideQuestionRequest:
+      type: object
+      properties:
+        question:
+          type: string
+          description: "The question, asked about the conversation of the case. Not\
+            \ blank, at most 4000 characters."
+          maxLength: 4000
+          minLength: 1
+      required:
+      - question
+    SideQuestionResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: "The answer, in Markdown. It is not saved anywhere."
+      required:
+      - answer
     Skill:
       type: object
       properties:
@@ -7281,6 +7437,12 @@ components:
         preferredLanguage:
           type: string
           pattern: "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+        promptCacheTtl:
+          description: "Prompt cache choice; EXTENDED only changes Claude models via\
+            \ Requesty. On update, null keeps the stored value."
+          oneOf:
+          - $ref: "#/components/schemas/PromptCacheTtl"
+          - type: "null"
       required:
       - isAdmin
     UserGroupCreateRequest:

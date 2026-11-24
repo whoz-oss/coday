@@ -2,7 +2,9 @@ import { signal } from '@angular/core'
 import { ComponentFixture, fakeAsync, TestBed, tick } from '@angular/core/testing'
 import {
   Case,
+  CasePromptCacheControllerService,
   MessageEvent,
+  PromptCacheStatus,
   RunCostControllerService,
   RunCostDto,
   UsageConfigurationControllerService,
@@ -44,6 +46,7 @@ describe('CaseUsageComponent', () => {
   let usage: { aggregateByCaseTreeUsageRecord: jest.Mock }
   let agentMessageEvents: Subject<MessageEvent>
   let configuration: { getUsageConfiguration: jest.Mock }
+  let promptCaches: { getPromptCacheStatusCasePromptCache: jest.Mock }
   beforeEach(() => {
     configuration = { getUsageConfiguration: jest.fn().mockReturnValue(of({ enabled: true })) }
     costs = {
@@ -53,12 +56,15 @@ describe('CaseUsageComponent', () => {
     }
     usage = { aggregateByCaseTreeUsageRecord: jest.fn().mockReturnValue(of(totals)) }
     agentMessageEvents = new Subject<MessageEvent>()
+    // Unknown by default: the cache figure stays hidden.
+    promptCaches = { getPromptCacheStatusCasePromptCache: jest.fn().mockReturnValue(of({})) }
     TestBed.configureTestingModule({
       imports: [CaseUsageComponent],
       providers: [
         { provide: UsageConfigurationControllerService, useValue: configuration },
         { provide: RunCostControllerService, useValue: costs },
         { provide: UsageRecordControllerService, useValue: usage },
+        { provide: CasePromptCacheControllerService, useValue: promptCaches },
         {
           provide: CaseStateService,
           useValue: {
@@ -478,4 +484,140 @@ describe('CaseUsageComponent', () => {
     expect(fixture.componentInstance.run()?.runCostThreshold).toBe(10)
     fixture.destroy()
   }))
+
+  describe('cache figure', () => {
+    /** A status whose cache expires [seconds] from now (negative: already expired). */
+    function cache(seconds: number, coldCostEstimate?: number): PromptCacheStatus {
+      return { expiresAt: new Date(Date.now() + seconds * 1000).toISOString(), coldCostEstimate }
+    }
+
+    it('counts down the minutes left, rounded up, while the cache is warm', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(150, 0.3)))
+      const fixture = render()
+      expect(figure(fixture, 'cache')).toBe('Warm (3 min left)')
+
+      tick(30_000)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (2 min left)')
+
+      tick(90_000)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (<1 min left)')
+      fixture.destroy()
+    }))
+
+    it('reads the status again at the expiry and turns cold when nothing refreshed the cache', fakeAsync(() => {
+      const expiring = cache(45, 0.3)
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(expiring))
+      const fixture = render()
+      expect(figure(fixture, 'cache')).toBe('Warm (<1 min left)')
+      const calls = promptCaches.getPromptCacheStatusCasePromptCache.mock.calls.length
+
+      // Before the next 30 s tick would have shown it.
+      tick(45_000)
+      fixture.detectChanges()
+      expect(promptCaches.getPromptCacheStatusCasePromptCache).toHaveBeenCalledTimes(calls + 1)
+      expect(figure(fixture, 'cache')).toBe('Cold (~0.30)')
+
+      // Still expired: no further read, no timer.
+      tick(3_600_000)
+      expect(promptCaches.getPromptCacheStatusCasePromptCache).toHaveBeenCalledTimes(calls + 1)
+      fixture.destroy()
+    }))
+
+    it('stays warm at the expiry when a keep-alive ping refreshed the cache meanwhile', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(45, 0.3)))
+      const fixture = render()
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(45 + 300, 0.3)))
+
+      tick(45_000)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (5 min left)')
+
+      // The countdown goes on from the new expiry.
+      tick(210_000)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (2 min left)')
+      fixture.destroy()
+    }))
+
+    it('shows a cold cache with its cost, or without one when the model has no pricing', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(-60, 1.234)))
+      const priced = render()
+      expect(figure(priced, 'cache')).toBe('Cold (~1.23)')
+      priced.destroy()
+
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of({ ...cache(-60), coldCostEstimate: null }))
+      const unpriced = render()
+      expect(figure(unpriced, 'cache')).toBe('Cold')
+      unpriced.destroy()
+    }))
+
+    it('is hidden while the status is unknown or cannot be read', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of({ expiresAt: null, coldCostEstimate: 0.3 }))
+      const unknown = render()
+      expect(figure(unknown, 'cache')).toBeUndefined()
+      unknown.destroy()
+
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(throwError(() => new Error('offline')))
+      const failed = render()
+      expect(figure(failed, 'cache')).toBeUndefined()
+      // Only the figure is lost: the usage itself was refreshed.
+      expect(failed.nativeElement.textContent).not.toContain('could not be refreshed')
+      expect(figure(failed, 'conversation')).toBe('12.00')
+      failed.destroy()
+    }))
+
+    it('is hidden while the case runs, and not read by the run-cost polling', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(300)))
+      const fixture = render()
+      expect(figure(fixture, 'cache')).toBe('Warm (5 min left)')
+
+      fixture.componentRef.setInput('running', true)
+      fixture.detectChanges()
+      tick(0)
+      expect(figure(fixture, 'cache')).toBeUndefined()
+      const calls = promptCaches.getPromptCacheStatusCasePromptCache.mock.calls.length
+      tick(6000)
+      expect(promptCaches.getPromptCacheStatusCasePromptCache).toHaveBeenCalledTimes(calls)
+
+      fixture.componentRef.setInput('running', false)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (5 min left)')
+      fixture.destroy()
+    }))
+
+    it('shows nothing from before the run once it is over, until the status is read again', fakeAsync(() => {
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(300, 0.3)))
+      const fixture = render()
+      fixture.componentRef.setInput('running', true)
+      fixture.detectChanges()
+      tick(0)
+
+      const reread = new Subject<PromptCacheStatus>()
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(reread)
+      fixture.componentRef.setInput('running', false)
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBeUndefined()
+
+      reread.next(cache(600, 0.3))
+      reread.complete()
+      fixture.detectChanges()
+      expect(figure(fixture, 'cache')).toBe('Warm (10 min left)')
+      fixture.destroy()
+    }))
+
+    it('is read again with the totals after an answer', fakeAsync(() => {
+      const fixture = render()
+      const calls = promptCaches.getPromptCacheStatusCasePromptCache.mock.calls.length
+
+      promptCaches.getPromptCacheStatusCasePromptCache.mockReturnValue(of(cache(300)))
+      agentMessageEvents.next({ id: 'answer-1', caseId: 'case-a' } as MessageEvent)
+      fixture.detectChanges()
+      expect(promptCaches.getPromptCacheStatusCasePromptCache).toHaveBeenCalledTimes(calls + 1)
+      expect(promptCaches.getPromptCacheStatusCasePromptCache).toHaveBeenLastCalledWith('case-a')
+      expect(figure(fixture, 'cache')).toBe('Warm (5 min left)')
+      fixture.destroy()
+    }))
+  })
 })

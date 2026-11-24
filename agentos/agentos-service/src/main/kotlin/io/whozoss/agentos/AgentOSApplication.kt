@@ -1,9 +1,13 @@
 package io.whozoss.agentos
 
 import io.whozoss.agentos.agent.AgentConfigProperties
+import io.whozoss.agentos.agent.LlmRequestRegistryProperties
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
+import io.whozoss.agentos.caseFlow.CaseKeepAliveProperties
+import io.whozoss.agentos.caseFlow.SideQuestionProperties
 import io.whozoss.agentos.casePlugin.CasePluginConfigProperties
 import io.whozoss.agentos.chat.AnthropicProperties
+import io.whozoss.agentos.chat.RequestyPromptCacheProperties
 import io.whozoss.agentos.codayAgent.CodayAgentProperties
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
@@ -24,6 +28,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.runApplication
 import org.springframework.scheduling.annotation.EnableScheduling
 
+
 /**
  * Main Spring Boot application for Agent OS.
  */
@@ -36,7 +41,9 @@ import org.springframework.scheduling.annotation.EnableScheduling
 @EnableConfigurationProperties(
     AgentConfigProperties::class,
     AnthropicProperties::class,
+    RequestyPromptCacheProperties::class,
     CaseConfigProperties::class,
+    CaseKeepAliveProperties::class,
     CasePluginConfigProperties::class,
     CodayAgentProperties::class,
     PersonalNamespaceProperties::class,
@@ -53,6 +60,8 @@ import org.springframework.scheduling.annotation.EnableScheduling
     QueryUserConfigProperties::class,
     UserGroupToolConfigProperties::class,
     SchedulerProperties::class,
+    SideQuestionProperties::class,
+    LlmRequestRegistryProperties::class,
 )
 class AgentOSApplication
 

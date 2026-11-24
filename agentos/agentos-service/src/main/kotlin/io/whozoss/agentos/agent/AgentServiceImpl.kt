@@ -39,6 +39,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.credential.Credential
@@ -101,6 +102,8 @@ class AgentServiceImpl(
     /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
     private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
     private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
+    /** Where a SIMPLE agent records the last LLM request of its turns, for the calls reusing its prompt cache. */
+    private val lastLlmRequestRegistry: LastLlmRequestRegistry,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -683,6 +686,8 @@ class AgentServiceImpl(
         logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
+        // Anonymous and system runs keep the default.
+        val promptCacheTtl = resolvedUser?.promptCacheTtl ?: PromptCacheTtl.STANDARD
 
         return when (executionMode) {
             ExecutionMode.LOOP -> {
@@ -705,6 +710,7 @@ class AgentServiceImpl(
                         context.caseId?.toString(),
                         context.usageAccumulator,
                         maxToolRounds,
+                        promptCacheTtl,
                     )
                 val advancedContext =
                     AgentAdvancedContext(
@@ -737,6 +743,27 @@ class AgentServiceImpl(
             }
 
             ExecutionMode.SIMPLE -> {
+                // The exact last request of each turn, for the calls reusing its prompt cache. Only a tracked model (one
+                // with an accumulator) reports what it sends: without one, nothing is captured. Its generation is the
+                // one returned when the run started, never read again here: an invalidation during the resolution of
+                // the agent (a kill, a deletion) must drop the capture, not be adopted by it.
+                val generation = context.llmRequestGeneration
+                val capture =
+                    if (context.usageAccumulator != null && generation != null) {
+                        LastLlmRequestCapture(
+                            registry = lastLlmRequestRegistry,
+                            namespaceId = context.namespaceId,
+                            userId = context.userId,
+                            model = modelConfig,
+                            provider = providerConfig,
+                            agentName = agentName,
+                            agentConfigId = agentId,
+                            generation = generation,
+                            promptCacheTtl = promptCacheTtl,
+                        )
+                    } else {
+                        null
+                    }
                 val chatClient =
                     chatClientProvider.getChatClient(
                         modelConfig,
@@ -744,6 +771,8 @@ class AgentServiceImpl(
                         context.caseId?.toString(),
                         context.usageAccumulator,
                         maxToolRounds,
+                        promptCacheTtl,
+                        exchangeRecorder = capture?.recorder,
                     )
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
@@ -761,6 +790,8 @@ class AgentServiceImpl(
                     requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                    lastExchange = { capture?.lastExchange() },
+                    onFinalRequest = capture?.let { it::onFinalRequest },
                 )
             }
         }

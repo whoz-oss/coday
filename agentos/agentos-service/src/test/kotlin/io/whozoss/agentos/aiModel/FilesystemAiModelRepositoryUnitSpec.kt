@@ -94,6 +94,21 @@ class FilesystemAiModelRepositoryUnitSpec :
             }
         }
 
+        "reads the prompt cache lifetimes from the file, null when the keys are absent" {
+            val cachedYaml = bigYaml.replace("alias: BIG", "alias: CACHED") + "\ncacheTtlMinutes: 5\nextendedCacheTtlMinutes: 60"
+            val models =
+                repo(
+                    configDir("BIG.yaml" to bigYaml, "CACHED.yaml" to cachedYaml),
+                    namespaceProviders = listOf(provider("requesty")),
+                ).findAllForNamespace(namespaceId)
+            val byAlias = models.associateBy { it.alias }
+
+            byAlias["CACHED"]?.cacheTtlMinutes shouldBe 5
+            byAlias["CACHED"]?.extendedCacheTtlMinutes shouldBe 60
+            byAlias["BIG"]?.cacheTtlMinutes shouldBe null
+            byAlias["BIG"]?.extendedCacheTtlMinutes shouldBe null
+        }
+
         "reads supportsAdvancedExecution from the file, false when the key is absent" {
             val advancedYaml = bigYaml.replace("alias: BIG", "alias: ADVANCED") + "\nsupportsAdvancedExecution: true"
             val models =
@@ -168,6 +183,14 @@ class FilesystemAiModelRepositoryUnitSpec :
             byAlias["OPENAI-SMALL"]?.apiModelName shouldBe "openai/gpt-6-luna"
             byAlias["OPENAI-BIG"]?.apiModelName shouldBe "openai/gpt-5.6-terra"
             byAlias["OPENAI-BIGGEST"]?.apiModelName shouldBe "openai/gpt-6.1-sol"
+            for (alias in listOf("SMALL", "default", "BIG", "BIGGEST")) {
+                byAlias[alias]?.cacheTtlMinutes shouldBe 5
+                byAlias[alias]?.extendedCacheTtlMinutes shouldBe 60
+            }
+            for (alias in listOf("OPENAI-SMALL", "OPENAI-BIG", "OPENAI-BIGGEST")) {
+                byAlias[alias]?.cacheTtlMinutes shouldBe 30
+                byAlias[alias]?.extendedCacheTtlMinutes shouldBe null
+            }
 
             // Exercise the conventional default lookup, not just YAML parsing.
             val repository = mockk<AiModelRepository> {

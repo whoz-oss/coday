@@ -52,8 +52,8 @@ class ConfigProposeTool(
         carries a credential (Authorization, X-Api-Key...). An AI model (kind AI_MODEL) has aiProviderId (required: the id of its
         provider, or {"${'$'}op": "<ref>"} of a provider created earlier in the plan), apiModelName (required), alias (e.g. BIG,
         SMALL: what an agent's modelName refers to), description, priority, temperature, maxCompletionTokens, contextWindow,
-        pricing, reasoningEffort, supportsAdvancedExecution. A model has no scope of its own: it takes its provider's, so give
-        it no 'scope', namespaceId or userId.
+        pricing, cacheTtlMinutes, extendedCacheTtlMinutes, reasoningEffort, supportsAdvancedExecution. A model has no
+        scope of its own: it takes its provider's, so give it no 'scope', namespaceId or userId.
         A namespace's Git repository, which gives each case its worktree, is an integration of type
         ${GitRepositoryIntegration.TYPE} (one per namespace, shared) with parameters ${GitRepositoryIntegration.PARAM_REPOSITORY_URL},
         ${GitRepositoryIntegration.PARAM_MAIN_BRANCH}, ${GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID} (id of a shared auth setting of

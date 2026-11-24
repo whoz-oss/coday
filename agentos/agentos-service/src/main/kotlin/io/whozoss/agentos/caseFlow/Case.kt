@@ -68,6 +68,12 @@ data class Case(
      */
     val reasoningEffort: ReasoningEffort? = null,
     /**
+     * Whether the provider's prompt cache of the conversation is kept warm while the case is idle, by
+     * [CaseKeepAliveScheduler]: each refresh re-reads the cached prompt of the agent's last request. A user choice,
+     * off by default; changed through [CaseService.setKeepAlive] only.
+     */
+    val keepAlive: Boolean = false,
+    /**
      * Short LLM-written summary of what the case is about and where it stands, kept up to date by
      * [CaseSummaryService] and used by the case search. Null until the first summary is generated.
      *

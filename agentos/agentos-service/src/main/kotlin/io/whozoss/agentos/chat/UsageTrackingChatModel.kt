@@ -40,6 +40,14 @@ import java.util.concurrent.atomic.AtomicReference
  * summary never ends on a dropped tool call, and it carries [MAX_ITERATIONS_REACHED] in its
  * metadata so the agent can tell the user it stopped early. A response without tool calls at
  * that point completes the run normally.
+ *
+ * With [runTools] false, no tool is ever executed: a response that asks for tools is returned as it is, after
+ * accounting. It is the switch of the calls that must not change anything (the side questions); Spring AI's
+ * `internalToolExecutionEnabled` flag is not enough, since this class executes the tools itself.
+ *
+ * [exchangeRecorder] sees every request sent to the provider, tool rounds included, and the text of its response.
+ *
+ * A cost reported by the provider for a request ([providerCost]) replaces the pricing estimate.
  */
 class UsageTrackingChatModel(
     private val delegate: ChatModel,
@@ -48,6 +56,9 @@ class UsageTrackingChatModel(
     private val model: AiModel,
     private val toolManager: ToolCallingManager = DefaultToolCallingManager.builder().build(),
     private val maxToolRounds: Int = LimitsConfigProperties().agentMaxIterations,
+    private val runTools: Boolean = true,
+    private val exchangeRecorder: LlmExchangeRecorder? = null,
+    private val providerCost: ProviderReportedCost? = null,
 ) : ChatModel by delegate {
     /**
      * Kotlin `by delegate` does not forward Java interface default methods: without this override,
@@ -88,7 +99,7 @@ class UsageTrackingChatModel(
     ): ChatResponse {
         val response = trackedCall(prompt)
         return when {
-            !response.hasToolCalls() -> {
+            !response.hasToolCalls() || !runTools -> {
                 response
             }
 
@@ -110,7 +121,14 @@ class UsageTrackingChatModel(
 
     private fun trackedCall(prompt: Prompt): ChatResponse {
         awaitPermission()
-        return delegate.call(prompt).also { accumulator.record(CostCalculator.extract(it, apiType, model)) }
+        exchangeRecorder?.requestSent(prompt)
+        providerCost?.clear()
+        return delegate.call(prompt).also {
+            val usage = CostCalculator.extract(it, apiType, model)
+            accumulator.record(withProviderCost(usage))
+            exchangeRecorder?.usageReceived(usage)
+            exchangeRecorder?.responseReceived(it.result?.output?.text)
+        }
     }
 
     /** Keeps the provider's metadata (usage, id, model) and its generation unless the text must be completed. */
@@ -118,6 +136,7 @@ class UsageTrackingChatModel(
         val summary = trackedCall(summaryPrompt(prompt))
         val text = summary.result?.output?.text.orEmpty()
         val completed = completeSummary(text, droppedCall = summary.hasToolCalls())
+        exchangeRecorder?.responseReceived(completed)
         val generations =
             if (completed == text) {
                 summary.results
@@ -159,11 +178,15 @@ class UsageTrackingChatModel(
     ): Flux<ChatResponse> =
         Flux.defer {
             val aggregated = AtomicReference<ChatResponse?>(null)
-            MessageAggregator().aggregate(trackedStream(prompt), aggregated::set).concatWith(
+            val roundCompleted: (ChatResponse) -> Unit = { response ->
+                aggregated.set(response)
+                exchangeRecorder?.responseReceived(response.result?.output?.text)
+            }
+            MessageAggregator().aggregate(trackedStream(prompt), roundCompleted).concatWith(
                 Flux.defer {
                     val response = aggregated.get()
                     when {
-                        response == null || !response.hasToolCalls() -> {
+                        response == null || !response.hasToolCalls() || !runTools -> {
                             Flux.empty()
                         }
 
@@ -196,15 +219,31 @@ class UsageTrackingChatModel(
         val lastUsage = AtomicReference<LlmUsage?>(null)
         return Mono
             .fromFuture(accumulator.beforeCall())
-            .thenMany(Flux.defer { delegate.stream(prompt) })
+            .thenMany(
+                Flux.defer {
+                    exchangeRecorder?.requestSent(prompt)
+                    providerCost?.clear()
+                    delegate.stream(prompt)
+                },
+            )
             .doOnNext { response ->
                 val usage = CostCalculator.extract(response, apiType, model)
                 if (usage != LlmUsage.ZERO) lastUsage.set(usage)
-            }.doOnComplete { lastUsage.getAndSet(null)?.let(accumulator::record) }
-            .doOnError {
-                lastUsage.getAndSet(null)?.let(accumulator::record)
-            }.doOnCancel { lastUsage.getAndSet(null)?.let(accumulator::record) }
+            }.doOnComplete { recordLast(lastUsage) }
+            .doOnError { recordLast(lastUsage) }
+            .doOnCancel { recordLast(lastUsage) }
     }
+
+    private fun recordLast(lastUsage: AtomicReference<LlmUsage?>) {
+        lastUsage.getAndSet(null)?.let {
+            accumulator.record(withProviderCost(it))
+            exchangeRecorder?.usageReceived(it)
+        }
+    }
+
+    /** The provider's own figure is authoritative; the estimate remains the fallback. */
+    private fun withProviderCost(usage: LlmUsage): LlmUsage =
+        providerCost?.take()?.let { usage.copy(estimatedCostUsd = it) } ?: usage
 
     /** The summary is streamed as it comes; a last chunk adds what completes it, and the limit marker. */
     private fun streamSummary(prompt: Prompt): Flux<ChatResponse> =
@@ -215,6 +254,7 @@ class UsageTrackingChatModel(
                     val summary = aggregated.get()
                     val streamed = summary?.result?.output?.text.orEmpty()
                     val completed = completeSummary(streamed, droppedCall = summary?.hasToolCalls() == true)
+                    exchangeRecorder?.responseReceived(completed)
                     Flux.just(limitReached(completed.removePrefix(streamed)))
                 },
             )

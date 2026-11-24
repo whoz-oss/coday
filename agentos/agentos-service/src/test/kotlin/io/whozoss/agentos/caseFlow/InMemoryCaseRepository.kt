@@ -22,6 +22,8 @@ class InMemoryCaseRepository : CaseRepository {
 
     override fun findByParent(parentId: UUID) = delegate.findByParent(parentId)
 
+    override fun findKeepAliveIds(): List<UUID> = delegate.findAll().filter { it.keepAlive && !it.metadata.removed }.map { it.id }
+
     override fun delete(id: UUID) = delegate.delete(id)
 
     override fun deleteByParent(parentId: UUID) = delegate.deleteByParent(parentId)
