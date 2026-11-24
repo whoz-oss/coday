@@ -112,7 +112,9 @@ paths:
                         Only for PASS of a step whose definition declares `expansion` (the brief says so). Steps appended to THIS run only; the definition catalog never changes.
                         Each step uses the canonical workflow step (id, name, responsibility, dependsOn, optional entry/mission/exit together, optional decision/join).
                         An empty dependsOn means after the expanding step; dependsOn may name only the expanding step or other continuation steps.
-                        Step ids must not exist in the run, agent steps must name an agent enabled in the namespace, and `expansion` / `outcomeTransitions` are not allowed in a continuation.
+                        Step ids must not exist in the run and must not be `continuation-approval`, agent steps must name an agent enabled in the namespace, `code` steps are not supported, and `expansion` / `outcomeTransitions` are not allowed in a continuation.
+                        Factory inserts a human step `continuation-approval` right after the expanding step: a dependency on the expanding step means after that approval, and a person approves the steps in Factory before any of them runs.
+                        If Factory cannot read the agents of the namespace, it answers AGENTS_UNVERIFIABLE; send the result again.
                         A rejected continuation answers 400 RESULT_SCHEMA_INVALID with details.violations[] ({path, code, message}); the capability is not used up, so fix the listed paths and send the result again.
                       properties:
                         steps:

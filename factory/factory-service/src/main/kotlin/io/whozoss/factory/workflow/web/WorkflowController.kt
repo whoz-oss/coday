@@ -146,12 +146,12 @@ class WorkflowController(
         return WorkflowDataEnvelope(service.remove(caller.scope, caller.namespaceId, workflowId).data as Map<String, Any?>)
     }
 
-    // ----- projection ----------------------------------------------------
+    // ----- expansion -----------------------------------------------------
 
     /**
      * Draft of the definition a run actually followed (base steps + steps added by an expansion),
      * ready to be reviewed and registered through the existing `POST /workflow-definitions`.
-     * Read-only: nothing is registered here.
+     * Read-only: nothing is registered here. `WORKFLOW_NOT_EXPANDED` (409) only means the run has no added steps.
      */
     @GetMapping(path = ["/{workflowId}/expanded-definition"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Read the draft definition of a run that added steps (not registered).")
@@ -163,6 +163,8 @@ class WorkflowController(
         val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(workflowExpansionService.expandedDefinitionDraft(caller.scope, caller.namespaceId, workflowId))
     }
+
+    // ----- projection ----------------------------------------------------
 
     @GetMapping(path = ["/{workflowId}/projection"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Read the current workflow projection.")

@@ -306,17 +306,7 @@ class SessionRunService(
         // (`execution.plugin == "forge"`, parent `runId`, or a `code` step); a
         // classical agent/human workflow run can execute in a namespace without a
         // Git repository association.
-        val requiresGitWorkspace = requiresGitWorkspace(instance, steps)
-        val callerExternalUserId = instanceActorId(instance)
-        workspacePrecheckService?.precheck(
-            scope = scope,
-            namespaceId = namespaceId,
-            callerExternalUserId = callerExternalUserId,
-            requiredAgents = steps
-                .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
-                .mapNotNull { it.responsibility.name },
-            requireGitWorkspace = requiresGitWorkspace,
-        )
+        precheck(scope, namespaceId, instance, steps)
         check(steps.none { it.outcomeTransitions != null } || outcomeTransitionService != null) { "OUTCOME_ROUTER_UNAVAILABLE" }
         outcomeTransitionService?.initialize(scope, namespaceId, workflowId, steps)
         val statuses = loadProgress(scope, namespaceId, workflowId, steps)
@@ -342,27 +332,15 @@ class SessionRunService(
         run {
             while (iterations++ < guard(steps)) {
                 if (canExpand) {
-                    // The expanding step is finalized first (executeStep); the steps it adds are added here, on the
-                    // next pass. This single path also recovers a crash between the finalization and the addition.
-                    if (expansionService?.let { newTransaction { it.reconcile(scope, namespaceId, workflowId, steps) } } == true) {
-                        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
-                    }
-                    // Pick up the steps added to this run (single resolver: instance + base definition).
+                    // The expanding step added its steps in the same transaction that finalized it (executeStep).
+                    // Pick them up here (single resolver: instance + base definition).
                     val current = activeInstance(scope, namespaceId, workflowId)
                     val refreshed = resolveDefinition(scope, current).steps
                     if (refreshed.size != steps.size) {
-                        // Added steps get the same prerequisites check as a registered definition, BEFORE any of
-                        // them runs (a resumed run re-checks the whole effective definition at its start).
-                        val known = steps.map { it.id }.toSet()
-                        workspacePrecheckService?.precheck(
-                            scope = scope,
-                            namespaceId = namespaceId,
-                            callerExternalUserId = callerExternalUserId,
-                            requiredAgents = refreshed
-                                .filter { it.id !in known && it.responsibility.kind == ResponsibilityKind.AGENT }
-                                .mapNotNull { it.responsibility.name },
-                            requireGitWorkspace = requiresGitWorkspace(current, refreshed),
-                        )
+                        // The added steps get the same prerequisites check as a registered definition, on the full
+                        // list (base + added), BEFORE any of them runs. A failure surfaces like the check at the
+                        // start of the run; the first added step is the human approval, which has produced no effect.
+                        precheck(scope, namespaceId, current, refreshed)
                         steps = refreshed
                     }
                 }
@@ -503,6 +481,27 @@ class SessionRunService(
             sessionRunService = this,
         )
         return sessionResult
+    }
+
+    /**
+     * Read-only workspace prerequisites (agents enabled in the namespace, Git workspace when required) of a full
+     * step list. Run at the start of a run and again, on the full list, right after an expansion added steps.
+     */
+    private fun precheck(
+        scope: TenantScope,
+        namespaceId: String,
+        instance: WorkflowInstanceRecord,
+        steps: List<WorkflowStepDefinition>,
+    ) {
+        workspacePrecheckService?.precheck(
+            scope = scope,
+            namespaceId = namespaceId,
+            callerExternalUserId = instanceActorId(instance),
+            requiredAgents = steps
+                .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
+                .mapNotNull { it.responsibility.name },
+            requireGitWorkspace = requiresGitWorkspace(instance, steps),
+        )
     }
 
     /** The parent Run id carried by a fragment workflow instance, or null for standalone workflows. */
@@ -806,8 +805,8 @@ class SessionRunService(
                 return WorkflowStatuses.FAILED
             }
         }
-        // A step that declares `expansion` is finalized like any other step. Its accepted continuation is added
-        // by `WorkflowExpansionService.reconcile` at the start of the next sequencer pass (idempotent, recoverable).
+        // A step that declares `expansion` adds its steps and is finalized in ONE transaction: either the steps are
+        // added and the step is COMPLETED, or nothing is written and the step is FAILED. The fence is checked before it.
         if (executionId != null) {
             val durableExecution = repository.findStepStates(scope, namespaceId, workflowId).single { it.stepId == step.id }
                 .payload["execution"] as? Map<*, *>
@@ -818,6 +817,33 @@ class SessionRunService(
             outcomeTransitionService?.record(scope, namespaceId, workflowId, step.id, executionId, terminal, execution.attemptId, execution.evidenceId)
             transition(scope, namespaceId, workflowId, step, terminal, expectedRevision, oracleEvidenceIds)
             recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution, statuses, workspaceFacts)
+        }
+        if (step.expansion != null && terminal == WorkflowStatuses.COMPLETED) {
+            val added = ArrayList<WorkflowStepDefinition>()
+            try {
+                val service = checkNotNull(expansionService) { "EXPANSION_UNAVAILABLE" }
+                val attemptId = requireNotNull(execution.attemptId) { "EXPANSION_ATTEMPT_MISSING" }
+                newTransaction {
+                    added += service.graft(scope, namespaceId, workflowId, step, attemptId)
+                    // Keep the in-memory progress aligned with the added steps: without them the projection status
+                    // written by the finalization would read "completed" while they are still pending.
+                    added.forEach { statuses.statuses.putIfAbsent(it.id, WorkflowStatuses.PENDING) }
+                    finalizeStep()
+                }
+            } catch (error: Exception) {
+                // Rolled back: no expansion is recorded and the step is not COMPLETED. Restore the in-memory state
+                // from the durable one (same pattern as a failed acceptRouting), then fail the step.
+                added.forEach { statuses.statuses.remove(it.id) }
+                statuses.completedAt.remove(step.id)
+                reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
+                recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision, statuses)
+                return WorkflowStatuses.FAILED
+            }
+            // One SSE hint, once the transaction has committed.
+            if (added.isNotEmpty()) {
+                sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+            }
+            return terminal
         }
         // Opted-in ledger + terminal state/evidence commit together. Preserve legacy transaction behavior.
         if (executionId != null) newTransaction { finalizeStep() } else finalizeStep()

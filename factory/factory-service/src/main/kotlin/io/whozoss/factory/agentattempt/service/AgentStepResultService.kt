@@ -83,7 +83,11 @@ class AgentStepResultService(
     @param:Lazy
     @param:Autowired(required = false)
     private val expansionService: WorkflowExpansionService? = null,
-    private val definitionResolver: EffectiveWorkflowDefinitionResolver? = workflowRepository?.let { EffectiveWorkflowDefinitionResolver(it) },
+    /**
+     * The single computation of the definition a run follows. Injected from the Spring context; absent only in narrow
+     * unit compositions, where the decision of a step is then not checked here.
+     */
+    private val definitionResolver: EffectiveWorkflowDefinitionResolver? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}

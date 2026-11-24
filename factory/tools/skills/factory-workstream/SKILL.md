@@ -36,7 +36,7 @@ If the user asks you to launch work and names no workflow type, do not pick one 
 
 1. **Use an existing workflow** — call `FACTORY_AUTHORING__list_definitions` (if you have it) or ask the user which registered type and version to use, show the choices, then start the one the user picks.
 2. **Create one first** — hand over to the `factory-workflow-authoring` skill to design, validate and register the workflow with the user, then start the new definition with its exact `definitionVersion` and `definitionHash`.
-3. **Let the Architect build it** — start the `architect-custom-flow` workflow (version and hash from its registered definition) with the ticket in the request. The Architect step designs the steps of the run itself; they are added to that run only.
+3. **Let the Architect build it** — start the `architect-custom-flow` workflow (version and hash from its registered definition) with the ticket in the request. The Architect step designs the steps of the run itself; they are added to that run only. Factory inserts a human approval step `continuation-approval` after the Architect step: tell the user that they must approve the generated steps in Factory before any of them runs. You cannot approve it for them.
 
 Never choose a path without asking. If the user already named a workflow type, skip the question. The workstream's `allowedWorkflowTypes` may need to include `architect-custom-flow` for path 3; if the start is refused for that reason, report it instead of trying another workstream.
 

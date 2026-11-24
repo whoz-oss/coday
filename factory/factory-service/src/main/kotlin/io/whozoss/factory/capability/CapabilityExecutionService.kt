@@ -12,6 +12,7 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepResultClaim
 import io.whozoss.factory.workflow.domain.WorkflowStepContract
 import io.whozoss.factory.workflow.domain.WorkflowDecision
+import io.whozoss.factory.workflow.domain.WorkflowContinuationValidator
 import io.whozoss.factory.workflow.domain.WorkflowTicket
 import io.whozoss.factory.sdk.spi.WorkspaceCaptureStatus
 import io.whozoss.factory.sdk.spi.NewFinding
@@ -927,8 +928,10 @@ class CapabilityExecutionService(
                     "id, name, responsibility {kind: agent|human|code, name}, dependsOn, entry, mission, exit.",
             )
             appendLine("- An empty dependsOn means \"after this step\". dependsOn may only name this step ('${step.id}') or another step of the continuation.")
+            appendLine("- Factory inserts a human approval step '${WorkflowContinuationValidator.APPROVAL_STEP_ID}' right after this step: none of your steps runs before a person approved them in Factory. Do not add it yourself and do not use that id. A dependency on this step means: after that approval. The approval step is not counted in the 50 steps.")
             appendLine("- Step ids must be new. Ids already used by this run: ${assembly.existingStepIds.joinToString(", ")}.")
             appendLine("- Agent steps must name an agent that is enabled in the namespace. Do not declare `expansion` or `outcomeTransitions` on a continuation step.")
+            appendLine("- Use only agent and human steps: a `code` step is not supported in a continuation.")
             appendLine("- Keep the general workflow instructions apart from the details of this ticket, so the workflow can be reused later.")
             appendLine("- If Factory rejects the continuation (RESULT_SCHEMA_INVALID with violations), fix the listed paths and send the result again in the same turn: the capability is not used up.")
         }
