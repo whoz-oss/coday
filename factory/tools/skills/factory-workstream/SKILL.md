@@ -36,11 +36,15 @@ If the user asks you to launch work and names no workflow type, do not pick one 
 
 1. **Use an existing workflow** — call `FACTORY_AUTHORING__list_definitions` (if you have it) or ask the user which registered type and version to use, show the choices, then start the one the user picks.
 2. **Create one first** — hand over to the `factory-workflow-authoring` skill to design, validate and register the workflow with the user, then start the new definition with its exact `definitionVersion` and `definitionHash`.
-3. **Let the Architect build it** — start the `architect-custom-flow` workflow (version and hash from its registered definition) with the ticket in the request. The Architect step designs the steps of the run itself; they are added to that run only. They run directly after the Architect step, without a validation added by Factory, and they are visible at once in Factory Cockpit, where an attempt can be cancelled. If a person must validate something, the Architect adds a `human` step for it.
+3. **Let an agent build it** — start the starting workflow of this workstream: a registered definition that this workstream allows and whose single entry step is an agent step declaring `expansion` (for developers this is `architect-custom-flow`; other circles register their own). That agent designs the steps of the run itself; they are added to that run only, run directly after it and are visible at once in Factory Cockpit. If a person must validate something, the agent adds a `human` step for it.
+   - To find it, read the registered definitions (`FACTORY_AUTHORING__list_definitions`) and keep those whose entry step declares `expansion` and whose type this workstream allows.
+   - One candidate: start it directly, with the rule of "Version selection" below.
+   - Several candidates: ask the user which one, in the same `queryUser` question.
+   - None, or you cannot read the definitions: say that this mode is not configured for this workstream, and offer options 1 and 2.
 
-Never choose a path without asking. If the user already named a workflow type, skip the question. The workstream's `allowedWorkflowTypes` may need to include `architect-custom-flow` for path 3; if the start is refused for that reason, report it instead of trying another workstream.
+Never choose a path without asking. If the user already named a workflow type, skip the question; this also holds for a starting workflow named explicitly. For path 3, the workstream's `allowedWorkflowTypes` must include its starting workflow; if the start is refused for that reason, report it instead of trying another workstream. Do not assume that you can read the allow-list of a workstream: rely on the list of definitions, and on the refusal at start as the safeguard (for example when a circle starts the definition of another circle, whose agent does not exist in its namespace).
 
-A run built by the Architect can be saved afterwards as a reusable definition: tell the user it can be done from the session page of Factory Cockpit ("Save as reusable workflow"), or through the authoring skill. You never register a definition yourself from this role.
+A run built this way can be saved afterwards as a reusable definition: tell the user it can be done from the session page of Factory Cockpit ("Save as reusable workflow"), or through the authoring skill. You never register a definition yourself from this role.
 
 Use `FACTORY_WORKSTREAM__start_workflow` only when starting a run is within the assignment. When the user names a workflow type, start it directly: do not ask for confirmation. Ask a question only when information required to start is missing (for example the ticket the run is about).
 

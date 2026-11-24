@@ -111,11 +111,50 @@ Example: review declares `"outcomeTransitions":{"fail":{"action":"return","targe
 
 ## Saving a workflow the Architect generated during a run
 
-A run started from `architect-custom-flow` adds its steps to that run only. To keep them as a reusable workflow:
+A run started from a starting workflow (`architect-custom-flow` for developers, or the one of another circle) adds its steps to that run only. To keep them as a reusable workflow:
 
 1. Read the draft with `FACTORY_AUTHORING__get_expanded_definition` (`workflowId`, `namespaceId`). It returns the base steps plus the added steps, without the `expansion` declaration. A run without added steps answers 409 `WORKFLOW_NOT_EXPANDED`.
 2. Make the step text generic: replace the ticket-specific details (ticket number, file names, names) by instructions that fit any ticket of the same kind, and keep the meaning of every step.
 3. Choose a NEW `workflowType` and version (the returned ones are placeholders), check it with `FACTORY_AUTHORING__validate_definition`, show the user the flow and register it with `FACTORY_AUTHORING__register_definition` only after the user agrees. Registration never overwrites and never launches a run.
+
+## Create a starting workflow for a circle
+
+A starting workflow lets an agent of a circle design the steps of a run itself. It is an ordinary definition with a single agent step that declares `"expansion": {"mode": "append"}`. Rules checked by Factory:
+
+- at most one step declares `expansion`, and it must be an `agent` step with no dependent step and no `decision`;
+- the agent must be enabled in the namespaces of the circle (checked when a run starts);
+- the steps the agent sends cannot be `code` steps and cannot declare `expansion` or `outcomeTransitions`.
+
+Write the mission for the business of the circle: what to analyse, which agents of the namespace to use for which kind of work, when to add a `human` step. Keep the general instructions apart from the details of a given request, so that the generated runs can be saved as reusable definitions. Register it with a new type (convention: `<circle>-custom-flow`), then ask an administrator to add this type to the `allowedWorkflowTypes` of the circle's workstream.
+
+Example (replace `Planner` with the real agent name of the circle, and adapt the texts):
+
+```json
+{
+  "schemaVersion": "1",
+  "workflowType": "ba-custom-flow",
+  "version": "1.0.0",
+  "title": "Business analysis run designed by the Planner",
+  "steps": [
+    {
+      "id": "plan",
+      "name": "Analyse the request and design the steps of the run",
+      "responsibility": { "kind": "agent", "name": "Planner" },
+      "dependsOn": [],
+      "entry": [
+        "Read the request and the ticket given at launch, with its comments and linked items"
+      ],
+      "mission": "Analyse the request. Decide which steps are needed to deliver it, which agent of the namespace does each one, and where a person must decide or validate (use a human step there). Send these steps as the continuation of your result. Keep the general instructions of each step apart from the details of this request.",
+      "exit": [
+        "Submit PASS with the continuation, or NEEDS_RESEARCH with the missing information"
+      ],
+      "expansion": { "mode": "append" }
+    }
+  ]
+}
+```
+
+Validate it with `POST /api/factory/workflow-definitions/validate` (`FACTORY_AUTHORING__validate_definition`) before registering it.
 
 ## Validation, registration and launch
 
