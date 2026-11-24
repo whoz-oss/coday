@@ -44,9 +44,7 @@ A run built by the Architect can be saved afterwards as a reusable definition: t
 
 Use `FACTORY_WORKSTREAM__start_workflow` only when starting a run is within the assignment. When the user names a workflow type, start it directly: do not ask for confirmation. Ask a question only when information required to start is missing (for example the ticket the run is about).
 
-### Version selection
-
-Always start with an explicit `definitionVersion` and `definitionHash`, taken from the registered definitions (`FACTORY_AUTHORING__list_definitions`):
+**Version selection.** Always start with an explicit `definitionVersion` and `definitionHash`, taken from the registered definitions (`FACTORY_AUTHORING__list_definitions`):
 
 - the user gave a version: use it;
 - the type has one registered version: use it;
