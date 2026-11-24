@@ -339,7 +339,7 @@ class SessionRunService(
                     if (refreshed.size != steps.size) {
                         // The added steps get the same prerequisites check as a registered definition, on the full
                         // list (base + added), BEFORE any of them runs. A failure surfaces like the check at the
-                        // start of the run; the first added step is the human approval, which has produced no effect.
+                        // start of the run: no added step has run yet.
                         precheck(scope, namespaceId, current, refreshed)
                         steps = refreshed
                     }

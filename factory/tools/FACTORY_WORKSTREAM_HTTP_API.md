@@ -74,25 +74,25 @@ Worker PASS results of decisions require `selectedRoutes`, e.g. `["frontend"]`, 
 
 ## Trust model of a workflow the Architect builds
 
-With `architect-custom-flow`, an agent writes the steps of the run. Factory therefore puts a person between the
-agent and those steps:
+With `architect-custom-flow`, an agent writes the steps of the run, and they run without a human validation imposed by
+Factory. This is a deliberate decision. The safeguards are:
 
-- **Mandatory human approval.** Factory inserts a `human` step `continuation-approval` right after the Architect
-  step, and every first step the agent sent depends on it. Nothing an agent wrote runs before a person approved it in
-  Factory. If the person rejects, the added steps are blocked and the run fails. The step is not counted in the 50
-  steps of a continuation, and an agent step that uses the id `continuation-approval` is refused (`STEP_ID_COLLISION`).
-- **Structure.** Factory checks the graph, the contracts, the routing and the limit of 50 steps.
-- **Agents, fail-closed.** The named agents must be enabled in the namespace. If Factory cannot read the agent list,
+- **Opt-in per workstream.** Only a workstream that lists `architect-custom-flow` in `allowedWorkflowTypes` can start
+  this mode, and the user must choose it explicitly (the launch choice of the `factory-workstream` skill).
+- **Structure.** The graph, the contracts, the routing and the limit of 50 steps are validated by the canonical
+  validator.
+- **Agents, fail-closed.** Only agents enabled in the namespace can be named. If Factory cannot read the agent list,
   the continuation is refused with `AGENTS_UNVERIFIABLE`; the agent can send the result again. The workspace precheck
   then runs again on the full list of steps (base and added) before the first added step executes.
 - **No `code` step.** A `code` step in a continuation is refused (`UNSUPPORTED_IN_CONTINUATION`, reason `code_step`):
   the worktree binding is not designed for a run that discovers it needs a worktree along the way.
 - **Atomic.** The steps are added in the same transaction that completes the Architect step. If anything fails, no
   step is added and the Architect step fails.
-
-The workstream `allowedWorkflowTypes` still decides who can start such a run: only a workstream that lists
-`architect-custom-flow` can. Ticket text reaches the briefs of the added agents, with the same prompt-injection
-caution as any agent step.
+- **Visible and stoppable.** The added steps appear at once in Cockpit and go through the existing mechanisms:
+  attempt cancellation, cost thresholds and `queryUser` questions.
+- **Human validation on demand.** The Architect can insert a `human` step when the ticket justifies it. Factory
+  does not add one by itself.
+- **Prompt injection.** Ticket text reaches the briefs of the added agents, with the same caution as any agent step.
 
 ## Old tool -> new tool
 

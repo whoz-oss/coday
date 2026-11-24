@@ -47,12 +47,19 @@ import org.springframework.stereotype.Service
  * there is no intermediate state to reconcile later, and no expansion is recorded when the finalization fails.
  * [graft] publishes nothing; the sequencer publishes one SSE hint after the commit.
  *
- * Trust model: the steps are authored by an agent, so Factory always inserts a mandatory human step
- * ([WorkflowContinuationValidator.APPROVAL_STEP_ID]) between the expanding step and the added steps. Nothing an
- * agent wrote runs before a person approved it in Factory. `code` steps are refused in a continuation, and when
- * the namespace agent list cannot be read the continuation is refused (`AGENTS_UNVERIFIABLE`). The workspace
- * precheck then runs again on the full step list before the first added step is executed. Ticket text still reaches
- * the briefs of the added agents, so the same prompt-injection caution as for any agent step applies.
+ * Trust model: the steps are authored by an agent and run without a human approval imposed by Factory. This is a
+ * deliberate decision. The Architect writes the steps of the run; the safeguards are:
+ *  - opt-in per workstream: only a workstream that lists `architect-custom-flow` in `allowedWorkflowTypes` can start
+ *    this mode, and the user must choose it explicitly;
+ *  - structure: graph, contracts, routing and the limit of 50 steps are validated by the canonical validator;
+ *  - agents, fail-closed: only agents enabled in the namespace can be named. If the list cannot be read, the
+ *    continuation is refused (`AGENTS_UNVERIFIABLE`), and the workspace precheck runs again on the full step list
+ *    before the first added step;
+ *  - no `code` step: refused with `UNSUPPORTED_IN_CONTINUATION`, reason `code_step`;
+ *  - visible and stoppable: the added steps appear at once in Cockpit and go through the existing mechanisms
+ *    (attempt cancellation, cost thresholds, `queryUser` questions);
+ *  - human validation on demand: the Architect may insert a `human` step when the ticket justifies it;
+ *  - prompt injection: ticket text reaches the briefs of the added agents, with the same caution as any agent step.
  */
 @Service
 class WorkflowExpansionService(
@@ -123,10 +130,10 @@ class WorkflowExpansionService(
     // ------------------------------------------------------------------
 
     /**
-     * Adds the continuation accepted for [attemptId] to the run (the approval step first, then the continuation
-     * steps) and returns the added steps, or an empty list when the same result was already added (idempotent
-     * replay). It does not publish any SSE hint: the caller does it once the surrounding transaction has committed.
-     * It must run in the same transaction as the finalization of the expanding step.
+     * Adds the continuation accepted for [attemptId] to the run and returns the added steps, or an empty list when
+     * the same result was already added (idempotent replay). It does not publish any SSE hint: the caller does it
+     * once the surrounding transaction has committed. It must run in the same transaction as the finalization of the
+     * expanding step.
      */
     fun graft(
         scope: TenantScope,

@@ -42,14 +42,11 @@ data class ContinuationViolation(val path: String, val code: String, val message
 
 sealed interface ContinuationValidation {
     data class Valid(
-        /**
-         * Normalized steps added to the run: the `continuation-approval` step first, then the continuation steps
-         * (their first steps already rewired on the approval).
-         */
+        /** Normalized continuation steps, as they are added to the run (first steps wired on the expanding step). */
         val normalizedSteps: List<Map<String, Any?>>,
         val steps: List<WorkflowStepDefinition>,
         val stepIds: List<String>,
-        /** Base definition + added steps, base steps untouched (the expander keeps its `expansion`). */
+        /** Base definition + continuation, base steps untouched (the expander keeps its `expansion`). */
         val effectiveDefinition: Map<String, Any?>,
         val effectiveDefinitionHash: String,
     ) : ContinuationValidation
@@ -64,29 +61,26 @@ sealed interface ContinuationValidation {
  * canonical [WorkflowDefinitionValidator], so graph, contract and routing rules have a single
  * implementation. Diagnostics are mapped back to `result.continuation.steps[i]...` locations.
  *
- * Trust boundary (the agent writes these steps): Factory always inserts a mandatory human step
- * [APPROVAL_STEP_ID] right after the expanding step, and every first step of the continuation depends on it, so
- * nothing an agent wrote runs before a person approved it. `code` steps are refused, and an unreadable agent list
- * refuses the continuation (fail-closed).
+ * Trust model (the agent writes these steps, and they run without a human approval imposed by Factory; this is a
+ * deliberate decision). The safeguards are:
+ *  - opt-in per workstream (`allowedWorkflowTypes` lists `architect-custom-flow`) and an explicit user choice;
+ *  - structure: graph, contracts, routing and the limit of [MAX_STEPS] steps go through the canonical validator;
+ *  - agents, fail-closed: only agents enabled in the namespace can be named, and an unreadable agent list refuses
+ *    the continuation (`AGENTS_UNVERIFIABLE`); the workspace precheck then runs again on the full step list;
+ *  - no `code` step (`UNSUPPORTED_IN_CONTINUATION`, reason `code_step`);
+ *  - the added steps are visible at once in Cockpit and can be stopped (attempt cancellation, cost thresholds,
+ *    `queryUser` questions);
+ *  - the Architect may add a `human` step itself when the ticket calls for a validation;
+ *  - ticket text reaches the briefs of the added agents: the same prompt-injection caution as any agent step.
  */
 object WorkflowContinuationValidator {
     const val MAX_STEPS = 50
-
-    /** Id of the human approval step Factory inserts before the added steps. It is not counted in [MAX_STEPS]. */
-    const val APPROVAL_STEP_ID = "continuation-approval"
     private const val ROOT = "result.continuation"
     private val INDEXED_PATH = Regex("^steps\\[(\\d+)](.*)$")
     private val DEPENDS_ON_PATH = Regex("^steps\\.(.+)\\.dependsOn$")
 
     private fun asStringMap(value: Any?): Map<String, Any?>? =
         (value as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
-
-    private fun approvalStep(expanderStepId: String): Map<String, Any?> = linkedMapOf(
-        "id" to APPROVAL_STEP_ID,
-        "name" to "Approve the generated steps",
-        "responsibility" to linkedMapOf("kind" to "human", "name" to "Reviewer"),
-        "dependsOn" to listOf(expanderStepId),
-    )
 
     /**
      * [verifyAgents] is `true` when a continuation is submitted (an unreadable agent list, [availableAgents] `null`,
@@ -144,8 +138,6 @@ object WorkflowContinuationValidator {
             val id = step["id"] as? String
             if (id != null && id in baseIds) {
                 violation("$path.id", WorkflowContinuationCodes.STEP_ID_COLLISION, "collides with a step of the base definition")
-            } else if (id == APPROVAL_STEP_ID) {
-                violation("$path.id", WorkflowContinuationCodes.STEP_ID_COLLISION, "collides with the approval step Factory inserts")
             }
             val dependencies = step["dependsOn"] as? List<*>
             var dependsOn: Any? = step["dependsOn"]
@@ -159,22 +151,17 @@ object WorkflowContinuationValidator {
                         )
                     }
                 }
-                // An empty dependsOn means "after the expanding step", and nothing runs before the approval:
-                // a dependency on the expanding step becomes a dependency on the approval step.
-                dependsOn = if (dependencies.isEmpty()) {
-                    listOf(APPROVAL_STEP_ID)
-                } else {
-                    dependencies.map { if (it == expanderStepId) APPROVAL_STEP_ID else it }
-                }
+                // An empty dependsOn means "after the expanding step".
+                if (dependencies.isEmpty()) dependsOn = listOf(expanderStepId)
             }
             wired += step + ("dependsOn" to dependsOn)
         }
         if (violations.isNotEmpty()) return ContinuationValidation.Invalid(violations)
 
-        // The expander legitimately gains a dependent (the approval): validate the merged graph without its declaration.
+        // The expander legitimately gains dependents here: validate the merged graph without its declaration.
         val validationSteps = baseSteps.mapIndexed { index, step ->
             if (index == expanderIndex) step - "expansion" else step
-        } + approvalStep(expanderStepId) + wired
+        } + wired
         val forValidation = LinkedHashMap<String, Any?>(baseDefinition)
         forValidation["steps"] = validationSteps
         val valid = when (val result = WorkflowDefinitionValidator.validate(forValidation)) {
@@ -183,9 +170,8 @@ object WorkflowContinuationValidator {
             is WorkflowDefinitionValidation.Valid -> result
         }
         val normalizedAll = (valid.definition["steps"] as? List<*>).orEmpty().mapNotNull { asStringMap(it) }
-        // The approval step comes first, then the continuation steps.
-        val addedNormalized = normalizedAll.drop(baseSteps.size)
-        val addedSteps = valid.steps.drop(baseSteps.size)
+        val continuationNormalized = normalizedAll.drop(baseSteps.size)
+        val continuationSteps = valid.steps.drop(baseSteps.size)
 
         if (verifyAgents) {
             if (availableAgents == null) {
@@ -195,7 +181,7 @@ object WorkflowContinuationValidator {
                     "the agents of the namespace could not be verified; send the result again",
                 )
             }
-            addedSteps.drop(1).forEachIndexed { index, step ->
+            continuationSteps.forEachIndexed { index, step ->
                 if (step.responsibility.kind == ResponsibilityKind.AGENT) {
                     val name = step.responsibility.name
                     if (name == null || name !in availableAgents) {
@@ -211,11 +197,11 @@ object WorkflowContinuationValidator {
         }
 
         val effective = LinkedHashMap<String, Any?>(baseDefinition)
-        effective["steps"] = baseSteps + addedNormalized
+        effective["steps"] = baseSteps + continuationNormalized
         return ContinuationValidation.Valid(
-            normalizedSteps = addedNormalized,
-            steps = addedSteps,
-            stepIds = addedSteps.map { it.id },
+            normalizedSteps = continuationNormalized,
+            steps = continuationSteps,
+            stepIds = continuationSteps.map { it.id },
             effectiveDefinition = effective,
             effectiveDefinitionHash = hashWorkflowDefinition(effective),
         )
@@ -233,12 +219,10 @@ object WorkflowContinuationValidator {
         val path = when {
             indexed != null -> {
                 val position = indexed.groupValues[1].toInt()
-                // Position `baseCount` is the approval step Factory inserts; the continuation steps follow it.
-                val continuationIndex = position - baseCount - 1
-                when {
-                    position < baseCount -> "definition.steps[$position]${indexed.groupValues[2]}"
-                    continuationIndex < 0 -> ROOT
-                    else -> "$ROOT.steps[$continuationIndex]${indexed.groupValues[2]}"
+                if (position >= baseCount) {
+                    "$ROOT.steps[${position - baseCount}]${indexed.groupValues[2]}"
+                } else {
+                    "definition.steps[$position]${indexed.groupValues[2]}"
                 }
             }
             byId != null -> {

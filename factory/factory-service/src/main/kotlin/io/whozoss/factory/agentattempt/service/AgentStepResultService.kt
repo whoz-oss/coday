@@ -84,11 +84,15 @@ class AgentStepResultService(
     @param:Autowired(required = false)
     private val expansionService: WorkflowExpansionService? = null,
     /**
-     * The single computation of the definition a run follows. Injected from the Spring context; absent only in narrow
-     * unit compositions, where the decision of a step is then not checked here.
+     * The single computation of the definition a run follows. Injected from the Spring context. When it is absent
+     * (narrow unit compositions) it is built on the workflow repository, so the routing validation below is never
+     * skipped silently.
      */
-    private val definitionResolver: EffectiveWorkflowDefinitionResolver? = null,
+    definitionResolver: EffectiveWorkflowDefinitionResolver? = null,
 ) {
+
+    private val definitionResolver: EffectiveWorkflowDefinitionResolver? =
+        definitionResolver ?: workflowRepository?.let { EffectiveWorkflowDefinitionResolver(it) }
 
     private val logger = KotlinLogging.logger {}
 
