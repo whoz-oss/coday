@@ -46,7 +46,7 @@ deploys the plugins and then boots `agentos-service`.
 The `GRADLE` integration exposes three tools, named `<configName>__<tool>` like the other plugins:
 `gradle_compile` (main and test sources, compiler diagnostics parsed), `gradle_tests` (results read from the
 JUnit XML reports, with `--tests` filters) and `gradle_dependency_insight`. Each call must give
-a `timeoutSeconds` (1 to 240, kept under the 5 minutes of the context cache): the run is killed beyond it, and cancelling the case kills the whole Gradle
+a `timeoutSeconds` (1 to 270, kept under the 5 minutes of the context cache): the run is killed beyond it, and cancelling the case kills the whole Gradle
 process tree.
 
 ```yaml

@@ -454,13 +454,13 @@ class GradleCompileToolUnitSpec :
             }
         }
 
-        "compile rejects a timeoutSeconds outside 1..240 before doing anything else" {
+        "compile rejects a timeoutSeconds outside the allowed range before doing anything else" {
             val tool = GradleCompileTool(GradleRunner(File("/fake")))
-            listOf(0, -5, 241).forEach { timeoutSeconds ->
+            listOf(0, -5, ToolTimeout.MAX_SECONDS + 1).forEach { timeoutSeconds ->
                 val result = tool.compile(subproject = null, file = null, timeoutSeconds = timeoutSeconds).errorText()
 
                 result shouldContain "timeoutSeconds"
-                result shouldContain "240"
+                result shouldContain ToolTimeout.MAX_SECONDS.toString()
             }
         }
     })
