@@ -2143,6 +2143,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/expanded-definition:
+    get:
+      tags:
+      - workflows
+      summary: Read the draft definition of a run that added steps (not registered).
+      operationId: expandedDefinitionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/workflows/{workflowId}/environment:
     get:
       tags:
@@ -2249,30 +2273,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeListMapStringObject"
-  /api/factory/workflows/{workflowId}/expanded-definition:
-    get:
-      tags:
-      - workflows
-      summary: Read the draft definition of a run that added steps (not registered).
-      operationId: expandedDefinitionWorkflow
-      parameters:
-      - name: workflowId
-        in: path
-        required: true
-        schema:
-          type: string
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/workflows/{workflowId}/actions:
     get:
       tags:
