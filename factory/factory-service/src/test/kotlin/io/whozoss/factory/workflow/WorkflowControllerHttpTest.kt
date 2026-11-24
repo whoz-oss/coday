@@ -36,6 +36,7 @@ import org.springframework.http.ResponseEntity
  * failure envelope and the governed `start` / detail routes. The authentication
  * itself is covered by `AuthenticationFilterTest`.
  */
+@org.springframework.context.annotation.Import(ExpansionPrecheckPortConfiguration::class)
 class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
@@ -347,7 +348,8 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         @Suppress("UNCHECKED_CAST")
         val definition = draft["definition"] as Map<String, Any?>
         assertThat(WorkflowDefinitionValidator.validate(definition)).isInstanceOf(WorkflowDefinitionValidation.Valid::class.java)
-        assertThat((definition["steps"] as List<*>).filterIsInstance<Map<*, *>>().map { it["id"] }).containsExactly("architect-plan", "build")
+        assertThat((definition["steps"] as List<*>).filterIsInstance<Map<*, *>>().map { it["id"] })
+            .containsExactly("architect-plan", "continuation-approval", "build")
         assertThat((draft["source"] as Map<*, *>)["workflowType"]).isEqualTo("architect-custom-flow")
         assertThat((service.listDefinitions(scope)["items"] as List<*>).size).isEqualTo(definitionsBefore)
     }
