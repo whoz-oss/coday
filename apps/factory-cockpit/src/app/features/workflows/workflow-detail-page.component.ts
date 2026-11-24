@@ -18,7 +18,7 @@ import { finalize, skip, take } from 'rxjs'
 import { MatDialog } from '@angular/material/dialog'
 import { FactoryApiError } from '../../core/factory-api.service'
 import { WorkflowDefinitionsStateService } from '../../core/workflow-definitions-state.service'
-import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
+import { readWorkflowDraft } from '../../core/workflow-draft-state'
 import { ConfirmDialogComponent, ConfirmDialogData } from '../admin/confirm-dialog.component'
 import { ShellState } from '../../core/shell-state'
 import { WorkflowStepEditorState, legacyAdoption } from '../../core/workflow-step-editor.state'
@@ -141,8 +141,13 @@ export class WorkflowDetailPageComponent {
       { label: 'Workflows', link: '/workflows' },
       { label: creating ? 'New workflow' : `${this.workflowType}@${this.version}`, mono: true },
     ])
-    if (creating) this.state.startNew(inject(WorkflowDraftHandoffService).take() ?? undefined)
-    else this.state.load(this.workflowType, this.version)
+    if (creating) {
+      // A draft only comes from the navigation that opened this page. `history.state` is read only when the page is
+      // created outside a navigation (the entry itself carries it): during a navigation without state it still holds
+      // the previous entry, which must never prefill the composer.
+      const navigation = this.router.getCurrentNavigation()
+      this.state.startNew(readWorkflowDraft(navigation ? navigation.extras.state : window.history.state))
+    } else this.state.load(this.workflowType, this.version)
 
     // Angular reuses this component when only a definition's route parameters change.
     route.paramMap?.pipe(skip(1), takeUntilDestroyed()).subscribe((params) => {

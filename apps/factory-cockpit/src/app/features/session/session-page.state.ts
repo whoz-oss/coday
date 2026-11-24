@@ -5,14 +5,13 @@ import { finalize } from 'rxjs'
 import { FactoryApiError } from '../../core/factory-api.service'
 import { FactoryStore, buildAgentOsCaseUrl } from '../../core/factory.store'
 import { BlockSelection, TimelineBlock } from '../../core/models'
-import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
+import { workflowDraftNavigationState } from '../../core/workflow-draft-state'
 
 /** Page-scoped selection and derived presentation model for one session. */
 @Injectable()
 export class SessionPageState {
   private readonly store = inject(FactoryStore)
   private readonly router = inject(Router)
-  private readonly draftHandoff = inject(WorkflowDraftHandoffService)
   private readonly destroyRef = inject(DestroyRef)
   private readonly runId = signal('')
   private readonly namespace = signal<string | undefined>(undefined)
@@ -146,8 +145,9 @@ export class SessionPageState {
   }
 
   /**
-   * Read the draft definition of this run, hand it to the workflow composer and open it. The draft is only
-   * pre-filled there: the author picks type, version and title, and registration stays an explicit save.
+   * Read the draft definition of this run and open the workflow composer on it. The draft travels in the router
+   * navigation state only, so nothing stays in memory if the navigation is cancelled. It is only pre-filled there:
+   * the author picks type, version and title, and registration stays an explicit save.
    */
   saveAsReusableWorkflow(): void {
     const runId = this.runId()
@@ -167,15 +167,9 @@ export class SessionPageState {
       )
       .subscribe({
         next: ({ definition }) => {
-          this.draftHandoff.set(definition)
-          // The draft must not outlive a navigation that does not happen (cancelled, superseded or failed):
-          // a later unrelated visit to the composer would otherwise open pre-filled with this run's steps.
-          this.router.navigate(['/workflows', 'new']).then(
-            (navigated) => {
-              if (!navigated) this.draftHandoff.clear()
-            },
-            () => this.draftHandoff.clear()
-          )
+          void this.router.navigate(['/workflows', 'new'], {
+            state: workflowDraftNavigationState({ workflowId: runId, namespaceId, definition }),
+          })
         },
         error: (error: FactoryApiError) =>
           this.saveDefinitionError.set(

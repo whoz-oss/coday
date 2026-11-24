@@ -6,7 +6,6 @@ import { ActivatedRoute, Router, convertToParamMap } from '@angular/router'
 import { of, Subject, throwError } from 'rxjs'
 import { FactoryApiError, FactoryApiService, FullWorkflowDefinition } from '../../core/factory-api.service'
 import { ShellState } from '../../core/shell-state'
-import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { WorkflowDetailPageComponent, formatJson } from './workflow-detail-page.component'
 
 interface ApiStub {
@@ -48,12 +47,54 @@ function createRoute(type = 'adw_simple_sdlc', version = 'v1'): Partial<Activate
   }
 }
 
+/** Route of the composer in creation mode (`/workflows/new`). */
+function createNewRoute(): Partial<ActivatedRoute> {
+  const route = createRoute('', '')
+  return { ...route, snapshot: { ...route.snapshot, data: { create: true } } } as Partial<ActivatedRoute>
+}
+
+/** Draft of the definition a run followed, as read from `expanded-definition`. */
+const RUN_DRAFT: FullWorkflowDefinition = {
+  schemaVersion: '1',
+  workflowType: 'architect-custom-flow-derived',
+  version: '1.0.0',
+  title: 'Derived workflow',
+  steps: [
+    {
+      id: 'plan',
+      name: 'Plan',
+      responsibility: { kind: 'agent', name: 'Dev' },
+      dependsOn: [],
+      entry: [],
+      mission: 'Plan the work',
+      exit: [],
+    },
+    {
+      id: 'build',
+      name: 'Build',
+      responsibility: { kind: 'agent', name: 'Dev' },
+      dependsOn: ['plan'],
+      entry: [],
+      mission: 'Build it',
+      exit: [],
+    },
+  ],
+}
+
+const draftNavigationState = (definition: unknown = RUN_DRAFT): Record<string, unknown> => ({
+  workflowDraft: { workflowId: 'run-1', namespaceId: 'ns-1', definition },
+})
+
 describe('WorkflowDetailPageComponent', () => {
+  /**
+   * `navigationState` is the state of the navigation that opens the page (`NavigationExtras.state`); without it the
+   * page is created outside any navigation, as for a plain visit.
+   */
   async function setup(
     api: ApiStub,
     route: Partial<ActivatedRoute> = createRoute(),
     confirmation = of(true),
-    handedOverDraft?: FullWorkflowDefinition
+    navigationState?: Record<string, unknown>
   ): Promise<{ host: HTMLElement; fixture: ComponentFixture<WorkflowDetailPageComponent> }> {
     await TestBed.configureTestingModule({
       imports: [WorkflowDetailPageComponent],
@@ -66,7 +107,11 @@ describe('WorkflowDetailPageComponent', () => {
       ],
     }).compileComponents()
     jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
-    if (handedOverDraft) TestBed.inject(WorkflowDraftHandoffService).set(handedOverDraft)
+    if (navigationState) {
+      jest
+        .spyOn(TestBed.inject(Router), 'getCurrentNavigation')
+        .mockReturnValue({ extras: { state: navigationState } } as unknown as ReturnType<Router['getCurrentNavigation']>)
+    }
     const fixture = TestBed.createComponent(WorkflowDetailPageComponent)
     fixture.detectChanges()
     return { host: fixture.nativeElement as HTMLElement, fixture }
@@ -151,7 +196,7 @@ describe('WorkflowDetailPageComponent', () => {
     })
   })
 
-  it('opens the composer on the draft handed over by a run, once, and registers nothing by itself', async () => {
+  it('opens the composer on the draft carried by the navigation state, and registers nothing by itself', async () => {
     const draft: FullWorkflowDefinition = {
       schemaVersion: '1',
       workflowType: 'architect-custom-flow-derived',
@@ -184,7 +229,7 @@ describe('WorkflowDetailPageComponent', () => {
       api,
       { ...route, snapshot: { ...route.snapshot, data: { create: true } } } as Partial<ActivatedRoute>,
       of(true),
-      draft
+      draftNavigationState(draft)
     )
     expect(api.getWorkflowDefinition).not.toHaveBeenCalled()
     await fixture.whenStable()
@@ -195,8 +240,61 @@ describe('WorkflowDetailPageComponent', () => {
     expect(query<HTMLInputElement>(host, '[data-workflow-type]').value).toBe('architect-custom-flow-derived')
     expect(query<HTMLInputElement>(host, '[data-target-version]').value).toBe('1.0.0')
     expect(api.createWorkflowDefinition).not.toHaveBeenCalled()
-    // The draft is consumed: a later visit to the composer starts blank.
-    expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBeNull()
+  })
+
+  it('starts blank on a later visit without navigation state, even after a prefilled one', async () => {
+    const api = createApi()
+    const { fixture: prefilled } = await setup(api, createNewRoute(), of(true), draftNavigationState())
+    expect(prefilled.componentInstance.state.definition()?.steps).toHaveLength(2)
+    prefilled.destroy()
+
+    // A later visit: a navigation to /workflows/new that carries no state.
+    jest.spyOn(TestBed.inject(Router), 'getCurrentNavigation').mockReturnValue({
+      extras: {},
+    } as unknown as ReturnType<Router['getCurrentNavigation']>)
+    const later = TestBed.createComponent(WorkflowDetailPageComponent)
+    later.detectChanges()
+
+    expect(later.componentInstance.state.creating()).toBe(true)
+    expect(later.componentInstance.state.definition()?.steps).toEqual([])
+    expect(later.componentInstance.state.dirty()).toBe(false)
+  })
+
+  it('ignores a stale history.state while a navigation without state is in progress', async () => {
+    window.history.replaceState(draftNavigationState(), '')
+    try {
+      const { fixture } = await setup(createApi(), createNewRoute(), of(true), {})
+      expect(fixture.componentInstance.state.definition()?.steps).toEqual([])
+      expect(fixture.componentInstance.state.dirty()).toBe(false)
+    } finally {
+      window.history.replaceState(null, '')
+    }
+  })
+
+  it('reads history.state when the composer is created outside a navigation, for example after a reload', async () => {
+    window.history.replaceState(draftNavigationState(), '')
+    try {
+      const { fixture } = await setup(createApi(), createNewRoute())
+      expect(TestBed.inject(Router).getCurrentNavigation()).toBeNull()
+      expect(fixture.componentInstance.state.definition()?.steps?.map((step) => step.id)).toEqual(['plan', 'build'])
+    } finally {
+      window.history.replaceState(null, '')
+    }
+  })
+
+  it.each([
+    ['a draft without steps', draftNavigationState({ workflowType: 'x' })],
+    ['steps that are not an array', draftNavigationState({ steps: 'nope' })],
+    ['a definition that is not an object', draftNavigationState('nope')],
+    ['a draft that is not an object', { workflowDraft: 'nope' }],
+    ['an unrelated state', { somethingElse: true }],
+  ])('starts blank on %s', async (_label, state) => {
+    const api = createApi()
+    const { fixture } = await setup(api, createNewRoute(), of(true), state)
+    expect(fixture.componentInstance.state.creating()).toBe(true)
+    expect(fixture.componentInstance.state.definition()?.steps).toEqual([])
+    expect(fixture.componentInstance.state.dirty()).toBe(false)
+    expect(api.createWorkflowDefinition).not.toHaveBeenCalled()
   })
 
   it('adds a code step through the closed verifier select without a command field', async () => {
