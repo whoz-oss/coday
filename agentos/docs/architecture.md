@@ -37,7 +37,7 @@ The SDK is the stable public API. Plugins depend only on `agentos-sdk` (via `com
 | `caseFlow` | `CaseStatus` enum |
 | `entity` | `Entity`, `EntityMetadata`, `EntityService`, `EntityRepository`, `InMemoryEntityRepository` |
 | `feedback` | `Feedback` domain entity |
-| `tool` | `StandardTool`, `ToolPlugin`, `ToolExecutionResult` |
+| `tool` | `StandardTool`, `BlockingTool`, `ToolPlugin`, `ToolExecutionResult` |
 | `actor` | `Actor`, `ActorRole` |
 
 ### HTTP API DTOs and contracts (`api.*`)

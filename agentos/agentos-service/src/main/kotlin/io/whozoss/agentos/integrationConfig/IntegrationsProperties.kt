@@ -19,11 +19,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * or a user config naming a namespace-shared Auth Setting, could therefore run a command that exfiltrates a shared
  * credential.
  *
- * `GRADLE` is denied for the same reason as `BASH`, and worse: a user overlay of a shared `GRADLE` config could set
- * `javaHome` (`gradlew` runs `$JAVA_HOME/bin/java`), any absolute `projectDirectory`, and `inheritEnvironment`, which
- * hands environment variables of the service (LLM keys, tokens) to the build and its tests. That is code execution
- * and secret exfiltration with the rights of the service.
- *
  * `CASE` is deliberately not on the list. Its parameters name no endpoint, credential or command, so an overlay
  * cannot redirect anything: it can only narrow or widen which agents the starter tools may start. That is bounded
  * by the service, which only starts an agent deployed to the target user, and `FreeCaseStarterForUser` requires
@@ -33,12 +28,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Override with environment variable (Spring Boot relaxed binding):
  * - `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` (comma-separated, replaces the default list)
  *
- * Example (application.yml):
- * ```yaml
- * agentos:
- *   integrations:
- *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE
- * ```
+ * The default list and its rationale are documented in `application.yml` (`agentos.integrations`).
  */
 @ConfigurationProperties(prefix = "agentos.integrations")
 data class IntegrationsProperties(
@@ -58,7 +48,7 @@ data class IntegrationsProperties(
      * platform scope hands a tool to *every agent of the environment at once*; on a type that
      * reaches the network, that is an unreviewed, environment-wide capability grant. The codebase
      * already carries this caution elsewhere: [userScopeDeniedTypes] forbids user-level overlays of
-     * `HTTP_API`, `MCP_*`, `GIT`, `BASH` and `GRADLE` for a closely related reason.
+     * `HTTP_API`, `MCP_*`, `GIT` and `BASH` for a closely related reason.
      *
      * Override with environment variable (Spring Boot relaxed binding):
      * - `AGENTOS_INTEGRATIONS_AUTO_GRANTABLE_TYPES` (comma-separated, replaces the default list)

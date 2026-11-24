@@ -13,6 +13,8 @@ The `agentos-sdk` module defines four extension points:
 | `AiProviderPlugin` | `AiProvider` list -> `AiProviderRegistry` |
 | `ToolPlugin` | `StandardTool<*>` list -> `ToolRegistry` |
 
+A tool whose work blocks the calling thread (child process, socket, file lock) extends `BlockingTool<T>` instead of implementing `StandardTool<T>.execute` itself: it implements `executeBlocking`, which runs on `Dispatchers.IO` and is interrupted when the run is cancelled. It must release what it started (kill the child process...) when interrupted.
+
 ## Creating a Plugin
 
 A plugin requires two classes: a `Plugin` subclass (lifecycle hooks) and one or more `@Extension`-annotated classes implementing the relevant interface above.

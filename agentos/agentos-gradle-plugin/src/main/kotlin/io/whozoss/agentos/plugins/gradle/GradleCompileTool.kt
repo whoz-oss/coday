@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugins.gradle
 
-import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.BlockingTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
@@ -21,12 +21,12 @@ import kotlin.time.Duration.Companion.seconds
  *   If neither file nor subproject is given, the root build is compiled.
  *
  * The business logic ([compile]) is blocking and returns a [GradleToolResult];
- * [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
+ * [executeBlocking] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
  */
 class GradleCompileTool(
     private val runner: GradleRunner,
     configName: String? = null,
-) : StandardTool<GradleCompileTool.Input> {
+) : BlockingTool<GradleCompileTool.Input>() {
     private val diagnosticParser = CompilerDiagnosticParser()
 
     /** Input of the tool, as sent by the LLM. Nullable fields with defaults so partial JSON deserializes. */
@@ -84,19 +84,17 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
                 ),
         )
 
-    override suspend fun execute(
+    override fun executeBlocking(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
         val params = input ?: return missingTimeoutResult()
         val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
-        return runInterruptibleTool {
-            compile(
-                subproject = params.subproject,
-                file = params.file,
-                timeoutSeconds = timeoutSeconds,
-            )
-        }
+        return compile(
+            subproject = params.subproject,
+            file = params.file,
+            timeoutSeconds = timeoutSeconds,
+        ).toToolExecutionResult()
     }
 
     fun compile(
