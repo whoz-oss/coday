@@ -11,6 +11,7 @@ export class DelegationResultComponent {
   readonly result = input.required<DelegationResult>()
   private readonly markdown = inject(MarkdownRendererService)
   protected readonly html = computed(() =>
-    this.markdown.render(this.result().result ?? this.result().error ?? 'No result returned.')
+    // Read-only preview: no copy button.
+    this.markdown.render(this.result().result ?? this.result().error ?? 'No result returned.', { copyButton: false })
   )
 }
