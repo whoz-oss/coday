@@ -8,6 +8,7 @@ import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.searcherAgent.SearcherAgentSeeder
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.stereotype.Component
@@ -31,7 +32,10 @@ import kotlin.concurrent.withLock
  * 2. an ADMIN permission edge from the user to it;
  * 3. when the default agent is enabled ([CodayAgentSeeder.ensureIn]): the namespace owns an agent named
  *    [CodayAgentSeeder.AGENT_NAME] (a namespace-scoped agent, created in it when it has none), that agent is
- *    deployed there, and it becomes the namespace's `defaultAgentName` if the namespace has none.
+ *    deployed there, and it becomes the namespace's `defaultAgentName` if the namespace has none;
+ * 4. when the search sub-agent is enabled ([SearcherAgentSeeder.ensureIn]): the namespace owns a read-only agent
+ *    named [SearcherAgentSeeder.AGENT_NAME], deployed there so that `Coday` can delegate its wide searches to it.
+ *    It is never the default agent.
  *
  * The agent belongs to the namespace, not to the platform, so that it can never clash with an agent of the
  * same name in another namespace.
@@ -103,6 +107,7 @@ class PersonalNamespaceProvisioner(
     private val permissionService: PermissionService,
     private val agentConfigService: AgentConfigService,
     private val codayAgentSeeder: CodayAgentSeeder,
+    private val searcherAgentSeeder: SearcherAgentSeeder,
     private val userService: UserService,
     transactionManager: PlatformTransactionManager,
 ) {
@@ -198,6 +203,11 @@ class PersonalNamespaceProvisioner(
                 namespaceService.update(namespace.copy(defaultAgentName = coday.name))
             }
             undeployLegacyPlatformCoday(namespace.id)
+        }
+        // Deployed too, because the `subAgents` of Coday only see the deployed agents. It never becomes the
+        // default agent: it answers a delegation, not a message of the user.
+        searcherAgentSeeder.ensureIn(namespace.id)?.let { searcher ->
+            namespaceService.deployAgents(namespace.id, listOf(searcher.id))
         }
         return true
     }

@@ -68,6 +68,7 @@ internal val KNOWN_SETTINGS: List<KnownSetting> =
         property("agentos.anthropic.prompt-caching-enabled", "Anthropic prompt caching"),
         property("agentos.personal-namespace.enabled", "A private namespace for every user"),
         property("agentos.defaults.coday-agent.enabled", "A 'Coday' agent in every personal namespace"),
+        property("agentos.defaults.searcher-agent.enabled", "A read-only 'Searcher' sub-agent in every personal namespace"),
         property("agentos.query-user.enabled-by-default", "Seed the auto-granted QUERY_USER integration"),
         property("agentos.user-group.enabled-by-default", "Seed the USER_GROUP integration"),
         property("agentos.case-plugin.enabled-by-default", "Seed the CASE integration"),

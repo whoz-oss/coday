@@ -126,6 +126,66 @@ class DelegationToolUnitSpec :
             result.success shouldBe false
         }
 
+        "returns failure when a call fans out more delegations than the limit" {
+            val tool = makeTool(mockk())
+            val args =
+                DelegationTool.Args(
+                    delegations = List(DelegationTool.MAX_PARALLEL_DELEGATIONS + 1) { DelegationTool.Delegation("sub-agent", "task $it") },
+                )
+            val result = tool.execute(args, toolContext)
+            result.success shouldBe false
+            result.output shouldContain "limit is ${DelegationTool.MAX_PARALLEL_DELEGATIONS}"
+        }
+
+        // -------------------------------------------------------------------------
+        // Tool description
+        // -------------------------------------------------------------------------
+
+        "lists each allowed agent with its description, sorted by name" {
+            val tool =
+                DelegationTool(
+                    subCaseManager = mockk(),
+                    parentCaseId = parentCaseId,
+                    namespaceId = namespaceId,
+                    allowedAgents = listOf("researcher", "Sub-agent", "mute"),
+                    loadCaseEvents = { emptyList() },
+                    timeoutMs = 1_000,
+                    agentDescriptions = mapOf("researcher" to "Finds files", "Sub-agent" to "  Does things  ", "mute" to " "),
+                )
+            val lines = tool.description.lines()
+            lines.indexOf("- mute") shouldBe lines.indexOf("Available agents:") + 1
+            lines.contains("- researcher: Finds files") shouldBe true
+            lines.contains("- Sub-agent: Does things") shouldBe true
+            (lines.indexOf("- researcher: Finds files") < lines.indexOf("- Sub-agent: Does things")) shouldBe true
+        }
+
+        "lists agents by name only when no description is known" {
+            val tool = makeTool(mockk())
+            tool.description shouldContain "- researcher\n- sub-agent"
+        }
+
+        // -------------------------------------------------------------------------
+        // Result size
+        // -------------------------------------------------------------------------
+
+        "cuts a result longer than the limit in the middle and points to the sub-case" {
+            val launcher = mockk<SubCaseManager>()
+            every { launcher.isCostPaused(any()) } returns false
+            val long = "A".repeat(DelegationTool.MAX_RESULT_CHARS) + "MIDDLE" + "Z".repeat(DelegationTool.MAX_RESULT_CHARS)
+            val tool = makeTool(launcher, listOf(agentMessage(long)))
+            every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns idleRuntime()
+
+            val result = tool.execute(singleDelegation(), toolContext)
+
+            val text = jacksonObjectMapper().readTree(result.output)[0].get("result").asText()
+            text shouldContain "sub-case $subCaseId"
+            text shouldContain "characters cut"
+            text.startsWith("AAAA") shouldBe true
+            text.endsWith("ZZZZ") shouldBe true
+            text shouldNotContain "MIDDLE"
+            (text.length < DelegationTool.MAX_RESULT_CHARS + 300) shouldBe true
+        }
+
         // -------------------------------------------------------------------------
         // Single delegation — nominal path
         // -------------------------------------------------------------------------

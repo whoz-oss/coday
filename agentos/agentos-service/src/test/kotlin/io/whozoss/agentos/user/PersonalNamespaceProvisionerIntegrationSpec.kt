@@ -15,6 +15,8 @@ import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.codayAgent.CodayAgentProperties
 import io.whozoss.agentos.codayAgent.CodayAgentSeeder
+import io.whozoss.agentos.searcherAgent.SearcherAgentProperties
+import io.whozoss.agentos.searcherAgent.SearcherAgentSeeder
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
@@ -73,6 +75,8 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
 
     @Autowired lateinit var codayAgentSeeder: CodayAgentSeeder
 
+    @Autowired lateinit var searcherAgentSeeder: SearcherAgentSeeder
+
     @Autowired lateinit var provisioner: PersonalNamespaceProvisioner
 
     @Autowired lateinit var aiProviderService: AiProviderService
@@ -95,6 +99,10 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
     /** The agents named `Coday` that the namespace itself owns (the platform ones are not included). */
     private fun ownCodays(namespace: Namespace): List<AgentConfig> =
         agentConfigService.findByNamespace(namespace.id).filter { it.name == CodayAgentSeeder.AGENT_NAME }
+
+    /** The id of the `Searcher` sub-agent the namespace owns, deployed next to its `Coday`. */
+    private fun searcherId(namespace: Namespace): UUID =
+        agentConfigService.findByNamespace(namespace.id).single { it.name == SearcherAgentSeeder.AGENT_NAME }.id
 
     private fun platformCodays(): List<AgentConfig> = agentConfigService.findByNamespace(null).filter { it.name == CodayAgentSeeder.AGENT_NAME }
 
@@ -137,7 +145,7 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
         val own = ownCodays(namespace)
         if (exactlyOneCoday) {
             own shouldHaveSize 1
-            namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(own.single().id)
+            namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(own.single().id, searcherId(namespace))
         } else {
             own.isNotEmpty() shouldBe true
             namespaceService.findDeployedAgentIds(namespace.id) shouldContain own.first().id
@@ -193,8 +201,8 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
             firstCoday.namespaceId shouldNotBe null
             secondCoday.namespaceId shouldNotBe null
             // Each namespace deploys its own, never the other's.
-            namespaceService.findDeployedAgentIds(firstNamespace.id) shouldBe setOf(firstCoday.id)
-            namespaceService.findDeployedAgentIds(secondNamespace.id) shouldBe setOf(secondCoday.id)
+            namespaceService.findDeployedAgentIds(firstNamespace.id) shouldBe setOf(firstCoday.id, searcherId(firstNamespace))
+            namespaceService.findDeployedAgentIds(secondNamespace.id) shouldBe setOf(secondCoday.id, searcherId(secondNamespace))
             // The provisioner created nothing at platform level.
             platformCodays().map { it.id }.toSet() shouldBe platformBefore
             platformCodays().map { it.id } shouldNotContain firstCoday.id
@@ -214,7 +222,7 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
             own shouldHaveSize 1
             own.single().id shouldBe mine.id
             own.single().instructions shouldBe "my own instructions"
-            namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(mine.id)
+            namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(mine.id, searcherId(namespace))
         }
 
         "findByName in the personal namespace returns the namespace's own Coday, not the platform one" {
@@ -250,12 +258,12 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
                 val own = ownCodays(namespace).single()
                 // As on an existing install: the platform Coday is the one deployed on the personal namespace.
                 namespaceService.deployAgents(namespace.id, listOf(platform.id))
-                namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(own.id, platform.id)
+                namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(own.id, platform.id, searcherId(namespace))
 
                 provisioner.ensure(user.id, user.externalId) shouldBe true
 
                 ownCodays(namespace).single().id shouldBe own.id
-                namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(own.id)
+                namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(own.id, searcherId(namespace))
                 // The platform agent row is left alone: neither deleted nor modified.
                 val stillThere = agentConfigService.findById(platform.id)!!
                 stillThere.metadata.removed shouldBe false
@@ -266,7 +274,7 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
                 platformCodays().map { it.id } shouldContain platform.id
                 // A second run changes nothing.
                 provisioner.ensure(user.id, user.externalId) shouldBe true
-                namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(own.id)
+                namespaceService.findDeployedAgentIds(namespace.id) shouldBe setOf(own.id, searcherId(namespace))
             }
         }
 
@@ -281,7 +289,8 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
 
                 provisioner.ensure(migrated.id, migrated.externalId) shouldBe true
 
-                namespaceService.findDeployedAgentIds(migratedNamespace.id) shouldBe setOf(ownCodays(migratedNamespace).single().id)
+                namespaceService.findDeployedAgentIds(migratedNamespace.id) shouldBe
+                    setOf(ownCodays(migratedNamespace).single().id, searcherId(migratedNamespace))
                 namespaceService.findDeployedAgentIds(untouchedNamespace.id) shouldContain platform.id
             }
         }
@@ -313,6 +322,7 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
                     permissionService,
                     agentConfigService,
                     CodayAgentSeeder(CodayAgentProperties(enabled = false), agentConfigService),
+                    SearcherAgentSeeder(SearcherAgentProperties(enabled = false), agentConfigService),
                     userService,
                     transactionManager,
                 )
@@ -332,7 +342,7 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
             val coday = ownCodays(healed).single()
             coday.namespaceId shouldBe healed.id
             healed.defaultAgentName shouldBe "Coday"
-            namespaceService.findDeployedAgentIds(healed.id) shouldBe setOf(coday.id)
+            namespaceService.findDeployedAgentIds(healed.id) shouldBe setOf(coday.id, searcherId(healed))
         }
 
         "a failed provisioning heals on the next check" {
@@ -382,7 +392,7 @@ class PersonalNamespaceProvisionerIntegrationSpec : StringSpec() {
                 }
             val instances =
                 List(2) {
-                    PersonalNamespaceProvisioner(properties, racing, permissionService, agentConfigService, codayAgentSeeder, userService, transactionManager)
+                    PersonalNamespaceProvisioner(properties, racing, permissionService, agentConfigService, codayAgentSeeder, searcherAgentSeeder, userService, transactionManager)
                 }
             val executor = Executors.newFixedThreadPool(2)
             try {

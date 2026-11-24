@@ -9,6 +9,7 @@ import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.codayAgent.CodayAgentSeeder
+import io.whozoss.agentos.searcherAgent.SearcherAgentSeeder
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
@@ -70,6 +71,9 @@ class PersonalNamespaceProvisionerSpec :
             val permissions = mockk<PermissionService>(relaxed = true)
             val agents = mockk<AgentConfigService>()
             val seeder = mockk<CodayAgentSeeder>()
+
+            /** The search sub-agent seeder; by default it creates nothing (disabled), tests that care stub it. */
+            val searcherSeeder = mockk<SearcherAgentSeeder>().also { every { it.ensureIn(any()) } returns null }
             val users = mockk<UserService>()
             val provisioner =
                 PersonalNamespaceProvisioner(
@@ -78,6 +82,7 @@ class PersonalNamespaceProvisionerSpec :
                     permissions,
                     agents,
                     seeder,
+                    searcherSeeder,
                     users,
                     transactionManager,
                 )
@@ -101,6 +106,23 @@ class PersonalNamespaceProvisionerSpec :
 
             fun existingNamespace(defaultAgentName: String? = null) =
                 Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "alice", externalId = key, defaultAgentName = defaultAgentName)
+        }
+
+        "deploys the search sub-agent next to Coday, and never makes it the default agent" {
+            val f = Fixture()
+            val searcher = AgentConfig(metadata = EntityMetadata(id = UUID.randomUUID()), namespaceId = UUID.randomUUID(), name = "Searcher")
+            every { f.namespaces.findByExternalId(key) } returns null
+            every { f.namespaces.create(any()) } answers { firstArg() }
+            f.codayEnsured()
+            every { f.searcherSeeder.ensureIn(any()) } returns searcher
+            every { f.namespaces.deployAgents(any(), any()) } returns Unit
+            val updated = slot<Namespace>()
+            every { f.namespaces.update(capture(updated)) } answers { updated.captured }
+
+            f.provisioner.ensure(userId, externalId) shouldBe true
+
+            verify(exactly = 1) { f.namespaces.deployAgents(any(), listOf(searcher.id)) }
+            updated.captured.defaultAgentName shouldBe "Coday"
         }
 
         "the namespace is keyed by user:<externalId> and named after the local part of an email" {

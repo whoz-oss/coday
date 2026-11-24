@@ -2,13 +2,12 @@ package io.whozoss.agentos.codayAgent
 
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.agentConfig.NamespaceAgentCreator
 import io.whozoss.agentos.configAgent.ConfigAgentIntegration
-import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.core.io.ClassPathResource
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -55,8 +54,10 @@ import java.util.UUID
 @Service
 class CodayAgentSeeder(
     private val properties: CodayAgentProperties,
-    private val agentConfigService: AgentConfigService,
+    agentConfigService: AgentConfigService,
 ) {
+    private val creator = NamespaceAgentCreator(agentConfigService)
+
     /**
      * The `Coday` agent that [namespaceId] owns, created when it owns none.
      *
@@ -66,53 +67,7 @@ class CodayAgentSeeder(
      */
     fun ensureIn(namespaceId: UUID): AgentConfig? {
         if (!properties.enabled) return null
-        ownCoday(namespaceId)?.let {
-            logger.debug { "[CodaySeeder] Namespace $namespaceId already owns agent '$AGENT_NAME', leaving it untouched." }
-            return it
-        }
-        return create(namespaceId)
-    }
-
-    /**
-     * The agent named [AGENT_NAME] that the namespace itself owns, disabled or not. `findByName` is not used on
-     * purpose: it falls back to platform agents, which would wrongly report that the namespace has one.
-     */
-    private fun ownCoday(namespaceId: UUID): AgentConfig? =
-        agentConfigService
-            .findByNamespace(namespaceId, withDisabled = true)
-            .firstOrNull { it.name.equals(AGENT_NAME, ignoreCase = true) }
-
-    private fun create(namespaceId: UUID): AgentConfig? =
-        try {
-            agentConfigService.create(defaultAgent(namespaceId)).also {
-                logger.info { "[CodaySeeder] Created agent '$AGENT_NAME' in namespace $namespaceId (model $MODEL_NAME)." }
-            }
-        } catch (e: ConflictException) {
-            lostRace(namespaceId, e)
-        } catch (e: DataIntegrityViolationException) {
-            lostRace(namespaceId, e)
-        } catch (e: IllegalArgumentException) {
-            // AgentConfigService refuses a duplicate name this way. It is only the lost race when the namespace
-            // owns the agent now; any other refusal is a real failure and must not be swallowed.
-            val own = ownCoday(namespaceId) ?: throw e
-            logConcurrentCreation(namespaceId, e)
-            own
-        }
-
-    private fun lostRace(
-        namespaceId: UUID,
-        e: Exception,
-    ): AgentConfig? {
-        logConcurrentCreation(namespaceId, e)
-        return ownCoday(namespaceId)
-    }
-
-    private fun logConcurrentCreation(
-        namespaceId: UUID,
-        e: Exception,
-    ) {
-        // Another instance created it first.
-        logger.info(e) { "[CodaySeeder] Agent '$AGENT_NAME' created concurrently in namespace $namespaceId, skipping." }
+        return creator.ensureIn(namespaceId, AGENT_NAME) { defaultAgent(namespaceId) }
     }
 
     private fun defaultAgent(namespaceId: UUID) =
@@ -131,6 +86,9 @@ class CodayAgentSeeder(
                     ExchangeIntegrationTypes.CASE to null,
                     ExchangeIntegrationTypes.NAMESPACE to null,
                 ),
+            // Delegates to every agent it can reach, as the Whoz Coday does; the delegation tool lists them with
+            // their descriptions. `Searcher` is the one made for wide searches (see the instructions).
+            subAgents = listOf("*"),
         )
 
     private fun loadInstructions(): String =

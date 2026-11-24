@@ -74,6 +74,21 @@ class CodayAgentSeederSpec :
                 )
         }
 
+        "delegates to the agents it can reach, and its instructions send wide searches to Searcher" {
+            val f = Fixture()
+            f.ownsNothing()
+            val created = slot<AgentConfig>()
+            every { f.agents.create(capture(created)) } answers { created.captured }
+
+            f.seeder.ensureIn(namespaceId)
+
+            created.captured.subAgents shouldBe listOf("*")
+            val instructions = created.captured.instructions!!
+            instructions shouldContain "DELEGATE__delegate"
+            instructions shouldContain "`Searcher`"
+            instructions shouldContain "stands alone"
+        }
+
         "the contract names stay stable" {
             CodayAgentSeeder.AGENT_NAME shouldBe "Coday"
             ConfigAgentIntegration.TYPE shouldBe "AGENTOS_CONFIG"
