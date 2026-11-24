@@ -62,6 +62,7 @@ model/case-workspace-view.ts
 model/case.ts
 model/confirmation-resolved-event.ts
 model/continue-cost-request.ts
+model/cursor-page-request.ts
 model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts
@@ -154,7 +155,6 @@ model/usage-configuration.ts
 model/usage-record.ts
 model/user-group-create-request.ts
 model/user-group-member.ts
-model/user-group-members-list-request.ts
 model/user-group-members-list-response.ts
 model/user-group-search-result.ts
 model/user-group-summary.ts

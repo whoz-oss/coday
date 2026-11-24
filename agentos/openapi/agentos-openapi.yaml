@@ -3726,7 +3726,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UserGroupMembersListRequest"
+              $ref: "#/components/schemas/CursorPageRequest"
         required: true
       responses:
         "200":
@@ -4668,6 +4668,19 @@ components:
           format: double
       required:
       - expectedThreshold
+    CursorPageRequest:
+      type: object
+      properties:
+        limit:
+          type: integer
+          format: int32
+          description: "Page size, 100 when omitted"
+          maximum: 500
+          minimum: 1
+        next:
+          type: string
+          description: "Opaque cursor: the `metadata.next` of the previous response;\
+            \ omit for the first page"
     EnrichmentPhaseTrace:
       type: object
       properties:
@@ -6837,19 +6850,6 @@ components:
       - externalId
       - role
       - userId
-    UserGroupMembersListRequest:
-      type: object
-      properties:
-        limit:
-          type: integer
-          format: int32
-          description: "Page size, 100 when omitted"
-          maximum: 500
-          minimum: 1
-        next:
-          type: string
-          description: "Opaque cursor: the `metadata.next` of the previous response;\
-            \ omit for the first page"
     UserGroupMembersListResponse:
       type: object
       properties:

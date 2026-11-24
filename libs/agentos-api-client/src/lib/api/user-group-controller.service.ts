@@ -14,11 +14,11 @@ import { HttpClient, HttpParams, HttpResponse, HttpEvent, HttpContext } from '@a
 import { Observable } from 'rxjs'
 
 // @ts-ignore
+import { CursorPageRequest } from '../model/cursor-page-request'
+// @ts-ignore
 import { UserGroupCreateRequest } from '../model/user-group-create-request'
 // @ts-ignore
 import { UserGroupMember } from '../model/user-group-member'
-// @ts-ignore
-import { UserGroupMembersListRequest } from '../model/user-group-members-list-request'
 // @ts-ignore
 import { UserGroupMembersListResponse } from '../model/user-group-members-list-response'
 // @ts-ignore
@@ -403,34 +403,34 @@ export class UserGroupControllerService extends BaseService {
   /**
    * List the members of a group, one cursor-paged page at a time
    * @param userGroupId
-   * @param userGroupMembersListRequest
+   * @param cursorPageRequest
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public listMembersUserGroup(
     userGroupId: string,
-    userGroupMembersListRequest: UserGroupMembersListRequest,
+    cursorPageRequest: CursorPageRequest,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<UserGroupMembersListResponse>
   public listMembersUserGroup(
     userGroupId: string,
-    userGroupMembersListRequest: UserGroupMembersListRequest,
+    cursorPageRequest: CursorPageRequest,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpResponse<UserGroupMembersListResponse>>
   public listMembersUserGroup(
     userGroupId: string,
-    userGroupMembersListRequest: UserGroupMembersListRequest,
+    cursorPageRequest: CursorPageRequest,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
   ): Observable<HttpEvent<UserGroupMembersListResponse>>
   public listMembersUserGroup(
     userGroupId: string,
-    userGroupMembersListRequest: UserGroupMembersListRequest,
+    cursorPageRequest: CursorPageRequest,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
@@ -438,10 +438,8 @@ export class UserGroupControllerService extends BaseService {
     if (userGroupId === null || userGroupId === undefined) {
       throw new Error('Required parameter userGroupId was null or undefined when calling listMembersUserGroup.')
     }
-    if (userGroupMembersListRequest === null || userGroupMembersListRequest === undefined) {
-      throw new Error(
-        'Required parameter userGroupMembersListRequest was null or undefined when calling listMembersUserGroup.'
-      )
+    if (cursorPageRequest === null || cursorPageRequest === undefined) {
+      throw new Error('Required parameter cursorPageRequest was null or undefined when calling listMembersUserGroup.')
     }
 
     let localVarHeaders = this.defaultHeaders
@@ -478,7 +476,7 @@ export class UserGroupControllerService extends BaseService {
     const { basePath, withCredentials } = this.configuration
     return this.httpClient.request<UserGroupMembersListResponse>('post', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
-      body: userGroupMembersListRequest,
+      body: cursorPageRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

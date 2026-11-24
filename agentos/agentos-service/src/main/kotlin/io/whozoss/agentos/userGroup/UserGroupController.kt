@@ -1,10 +1,10 @@
 package io.whozoss.agentos.userGroup
 
 import io.swagger.v3.oas.annotations.Operation
+import io.whozoss.agentos.sdk.api.common.CursorPageRequest
 import io.whozoss.agentos.sdk.api.common.ListMetadata
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupApi
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupMember
-import io.whozoss.agentos.sdk.api.userGroup.UserGroupMembersListRequest
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupMembersListResponse
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupSearchResult
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
@@ -62,7 +62,7 @@ class UserGroupController(
     @Operation(summary = "List the members of a group, one cursor-paged page at a time")
     fun listMembers(
         @PathVariable userGroupId: UUID,
-        @Valid @RequestBody request: UserGroupMembersListRequest,
+        @Valid @RequestBody request: CursorPageRequest,
     ): UserGroupMembersListResponse =
         userGroupService.getMembersPage(userGroupId, request.limit, request.next).let { page ->
             UserGroupMembersListResponse(

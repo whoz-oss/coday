@@ -8,7 +8,7 @@
  * Do not edit the class manually.
  */
 
-export interface UserGroupMembersListRequest {
+export interface CursorPageRequest {
   /**
    * Page size, 100 when omitted
    */
