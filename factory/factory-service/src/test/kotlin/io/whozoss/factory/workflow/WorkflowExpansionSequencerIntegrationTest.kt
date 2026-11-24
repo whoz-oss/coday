@@ -18,6 +18,10 @@ import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionInput
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
+import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.domain.WorkflowStatuses
@@ -79,8 +83,34 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
     @BeforeEach
     fun resetAgents() = agents.reset()
 
-    private fun startRun(workflowId: String): WorkflowInstanceRecord {
-        val record = catalog.load().single { it.workflowType == "architect-custom-flow" }
+    private fun architectDefinition(): WorkflowDefinitionRecord =
+        catalog.load().single { it.workflowType == "architect-custom-flow" }
+
+    /** A starting workflow of another circle: its own type, its own step id and its own agent. */
+    private fun circleDefinition(workflowType: String, stepId: String, agentName: String): WorkflowDefinitionRecord {
+        val raw = linkedMapOf<String, Any?>(
+            "schemaVersion" to "1",
+            "workflowType" to workflowType,
+            "version" to "1.0.0",
+            "title" to "Business analysis run designed by the $agentName",
+            "steps" to listOf(
+                linkedMapOf<String, Any?>(
+                    "id" to stepId,
+                    "name" to "Analyse the request and design the steps of the run",
+                    "responsibility" to linkedMapOf("kind" to "agent", "name" to agentName),
+                    "dependsOn" to emptyList<String>(),
+                    "entry" to listOf("Read the request and the ticket given at launch"),
+                    "mission" to "Analyse the request, design the steps that deliver it and send them as the continuation.",
+                    "exit" to listOf("Submit PASS with the continuation"),
+                    "expansion" to linkedMapOf("mode" to "append"),
+                ),
+            ),
+        )
+        val validated = WorkflowDefinitionValidator.validate(raw) as WorkflowDefinitionValidation.Valid
+        return WorkflowDefinitionRecord(workflowType, "1.0.0", hashWorkflowDefinition(validated.definition), validated.definition)
+    }
+
+    private fun startRun(workflowId: String, record: WorkflowDefinitionRecord = architectDefinition()): WorkflowInstanceRecord {
         repository.saveDefinition(scope, record)
         val input = WorkflowDefinitionInput(record.workflowType, record.version, record.definitionHash, record.toPolicyDefinition().steps)
         val created = createWorkflowInstance(
@@ -95,17 +125,22 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     /** The expanding step's PASS carrying [continuation], accepted by the real result channel. Returns its attempt id. */
-    private fun submitExpandingResult(workflowId: String, continuation: String): String {
+    private fun submitExpandingResult(
+        workflowId: String,
+        continuation: String,
+        expanderId: String = expander,
+        agentName: String = agent,
+    ): String {
         val attemptId = "attempt-$workflowId"
-        legacyAttempts.insert(scope, AgentStepAttemptRecord(namespace, workflowId, expander, attemptId, "agent-1", "running", 1, "{}"))
+        legacyAttempts.insert(scope, AgentStepAttemptRecord(namespace, workflowId, expanderId, attemptId, "agent-1", "running", 1, "{}"))
         val token = results.issue(
             scope,
-            AgentStepResultCapabilityIdentity(attemptId, workflowId, expander, namespace, "case-$workflowId", agent, "sha256:${"b".repeat(64)}"),
+            AgentStepResultCapabilityIdentity(attemptId, workflowId, expanderId, namespace, "case-$workflowId", agentName, "sha256:${"b".repeat(64)}"),
         ).token
         val business: JsonNode = objectMapper.readTree(
             """{"status":"PASS","summary":"plan done","claims":{"modifiedFiles":[]},"continuation":$continuation}""",
         )
-        results.submit(scope, token, business, AgentStepResultObservedIdentity(attemptId, "case-$workflowId", agent, namespace), null)
+        results.submit(scope, token, business, AgentStepResultObservedIdentity(attemptId, "case-$workflowId", agentName, namespace), null)
         return attemptId
     }
 
@@ -128,6 +163,7 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         workflowId: String,
         expanderAttemptId: String,
         called: MutableList<String>,
+        expanderId: String = expander,
         onExpanderRun: () -> Unit = {},
     ): CapabilityExecutionService {
         val capability = mockk<CapabilityExecutionService>()
@@ -137,7 +173,7 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } answers {
             val step = invocation.args[3] as WorkflowStepDefinition
             called += step.id
-            if (step.id == expander) onExpanderRun()
+            if (step.id == expanderId) onExpanderRun()
             if (step.responsibility.kind == ResponsibilityKind.HUMAN) {
                 val interactionId = "interaction-${step.id}"
                 interactions.insert(
@@ -155,7 +191,7 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
             } else {
                 CapabilityExecution(
                     CapabilityOutcome.AgentCompleted(step.id, step.responsibility.name, "PASS", emptyMap()),
-                    attemptId = if (step.id == expander) expanderAttemptId else "attempt-${step.id}",
+                    attemptId = if (step.id == expanderId) expanderAttemptId else "attempt-${step.id}",
                 )
             }
         }
@@ -332,6 +368,34 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(stepStatuses(workflowId))
             .containsEntry("build", WorkflowStatuses.PENDING)
             .containsEntry("review", WorkflowStatuses.PENDING)
+    }
+
+    @Test
+    fun `a starting workflow of another circle works the same, with its own agent and its own step id`() {
+        val workflowId = "expansion-seq-other-circle"
+        val circleAgent = "Planner"
+        val circleStep = "plan"
+        // The circle's agent and the agent of the added steps are enabled in the namespace; Archay is not.
+        agents.agents = listOf(circleAgent, "Frontend")
+        startRun(workflowId, circleDefinition("ba-custom-flow", circleStep, circleAgent))
+        val definitionsBefore = repository.listDefinitions(scope).map { it.workflowType to it.definitionHash }
+        val continuation = """{"steps":[${agentStep("build", name = "Frontend")},${agentStep("review", "[\"build\"]", "Frontend")}]}"""
+        val attemptId = submitExpandingResult(workflowId, continuation, expanderId = circleStep, agentName = circleAgent)
+        val called = mutableListOf<String>()
+        val runner = runner(capability(workflowId, attemptId, called, expanderId = circleStep))
+
+        val result = runner.runSession(scope, namespace, workflowId, Path.of("."))
+
+        // Nothing depends on architect-custom-flow, on Archay or on the step id `architect-plan`.
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(called).containsExactly(circleStep, "build", "review")
+        assertThat(stepStatuses(workflowId).values).containsOnly(WorkflowStatuses.COMPLETED)
+        val run = repository.findInstance(scope, namespace, workflowId)!!
+        assertThat(run.instance["workflowType"]).isEqualTo("ba-custom-flow")
+        assertThat((run.projection["steps"] as List<*>).filterIsInstance<Map<*, *>>().map { it["id"] })
+            .containsExactly(circleStep, "build", "review")
+        assertThat(expansionEvidence(workflowId)).isEqualTo(1)
+        assertThat(repository.listDefinitions(scope).map { it.workflowType to it.definitionHash }).isEqualTo(definitionsBefore)
     }
 
     @Test
