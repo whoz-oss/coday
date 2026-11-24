@@ -5,11 +5,7 @@
   <button type="button" (click)="configuration.retry()">Retry usage settings</button>
 } @else if (configuration.enabled()) {
   @if (run(); as state) {
-    <details
-      [open]="state.paused || state.pausedCases.length > 0"
-      class="usage"
-      [class.usage--paused]="state.paused || state.pausedCases.length > 0"
-    >
+    <details class="usage" [class.usage--paused]="state.paused || state.pausedCases.length > 0">
       <summary>
         @if (state.paused || state.pausedCases.length > 0) {
           <span class="usage__title usage__title--paused">Paused · cost threshold reached</span>
@@ -70,56 +66,6 @@
             Some usage has no reliable price. The displayed cost is a lower bound; the threshold cannot guarantee a
             spending cap.
           </p>
-        }
-        @if (state.paused || state.pausedCases.length > 0) {
-          <p>The next request is waiting for cost confirmation. Continuing keeps the current execution context.</p>
-          @if (state.paused && state.pausedCases.length === 0) {
-            <p>This run is waiting for confirmation in a linked conversation you cannot access.</p>
-          }
-          @for (limit of state.pausedCases; track limit.caseId) {
-            <p>
-              {{
-                limit.ancestor ? 'Parent conversation' : limit.caseId === caseId() ? 'Conversation' : 'Delegated run'
-              }}: {{ limit.cost | agentosCost }} consumed.
-            </p>
-            @if (limit.canContinue) {
-              @if (limit.threshold > 0) {
-                <button type="button" (click)="continue(limit)" [disabled]="saving() || !!error()">
-                  Continue · double threshold to {{ limit.threshold * 2 | number: '1.2-6' }}
-                </button>
-              } @else {
-                <p>
-                  Set a positive threshold in
-                  {{
-                    limit.ancestor
-                      ? 'the parent conversation'
-                      : limit.caseId === caseId()
-                        ? 'this conversation'
-                        : 'the delegated conversation'
-                  }}
-                  settings before continuing.
-                </p>
-                <button type="button" (click)="continue(limit)" [disabled]="saving()">
-                  Continue with updated threshold
-                </button>
-              }
-            } @else {
-              <p>
-                A member with edit permission on
-                {{
-                  limit.ancestor
-                    ? 'the parent conversation'
-                    : limit.caseId === caseId()
-                      ? 'this conversation'
-                      : 'the delegated conversation'
-                }}
-                must approve continuation.
-              </p>
-            }
-          }
-          @if (canWrite()) {
-            <button type="button" (click)="stop()" [disabled]="saving()">Stop</button>
-          }
         }
       </div>
     </details>

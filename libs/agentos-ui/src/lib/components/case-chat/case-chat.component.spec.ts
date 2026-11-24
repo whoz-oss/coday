@@ -26,6 +26,7 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
   ThinkingEvent,
+  UsageConfigurationControllerService,
   User,
   VoiceMessageControllerService,
   WarnEvent,
@@ -33,6 +34,7 @@ import {
 import { of, Observable, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { AiModelStateService } from '../../services/ai-model-state.service'
+import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
@@ -122,6 +124,11 @@ describe('CaseChatComponent — submit with attachments', () => {
           useValue: { snapshot: { queryParams: { case: 'c-1', ns: 'ns-1' } }, queryParams: of({}) },
         },
         { provide: ExchangeStateService, useValue: exchangeState },
+        // The chat owns the run cost state, which reads the usage setting when it is created.
+        {
+          provide: UsageConfigurationControllerService,
+          useValue: { getUsageConfiguration: jest.fn().mockReturnValue(of({ enabled: false })) },
+        },
         {
           provide: CaseStateService,
           useValue: {
@@ -1309,6 +1316,16 @@ describe('CaseChatComponent — submit with attachments', () => {
     // isTerminal is now a computed derived from _sseStatus; drive it via the signal.
     ref.instance['_sseStatus'].set('KILLED')
     expect(ref.instance['canSend']).toBe(false)
+  })
+
+  describe('cost pause in the composer', () => {
+    // Placement in the composer and the focus on the pause are covered by case-chat.cost-pause.spec.ts, which renders
+    // the real template: this spec never does.
+    it('owns one run cost state per chat', () => {
+      const ref = makeComponent()
+      const other = makeComponent()
+      expect(ref.injector.get(CaseRunCostStateService)).not.toBe(other.injector.get(CaseRunCostStateService))
+    })
   })
 
   describe('case header overflow menu', () => {

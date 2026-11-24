@@ -1,0 +1,59 @@
+@if (state.paused() && state.run(); as run) {
+  <div class="cost-pause" data-cost-pause-controls>
+    <p class="cost-pause__lead" role="alert">
+      Cost threshold reached: {{ run.cost | agentosCost: run.unknownCostCount }} consumed. Continue?
+    </p>
+    <p class="cost-pause__text">
+      The next request is waiting for cost confirmation. Continuing keeps the current execution context.
+    </p>
+    @if (run.paused && run.pausedCases.length === 0) {
+      <p class="cost-pause__text">This run is waiting for confirmation in a linked conversation you cannot access.</p>
+    }
+    @for (limit of run.pausedCases; track limit.caseId) {
+      <p class="cost-pause__text">{{ label(limit) }}: {{ limit.cost | agentosCost }} consumed.</p>
+      @if (limit.canContinue) {
+        @if (limit.threshold > 0) {
+          <div class="cost-pause__actions">
+            <button
+              type="button"
+              class="cost-pause__btn cost-pause__btn--primary"
+              (click)="state.continue(limit)"
+              [disabled]="state.saving() || !!state.error()"
+            >
+              Continue · double threshold to {{ limit.threshold * 2 | number: '1.2-6' }}
+            </button>
+          </div>
+        } @else {
+          <p class="cost-pause__text">Set a positive threshold in {{ subject(limit) }} settings before continuing.</p>
+          <div class="cost-pause__actions">
+            <button
+              type="button"
+              class="cost-pause__btn cost-pause__btn--primary"
+              (click)="state.continue(limit)"
+              [disabled]="state.saving()"
+            >
+              Continue with updated threshold
+            </button>
+          </div>
+        }
+      } @else {
+        <p class="cost-pause__text">A member with edit permission on {{ subject(limit) }} must approve continuation.</p>
+      }
+    }
+    @if (state.canWrite()) {
+      <div class="cost-pause__actions">
+        <button
+          type="button"
+          class="cost-pause__btn cost-pause__btn--secondary"
+          (click)="state.stop()"
+          [disabled]="state.saving()"
+        >
+          Stop
+        </button>
+      </div>
+    }
+    @if (state.error(); as message) {
+      <p class="cost-pause__error" role="status">{{ message }}</p>
+    }
+  </div>
+}
