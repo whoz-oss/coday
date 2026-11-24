@@ -3,7 +3,6 @@ import { TestBed } from '@angular/core/testing'
 import { Router } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { FactoryStore } from '../../core/factory.store'
-import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { SessionPageState } from './session-page.state'
 
 describe('SessionPageState', () => {
@@ -55,7 +54,7 @@ describe('SessionPageState', () => {
       expect(state.canSaveAsWorkflow()).toBe(true)
     })
 
-    it('reads the draft of the run, hands it over once and opens the composer', () => {
+    it('reads the draft of the run and opens the composer with it in the navigation state', () => {
       sessions.update((current) => new Map(current).set('run-1', expandedSession({ stepIds: ['implement'] })))
       store.expandedDefinition.mockReturnValue(of({ workflowId: 'run-1', definition: draft }))
       const state = TestBed.inject(SessionPageState)
@@ -64,10 +63,9 @@ describe('SessionPageState', () => {
       state.saveAsReusableWorkflow()
 
       expect(store.expandedDefinition).toHaveBeenCalledWith('run-1', 'namespace-1')
-      expect(router.navigate).toHaveBeenCalledWith(['/workflows', 'new'])
-      const handoff = TestBed.inject(WorkflowDraftHandoffService)
-      expect(handoff.take()).toBe(draft)
-      expect(handoff.take()).toBeNull()
+      expect(router.navigate).toHaveBeenCalledWith(['/workflows', 'new'], {
+        state: { workflowDraft: { workflowId: 'run-1', namespaceId: 'namespace-1', definition: draft } },
+      })
       expect(state.saveDefinitionError()).toBeNull()
       expect(state.savingDefinition()).toBe(false)
     })
@@ -85,7 +83,6 @@ describe('SessionPageState', () => {
       expect(state.saveDefinitionError()).toBe('No steps were added to this run. (WORKFLOW_NOT_EXPANDED)')
       expect(state.savingDefinition()).toBe(false)
       expect(router.navigate).not.toHaveBeenCalled()
-      expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBeNull()
     })
 
     it('never reads a draft without a known namespace', () => {

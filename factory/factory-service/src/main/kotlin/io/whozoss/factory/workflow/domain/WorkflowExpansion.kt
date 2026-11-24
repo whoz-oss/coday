@@ -32,6 +32,9 @@ object WorkflowContinuationCodes {
     const val UNSUPPORTED_IN_CONTINUATION = "UNSUPPORTED_IN_CONTINUATION"
     const val MAX_ITEMS = "MAX_ITEMS"
     const val AGENT_NOT_AVAILABLE = "AGENT_NOT_AVAILABLE"
+
+    /** The namespace agent list could not be read: the continuation is refused (fail-closed), the agent can send it again. */
+    const val AGENTS_UNVERIFIABLE = "AGENTS_UNVERIFIABLE"
 }
 
 /** A schema-location diagnostic: never carries a submitted value. */
@@ -39,15 +42,13 @@ data class ContinuationViolation(val path: String, val code: String, val message
 
 sealed interface ContinuationValidation {
     data class Valid(
-        /** Normalized continuation steps (first steps already rewired on the expanding step). */
+        /** Normalized continuation steps, as they are added to the run (first steps wired on the expanding step). */
         val normalizedSteps: List<Map<String, Any?>>,
         val steps: List<WorkflowStepDefinition>,
         val stepIds: List<String>,
         /** Base definition + continuation, base steps untouched (the expander keeps its `expansion`). */
         val effectiveDefinition: Map<String, Any?>,
         val effectiveDefinitionHash: String,
-        /** `false` when the namespace agent list could not be read. */
-        val agentsVerified: Boolean,
     ) : ContinuationValidation
 
     data class Invalid(val violations: List<ContinuationViolation>) : ContinuationValidation
@@ -59,6 +60,18 @@ sealed interface ContinuationValidation {
  * The continuation is merged into the base definition and the merged definition goes through the
  * canonical [WorkflowDefinitionValidator], so graph, contract and routing rules have a single
  * implementation. Diagnostics are mapped back to `result.continuation.steps[i]...` locations.
+ *
+ * Trust model (the agent writes these steps, and they run without a human approval imposed by Factory; this is a
+ * deliberate decision). The safeguards are:
+ *  - opt-in per workstream (`allowedWorkflowTypes` lists `architect-custom-flow`) and an explicit user choice;
+ *  - structure: graph, contracts, routing and the limit of [MAX_STEPS] steps go through the canonical validator;
+ *  - agents, fail-closed: only agents enabled in the namespace can be named, and an unreadable agent list refuses
+ *    the continuation (`AGENTS_UNVERIFIABLE`); the workspace precheck then runs again on the full step list;
+ *  - no `code` step (`UNSUPPORTED_IN_CONTINUATION`, reason `code_step`);
+ *  - the added steps are visible at once in Cockpit and can be stopped (attempt cancellation, cost thresholds,
+ *    `queryUser` questions);
+ *  - the Architect may add a `human` step itself when the ticket calls for a validation;
+ *  - ticket text reaches the briefs of the added agents: the same prompt-injection caution as any agent step.
  */
 object WorkflowContinuationValidator {
     const val MAX_STEPS = 50
@@ -69,11 +82,17 @@ object WorkflowContinuationValidator {
     private fun asStringMap(value: Any?): Map<String, Any?>? =
         (value as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
 
+    /**
+     * [verifyAgents] is `true` when a continuation is submitted (an unreadable agent list, [availableAgents] `null`,
+     * is then refused with `AGENTS_UNVERIFIABLE`). It is `false` when the already accepted continuation is added to
+     * the run: the workspace precheck re-checks the agents of the full step list right after the addition.
+     */
     fun validate(
         baseDefinition: Map<String, Any?>,
         expanderStepId: String,
         rawContinuation: Any?,
         availableAgents: List<String>?,
+        verifyAgents: Boolean = true,
     ): ContinuationValidation {
         val baseSteps = (baseDefinition["steps"] as? List<*>).orEmpty().mapNotNull { asStringMap(it) }
         val expanderIndex = baseSteps.indexOfFirst { it["id"] == expanderStepId }
@@ -107,6 +126,14 @@ object WorkflowContinuationValidator {
             }
             if (step.containsKey("expansion") || step.containsKey("outcomeTransitions")) {
                 violation(path, WorkflowContinuationCodes.UNSUPPORTED_IN_CONTINUATION, "declares a field that is not supported in a continuation")
+            }
+            // A run that discovers mid-way that it needs a worktree is not supported (reason: code_step).
+            if (asStringMap(step["responsibility"])?.get("kind") == "code") {
+                violation(
+                    "$path.responsibility.kind",
+                    WorkflowContinuationCodes.UNSUPPORTED_IN_CONTINUATION,
+                    "a code step is not supported in a continuation (code_step)",
+                )
             }
             val id = step["id"] as? String
             if (id != null && id in baseIds) {
@@ -146,9 +173,14 @@ object WorkflowContinuationValidator {
         val continuationNormalized = normalizedAll.drop(baseSteps.size)
         val continuationSteps = valid.steps.drop(baseSteps.size)
 
-        var agentsVerified = false
-        if (availableAgents != null) {
-            agentsVerified = true
+        if (verifyAgents) {
+            if (availableAgents == null) {
+                return invalid(
+                    WorkflowContinuationCodes.AGENTS_UNVERIFIABLE,
+                    ROOT,
+                    "the agents of the namespace could not be verified; send the result again",
+                )
+            }
             continuationSteps.forEachIndexed { index, step ->
                 if (step.responsibility.kind == ResponsibilityKind.AGENT) {
                     val name = step.responsibility.name
@@ -172,7 +204,6 @@ object WorkflowContinuationValidator {
             stepIds = continuationSteps.map { it.id },
             effectiveDefinition = effective,
             effectiveDefinitionHash = hashWorkflowDefinition(effective),
-            agentsVerified = agentsVerified,
         )
     }
 

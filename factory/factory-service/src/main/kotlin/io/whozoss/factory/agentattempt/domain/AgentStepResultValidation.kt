@@ -1,6 +1,7 @@
 package io.whozoss.factory.agentattempt.domain
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.factory.workflow.domain.WorkflowContinuationValidator
 import io.whozoss.factory.workflow.domain.WorkflowTicket
 
 /** Strict validation of the structured business result schema. */
@@ -13,7 +14,6 @@ object AgentStepResultValidation {
     private val FINDING_FIELDS = setOf("severity", "code", "summary", "file", "line")
     private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH")
     private val CHANGE_TYPES = setOf("feature", "bugfix")
-    private const val MAX_CONTINUATION_STEPS = 50
     /** GitHub issue reference (#123, 123, owner/repo#123) or a generic Jira-style project key (ABC-123). */
     private val TICKET = WorkflowTicket.PATTERN
 
@@ -65,8 +65,9 @@ object AgentStepResultValidation {
                     add("result.continuation", "INVALID_CONTINUATION", "contains one or more fields that are not allowed")
                 steps == null || !steps.isArray -> add("result.continuation.steps", "INVALID_CONTINUATION", "must be an array")
                 steps.size() < 1 -> add("result.continuation.steps", "INVALID_CONTINUATION", "must contain at least one step")
-                steps.size() > MAX_CONTINUATION_STEPS ->
-                    add("result.continuation.steps", "MAX_ITEMS", "must contain at most $MAX_CONTINUATION_STEPS steps")
+                // The limit has ONE source: WorkflowContinuationValidator.MAX_STEPS (the OpenAPI maxItems documents the same value).
+                steps.size() > WorkflowContinuationValidator.MAX_STEPS ->
+                    add("result.continuation.steps", "MAX_ITEMS", "must contain at most ${WorkflowContinuationValidator.MAX_STEPS} steps")
                 else -> steps.forEachIndexed { index, step ->
                     if (!step.isObject) add("result.continuation.steps[$index]", "INVALID_CONTINUATION", "must be a JSON object")
                 }
@@ -201,10 +202,28 @@ object AgentStepResultValidation {
             findings = findings,
             expectedAmendmentSeq = value.get("expected_amendment_seq")?.asLong() ?: value.get("expectedAmendmentSeq")?.asLong(),
             selectedRoutes = value.get("selectedRoutes")?.map { it.asText() },
-            continuation = value.get("continuation")?.let { CONTINUATION_MAPPER.convertValue(it, CONTINUATION_TYPE) },
+            continuation = value.get("continuation")?.let { plainObject(it) },
         )
     }
 
-    private val CONTINUATION_MAPPER = com.fasterxml.jackson.databind.ObjectMapper()
-    private val CONTINUATION_TYPE = object : com.fasterxml.jackson.core.type.TypeReference<Map<String, Any?>>() {}
+    /**
+     * Plain Kotlin value (Map / List / String / Number / Boolean / null) of a JSON node, without any ObjectMapper:
+     * the continuation is handed to the canonical definition validator as raw maps.
+     */
+    private fun plain(node: JsonNode): Any? = when {
+        node.isObject -> plainObject(node)
+        node.isArray -> node.map { plain(it) }
+        node.isTextual -> node.asText()
+        node.isBoolean -> node.asBoolean()
+        node.isIntegralNumber -> if (node.canConvertToInt()) node.intValue() else node.longValue()
+        node.isNumber -> node.doubleValue()
+        else -> null
+    }
+
+    private fun plainObject(node: JsonNode): Map<String, Any?> {
+        val result = LinkedHashMap<String, Any?>()
+        node.fields().forEach { (key, child) -> result[key] = plain(child) }
+        return result
+    }
+
 }

@@ -8,7 +8,6 @@ import { BehaviorSubject, of, throwError } from 'rxjs'
 import { FactoryStore } from '../../core/factory.store'
 import { AgentQuestion, FactoryRun, SessionDetail } from '../../core/models'
 import { ShellState } from '../../core/shell-state'
-import { WorkflowDraftHandoffService } from '../../core/workflow-draft-handoff.service'
 import { SessionPageComponent } from './session-page.component'
 import { SessionPageState } from './session-page.state'
 
@@ -241,7 +240,7 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
       expect(host.querySelector('[data-expansion-panel]')).toBeNull()
     })
 
-    it('reads the draft, hands it over once and opens the composer when clicked', () => {
+    it('reads the draft and opens the composer with it in the navigation state when clicked', () => {
       const session = { ...sessionBase(), expansion: { sourceStepId: 'architect-plan', stepIds: ['implement'] } }
       const expandedDefinition = jest.fn().mockReturnValue(of({ workflowId: 'wf-1', definition: draft }))
       const { fixture, host, navigate } = render(session, expandedDefinition)
@@ -252,8 +251,9 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
       fixture.detectChanges()
 
       expect(expandedDefinition).toHaveBeenCalledWith('wf-1', 'ns-1')
-      expect(navigate).toHaveBeenCalledWith(['/workflows', 'new'])
-      expect(TestBed.inject(WorkflowDraftHandoffService).take()).toBe(draft)
+      expect(navigate).toHaveBeenCalledWith(['/workflows', 'new'], {
+        state: { workflowDraft: { workflowId: 'wf-1', namespaceId: 'ns-1', definition: draft } },
+      })
       expect(host.querySelector('[data-save-as-workflow-error]')).toBeNull()
     })
 

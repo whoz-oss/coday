@@ -8,6 +8,7 @@ import io.whozoss.factory.workflow.domain.WorkflowPolicyDefinition
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import org.springframework.stereotype.Component
 
 /**
  * The single place that computes the definition a run ACTUALLY follows: the pinned base definition
@@ -21,6 +22,7 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
  * The returned policy definition keeps the BASE definition hash: the instance and the transition
  * policy pin the run to the registered identity, never to a derived one.
  */
+@Component
 class EffectiveWorkflowDefinitionResolver(private val repository: WorkflowRepository) {
 
     /** The pinned base record; fails when it is absent or its hash drifted. */
@@ -44,9 +46,14 @@ class EffectiveWorkflowDefinitionResolver(private val repository: WorkflowReposi
     fun resolveRecord(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowDefinitionRecord =
         applyExpansion(baseRecord(scope, instance), instance)
 
-    /** Lenient resolution: `null` when the base definition cannot be found; appended steps still checked. */
+    /**
+     * Lenient resolution, used at result submission: `null` when the base definition cannot be found OR when the
+     * integrity hash of the steps added to the run does not match. A submission then behaves as it did before
+     * expansions existed (no definition-based check) instead of failing with WORKFLOW_DEFINITION_MISMATCH. Only the
+     * sequencer ([resolveRecord] / [resolve]) is strict and fails loudly on a run whose added steps were altered.
+     */
     fun resolveRecordOrNull(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowDefinitionRecord? =
-        baseRecordOrNull(scope, instance)?.let { applyExpansion(it, instance) }
+        baseRecordOrNull(scope, instance)?.let { applyExpansionOrNull(it, instance) }
 
     fun resolve(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowPolicyDefinition =
         resolveRecord(scope, instance).toPolicyDefinition()
@@ -55,17 +62,19 @@ class EffectiveWorkflowDefinitionResolver(private val repository: WorkflowReposi
     fun expansionOf(instance: WorkflowInstanceRecord): Map<String, Any?>? =
         (instance.instance["expansion"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
 
-    private fun applyExpansion(base: WorkflowDefinitionRecord, instance: WorkflowInstanceRecord): WorkflowDefinitionRecord {
+    private fun applyExpansion(base: WorkflowDefinitionRecord, instance: WorkflowInstanceRecord): WorkflowDefinitionRecord =
+        applyExpansionOrNull(base, instance) ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH)
+
+    /** The base plus the steps added by the run, or `null` when the recorded expansion is malformed or altered. */
+    private fun applyExpansionOrNull(base: WorkflowDefinitionRecord, instance: WorkflowInstanceRecord): WorkflowDefinitionRecord? {
         val expansion = expansionOf(instance) ?: return base
         val added = (expansion["steps"] as? List<*>)?.mapNotNull { raw ->
             (raw as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
-        } ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH)
+        } ?: return null
         val baseSteps = (base.definition["steps"] as? List<*>).orEmpty()
         val effective = LinkedHashMap<String, Any?>(base.definition)
         effective["steps"] = baseSteps + added
-        if (hashWorkflowDefinition(effective) != expansion["effectiveDefinitionHash"]) {
-            throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH)
-        }
+        if (hashWorkflowDefinition(effective) != expansion["effectiveDefinitionHash"]) return null
         return base.copy(definition = effective)
     }
 }

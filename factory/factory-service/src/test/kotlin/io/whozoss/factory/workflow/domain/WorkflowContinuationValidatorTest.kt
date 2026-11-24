@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test
 /**
  * Pure unit tests of [WorkflowContinuationValidator]: the check of the steps an expanding step
  * appends to a run, performed when the result is submitted (nothing is stored here).
+ *
+ * Factory imposes no human approval: the first steps of the continuation run right after the expanding step.
  */
 class WorkflowContinuationValidatorTest {
 
@@ -54,7 +56,7 @@ class WorkflowContinuationValidatorTest {
         (result as ContinuationValidation.Invalid).violations
 
     @Test
-    fun `a valid continuation is merged and its first steps are rewired on the expanding step`() {
+    fun `a valid continuation is merged and its first steps are wired on the expanding step`() {
         val result = validate(
             continuation(
                 step("build"),
@@ -63,11 +65,28 @@ class WorkflowContinuationValidatorTest {
         ) as ContinuationValidation.Valid
 
         assertThat(result.stepIds).containsExactly("build", "approve")
-        assertThat(result.steps.first().dependsOn).containsExactly("architect-plan")
-        assertThat(result.steps.last().dependsOn).containsExactly("build")
-        assertThat(result.agentsVerified).isTrue()
+        val byId = result.steps.associateBy { it.id }
+        assertThat(byId.getValue("build").dependsOn).containsExactly("architect-plan")
+        assertThat(byId.getValue("approve").dependsOn).containsExactly("build")
+        assertThat(byId.getValue("approve").responsibility.kind).isEqualTo(ResponsibilityKind.HUMAN)
+        // base (2) + continuation (2): Factory adds nothing of its own.
         assertThat((result.effectiveDefinition["steps"] as List<*>).size).isEqualTo(4)
         assertThat(result.effectiveDefinitionHash).isNotEqualTo(hashWorkflowDefinition(baseDefinition))
+    }
+
+    @Test
+    fun `a human step written by the Architect is accepted like any other step`() {
+        val result = validate(
+            continuation(
+                step("review-gate", kind = "human", name = "Lead"),
+                step("build", dependsOn = listOf("review-gate")),
+            ),
+        ) as ContinuationValidation.Valid
+
+        val byId = result.steps.associateBy { it.id }
+        assertThat(byId.getValue("review-gate").responsibility.kind).isEqualTo(ResponsibilityKind.HUMAN)
+        assertThat(byId.getValue("review-gate").dependsOn).containsExactly("architect-plan")
+        assertThat(byId.getValue("build").dependsOn).containsExactly("review-gate")
     }
 
     @Test
@@ -81,10 +100,25 @@ class WorkflowContinuationValidatorTest {
     }
 
     @Test
-    fun `an unreadable agent list is accepted and reported as unverified`() {
-        val result = validate(continuation(step("build", name = "Nobody")), agents = null) as ContinuationValidation.Valid
+    fun `an unreadable agent list refuses the continuation (fail-closed)`() {
+        val violations = invalid(validate(continuation(step("build", name = "Nobody")), agents = null))
 
-        assertThat(result.agentsVerified).isFalse()
+        assertThat(violations).hasSize(1)
+        assertThat(violations.single().code).isEqualTo(WorkflowContinuationCodes.AGENTS_UNVERIFIABLE)
+        assertThat(violations.single().path).isEqualTo("result.continuation")
+    }
+
+    @Test
+    fun `the agents are not checked again when the accepted continuation is added to the run`() {
+        val result = WorkflowContinuationValidator.validate(
+            baseDefinition,
+            "architect-plan",
+            continuation(step("build", name = "Nobody")),
+            availableAgents = null,
+            verifyAgents = false,
+        )
+
+        assertThat(result).isInstanceOf(ContinuationValidation.Valid::class.java)
     }
 
     @Test
@@ -101,11 +135,31 @@ class WorkflowContinuationValidatorTest {
     }
 
     @Test
+    fun `a code step is not supported in a continuation`() {
+        val violations = invalid(validate(continuation(step("ok"), step("verify", kind = "code", name = "check"))))
+
+        assertThat(violations).hasSize(1)
+        assertThat(violations.single().code).isEqualTo(WorkflowContinuationCodes.UNSUPPORTED_IN_CONTINUATION)
+        assertThat(violations.single().path).isEqualTo("result.continuation.steps[1].responsibility.kind")
+        assertThat(violations.single().message).contains("code_step")
+    }
+
+    @Test
     fun `a step id that exists in the base definition is rejected`() {
         val violations = invalid(validate(continuation(step("prepare"))))
 
         assertThat(violations.single().code).isEqualTo(WorkflowContinuationCodes.STEP_ID_COLLISION)
         assertThat(violations.single().path).isEqualTo("result.continuation.steps[0].id")
+    }
+
+    @Test
+    fun `fifty steps are accepted`() {
+        val fifty = mapOf("steps" to (1..50).map { step("s$it") })
+
+        val result = validate(fifty)
+
+        assertThat(result).isInstanceOf(ContinuationValidation.Valid::class.java)
+        assertThat((result as ContinuationValidation.Valid).stepIds).hasSize(50)
     }
 
     @Test
@@ -117,10 +171,10 @@ class WorkflowContinuationValidatorTest {
     }
 
     @Test
-    fun `a dependency on the expanding step itself is accepted`() {
-        val result = validate(continuation(step("build", dependsOn = listOf("architect-plan"))))
+    fun `a dependency on the expanding step itself is accepted and stays on the expanding step`() {
+        val result = validate(continuation(step("build", dependsOn = listOf("architect-plan")))) as ContinuationValidation.Valid
 
-        assertThat(result).isInstanceOf(ContinuationValidation.Valid::class.java)
+        assertThat(result.steps.single { it.id == "build" }.dependsOn).containsExactly("architect-plan")
     }
 
     @Test
@@ -142,7 +196,7 @@ class WorkflowContinuationValidatorTest {
     }
 
     @Test
-    fun `a missing dependsOn is rejected by the canonical validator`() {
+    fun `a missing dependsOn is rejected by the canonical validator at the continuation index`() {
         val violations = invalid(validate(continuation(step("a", dependsOn = null))))
 
         assertThat(violations.single().code).isEqualTo(WorkflowDefinitionErrorCodes.INVALID_VALUE)
@@ -150,10 +204,17 @@ class WorkflowContinuationValidatorTest {
     }
 
     @Test
+    fun `an error on the first step points at steps 0 without any shift`() {
+        val violations = invalid(validate(continuation(step("a", extra = mapOf("mission" to "Do it")))))
+
+        assertThat(violations.single().path).isEqualTo("result.continuation.steps[0].entry")
+    }
+
+    @Test
     fun `an empty dependsOn means after the expanding step`() {
         val result = validate(continuation(step("a", dependsOn = emptyList()))) as ContinuationValidation.Valid
 
-        assertThat(result.steps.single().dependsOn).containsExactly("architect-plan")
+        assertThat(result.steps.single { it.id == "a" }.dependsOn).containsExactly("architect-plan")
     }
 
     @Test

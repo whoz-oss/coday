@@ -4,12 +4,10 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultBusiness
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapability
 import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.persistence.AgentStepResultRepository
-import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.ContinuationValidation
 import io.whozoss.factory.workflow.domain.ContinuationViolation
-import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WORKFLOW_DEFINITION_SCHEMA_VERSION
 import io.whozoss.factory.workflow.domain.WorkflowContinuationCodes
 import io.whozoss.factory.workflow.domain.WorkflowContinuationValidator
@@ -29,7 +27,6 @@ import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.persistence.EvidenceAppendResult
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
-import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import io.whozoss.factory.workspace.WorkspacePrecheckPort
 import java.util.UUID
 import mu.KotlinLogging
@@ -43,25 +40,38 @@ import org.springframework.stereotype.Service
  *  - [validateContinuation] checks a continuation when the result is submitted (nothing is stored);
  *  - [graft] adds the accepted steps to the run (instance, projection, step states, evidence). It is
  *    idempotent on the accepted `resultId` and never touches the definition catalog;
- *  - [reconcile] re-runs [graft] after a crash between the step finalization and the addition;
  *  - [expandedDefinitionDraft] returns the base + added steps as a registrable draft.
  *
- * Callers own the transaction boundary of [graft] / [reconcile] (the sequencer wraps them in a short
- * `REQUIRES_NEW` transaction).
+ * Atomicity: the sequencer calls [graft] and finalizes the expanding step (COMPLETED) in ONE `REQUIRES_NEW`
+ * transaction. Either the steps are added and the step is COMPLETED, or nothing is written and the step is FAILED:
+ * there is no intermediate state to reconcile later, and no expansion is recorded when the finalization fails.
+ * [graft] publishes nothing; the sequencer publishes one SSE hint after the commit.
+ *
+ * Trust model: the steps are authored by an agent and run without a human approval imposed by Factory. This is a
+ * deliberate decision. The Architect writes the steps of the run; the safeguards are:
+ *  - opt-in per workstream: only a workstream that lists `architect-custom-flow` in `allowedWorkflowTypes` can start
+ *    this mode, and the user must choose it explicitly;
+ *  - structure: graph, contracts, routing and the limit of 50 steps are validated by the canonical validator;
+ *  - agents, fail-closed: only agents enabled in the namespace can be named. If the list cannot be read, the
+ *    continuation is refused (`AGENTS_UNVERIFIABLE`), and the workspace precheck runs again on the full step list
+ *    before the first added step;
+ *  - no `code` step: refused with `UNSUPPORTED_IN_CONTINUATION`, reason `code_step`;
+ *  - visible and stoppable: the added steps appear at once in Cockpit and go through the existing mechanisms
+ *    (attempt cancellation, cost thresholds, `queryUser` questions);
+ *  - human validation on demand: the Architect may insert a `human` step when the ticket justifies it;
+ *  - prompt injection: ticket text reaches the briefs of the added agents, with the same caution as any agent step.
  */
 @Service
 class WorkflowExpansionService(
     private val repository: WorkflowRepository,
     private val evidenceRepository: WorkflowEvidenceRepository,
     private val results: AgentStepResultRepository,
-    private val attempts: DurableAgentAttemptService,
-    private val sseHub: WorkflowSseHub,
+    private val resolver: EffectiveWorkflowDefinitionResolver,
     @param:Autowired(required = false)
     private val precheckPort: WorkspacePrecheckPort? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
-    private val resolver = EffectiveWorkflowDefinitionResolver(repository)
 
     // ------------------------------------------------------------------
     // Validation at submission time
@@ -120,10 +130,18 @@ class WorkflowExpansionService(
     // ------------------------------------------------------------------
 
     /**
-     * Adds the continuation accepted for [attemptId] to the run. Returns `true` when the steps were
-     * added now, `false` when the same result was already added (idempotent replay).
+     * Adds the continuation accepted for [attemptId] to the run and returns the added steps, or an empty list when
+     * the same result was already added (idempotent replay). It does not publish any SSE hint: the caller does it
+     * once the surrounding transaction has committed. It must run in the same transaction as the finalization of the
+     * expanding step.
      */
-    fun graft(scope: TenantScope, namespaceId: String, workflowId: String, step: WorkflowStepDefinition, attemptId: String): Boolean {
+    fun graft(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        attemptId: String,
+    ): List<WorkflowStepDefinition> {
         val instance = repository.findInstance(scope, namespaceId, workflowId)
             ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_NOT_FOUND)
         val result = results.getByAttempt(scope, namespaceId, workflowId, step.id, attemptId)
@@ -132,11 +150,15 @@ class WorkflowExpansionService(
             throw workflowException("EXPANSION_CONTINUATION_MISSING", "The expanding step completed without an accepted continuation.")
         }
         resolver.expansionOf(instance)?.let { recorded ->
-            if (recorded["resultId"] == result.resultId) return false
+            if (recorded["resultId"] == result.resultId) return emptyList()
             throw workflowException("EXPANSION_IMMUTABLE", "An expansion is already recorded for this run and cannot be replaced.")
         }
         val base = resolver.baseRecord(scope, instance)
-        val valid = when (val validation = WorkflowContinuationValidator.validate(base.definition, step.id, continuation, null)) {
+        // The agents were verified when the result was submitted; the sequencer runs the workspace precheck on the
+        // full step list right after this addition, before any added step executes.
+        val valid = when (
+            val validation = WorkflowContinuationValidator.validate(base.definition, step.id, continuation, null, verifyAgents = false)
+        ) {
             is ContinuationValidation.Valid -> validation
             is ContinuationValidation.Invalid -> throw workflowException(
                 "EXPANSION_INVALID",
@@ -144,10 +166,6 @@ class WorkflowExpansionService(
                 mapOf("violations" to validation.violations.map { mapOf("path" to it.path, "code" to it.code) }),
             )
         }
-        val agentsVerified = availableAgents(instance)?.let { available ->
-            valid.steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }
-                .all { it.responsibility.name in available }
-        } ?: false
         val now = nowIso()
         val record = linkedMapOf<String, Any?>(
             "sourceStepId" to step.id,
@@ -157,7 +175,6 @@ class WorkflowExpansionService(
             "steps" to valid.normalizedSteps,
             "stepIds" to valid.stepIds,
             "effectiveDefinitionHash" to valid.effectiveDefinitionHash,
-            "agentsVerified" to agentsVerified,
             "expandedAt" to now,
         )
         val summary = record - "steps"
@@ -227,25 +244,8 @@ class WorkflowExpansionService(
             ),
             expectedRevision = null,
         )
-        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
         logger.info { "Workflow '$workflowId' expanded by step '${step.id}' with ${valid.stepIds.size} step(s)" }
-        return true
-    }
-
-    /**
-     * Crash recovery: when the expanding step is COMPLETED, an accepted continuation exists and no
-     * expansion is recorded yet, adds the steps. Returns `true` when steps were added.
-     */
-    fun reconcile(scope: TenantScope, namespaceId: String, workflowId: String, steps: List<WorkflowStepDefinition>): Boolean {
-        val expander = steps.firstOrNull { it.expansion != null } ?: return false
-        val instance = repository.findInstance(scope, namespaceId, workflowId) ?: return false
-        if (resolver.expansionOf(instance) != null) return false
-        val state = repository.findStepStates(scope, namespaceId, workflowId).firstOrNull { it.stepId == expander.id }
-        if (state?.status != WorkflowStatuses.COMPLETED) return false
-        val attempt = attempts.findLatestForStep(scope, namespaceId, workflowId, expander.id) ?: return false
-        val result = results.getByAttempt(scope, namespaceId, workflowId, expander.id, attempt.attemptId)
-        if (result == null || result.status != AgentStepResultStatus.PASS || result.continuation == null) return false
-        return graft(scope, namespaceId, workflowId, expander, attempt.attemptId)
+        return valid.steps
     }
 
     // ------------------------------------------------------------------

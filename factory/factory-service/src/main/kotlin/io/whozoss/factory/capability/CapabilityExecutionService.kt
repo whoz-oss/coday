@@ -929,6 +929,8 @@ class CapabilityExecutionService(
             appendLine("- An empty dependsOn means \"after this step\". dependsOn may only name this step ('${step.id}') or another step of the continuation.")
             appendLine("- Step ids must be new. Ids already used by this run: ${assembly.existingStepIds.joinToString(", ")}.")
             appendLine("- Agent steps must name an agent that is enabled in the namespace. Do not declare `expansion` or `outcomeTransitions` on a continuation step.")
+            appendLine("- Use only agent and human steps: a `code` step is not supported in a continuation.")
+            appendLine("- If a person must validate something before the following steps run, add a `human` step for it in the continuation.")
             appendLine("- Keep the general workflow instructions apart from the details of this ticket, so the workflow can be reused later.")
             appendLine("- If Factory rejects the continuation (RESULT_SCHEMA_INVALID with violations), fix the listed paths and send the result again in the same turn: the capability is not used up.")
         }

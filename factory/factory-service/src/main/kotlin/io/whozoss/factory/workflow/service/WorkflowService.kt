@@ -133,12 +133,11 @@ class WorkflowService(
     private val needsResearchRouter: NeedsResearchRouter? = null,
     private val idempotencyRepository: IdempotencyRepository? = null,
     private val objectMapper: ObjectMapper? = null,
+    /** The single computation of the definition a run follows (base + steps added by an expansion). */
+    private val definitionResolver: EffectiveWorkflowDefinitionResolver = EffectiveWorkflowDefinitionResolver(repository),
 ) {
 
     private val logger = KotlinLogging.logger {}
-
-    /** The single computation of the definition a run follows (base + steps added by an expansion). */
-    private val definitionResolver = EffectiveWorkflowDefinitionResolver(repository)
 
     /**
      * Short, isolated transaction boundary for the human reply. `REQUIRES_NEW`

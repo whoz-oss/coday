@@ -83,7 +83,16 @@ class AgentStepResultService(
     @param:Lazy
     @param:Autowired(required = false)
     private val expansionService: WorkflowExpansionService? = null,
+    /**
+     * The single computation of the definition a run follows. Injected from the Spring context. When it is absent
+     * (narrow unit compositions) it is built on the workflow repository, so the routing validation below is never
+     * skipped silently.
+     */
+    definitionResolver: EffectiveWorkflowDefinitionResolver? = null,
 ) {
+
+    private val definitionResolver: EffectiveWorkflowDefinitionResolver? =
+        definitionResolver ?: workflowRepository?.let { EffectiveWorkflowDefinitionResolver(it) }
 
     private val logger = KotlinLogging.logger {}
 
@@ -223,7 +232,7 @@ class AgentStepResultService(
         val workflow = workflows.findInstance(scope, capability.namespaceId, capability.workflowId)
         // The definition the run actually follows (base + steps added by an expansion), so a decision
         // declared inside a continuation is validated like any other.
-        val definition = workflow?.let { EffectiveWorkflowDefinitionResolver(workflows).resolveRecordOrNull(scope, it) }
+        val definition = workflow?.let { definitionResolver?.resolveRecordOrNull(scope, it) }
         val declared = (definition?.definition?.get("steps") as? List<*>)?.filterIsInstance<Map<*, *>>()
             ?.find { it["id"] == capability.stepId }
         val decision = WorkflowDecision.parse(declared?.get("decision"))

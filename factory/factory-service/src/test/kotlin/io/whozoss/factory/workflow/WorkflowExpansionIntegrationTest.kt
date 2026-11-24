@@ -10,6 +10,7 @@ import io.whozoss.factory.agentattempt.domain.ResultSchemaInvalidException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
+import io.whozoss.factory.workflow.domain.WorkflowContinuationCodes
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionInput
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
@@ -27,14 +28,17 @@ import io.whozoss.factory.workflow.service.WorkflowExpansionService
 import io.whozoss.factory.workflow.service.toPolicyDefinition
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Import
 
 /**
  * Run-time expansion of a workflow on the real Spring beans and the embedded Neo4j: a result carrying a
- * `continuation` is checked at submission, the accepted steps are added to THAT run only, and the
- * definition catalog never changes.
+ * `continuation` is checked at submission, the accepted steps are added to THAT run only, and the definition catalog
+ * never changes.
  */
+@Import(ExpansionPrecheckPortConfiguration::class)
 class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired private lateinit var repository: WorkflowRepository
@@ -42,15 +46,18 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
     @Autowired private lateinit var results: AgentStepResultService
     @Autowired private lateinit var attempts: AgentStepAttemptRepository
     @Autowired private lateinit var expansion: WorkflowExpansionService
+    @Autowired private lateinit var resolverBean: EffectiveWorkflowDefinitionResolver
     @Autowired private lateinit var catalog: SessionDefinitionCatalog
     @Autowired private lateinit var objectMapper: ObjectMapper
+    @Autowired private lateinit var agents: MutableAgentList
 
     private val namespace = "expansion-ns"
     private val caseId = "case-expansion"
     private val agent = "Archay"
     private val expander = "architect-plan"
 
-    private fun resolver() = EffectiveWorkflowDefinitionResolver(repository)
+    @BeforeEach
+    fun resetAgents() = agents.reset()
 
     /** Registers `architect-custom-flow@1.0.0` and creates one run of it. */
     private fun startRun(workflowId: String): WorkflowInstanceRecord {
@@ -83,14 +90,20 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
             (continuation?.let { ""","continuation":$it""" } ?: "") + "}",
     )
 
-    private fun step(id: String, dependsOn: String = "[]", agentName: String = agent) =
-        """{"id":"$id","name":"Step $id","responsibility":{"kind":"agent","name":"$agentName"},"dependsOn":$dependsOn,
+    private fun step(id: String, dependsOn: String = "[]", agentName: String = agent, kind: String = "agent") =
+        """{"id":"$id","name":"Step $id","responsibility":{"kind":"$kind","name":"$agentName"},"dependsOn":$dependsOn,
             "entry":["Read the plan"],"mission":"Do $id","exit":["Report"]}"""
 
     private val goodContinuation = """{"steps":[${step("build")},${step("review", "[\"build\"]")}]}"""
 
     private fun violationsOf(error: ResultSchemaInvalidException): List<*> =
         ((error.details as Map<*, *>)["violations"] as List<*>)
+
+    private fun expanderStep() =
+        repository.findDefinition(scope, "architect-custom-flow", "1.0.0")!!.toPolicyDefinition().steps.single()
+
+    private fun evidenceCount(workflowId: String) =
+        evidence.list(scope, namespace, workflowId).count { it.kind == WorkflowExpansionService.EVIDENCE_KIND }
 
     @Test
     fun `a bad continuation is rejected with violations and does not use the capability up`() {
@@ -126,43 +139,82 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `a code step is refused with UNSUPPORTED_IN_CONTINUATION and the capability is not used up`() {
+        val workflowId = "expansion-code-step"
+        startRun(workflowId)
+        val token = attemptFor(workflowId, "attempt-code")
+        val withCode = """{"steps":[${step("verify", agentName = "check", kind = "code")}]}"""
+
+        val error = org.junit.jupiter.api.Assertions.assertThrows(ResultSchemaInvalidException::class.java) {
+            results.submit(scope, token, business(withCode), observed("attempt-code"), null)
+        }
+
+        assertThat(violationsOf(error).toString())
+            .contains(WorkflowContinuationCodes.UNSUPPORTED_IN_CONTINUATION)
+            .contains("code_step")
+        assertThat(results.submit(scope, token, business(goodContinuation), observed("attempt-code"), null).created).isTrue()
+    }
+
+    @Test
+    fun `an unreadable agent list refuses the continuation, then the same result is accepted once the list is readable`() {
+        val workflowId = "expansion-unverifiable"
+        startRun(workflowId)
+        val token = attemptFor(workflowId, "attempt-unverifiable")
+        agents.agents = null
+
+        val error = org.junit.jupiter.api.Assertions.assertThrows(ResultSchemaInvalidException::class.java) {
+            results.submit(scope, token, business(goodContinuation), observed("attempt-unverifiable"), null)
+        }
+
+        assertThat(violationsOf(error).toString()).contains(WorkflowContinuationCodes.AGENTS_UNVERIFIABLE)
+        // The agent can send the very same result again once the agents can be read: nothing was consumed.
+        agents.reset()
+        assertThat(results.submit(scope, token, business(goodContinuation), observed("attempt-unverifiable"), null).created).isTrue()
+    }
+
+    @Test
     fun `an accepted continuation is added to the run only, never to the catalog, and replays add nothing`() {
         val workflowId = "expansion-graft"
         startRun(workflowId)
         val definitionsBefore = repository.listDefinitions(scope).map { it.workflowType to it.definitionHash }
         val token = attemptFor(workflowId, "attempt-graft")
-        results.submit(scope, token, business(goodContinuation), observed("attempt-graft"), null)
-        val expanderStep = repository.findDefinition(scope, "architect-custom-flow", "1.0.0")!!.toPolicyDefinition().steps.single()
+        val accepted = results.submit(scope, token, business(goodContinuation), observed("attempt-graft"), null)
 
-        assertThat(expansion.graft(scope, namespace, workflowId, expanderStep, "attempt-graft")).isTrue()
+        val added = expansion.graft(scope, namespace, workflowId, expanderStep(), "attempt-graft")
 
+        assertThat(added.map { it.id }).containsExactly("build", "review")
         val run = repository.findInstance(scope, namespace, workflowId)!!
         val recorded = run.instance["expansion"] as Map<*, *>
         assertThat(recorded["stepIds"]).isEqualTo(listOf("build", "review"))
         assertThat(recorded["sourceStepId"]).isEqualTo(expander)
+        assertThat(recorded.containsKey("agentsVerified")).isFalse()
         val projected = (run.projection["steps"] as List<*>).filterIsInstance<Map<*, *>>().associateBy { it["id"] }
         assertThat(projected.keys).containsExactly(expander, "build", "review")
         assertThat(projected.getValue("build")["dependsOn"]).isEqualTo(listOf(expander))
+        assertThat(projected.getValue("review")["dependsOn"]).isEqualTo(listOf("build"))
         assertThat(projected.getValue("build")["status"]).isEqualTo(WorkflowStatuses.PENDING)
         assertThat(run.projection["expansion"]).isNotNull()
         assertThat(repository.findStepStates(scope, namespace, workflowId).map { it.stepId }).contains("build", "review")
-        assertThat(evidence.list(scope, namespace, workflowId).filter { it.kind == WorkflowExpansionService.EVIDENCE_KIND }).hasSize(1)
+        assertThat(evidenceCount(workflowId)).isEqualTo(1)
 
         // The catalog is untouched; the run follows base + added steps through the single resolver.
         assertThat(repository.listDefinitions(scope).map { it.workflowType to it.definitionHash }).isEqualTo(definitionsBefore)
-        assertThat(resolver().resolve(scope, run).steps.map { it.id }).containsExactly(expander, "build", "review")
+        assertThat(resolverBean.resolve(scope, run).steps.map { it.id }).containsExactly(expander, "build", "review")
 
-        // Idempotent: replaying the same accepted result adds nothing.
-        assertThat(expansion.graft(scope, namespace, workflowId, expanderStep, "attempt-graft")).isFalse()
+        // Idempotent: replaying the same accepted result adds nothing, at the graft and at the submission.
+        assertThat(expansion.graft(scope, namespace, workflowId, expanderStep(), "attempt-graft")).isEmpty()
+        val replay = results.submit(scope, token, business(goodContinuation), observed("attempt-graft"), null)
+        assertThat(replay.idempotent).isTrue()
+        assertThat(replay.resultId).isEqualTo(accepted.resultId)
         assertThat(repository.findInstance(scope, namespace, workflowId)!!.revision).isEqualTo(run.revision)
-        assertThat(evidence.list(scope, namespace, workflowId).filter { it.kind == WorkflowExpansionService.EVIDENCE_KIND }).hasSize(1)
+        assertThat(evidenceCount(workflowId)).isEqualTo(1)
     }
 
     @Test
     fun `a run without an expansion keeps resolving to its base definition`() {
         val run = startRun("expansion-none")
 
-        assertThat(resolver().resolve(scope, run).steps.map { it.id }).containsExactly(expander)
+        assertThat(resolverBean.resolve(scope, run).steps.map { it.id }).containsExactly(expander)
         assertThatThrownBy { expansion.expandedDefinitionDraft(scope, namespace, "expansion-none") }
             .isInstanceOf(WorkflowException::class.java)
             .hasFieldOrPropertyWithValue("errorCode", "WORKFLOW_NOT_EXPANDED")
@@ -174,8 +226,7 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
         startRun(workflowId)
         val token = attemptFor(workflowId, "attempt-draft")
         results.submit(scope, token, business(goodContinuation), observed("attempt-draft"), null)
-        val expanderStep = repository.findDefinition(scope, "architect-custom-flow", "1.0.0")!!.toPolicyDefinition().steps.single()
-        expansion.graft(scope, namespace, workflowId, expanderStep, "attempt-draft")
+        expansion.graft(scope, namespace, workflowId, expanderStep(), "attempt-draft")
         val definitionsBefore = repository.listDefinitions(scope).size
 
         val draft = expansion.expandedDefinitionDraft(scope, namespace, workflowId)
@@ -192,23 +243,26 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `an altered effective definition hash is refused as a definition mismatch`() {
+    fun `an altered effective definition hash fails loudly for the sequencer and leniently for a result submission`() {
         val workflowId = "expansion-tamper"
         startRun(workflowId)
         val token = attemptFor(workflowId, "attempt-tamper")
         results.submit(scope, token, business(goodContinuation), observed("attempt-tamper"), null)
-        val expanderStep = repository.findDefinition(scope, "architect-custom-flow", "1.0.0")!!.toPolicyDefinition().steps.single()
-        expansion.graft(scope, namespace, workflowId, expanderStep, "attempt-tamper")
+        expansion.graft(scope, namespace, workflowId, expanderStep(), "attempt-tamper")
         val run = repository.findInstance(scope, namespace, workflowId)!!
         val tamperedInstance = run.instance.toMutableMap()
         tamperedInstance["expansion"] = (run.instance["expansion"] as Map<*, *>).entries
             .associate { it.key.toString() to it.value } + ("effectiveDefinitionHash" to "0".repeat(64))
         val tampered = run.copy(revision = run.revision + 1, instance = tamperedInstance)
         assertThat(repository.updateInstance(scope, namespace, workflowId, run.revision, tampered)).isTrue()
+        val stored = repository.findInstance(scope, namespace, workflowId)!!
 
-        assertThatThrownBy { resolver().resolve(scope, repository.findInstance(scope, namespace, workflowId)!!) }
+        // Strict (sequencer): the run must fail loudly, never fall back to its base definition.
+        assertThatThrownBy { resolverBean.resolve(scope, stored) }
             .isInstanceOf(WorkflowException::class.java)
             .hasFieldOrPropertyWithValue("errorCode", WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH)
+        // Lenient (result submission): behaves as before expansions existed, no new 409 failure mode.
+        assertThat(resolverBean.resolveRecordOrNull(scope, stored)).isNull()
     }
 
     @Test

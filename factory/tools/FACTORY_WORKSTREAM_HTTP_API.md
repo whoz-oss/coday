@@ -72,6 +72,28 @@ Refresh the existing FACTORY_AUTHORING and FACTORY_WORKER HTTP_API spec caches (
 
 Worker PASS results of decisions require `selectedRoutes`, e.g. `["frontend"]`, `["backend"]`, or `["frontend","backend"]` in multiple mode. These are names, never target IDs. Omit the field for ordinary steps, FAIL and NEEDS_RESEARCH. Invalid selections are rejected; routing is accepted only after configured validators/oracles succeed and persisted with result/attempt attribution before downstream execution. Nonselected branches remain skipped/never executed; the join waits for every selected success. The workflow authoring skill includes a full canonical example. Scheduling remains sequential.
 
+## Trust model of a workflow the Architect builds
+
+With `architect-custom-flow`, an agent writes the steps of the run, and they run without a human validation imposed by
+Factory. This is a deliberate decision. The safeguards are:
+
+- **Opt-in per workstream.** Only a workstream that lists `architect-custom-flow` in `allowedWorkflowTypes` can start
+  this mode, and the user must choose it explicitly (the launch choice of the `factory-workstream` skill).
+- **Structure.** The graph, the contracts, the routing and the limit of 50 steps are validated by the canonical
+  validator.
+- **Agents, fail-closed.** Only agents enabled in the namespace can be named. If Factory cannot read the agent list,
+  the continuation is refused with `AGENTS_UNVERIFIABLE`; the agent can send the result again. The workspace precheck
+  then runs again on the full list of steps (base and added) before the first added step executes.
+- **No `code` step.** A `code` step in a continuation is refused (`UNSUPPORTED_IN_CONTINUATION`, reason `code_step`):
+  the worktree binding is not designed for a run that discovers it needs a worktree along the way.
+- **Atomic.** The steps are added in the same transaction that completes the Architect step. If anything fails, no
+  step is added and the Architect step fails.
+- **Visible and stoppable.** The added steps appear at once in Cockpit and go through the existing mechanisms:
+  attempt cancellation, cost thresholds and `queryUser` questions.
+- **Human validation on demand.** The Architect can insert a `human` step when the ticket justifies it. Factory
+  does not add one by itself.
+- **Prompt injection.** Ticket text reaches the briefs of the added agents, with the same caution as any agent step.
+
 ## Old tool -> new tool
 
 | Former bridge tool | HTTP_API tool (integration `FACTORY_WORKSTREAM`) | Route |
