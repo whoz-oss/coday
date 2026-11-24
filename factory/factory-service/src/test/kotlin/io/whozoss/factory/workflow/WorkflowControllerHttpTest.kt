@@ -349,7 +349,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         val definition = draft["definition"] as Map<String, Any?>
         assertThat(WorkflowDefinitionValidator.validate(definition)).isInstanceOf(WorkflowDefinitionValidation.Valid::class.java)
         assertThat((definition["steps"] as List<*>).filterIsInstance<Map<*, *>>().map { it["id"] })
-            .containsExactly("architect-plan", "continuation-approval", "build")
+            .containsExactly("architect-plan", "build")
         assertThat((draft["source"] as Map<*, *>)["workflowType"]).isEqualTo("architect-custom-flow")
         assertThat((service.listDefinitions(scope)["items"] as List<*>).size).isEqualTo(definitionsBefore)
     }

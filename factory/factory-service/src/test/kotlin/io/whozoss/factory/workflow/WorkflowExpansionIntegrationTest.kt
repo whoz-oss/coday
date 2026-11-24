@@ -11,7 +11,6 @@ import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.WorkflowContinuationCodes
-import io.whozoss.factory.workflow.domain.WorkflowContinuationValidator
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionInput
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
@@ -36,8 +35,8 @@ import org.springframework.context.annotation.Import
 
 /**
  * Run-time expansion of a workflow on the real Spring beans and the embedded Neo4j: a result carrying a
- * `continuation` is checked at submission, the accepted steps (preceded by the human `continuation-approval` step
- * Factory inserts) are added to THAT run only, and the definition catalog never changes.
+ * `continuation` is checked at submission, the accepted steps are added to THAT run only, and the definition catalog
+ * never changes.
  */
 @Import(ExpansionPrecheckPortConfiguration::class)
 class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
@@ -56,7 +55,6 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
     private val caseId = "case-expansion"
     private val agent = "Archay"
     private val expander = "architect-plan"
-    private val approval = WorkflowContinuationValidator.APPROVAL_STEP_ID
 
     @BeforeEach
     fun resetAgents() = agents.reset()
@@ -158,20 +156,6 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `a step that uses the id of the approval step is refused`() {
-        val workflowId = "expansion-approval-id"
-        startRun(workflowId)
-        val token = attemptFor(workflowId, "attempt-approval-id")
-        val clash = """{"steps":[${step(approval)}]}"""
-
-        val error = org.junit.jupiter.api.Assertions.assertThrows(ResultSchemaInvalidException::class.java) {
-            results.submit(scope, token, business(clash), observed("attempt-approval-id"), null)
-        }
-
-        assertThat(violationsOf(error).toString()).contains(WorkflowContinuationCodes.STEP_ID_COLLISION)
-    }
-
-    @Test
     fun `an unreadable agent list refuses the continuation, then the same result is accepted once the list is readable`() {
         val workflowId = "expansion-unverifiable"
         startRun(workflowId)
@@ -189,7 +173,7 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `an accepted continuation is added to the run only behind the approval step, never to the catalog, and replays add nothing`() {
+    fun `an accepted continuation is added to the run only, never to the catalog, and replays add nothing`() {
         val workflowId = "expansion-graft"
         startRun(workflowId)
         val definitionsBefore = repository.listDefinitions(scope).map { it.workflowType to it.definitionHash }
@@ -198,26 +182,24 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
 
         val added = expansion.graft(scope, namespace, workflowId, expanderStep(), "attempt-graft")
 
-        assertThat(added.map { it.id }).containsExactly(approval, "build", "review")
+        assertThat(added.map { it.id }).containsExactly("build", "review")
         val run = repository.findInstance(scope, namespace, workflowId)!!
         val recorded = run.instance["expansion"] as Map<*, *>
-        assertThat(recorded["stepIds"]).isEqualTo(listOf(approval, "build", "review"))
+        assertThat(recorded["stepIds"]).isEqualTo(listOf("build", "review"))
         assertThat(recorded["sourceStepId"]).isEqualTo(expander)
         assertThat(recorded.containsKey("agentsVerified")).isFalse()
         val projected = (run.projection["steps"] as List<*>).filterIsInstance<Map<*, *>>().associateBy { it["id"] }
-        assertThat(projected.keys).containsExactly(expander, approval, "build", "review")
-        assertThat(projected.getValue(approval)["dependsOn"]).isEqualTo(listOf(expander))
-        assertThat((projected.getValue(approval)["responsibility"] as Map<*, *>)["kind"]).isEqualTo("human")
-        assertThat(projected.getValue("build")["dependsOn"]).isEqualTo(listOf(approval))
+        assertThat(projected.keys).containsExactly(expander, "build", "review")
+        assertThat(projected.getValue("build")["dependsOn"]).isEqualTo(listOf(expander))
         assertThat(projected.getValue("review")["dependsOn"]).isEqualTo(listOf("build"))
         assertThat(projected.getValue("build")["status"]).isEqualTo(WorkflowStatuses.PENDING)
         assertThat(run.projection["expansion"]).isNotNull()
-        assertThat(repository.findStepStates(scope, namespace, workflowId).map { it.stepId }).contains(approval, "build", "review")
+        assertThat(repository.findStepStates(scope, namespace, workflowId).map { it.stepId }).contains("build", "review")
         assertThat(evidenceCount(workflowId)).isEqualTo(1)
 
         // The catalog is untouched; the run follows base + added steps through the single resolver.
         assertThat(repository.listDefinitions(scope).map { it.workflowType to it.definitionHash }).isEqualTo(definitionsBefore)
-        assertThat(resolverBean.resolve(scope, run).steps.map { it.id }).containsExactly(expander, approval, "build", "review")
+        assertThat(resolverBean.resolve(scope, run).steps.map { it.id }).containsExactly(expander, "build", "review")
 
         // Idempotent: replaying the same accepted result adds nothing, at the graft and at the submission.
         assertThat(expansion.graft(scope, namespace, workflowId, expanderStep(), "attempt-graft")).isEmpty()
@@ -239,7 +221,7 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `the draft of an expanded run keeps the approval step, validates, drops the expansion declaration and registers nothing`() {
+    fun `the draft of an expanded run validates, drops the expansion declaration and registers nothing`() {
         val workflowId = "expansion-draft"
         startRun(workflowId)
         val token = attemptFor(workflowId, "attempt-draft")
@@ -253,7 +235,7 @@ class WorkflowExpansionIntegrationTest : Neo4jDomainIntegrationTest() {
         val definition = draft["definition"] as Map<String, Any?>
         assertThat(WorkflowDefinitionValidator.validate(definition)).isInstanceOf(WorkflowDefinitionValidation.Valid::class.java)
         val steps = (definition["steps"] as List<*>).filterIsInstance<Map<*, *>>()
-        assertThat(steps.map { it["id"] }).containsExactly(expander, approval, "build", "review")
+        assertThat(steps.map { it["id"] }).containsExactly(expander, "build", "review")
         assertThat(steps.none { it.containsKey("expansion") }).isTrue()
         assertThat(definition["workflowType"]).isNotEqualTo("architect-custom-flow")
         assertThat((draft["source"] as Map<*, *>)["workflowType"]).isEqualTo("architect-custom-flow")

@@ -17,7 +17,6 @@ import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
-import io.whozoss.factory.workflow.domain.WorkflowContinuationValidator
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionInput
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
@@ -52,11 +51,10 @@ import org.springframework.transaction.PlatformTransactionManager
  * execution is deterministic (no AgentOS); persistence, the result channel, the resolver and the sequencer loop
  * are the real beans.
  *
- * What the tests pin (decisions D1 to D5 of the review plan):
- *  - the steps are added in the same transaction that completes the expanding step, behind a mandatory human
- *    approval, and nothing an agent wrote runs before that approval;
+ * What the tests pin (the decisions of the review plan, without a forced human approval):
+ *  - the steps are added in the same transaction that completes the expanding step, and run right after it;
  *  - a failure of the finalization adds nothing and fails the step (no state to reconcile later);
- *  - a rejected approval blocks the added steps and fails the run;
+ *  - a human step written by the Architect suspends the run like any human step, and a reject blocks its dependants;
  *  - the workspace precheck runs again on the full list of steps before the first added step.
  */
 @Import(ExpansionPrecheckPortConfiguration::class)
@@ -77,7 +75,6 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
     private val namespace = "expansion-seq-ns"
     private val agent = "Archay"
     private val expander = "architect-plan"
-    private val approval = WorkflowContinuationValidator.APPROVAL_STEP_ID
 
     @BeforeEach
     fun resetAgents() = agents.reset()
@@ -115,7 +112,13 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
     private fun agentStep(id: String, dependsOn: String = "[]", name: String = agent) =
         """{"id":"$id","name":"Step $id","responsibility":{"kind":"agent","name":"$name"},"dependsOn":$dependsOn}"""
 
+    private fun humanStep(id: String, dependsOn: String = "[]") =
+        """{"id":"$id","name":"Step $id","responsibility":{"kind":"human","name":"Lead"},"dependsOn":$dependsOn}"""
+
     private val twoSteps get() = """{"steps":[${agentStep("build")},${agentStep("review", "[\"build\"]")}]}"""
+
+    /** A human gate written by the Architect, then a step that depends on it. */
+    private val gatedSteps get() = """{"steps":[${humanStep("review-gate")},${agentStep("build", "[\"review-gate\"]")}]}"""
 
     /**
      * Deterministic capability: records the executed steps, completes agents, opens a checkpoint for humans.
@@ -208,61 +211,76 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `the added steps wait for the human approval, then run in order once it is approved`() {
-        val workflowId = "expansion-seq-approve"
+    fun `the added steps run in order right after the expanding step, on the same run`() {
+        val workflowId = "expansion-seq-order"
         startRun(workflowId)
         val definitionsBefore = repository.listDefinitions(scope).map { it.workflowType to it.definitionHash }
         val attemptId = submitExpandingResult(workflowId, twoSteps)
         val called = mutableListOf<String>()
         val runner = runner(capability(workflowId, attemptId, called))
 
-        val first = runner.runSession(scope, namespace, workflowId, Path.of("."))
+        val result = runner.runSession(scope, namespace, workflowId, Path.of("."))
 
-        // Nothing the agent wrote ran: the run is suspended on the approval Factory inserted.
-        assertThat(first.status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
-        assertThat(called).containsExactly(expander, approval)
-        assertThat(stepStatuses(workflowId))
-            .containsEntry(expander, WorkflowStatuses.COMPLETED)
-            .containsEntry(approval, WorkflowStatuses.WAITING_HUMAN)
-            .containsEntry("build", WorkflowStatuses.PENDING)
-            .containsEntry("review", WorkflowStatuses.PENDING)
-        val projected = (repository.findInstance(scope, namespace, workflowId)!!.projection["steps"] as List<*>)
-            .filterIsInstance<Map<*, *>>().map { it["id"] }
-        assertThat(projected).containsExactly(expander, approval, "build", "review")
-        assertThat(expansionEvidence(workflowId)).isEqualTo(1)
-
-        // The human approves in Factory (WorkflowService must follow the effective definition as well).
-        answer(runner, workflowId, approval, "approve")
-
-        assertThat(called).containsExactly(expander, approval, "build", "review")
+        // Nothing is inserted by Factory: the steps the agent wrote run directly after the Architect step.
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(called).containsExactly(expander, "build", "review")
         assertThat(stepStatuses(workflowId).values).containsOnly(WorkflowStatuses.COMPLETED)
-        assertThat(repository.findInstance(scope, namespace, workflowId)!!.projection["status"]).isEqualTo(WorkflowStatuses.COMPLETED)
+        val run = repository.findInstance(scope, namespace, workflowId)!!
+        assertThat((run.projection["steps"] as List<*>).filterIsInstance<Map<*, *>>().map { it["id"] })
+            .containsExactly(expander, "build", "review")
+        assertThat(run.projection["status"]).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(expansionEvidence(workflowId)).isEqualTo(1)
         assertThat(repository.listDefinitions(scope).map { it.workflowType to it.definitionHash }).isEqualTo(definitionsBefore)
 
         // Replay: nothing runs again and nothing is added again.
         val replay = runner.runSession(scope, namespace, workflowId, Path.of("."))
         assertThat(replay.status).isEqualTo(WorkflowStatuses.COMPLETED)
-        assertThat(called).containsExactly(expander, approval, "build", "review")
+        assertThat(called).containsExactly(expander, "build", "review")
         assertThat(expansionEvidence(workflowId)).isEqualTo(1)
     }
 
     @Test
-    fun `a rejected approval blocks the added steps and fails the run without running any of them`() {
-        val workflowId = "expansion-seq-reject"
+    fun `a human step written by the Architect suspends the run, and a reject blocks its dependants`() {
+        val workflowId = "expansion-seq-human-gate"
         startRun(workflowId)
-        val attemptId = submitExpandingResult(workflowId, twoSteps)
+        val attemptId = submitExpandingResult(workflowId, gatedSteps)
+        val called = mutableListOf<String>()
+        val runner = runner(capability(workflowId, attemptId, called))
+
+        val first = runner.runSession(scope, namespace, workflowId, Path.of("."))
+
+        // The run waits on the Architect's own human step; the step that depends on it has not run.
+        assertThat(first.status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(called).containsExactly(expander, "review-gate")
+        assertThat(stepStatuses(workflowId))
+            .containsEntry(expander, WorkflowStatuses.COMPLETED)
+            .containsEntry("review-gate", WorkflowStatuses.WAITING_HUMAN)
+            .containsEntry("build", WorkflowStatuses.PENDING)
+
+        // The reply goes through WorkflowService, which must follow the effective definition as well.
+        answer(runner, workflowId, "review-gate", "reject")
+
+        assertThat(called).containsExactly(expander, "review-gate")
+        assertThat(stepStatuses(workflowId))
+            .containsEntry("review-gate", WorkflowStatuses.FAILED)
+            .containsEntry("build", WorkflowStatuses.BLOCKED)
+        assertThat(repository.findInstance(scope, namespace, workflowId)!!.projection["status"]).isEqualTo(WorkflowStatuses.FAILED)
+    }
+
+    @Test
+    fun `an approved human step written by the Architect lets its dependants run`() {
+        val workflowId = "expansion-seq-human-approve"
+        startRun(workflowId)
+        val attemptId = submitExpandingResult(workflowId, gatedSteps)
         val called = mutableListOf<String>()
         val runner = runner(capability(workflowId, attemptId, called))
         runner.runSession(scope, namespace, workflowId, Path.of("."))
 
-        answer(runner, workflowId, approval, "reject")
+        answer(runner, workflowId, "review-gate", "approve")
 
-        assertThat(called).containsExactly(expander, approval)
-        assertThat(stepStatuses(workflowId))
-            .containsEntry(approval, WorkflowStatuses.FAILED)
-            .containsEntry("build", WorkflowStatuses.BLOCKED)
-            .containsEntry("review", WorkflowStatuses.BLOCKED)
-        assertThat(repository.findInstance(scope, namespace, workflowId)!!.projection["status"]).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(called).containsExactly(expander, "review-gate", "build")
+        assertThat(stepStatuses(workflowId).values).containsOnly(WorkflowStatuses.COMPLETED)
+        assertThat(repository.findInstance(scope, namespace, workflowId)!!.projection["status"]).isEqualTo(WorkflowStatuses.COMPLETED)
     }
 
     @Test
@@ -280,7 +298,7 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(result.status).isEqualTo(WorkflowStatuses.FAILED)
         assertThat(called).containsExactly(expander)
         assertThat(stepStatuses(workflowId)).containsEntry(expander, WorkflowStatuses.FAILED)
-        assertThat(stepStatuses(workflowId).keys).doesNotContain(approval, "build", "review")
+        assertThat(stepStatuses(workflowId).keys).doesNotContain("build", "review")
         val run = repository.findInstance(scope, namespace, workflowId)!!
         assertThat(run.instance["expansion"]).isNull()
         assertThat((run.projection["steps"] as List<*>).filterIsInstance<Map<*, *>>().map { it["id"] }).containsExactly(expander)
@@ -290,7 +308,7 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         failing.armed = false
         val expanderStep = repository.findDefinition(scope, "architect-custom-flow", "1.0.0")!!.toPolicyDefinition().steps.single()
         val added = expansion.graft(scope, namespace, workflowId, expanderStep, attemptId)
-        assertThat(added.map { it.id }).containsExactly(approval, "build", "review")
+        assertThat(added.map { it.id }).containsExactly("build", "review")
     }
 
     @Test
@@ -309,10 +327,9 @@ class WorkflowExpansionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThatThrownBy { runner.runSession(scope, namespace, workflowId, Path.of(".")) }
             .isInstanceOf(WorkspacePrecheckException::class.java)
 
-        // The steps were added with the finalization, but none of them ran: not even the approval.
+        // The steps were added with the finalization, but no added step has started.
         assertThat(called).containsExactly(expander)
         assertThat(stepStatuses(workflowId))
-            .containsEntry(approval, WorkflowStatuses.PENDING)
             .containsEntry("build", WorkflowStatuses.PENDING)
             .containsEntry("review", WorkflowStatuses.PENDING)
     }
