@@ -29,15 +29,20 @@ export class WorkstreamCardComponent {
 
   protected readonly runCount = computed(() => this.workstream().runs.length)
 
-  /** Total workstream cost, summing each run's real cost. */
-  protected readonly totalCost = computed(() =>
-    this.workstream().runs.reduce((sum, run) => sum + (run.run?.costUsd ?? run.costUsd ?? 0), 0)
-  )
+  /** Null when any run's analytics are unavailable; never synthesize a zero. */
+  protected readonly totalCost = computed<number | null>(() => {
+    const runs = this.workstream().runs
+    const realCostOf = (run: WorkstreamView['runs'][number]): number | null => run.run ? run.run.costUsd : run.costUsd
+    if (runs.some((run) => realCostOf(run) === null)) return null
+    return runs.reduce<number>((sum, run) => sum + (realCostOf(run) ?? 0), 0)
+  })
 
-  /** Sum of the unknown-cost units across the workstream runs. */
-  protected readonly unknownCostCount = computed(() =>
-    this.workstream().runs.reduce((sum, run) => sum + (run.run?.unknownCostCount ?? 0), 0)
-  )
+  /** Null when the backend cannot establish cost completeness for any run. */
+  protected readonly unknownCostCount = computed<number | null>(() => {
+    const runs = this.workstream().runs
+    if (runs.some((run) => run.run?.unknownCostCount == null)) return null
+    return runs.reduce<number>((sum, run) => sum + (run.run?.unknownCostCount ?? 0), 0)
+  })
 
   protected onRunAction(runId: string, action: RunAction): void {
     this.action.emit({ runId, action })

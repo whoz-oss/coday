@@ -239,7 +239,9 @@ export function timelineSteps(steps: unknown[], attempts: AgentAttempt[], execut
   const executionSteps = executions.map((execution) => {
     const declared = steps.find((step) => getString(asObject(step), 'id') === execution.stepId)
     const base = asObject(declared) ?? {}
-    const attempt = execution.attemptId ? attempts.find((candidate) => candidate.attemptId === execution.attemptId) : undefined
+    const attempt = execution.attemptId
+      ? attempts.find((candidate) => candidate.attemptId === execution.attemptId)
+      : undefined
     return {
       ...base,
       id: `${execution.stepId}:execution:${execution.executionId}`,
@@ -317,7 +319,12 @@ export function currentPhaseName(steps: unknown[]): string | undefined {
 // Timeline lanes
 // ---------------------------------------------------------------------------
 
-export function resolveTimelineOriginMs(input: unknown, timing?: unknown, attempts?: unknown, executions: StepExecution[] = []): number {
+export function resolveTimelineOriginMs(
+  input: unknown,
+  timing?: unknown,
+  attempts?: unknown,
+  executions: StepExecution[] = []
+): number {
   const snapshot = asObject(input) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
   const rawSteps = asArray(projection['steps'])
@@ -361,7 +368,12 @@ function normalizeTicks(values: unknown, t0: number, startSec: number, endSec: n
 /**
  * Derive the temporal lanes from a projection snapshot (+ optional timing).
  */
-export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?: unknown, executions: StepExecution[] = []): TimelineLane[] {
+export function mapProjectionToLanes(
+  input: unknown,
+  timing?: unknown,
+  attempts?: unknown,
+  executions: StepExecution[] = []
+): TimelineLane[] {
   const snapshot = asObject(input) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
   const steps = timelineSteps(asArray(projection['steps']), extractAttempts(attempts), executions)
@@ -611,7 +623,7 @@ export function mapProjectionToRunSummary(
     const hasAnyStartedStep = steps.some((step) => getString(asObject(step), 'startedAt') !== undefined)
     const requestSegment: PhaseSegment = {
       key: 'user-request',
-      label: 'Demande utilisateur',
+      label: 'User request',
       ratio: phases.length > 0 ? Math.min(1 / (phases.length + 1), 0.15) : 1,
       tone: 'amber',
       status: hasAnyStartedStep ? 'done' : 'pending',
@@ -640,10 +652,14 @@ export function mapProjectionToRunSummary(
     cardState,
     currentPhase: currentPhaseName(steps),
     goal,
-    costUsd: realCost?.cost ?? getNumber(projection, 'costUsd') ?? getNumber(snapshot, 'costUsd') ?? 0,
-    unknownCostCount: realCost?.unknownCostCount ?? 0,
+    // Cost is analytics-owned; projection values are legacy/budget data and
+    // must not replace an unavailable analytics result.
+    costUsd: realCost?.cost ?? null,
+    unknownCostCount: realCost?.unknownCostCount ?? null,
     durationSec,
-    tokens: getNumber(projection, 'tokens') ?? 0,
+    // `liveTokens` is not cumulative usage. Only the run-wide realCost total
+    // is safe to surface as Total tokens; otherwise keep the value unknown.
+    tokens: realCost?.totalTokens ?? null,
     phases,
   }
   if (waitingHuman) summary.waitingHuman = true

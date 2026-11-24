@@ -7,7 +7,7 @@ import { WorkstreamActionEvent, WorkstreamCardComponent } from './workstream-car
 
 function createRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
   const id = overrides.id ?? 'wf-1'
-  const costUsd = overrides.costUsd ?? 1.5
+  const costUsd = overrides.costUsd === undefined ? 1.5 : overrides.costUsd
   return {
     id,
     title: `Run ${id}`,
@@ -66,6 +66,16 @@ describe('WorkstreamCardComponent', () => {
     expect(host.querySelector('.namespace-id')?.textContent?.trim()).toBe('ns-a')
     expect(host.querySelector('.count')?.textContent).toContain('2 runs')
     expect(host.querySelector('.cost')?.textContent).toContain('$4.00')
+  })
+
+  it('keeps the workstream total unavailable when any run analytics are unavailable', async () => {
+    const host = await setup({
+      namespaceId: 'ns-a',
+      title: 'Alpha',
+      runs: [createRun({ id: 'known', costUsd: 1.5 }), createRun({ id: 'unavailable', costUsd: null })],
+    })
+
+    expect(host.querySelector('.cost')?.textContent?.trim()).toBe('—')
   })
 
   it('does NOT render any overall state/working badge in the workstream header', async () => {

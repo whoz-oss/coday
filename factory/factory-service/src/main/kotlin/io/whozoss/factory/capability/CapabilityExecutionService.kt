@@ -1974,6 +1974,7 @@ class CapabilityExecutionService(
             environmentRef = persistedAttempt.environmentRef,
             environmentRevision = persistedAttempt.expectedEnvironmentRevision,
             externalUserId = externalUserId,
+            scope = scope,
         )
         // Validate the captured environment and the already-known case identity before any remote
         // create/recover side effect. The post-create validation below remains necessary because an
@@ -2018,7 +2019,7 @@ class CapabilityExecutionService(
                 adapter.startTurn(binding.copy(caseId = caseId), agentId, brief)
             } catch (error: Exception) {
                 // Ambiguous dispatch: reconcile before deciding; never a false success.
-                runCatching { adapter.reconcileResult(TurnToken.unbaselined(caseId, reservation.attemptId)) }
+                runCatching { adapter.reconcileResult(TurnToken.unbaselined(caseId, reservation.attemptId, scope)) }
                     .getOrNull()
                     ?.let { return it }
             }
@@ -2037,7 +2038,7 @@ class CapabilityExecutionService(
         var waitingQuestion: String? = null
         val observed = try {
             adapter.observeTurnResult(
-                turn = TurnToken.unbaselined(caseId, reservation.attemptId),
+                turn = TurnToken.unbaselined(caseId, reservation.attemptId, scope),
                 timeoutMs = agentObservationTimeoutMs ?: agentOsAdapterProperties.observationTimeoutMs,
                 onIntermediateVerdict = { waiting ->
                 if (waitingQuestion != waiting.questionRef) {
@@ -2079,7 +2080,7 @@ class CapabilityExecutionService(
                 },
             )
         } catch (error: Exception) {
-            runCatching { adapter.reconcileResult(TurnToken.unbaselined(caseId, reservation.attemptId)) }.getOrElse {
+            runCatching { adapter.reconcileResult(TurnToken.unbaselined(caseId, reservation.attemptId, scope)) }.getOrElse {
                 AgentOsObservationResult(AgentOsExecutionVerdict.Indeterminate(
                     reason = "AGENT_OBSERVATION_ERROR: ${error.message ?: error.toString()}",
                     evidence = mapOf("caseId" to caseId, "attemptId" to reservation.attemptId),

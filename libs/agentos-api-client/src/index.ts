@@ -1,5 +1,6 @@
 // Generated — do not edit src/lib directly
 export * from './lib/index'
+export { CumulativeUsageApiService, type CumulativeUsageDto } from './custom/cumulative-usage-api.service'
 
 // Custom — hand-written, safe from regeneration
 export { CaseEventSseService } from './custom/case-event-sse.service'

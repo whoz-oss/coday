@@ -1540,6 +1540,20 @@ class WorkflowService(
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = false)
         val realCost = aggregateRealCost(scope, namespaceId, workflowId, actorId)
+        val caseIds = resolveWorkflowUsageCaseIds(scope, namespaceId, workflowId)
+        val usage = if (caseIds.isEmpty()) null else runCatching {
+            agentOsProxyClient?.getCumulativeUsage(caseIds, actorId)
+        }.getOrNull()
+        val cumulativeCost = realCost.toJson() + mapOf(
+            "cost" to usage?.cost,
+            "liveTokens" to usage?.liveTokens,
+            "unknownCostCount" to usage?.unknownCostCount,
+            "totalTokens" to usage?.totalTokens,
+            "inputTokens" to usage?.inputTokens,
+            "outputTokens" to usage?.outputTokens,
+            "cacheReadTokens" to usage?.cacheReadTokens,
+            "cacheWriteTokens" to usage?.cacheWriteTokens,
+        )
         return mapOf(
             "namespaceId" to namespaceId,
             "workflowId" to workflowId,
@@ -1549,7 +1563,7 @@ class WorkflowService(
             "retries" to retries,
             "evidenceCount" to evidence.size,
             "interactionCount" to interactions.size,
-            "realCost" to realCost.toJson(),
+            "realCost" to cumulativeCost,
         )
     }
 
@@ -1575,15 +1589,47 @@ class WorkflowService(
     }
 
     /**
+     * Case ids whose AgentOS trees make up the lifetime usage of THIS workflow only.
+     *
+     * Unlike [resolveWorkflowCaseIds] (cost controls, which may legitimately act on the shared
+     * controller case), analytics must not include a case the workflow does not own: AgentOS aggregates
+     * the whole descendant tree of every id it receives and drops ids that have an ancestor in the set.
+     * The controller case is therefore unsafe here:
+     *  - a fragment of a parent Run has the Run's shared root case as controller case, and every fragment's
+     *    step case is a child of that root, so including it would count every sibling fragment;
+     *  - a caller-supplied controller case (create-run `caseId`) is not workflow-owned either.
+     *
+     * Family semantics (see CapabilityExecutionService.resolveCaseFamily): the entry step of a standalone
+     * workflow runs in the root case (which parents the other step cases), and a Run fragment's steps each
+     * run in their own case. The durable attempts' own case ids are thus exactly the workflow-owned roots;
+     * retries share their predecessor's case and are deduplicated. The controller case is used only when no
+     * durable attempt exists yet (legacy/polling path) and the workflow is not a Run fragment.
+     */
+    private fun resolveWorkflowUsageCaseIds(scope: TenantScope, namespaceId: String, workflowId: String): List<String> {
+        val attemptCaseIds = LinkedHashSet<String>()
+        durableAgentAttemptService
+            ?.findByWorkflow(scope, namespaceId, workflowId)
+            ?.forEach { attempt -> attempt.caseId.takeIf { it.isNotBlank() }?.let(attemptCaseIds::add) }
+        if (attemptCaseIds.isNotEmpty()) return attemptCaseIds.toList()
+        val record = repository.findInstance(scope, namespaceId, workflowId) ?: return emptyList()
+        val parentRunFragment = ((record.instance["runId"] as? String) ?: (
+            (record.instance["relations"] as? Map<*, *>)?.get("runId") as? String
+            )).orEmpty().isNotBlank()
+        if (parentRunFragment) return emptyList()
+        return listOfNotNull(
+            ((record.instance["controllerExecution"] as? Map<*, *>)?.get("caseId") as? String)?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    /**
      * Root-case resolution of a workflow (trusted boundary only — persisted
      * state, never client input):
      * 1. `controllerExecution.caseId` of the persisted workflow instance,
      * 2. the `caseId` of every persisted durable agent attempt of the workflow.
      *
-     * Ids are deduped by exact value: AgentOS already rolls up the whole
-     * descendant tree of each case it is asked about (delegations included), so
-     * querying each distinct persisted case id once is the faithful root set — a
-     * case and one of its own sub-cases must never be counted twice. A requested
+     * Ids are deduped by exact value for controls. Cumulative analytics uses [resolveWorkflowUsageCaseIds]
+     * instead and sends its set to AgentOS, which reduces ancestry before aggregating its union.
+     * Never sum per-case tree totals here: a parent and child can overlap. A requested
      * case id is honoured only when it belongs to the workflow.
      */
     private fun resolveWorkflowCaseIds(
