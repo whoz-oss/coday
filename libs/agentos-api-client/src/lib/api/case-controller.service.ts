@@ -26,6 +26,8 @@ import { GetByIdsRequest } from '../model/get-by-ids-request'
 // @ts-ignore
 import { ListByUserInNamespaceRequest } from '../model/list-by-user-in-namespace-request'
 // @ts-ignore
+import { RewindCaseRequest } from '../model/rewind-case-request'
+// @ts-ignore
 import { UnreadCountResponse } from '../model/unread-count-response'
 
 // @ts-ignore
@@ -1226,6 +1228,93 @@ export class CaseControllerService extends BaseService {
     return this.httpClient.request<Case>('put', `${basePath}${localVarPath}`, {
       context: localVarHttpContext,
       body: caseModelRequest,
+      responseType: <any>responseType_,
+      ...(withCredentials ? { withCredentials } : {}),
+      headers: localVarHeaders,
+      observe: observe,
+      transferCache: localVarTransferCache,
+      reportProgress: reportProgress,
+    })
+  }
+
+  /**
+   * Rewind a case to a user message
+   * POST /api/cases/{caseId}/rewind — soft-delete the user message identified by eventId and every event after it, and put the case back to IDLE. The case must be IDLE (or CREATED): it is refused with 409 while the case is RUNNING or PENDING, or terminated (KILLED or ERROR). 404 when the event is unknown, already removed or belongs to another case; 400 when it is not a user message. Sub-cases, exchange files and usage records are left as they are. Returns the updated Case DTO.
+   * @param caseId
+   * @param rewindCaseRequest
+   * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
+   * @param reportProgress flag to report request and response progress.
+   */
+  public rewindCase(
+    caseId: string,
+    rewindCaseRequest: RewindCaseRequest,
+    observe?: 'body',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<Case>
+  public rewindCase(
+    caseId: string,
+    rewindCaseRequest: RewindCaseRequest,
+    observe?: 'response',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpResponse<Case>>
+  public rewindCase(
+    caseId: string,
+    rewindCaseRequest: RewindCaseRequest,
+    observe?: 'events',
+    reportProgress?: boolean,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<HttpEvent<Case>>
+  public rewindCase(
+    caseId: string,
+    rewindCaseRequest: RewindCaseRequest,
+    observe: any = 'body',
+    reportProgress: boolean = false,
+    options?: { httpHeaderAccept?: 'application/json'; context?: HttpContext; transferCache?: boolean }
+  ): Observable<any> {
+    if (caseId === null || caseId === undefined) {
+      throw new Error('Required parameter caseId was null or undefined when calling rewindCase.')
+    }
+    if (rewindCaseRequest === null || rewindCaseRequest === undefined) {
+      throw new Error('Required parameter rewindCaseRequest was null or undefined when calling rewindCase.')
+    }
+
+    let localVarHeaders = this.defaultHeaders
+
+    const localVarHttpHeaderAcceptSelected: string | undefined =
+      options?.httpHeaderAccept ?? this.configuration.selectHeaderAccept(['application/json'])
+    if (localVarHttpHeaderAcceptSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Accept', localVarHttpHeaderAcceptSelected)
+    }
+
+    const localVarHttpContext: HttpContext = options?.context ?? new HttpContext()
+
+    const localVarTransferCache: boolean = options?.transferCache ?? true
+
+    // to determine the Content-Type header
+    const consumes: string[] = ['application/json']
+    const httpContentTypeSelected: string | undefined = this.configuration.selectHeaderContentType(consumes)
+    if (httpContentTypeSelected !== undefined) {
+      localVarHeaders = localVarHeaders.set('Content-Type', httpContentTypeSelected)
+    }
+
+    let responseType_: 'text' | 'json' | 'blob' = 'json'
+    if (localVarHttpHeaderAcceptSelected) {
+      if (localVarHttpHeaderAcceptSelected.startsWith('text')) {
+        responseType_ = 'text'
+      } else if (this.configuration.isJsonMime(localVarHttpHeaderAcceptSelected)) {
+        responseType_ = 'json'
+      } else {
+        responseType_ = 'blob'
+      }
+    }
+
+    let localVarPath = `/api/cases/${this.configuration.encodeParam({ name: 'caseId', value: caseId, in: 'path', style: 'simple', explode: false, dataType: 'string', dataFormat: 'uuid' })}/rewind`
+    const { basePath, withCredentials } = this.configuration
+    return this.httpClient.request<Case>('post', `${basePath}${localVarPath}`, {
+      context: localVarHttpContext,
+      body: rewindCaseRequest,
       responseType: <any>responseType_,
       ...(withCredentials ? { withCredentials } : {}),
       headers: localVarHeaders,

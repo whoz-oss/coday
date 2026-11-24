@@ -43,5 +43,16 @@ class InMemoryCaseEventList(
 
     override fun getById(id: UUID): CaseEvent? = lock.read { eventsById[id] }
 
+    override fun removeFrom(eventId: UUID): Int =
+        lock.write {
+            val index = events.indexOfFirst { it.id == eventId }
+            if (index < 0) return@write 0
+            val tail = events.subList(index, events.size)
+            tail.forEach { eventsById.remove(it.id) }
+            val removed = tail.size
+            tail.clear()
+            removed
+        }
+
     companion object : KLogging()
 }

@@ -2,11 +2,17 @@ import { inject, Injectable } from '@angular/core'
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
 import DOMPurify from 'dompurify'
 import { marked, Renderer } from 'marked'
+import { COPY_FEEDBACK_MS, copyText } from './clipboard.utils'
 import { escapeHtml, parseFileReference, renderFileCodespan } from './file-link'
+
+const CODE_CLASS = 'ds-md-code'
+const COPY_BUTTON_CLASS = 'ds-md-code__copy'
 
 export interface MarkdownRenderOptions {
   /** Render the code spans that look like file references as IDE links (only when they can be opened). */
   fileLinks?: boolean
+  /** Offer a copy button on fenced code blocks (default true). */
+  copyButton?: boolean
 }
 
 function isExternal(href: string): boolean {
@@ -18,13 +24,20 @@ function isExternal(href: string): boolean {
   }
 }
 
-function buildRenderer(fileLinks: boolean): Renderer {
+function buildRenderer(fileLinks: boolean, copyButton: boolean): Renderer {
   const renderer = new Renderer()
   const link = renderer.link.bind(renderer)
   const code = renderer.code.bind(renderer)
   const table = renderer.table.bind(renderer)
   const codespan = renderer.codespan.bind(renderer)
-  renderer.code = (token): string => code(token).replace('<pre>', '<pre class="agentos-chat-code-block">')
+  renderer.code = (token): string =>
+    `<div class="${CODE_CLASS}">` +
+    code(token).replace('<pre>', '<pre class="agentos-chat-code-block">') +
+    (copyButton
+      ? `<button type="button" aria-label="Copy code" class="${COPY_BUTTON_CLASS}">` +
+        '<span class="material-icons" aria-hidden="true">content_copy</span></button>'
+      : '') +
+    '</div>'
   // marked passes the raw code text: it is escaped here, as the default codespan renderer would do.
   renderer.codespan = (token): string => {
     const ref = fileLinks ? parseFileReference(token.text) : null
@@ -43,8 +56,45 @@ function buildRenderer(fileLinks: boolean): Renderer {
   return renderer
 }
 
-const plainRenderer = buildRenderer(false)
-const fileLinkRenderer = buildRenderer(true)
+// Fixed renderers (one per option combination) keep rendering stateless.
+const renderers = {
+  plain: buildRenderer(false, false),
+  copy: buildRenderer(false, true),
+  fileLinks: buildRenderer(true, false),
+  fileLinksCopy: buildRenderer(true, true),
+}
+
+function pickRenderer(fileLinks: boolean, copyButton: boolean): Renderer {
+  if (fileLinks) return copyButton ? renderers.fileLinksCopy : renderers.fileLinks
+  return copyButton ? renderers.copy : renderers.plain
+}
+
+function onCopyClick(event: Event): void {
+  const button = (event.target as Element | null)?.closest?.<HTMLElement>(`.${COPY_BUTTON_CLASS}`)
+  if (!button) return
+  const code = button.closest(`.${CODE_CLASS}`)?.querySelector('pre')?.textContent
+  if (code == null) return
+  // marked appends a newline that is not part of the code.
+  void copyText(code.replace(/\n$/, '')).then((ok) => {
+    const icon = button.querySelector('.material-icons')
+    if (!ok || !icon) return
+    icon.textContent = 'check'
+    setTimeout(() => (icon.textContent = 'content_copy'), COPY_FEEDBACK_MS)
+  })
+}
+
+let copyListenerInstalled = false
+
+/**
+ * Delegated listener: streaming replaces the innerHTML, so the button cannot hold its own listener.
+ * Installed once, on the first render that outputs a copy button, so it also works when
+ * renderSanitizedMarkdown() is used without MarkdownRendererService.
+ */
+function ensureCopyListener(): void {
+  if (copyListenerInstalled || typeof document === 'undefined') return
+  copyListenerInstalled = true
+  document.addEventListener('click', onCopyClick)
+}
 
 /**
  * THE sanitized Markdown pipeline (marked, then DOMPurify) as an HTML string, shared by the chat messages, the
@@ -52,8 +102,14 @@ const fileLinkRenderer = buildRenderer(true)
  */
 export function renderSanitizedMarkdown(text: string, options: MarkdownRenderOptions = {}): string {
   if (!text) return ''
-  const renderer = options.fileLinks ? fileLinkRenderer : plainRenderer
-  const html = marked.parse(text, { renderer, breaks: true, gfm: true, async: false }) as string
+  const { fileLinks = false, copyButton = true } = options
+  if (copyButton) ensureCopyListener()
+  const html = marked.parse(text, {
+    renderer: pickRenderer(fileLinks, copyButton),
+    breaks: true,
+    gfm: true,
+    async: false,
+  }) as string
   return DOMPurify.sanitize(html, {
     ADD_TAGS: ['span'],
     ADD_ATTR: ['aria-hidden', 'aria-label', 'target', 'rel'],

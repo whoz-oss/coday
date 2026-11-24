@@ -1192,6 +1192,36 @@ class CaseServiceImpl(
         return findById(caseId) ?: error("Case $caseId not found after reopen status change")
     }
 
+    override fun rewindCase(
+        caseId: UUID,
+        eventId: UUID,
+    ): Case {
+        val case = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        // Known race, accepted: this guard is not atomic with a concurrent addMessage. A message posted
+        // between the guard and the truncation below can lose events. The UI hides Rewind while a message
+        // is in flight; a claim flag on the runtime would close the window (follow-up).
+        if (case.status == CaseStatus.RUNNING ||
+            case.status == CaseStatus.PENDING ||
+            case.status.isTerminal() ||
+            hasRunningExecutions(listOf(caseId))
+        ) {
+            throw ConflictException("A case can only be rewound while it is idle (status: ${case.status})")
+        }
+        val target = caseEventService.findById(eventId)
+        if (target == null || target.caseId != caseId) {
+            throw ResourceNotFoundException("Event not found in case $caseId: $eventId")
+        }
+        if (target !is MessageEvent || target.actor.role != ActorRole.USER) {
+            throw BadRequestException("Only a user message can be rewound to")
+        }
+        // Persistence first, memory second: a live runtime runs its agents on its in-memory history.
+        val removed = caseEventService.deleteFrom(caseId, eventId)
+        activeRuntimes[caseId]?.rewindFrom(eventId)
+        logger.info { "Rewinding case $caseId to event $eventId: $removed event(s) removed" }
+        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+        return findById(caseId) ?: error("Case $caseId not found after rewind status change")
+    }
+
     override fun resumeSubCase(
         subCaseId: UUID,
         parentCaseId: UUID,

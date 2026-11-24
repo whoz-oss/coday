@@ -13,8 +13,10 @@ export class DelegationResultComponent {
   readonly fileLinks = input(false)
   private readonly markdown = inject(MarkdownRendererService)
   protected readonly html = computed(() =>
+    // Read-only preview: no copy button.
     this.markdown.render(this.result().result ?? this.result().error ?? 'No result returned.', {
       fileLinks: this.fileLinks(),
+      copyButton: false,
     })
   )
 }

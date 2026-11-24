@@ -255,6 +255,60 @@
   }
 }
 
+// Fenced code block of rendered markdown; global like .ds-md-table. `pre` wraps instead of scrolling sideways.
+.ds-md-code {
+  --ds-md-code-line: 1.375rem;
+
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  margin: 0.5em 0;
+  padding: 0.5rem;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-divider, rgba(29, 31, 32, 0.16));
+  border-radius: var(--radius-md, 0);
+
+  pre {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    line-height: var(--ds-md-code-line);
+    text-wrap: wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.ds-md-code__copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  // Negative margin centres the taller button on the first line without growing the block.
+  margin-block: calc((var(--ds-md-code-line) - 1.75rem) / 2);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 0);
+  background: transparent;
+  color: var(--color-text, #1d1f20);
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(29, 31, 32, 0.06));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent, #416180);
+    outline-offset: 1px;
+  }
+
+  .material-icons {
+    font-size: 1rem;
+  }
+}
+
 .ds-control.ds-indent {
   width: calc(100% - 1.5rem);
 }

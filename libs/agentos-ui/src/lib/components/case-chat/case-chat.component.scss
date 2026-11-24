@@ -453,6 +453,11 @@
     width: 100%;
     min-width: 0;
     max-width: 100%;
+
+    &:hover .case-chat__bubble-copy,
+    &:hover .case-chat__bubble-rewind {
+      opacity: 1;
+    }
   }
 
   // The actions under a bubble: always visible, on the side the bubble speaks from (the turn aligns them).
@@ -466,6 +471,20 @@
     color: var(--color-error);
     font-size: 12px;
     line-height: 1.3;
+  }
+
+  // Sits to the left of the copy button, shown on hover and whenever it holds the keyboard focus.
+  &__bubble-rewind {
+    position: absolute;
+    top: 6px;
+    right: 46px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 1;
+
+    &:focus-within {
+      opacity: 1;
+    }
   }
 
   &__message-time {
@@ -1094,19 +1113,6 @@
   // ── Markdown content ───────────────────────────────────────────────
 
   &__message-text--markdown {
-    // Markdown arrives through innerHTML, so its elements carry no encapsulation attribute and
-    // the rules below never reach them — ::ng-deep is the only selector that does, as
-    // action-card already does for its injected chips.
-    //
-    // A fenced code block is the one element wide enough to push the layout: the renderer tags it
-    // but nothing styled it, so it kept the browser default and scrolled sideways. It wraps now,
-    // and `overflow-wrap` folds the tokens no space can break — a path, a URL, a hash — which is
-    // what made a single line overflow in the first place.
-    ::ng-deep pre {
-      text-wrap: wrap;
-      overflow-wrap: anywhere;
-    }
-
     p {
       margin: 0 0 0.5em;
       &:last-child {
