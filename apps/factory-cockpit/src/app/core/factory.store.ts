@@ -126,6 +126,13 @@ export class FactoryStore implements OnDestroy {
     message: string
   } | null>(null)
   private readonly researchResumptionKeys = new Map<string, { payload: string; key: string }>()
+  readonly retryingStepId = signal<string | null>(null)
+  readonly retryFeedback = signal<{
+    stepId: string
+    kind: 'conflict' | 'collision' | 'error'
+    message: string
+  } | null>(null)
+  private readonly retryKeys = new Map<string, { payload: string; key: string }>()
 
   /** @deprecated Use {@link runs}. Kept as an alias for compatibility. */
   readonly sandboxes = computed(() => this.runs())
@@ -1037,17 +1044,63 @@ export class FactoryStore implements OnDestroy {
       })
   }
 
-  /** Open a retry for a blocked step, then re-fetch the authoritative state. */
-  retry(
+  /**
+   * Retry a FAILED agent step as a new attempt of the same run and case, for an explicitly authorized
+   * `retry` action. The operator text is optional (0 to 4000 characters). A stable idempotency key is kept
+   * for the same workflow/step/revision/context payload so a transport-ambiguous resend replays the original
+   * command; a changed payload receives a fresh key.
+   */
+  retryFailedStep(
     workflowId: string,
-    payload: { stepId: string; expectedRevision?: number; reasonCode?: string },
+    payload: { stepId: string; expectedRevision: number; additionalContext?: string },
     namespaceId?: string
   ): void {
+    if (this.retryingStepId()) return
     const ns = namespaceId ?? this.namespaceFor(workflowId)
-    if (!ns) return
+    const additionalContext = (payload.additionalContext ?? '').trim()
+    if (!ns || additionalContext.length > 4000) return
+
+    const fingerprint = JSON.stringify({
+      namespaceId: ns,
+      expectedRevision: payload.expectedRevision,
+      additionalContext,
+    })
+    const target = `${workflowId}:${payload.stepId}`
+    const previous = this.retryKeys.get(target)
+    const idempotencyKey = previous?.payload === fingerprint ? previous.key : generateRetryKey()
+    this.retryKeys.set(target, { payload: fingerprint, key: idempotencyKey })
+    this.retryingStepId.set(payload.stepId)
+    this.retryFeedback.set(null)
+
     this.api
-      .openRetry(workflowId, payload, ns)
-      .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
+      .retryFailedStep(
+        workflowId,
+        payload.stepId,
+        { namespaceId: ns, expectedRevision: payload.expectedRevision, additionalContext },
+        idempotencyKey
+      )
+      .subscribe({
+        next: () => {
+          this.retryingStepId.set(null)
+          this.retryKeys.delete(target)
+          this.refreshAfterAction(workflowId)
+        },
+        error: (error: FactoryApiError) => {
+          this.retryingStepId.set(null)
+          const conflict = error.status === 409
+          const collision = conflict && /idempot/i.test(`${error.code} ${error.message}`)
+          this.retryFeedback.set({
+            stepId: payload.stepId,
+            kind: collision ? 'collision' : conflict ? 'conflict' : 'error',
+            message: collision
+              ? 'The submission key already exists with different content. The retry was not resent.'
+              : conflict
+                ? 'The workflow has changed. Allowed actions have been refreshed; review the new state.'
+                : error.message,
+          })
+          if (conflict) this.refreshAfterAction(workflowId)
+        },
+      })
   }
 
   /**
@@ -1316,6 +1369,12 @@ interface EnrichmentPartial {
   actions?: GetActionsResponse
   agentQuestions?: AgentQuestion[]
   agentQuestionsError?: SessionDetail['agentQuestionsError']
+}
+
+function generateRetryKey(): string {
+  const cryptoRef = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+  if (typeof cryptoRef?.randomUUID === 'function') return cryptoRef.randomUUID()
+  return `failed-step-retry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 function generateResearchResumptionKey(): string {

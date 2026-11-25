@@ -19,14 +19,22 @@ export interface AgentQuestionAnswerIntent {
 
 export interface RetryIntent {
   stepId: string
-  expectedRevision?: number
-  reasonCode?: string
+  expectedRevision: number
+  additionalContext: string
 }
 
 export interface ResearchResumptionIntent {
   stepId: string
   expectedRevision: number
   additionalContext: string
+}
+
+/** Maximum length of the optional operator text of a failed-step retry. */
+const RETRY_CONTEXT_MAX = 4000
+
+/** Draft key of a retry textarea, kept apart from the research-resumption draft of the same step. */
+function retryDraftKey(stepId: string): string {
+  return `retry:${stepId}`
 }
 
 export interface CancelIntent {
@@ -73,6 +81,12 @@ export class ActionBarComponent {
   readonly answeringQuestionId = input<string | null>(null)
   readonly questionFeedback = input<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(null)
   readonly resumingResearchStepId = input<string | null>(null)
+  readonly retryingStepId = input<string | null>(null)
+  readonly retryFeedback = input<{
+    stepId: string
+    kind: 'conflict' | 'collision' | 'error'
+    message: string
+  } | null>(null)
   readonly researchResumptionFeedback = input<{
     stepId: string
     kind: 'conflict' | 'collision' | 'error'
@@ -255,10 +269,27 @@ export class ActionBarComponent {
   }
 
   protected requestRetry(action: AllowedAction): void {
-    if (!action.stepId) return
-    const intent: RetryIntent = { stepId: action.stepId, reasonCode: 'human_retry' }
-    if (action.expectedRevision !== undefined) intent.expectedRevision = action.expectedRevision
-    this.retryRequested.emit(intent)
+    if (!action.stepId || action.expectedRevision === undefined || this.retryingStepId()) return
+    // The operator text is optional: an empty draft is a valid retry. Only the length bound is enforced.
+    const additionalContext = this.draftFor(retryDraftKey(action.stepId)).trim()
+    if (additionalContext.length > RETRY_CONTEXT_MAX) return
+    this.retryRequested.emit({
+      stepId: action.stepId,
+      expectedRevision: action.expectedRevision,
+      additionalContext,
+    })
+  }
+
+  protected retryDraftKey(stepId: string): string {
+    return retryDraftKey(stepId)
+  }
+
+  protected retryContextLength(stepId: string): number {
+    return this.draftFor(retryDraftKey(stepId)).length
+  }
+
+  protected retryContextTooLong(stepId: string): boolean {
+    return this.draftFor(retryDraftKey(stepId)).trim().length > RETRY_CONTEXT_MAX
   }
 
   protected markResearchTouched(stepId: string): void {

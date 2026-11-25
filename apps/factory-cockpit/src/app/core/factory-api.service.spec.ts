@@ -433,6 +433,57 @@ describe('FactoryApiService', () => {
       expect(result).toEqual(expect.objectContaining({ attemptId: 'attempt-2', queued: true, idempotent: false }))
     })
 
+    it('posts a failed-step retry with the exact body, namespace and idempotency key', () => {
+      let result: unknown
+      service
+        .retryFailedStep(
+          'wf/1',
+          'build/step',
+          { namespaceId: 'ns-1', expectedRevision: 8, additionalContext: 'Use staging' },
+          'retry-key-1'
+        )
+        .subscribe((value) => (result = value))
+
+      const request = http.expectOne(
+        (r) => r.url === '/api/factory/workflows/wf%2F1/steps/build%2Fstep/failed-step-retries'
+      )
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ namespaceId: 'ns-1', expectedRevision: 8, additionalContext: 'Use staging' })
+      expect(request.request.headers.get('Idempotency-Key')).toBe('retry-key-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      request.flush({
+        data: {
+          workflowId: 'wf/1',
+          stepId: 'build/step',
+          attemptId: 'attempt-2',
+          previousAttemptId: 'attempt-1',
+          attemptNumber: 2,
+          revision: 9,
+          idempotent: false,
+          submissionId: 'submission-1',
+          queued: true,
+        },
+      })
+
+      expect(result).toEqual(expect.objectContaining({ attemptId: 'attempt-2', attemptNumber: 2, queued: true }))
+    })
+
+    it('sends a failed-step retry without additionalContext when none is provided', () => {
+      service.retryFailedStep('wf-1', 'build', { namespaceId: 'ns-1', expectedRevision: 8 }, 'retry-key-2').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/steps/build/failed-step-retries')
+      expect(request.request.body).toEqual({ namespaceId: 'ns-1', expectedRevision: 8 })
+      request.flush({ data: {} })
+    })
+
+    it('rejects a failed-step retry without a namespace before any request is made', () => {
+      expect(() =>
+        service.retryFailedStep('wf-1', 'build', { namespaceId: '  ', expectedRevision: 8 }, 'retry-key-3')
+      ).toThrow('requires namespaceId')
+      http.expectNone(() => true)
+    })
+
     it('openRetry posts to /retries', () => {
       let result: unknown
       service
