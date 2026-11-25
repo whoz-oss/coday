@@ -211,6 +211,30 @@ agentos:
   # environment at once, so the list starts closed and setting it replaces the default entirely.
   # Override with env var: AGENTOS_INTEGRATIONS_AUTO_GRANTABLE_TYPES
   # auto-grantable-types: QUERY_USER
+    # Environment tokens: values of the deployment that an integration's parameters may reference as
+    # {{NAME}}, resolved on every run (EnvironmentTokenRunIntegration), so that one integration works on every
+    # instance: e.g. an HTTP_API with baseUrl "{{FACTORY_URL}}/api". Each key NAME declares the token {{NAME}}
+    # (upper case letters, digits and underscores); its value is what the token resolves to, typically an
+    # environment variable with a default: ${SOME_ENV:/default/path}.
+    #
+    # This is an explicit ALLOWLIST and never a lookup of arbitrary Spring properties: integration parameters are
+    # written by namespace admins (and by users, for some types), and letting {{ANY_PROPERTY}} read the Spring
+    # Environment would let them copy AGENTOS_ENCRYPTION_KEY or a provider key into a URL or a command they
+    # control. Expose values here, never secrets.
+    #
+    # A declared token whose value is empty (the environment variable is not set) removes the integrations that
+    # carry it from the run, with a warning, rather than handing the plugin a literal {{NAME}}. An undeclared
+    # {{SOMETHING}} is plain text and left untouched. CASE_EXCHANGE, NAMESPACE_EXCHANGE and NAMESPACE_CONFIG_PATH
+    # are reserved and ignored with a warning (the first two are the case and namespace exchange directories).
+    #
+    # Another entry can be added without editing this file, with the environment variable
+    # AGENTOS_INTEGRATIONS_ENVIRONMENT_TOKENS_<NAME> (relaxed binding), e.g. AGENTOS_INTEGRATIONS_ENVIRONMENT_TOKENS_NAMESPACE_PATH=/data/ns,
+    # or here: the bracket notation keeps the key exactly as written, unlike the bare form which Spring would
+    # lower-case and split on its underscores.
+    # Example: "[NAMESPACE_PATH]": ${SOME_ENV:/default/path}
+    environment-tokens:
+      # Where the Factory is: set by the Coday launcher for the managed Factory, to be set by hand otherwise.
+      "[FACTORY_URL]": ${FACTORY_URL:}
   query-user:
     # Declare that a platform-scoped 'QUERY_USER' integration configuration should exist. When true
     # (shipped default), QueryUserConfigSeeder creates it at startup if absent, with autoGrant=true
