@@ -318,8 +318,13 @@
           @if (action.attemptId) {
             <span class="action-meta sf-mono">attempt {{ action.attemptId }}</span>
           }
+          @if (stopFeedback(); as feedback) {
+            <p class="action-feedback action-feedback--error" role="alert">{{ feedback.message }}</p>
+          }
           <div class="action-row">
-            <button mat-stroked-button class="sf-danger" (click)="requestCancel(action)">Cancel attempt</button>
+            <button mat-stroked-button class="sf-danger" (click)="requestCancel(action)">
+              {{ action.label === 'Retry stop' ? 'Retry stop' : 'Cancel attempt' }}
+            </button>
           </div>
         </div>
       }

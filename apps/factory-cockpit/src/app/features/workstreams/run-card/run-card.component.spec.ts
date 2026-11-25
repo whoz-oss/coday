@@ -1,9 +1,10 @@
 import { provideRouter } from '@angular/router'
+import { signal, WritableSignal } from '@angular/core'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { of, throwError, Subject } from 'rxjs'
 import { FactoryStore } from '../../../core/factory.store'
 import { AgentOsApiError } from '../../../core/agentos-api.service'
-import { FactoryRun, SupervisorCaseResult, SessionDetail } from '../../../core/models'
+import { FactoryRun, SessionDetail, StopFeedback, SupervisorCaseResult } from '../../../core/models'
 import { RunCardComponent } from './run-card.component'
 
 const run: FactoryRun = {
@@ -42,20 +43,23 @@ interface StoreStub {
   session: jest.Mock<SessionDetail | undefined, [string]>
   openSupervisorCase: jest.Mock
   restoreSupervisorCase: jest.Mock
+  stopFeedback: WritableSignal<StopFeedback | null>
 }
 
 function createStore(
   activeAttemptId?: string,
   supervisorResult$?: ReturnType<typeof of>,
-  restoredCase?: SupervisorCaseResult
+  restoredCase?: SupervisorCaseResult,
+  blockers: SessionDetail['blockers'] = []
 ): StoreStub {
   const session: SessionDetail | undefined = activeAttemptId
-    ? ({ id: 'wf-1', activeAttemptId } as SessionDetail)
+    ? ({ id: 'wf-1', activeAttemptId, blockers } as SessionDetail)
     : undefined
   return {
     session: jest.fn().mockReturnValue(session),
     openSupervisorCase: jest.fn().mockReturnValue(supervisorResult$ ?? of(supervisorResult)),
     restoreSupervisorCase: jest.fn().mockReturnValue(restoredCase ?? undefined),
+    stopFeedback: signal<StopFeedback | null>(null),
   }
 }
 
@@ -66,9 +70,10 @@ describe('RunCardComponent', () => {
   async function setup(
     activeAttemptId?: string,
     supervisorResult$?: ReturnType<typeof of>,
-    restoredCase?: SupervisorCaseResult
+    restoredCase?: SupervisorCaseResult,
+    blockers: SessionDetail['blockers'] = []
   ): Promise<void> {
-    store = createStore(activeAttemptId, supervisorResult$, restoredCase)
+    store = createStore(activeAttemptId, supervisorResult$, restoredCase, blockers)
     await TestBed.configureTestingModule({
       imports: [RunCardComponent],
       providers: [provideRouter([]), { provide: FactoryStore, useValue: store }],
@@ -248,11 +253,60 @@ describe('RunCardComponent', () => {
       expect(buttonByText(host, 'Stop')).toBeUndefined()
     })
 
-    it('hides "Stop" for a non-working run even with a resolvable attempt', async () => {
+    it('hides "Stop" for a removed run even with a resolvable attempt', async () => {
       await setup('attempt-1')
+      const host = render({ ...run, status: 'destroyed' })
+
+      expect(buttonByText(host, 'Stop')).toBeUndefined()
+    })
+
+    it('offers "Retry stop" on a cancelled run whose kill the backend reports as unconfirmed', async () => {
+      await setup('attempt-1', undefined, undefined, [
+        { code: 'AGENT_KILL_UNCONFIRMED', label: 'Stop not confirmed', stepId: 'build' },
+      ])
+      const actions: string[] = []
+      fixture.componentInstance.action.subscribe((action) => actions.push(action))
+      // The run left `working`: it is sealed cancelled, yet Stop must stay reachable to re-send the kill.
       const host = render({ ...run, status: 'idle' })
 
       expect(buttonByText(host, 'Stop')).toBeUndefined()
+      const retry = buttonByText(host, 'Retry stop')
+      expect(retry).not.toBeUndefined()
+      retry?.click()
+      expect(actions).toEqual(['stop'])
+    })
+
+    it('renders the feedback of a refused Stop for this run only', async () => {
+      await setup('attempt-1')
+      store.stopFeedback.set({
+        workflowId: 'wf-1',
+        kind: 'not_authorized',
+        message: 'You are not allowed to stop this run.',
+      })
+      const host = render()
+
+      expect(host.querySelector('[data-stop-feedback]')?.textContent).toContain('You are not allowed to stop this run.')
+    })
+
+    it('does not render the Stop feedback of another run', async () => {
+      await setup('attempt-1')
+      store.stopFeedback.set({ workflowId: 'wf-other', kind: 'error', message: 'AgentOS is unreachable.' })
+      const host = render()
+
+      expect(host.querySelector('[data-stop-feedback]')).toBeNull()
+    })
+
+    it('offers "Retry stop" and says so when the last Stop was not confirmed', async () => {
+      await setup('attempt-1')
+      store.stopFeedback.set({
+        workflowId: 'wf-1',
+        kind: 'unconfirmed',
+        message: 'Stop requested but the agents are not confirmed stopped. Retry stop.',
+      })
+      const host = render()
+
+      expect(buttonByText(host, 'Retry stop')).not.toBeUndefined()
+      expect(host.querySelector('[data-stop-feedback]')?.textContent).toContain('not confirmed stopped')
     })
 
     it('renders "Remove" and emits remove on a non-destroyed run', async () => {

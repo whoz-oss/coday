@@ -1,8 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { signal } from '@angular/core'
 import { provideRouter } from '@angular/router'
 import { of } from 'rxjs'
 import { FactoryStore } from '../../../core/factory.store'
-import { FactoryRun, WorkstreamView } from '../../../core/models'
+import { FactoryRun, StopFeedback, WorkstreamView } from '../../../core/models'
 import { WorkstreamActionEvent, WorkstreamCardComponent } from './workstream-card.component'
 
 function createRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
@@ -39,6 +40,7 @@ const storeStub = {
   session: jest.fn().mockReturnValue(undefined),
   openSupervisorCase: jest.fn().mockReturnValue(of(null)),
   restoreSupervisorCase: jest.fn().mockReturnValue(undefined),
+  stopFeedback: signal<StopFeedback | null>(null),
 }
 
 describe('WorkstreamCardComponent', () => {

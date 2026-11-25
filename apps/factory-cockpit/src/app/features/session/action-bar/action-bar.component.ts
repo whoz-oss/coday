@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output, signal } f
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 
-import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../../core/models'
+import { AgentQuestion, AllowedAction, HumanInteraction, StopFeedback, WorkflowBlocker } from '../../../core/models'
 import { buildAgentOsCaseUrl } from '../../../core/factory.store'
 
 export interface ReplyIntent {
@@ -80,6 +80,8 @@ export class ActionBarComponent {
   } | null>(null)
 
   readonly reply = output<ReplyIntent>()
+  /** Last refused, unreachable or unconfirmed Stop of this run. */
+  readonly stopFeedback = input<StopFeedback | null>(null)
   readonly agentQuestionAnswered = output<AgentQuestionAnswerIntent>()
   readonly retryRequested = output<RetryIntent>()
   readonly researchResumptionRequested = output<ResearchResumptionIntent>()

@@ -143,7 +143,7 @@
       }
 
       @if (canStop) {
-        <button mat-stroked-button class="sf-secondary" (click)="action.emit('stop')">Stop</button>
+        <button mat-stroked-button class="sf-secondary" (click)="action.emit('stop')">{{ stopLabel }}</button>
       }
 
       @if (conversationLink) {
@@ -161,6 +161,14 @@
 
       <button mat-stroked-button class="sf-danger" (click)="action.emit('remove')">Remove</button>
     </footer>
+
+    <!-- Stop feedback: a refused, unreachable or unconfirmed Stop is told to the user, never swallowed -->
+    @if (stopFeedback; as feedback) {
+      <p class="supervisor-error" role="alert" data-stop-feedback>
+        <mat-icon class="supervisor-error__icon">error_outline</mat-icon>
+        {{ feedback.message }}
+      </p>
+    }
 
     <!-- Supervisor error: inline message, not just a title attribute -->
     @if (supervisorState() === 'error' && supervisorError()) {

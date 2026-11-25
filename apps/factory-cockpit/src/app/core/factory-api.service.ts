@@ -220,6 +220,17 @@ export interface RunWorkflowResponse {
   [key: string]: unknown
 }
 
+/** Unwrapped `{ data }` payload of `POST /api/factory/workflows/:id/attempts/:attemptId/cancel`. */
+export interface CancelAttemptResponse {
+  status?: string
+  /** What AgentOS answered to the kill sent by this Stop. */
+  killResult?: 'ACKNOWLEDGED' | 'REFUSED' | 'UNREACHABLE'
+  /** True only when the kill was acknowledged and AgentOS reports the case killed. */
+  killProven?: boolean
+  idempotent?: boolean
+  [key: string]: unknown
+}
+
 /** Machine codes meaning the workflow instance already exists (start is idempotent). */
 export const WORKFLOW_CONFLICT_CODES = ['WORKFLOW_IDENTITY_CONFLICT', 'WORKFLOW_ALREADY_EXISTS'] as const
 
@@ -519,8 +530,8 @@ export class FactoryApiService {
     attemptId: string,
     payload: { expectedRevision?: number; reason?: string },
     namespaceId?: string
-  ): Observable<unknown> {
-    return this.post<unknown>(
+  ): Observable<CancelAttemptResponse> {
+    return this.post<CancelAttemptResponse>(
       `/api/factory/workflows/${encodeURIComponent(workflowId)}/attempts/${encodeURIComponent(attemptId)}/cancel`,
       { ...payload, namespaceId: requireNamespaceId(namespaceId ?? '') },
       namespaceId
