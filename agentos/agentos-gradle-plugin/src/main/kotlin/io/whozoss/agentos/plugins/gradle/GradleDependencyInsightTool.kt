@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugins.gradle
 
-import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.BlockingTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
@@ -13,12 +13,12 @@ import kotlin.time.Duration.Companion.seconds
  * path from the configuration to the dependency, so the agent never receives the whole dependency graph.
  *
  * The business logic ([dependencyInsight]) is blocking and returns a [GradleToolResult];
- * [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
+ * [executeBlocking] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
  */
 class GradleDependencyInsightTool(
     private val runner: GradleRunner,
     configName: String? = null,
-) : StandardTool<GradleDependencyInsightTool.Input> {
+) : BlockingTool<GradleDependencyInsightTool.Input>() {
     /** Input of the tool, as sent by the LLM. Nullable fields with defaults so partial JSON deserializes. */
     data class Input(
         val dependency: String? = null,
@@ -72,21 +72,19 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
                 ),
         )
 
-    override suspend fun execute(
+    override fun executeBlocking(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
         val params = input ?: return missingTimeoutResult()
         val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
         val dependency = params.dependency ?: return GradleToolResult.Error(BLANK_DEPENDENCY).toToolExecutionResult()
-        return runInterruptibleTool {
-            dependencyInsight(
-                dependency = dependency,
-                subproject = params.subproject,
-                configuration = params.configuration,
-                timeoutSeconds = timeoutSeconds,
-            )
-        }
+        return dependencyInsight(
+            dependency = dependency,
+            subproject = params.subproject,
+            configuration = params.configuration,
+            timeoutSeconds = timeoutSeconds,
+        ).toToolExecutionResult()
     }
 
     fun dependencyInsight(

@@ -13,6 +13,8 @@ The `agentos-sdk` module defines four extension points:
 | `AiProviderPlugin` | `AiProvider` list -> `AiProviderRegistry` |
 | `ToolPlugin` | `StandardTool<*>` list -> `ToolRegistry` |
 
+A tool whose work blocks the calling thread (child process, socket, file lock) extends `BlockingTool<T>` instead of implementing `StandardTool<T>.execute` itself: it implements `executeBlocking`, which runs on `Dispatchers.IO` and is interrupted when the run is cancelled. It must release what it started (kill the child process...) when interrupted.
+
 ## Creating a Plugin
 
 A plugin requires two classes: a `Plugin` subclass (lifecycle hooks) and one or more `@Extension`-annotated classes implementing the relevant interface above.
@@ -44,7 +46,7 @@ deploys the plugins and then boots `agentos-service`.
 The `GRADLE` integration exposes three tools, named `<configName>__<tool>` like the other plugins:
 `gradle_compile` (main and test sources, compiler diagnostics parsed), `gradle_tests` (results read from the
 JUnit XML reports, with `--tests` filters) and `gradle_dependency_insight`. Each call must give
-a `timeoutSeconds` (1 to 240, kept under the 5 minutes of the context cache): the run is killed beyond it, and cancelling the case kills the whole Gradle
+a `timeoutSeconds` (1 to 270, kept under the 5 minutes of the context cache): the run is killed beyond it, and cancelling the case kills the whole Gradle
 process tree.
 
 ```yaml

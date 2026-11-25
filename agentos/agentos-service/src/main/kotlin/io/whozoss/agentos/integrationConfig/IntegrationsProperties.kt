@@ -33,12 +33,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Override with environment variable (Spring Boot relaxed binding):
  * - `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` (comma-separated, replaces the default list)
  *
- * Example (application.yml):
- * ```yaml
- * agentos:
- *   integrations:
- *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE
- * ```
+ * The default list and its rationale are documented in `application.yml` (`agentos.integrations`).
  */
 @ConfigurationProperties(prefix = "agentos.integrations")
 data class IntegrationsProperties(

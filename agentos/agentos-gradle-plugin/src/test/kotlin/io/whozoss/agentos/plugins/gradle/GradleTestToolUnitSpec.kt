@@ -264,17 +264,17 @@ class GradleTestToolUnitSpec :
             }
         }
 
-        "runTests rejects a timeoutSeconds outside 1..240 before doing anything else" {
-            listOf(0, -5, 241).forEach { timeoutSeconds ->
+        "runTests rejects a timeoutSeconds outside the allowed range before doing anything else" {
+            listOf(0, -5, ToolTimeout.MAX_SECONDS + 1).forEach { timeoutSeconds ->
                 // /fake has no gradlew: only the timeout check can produce a message naming timeoutSeconds
                 val result = tool.runTests(null, timeoutSeconds = timeoutSeconds).errorText()
 
                 result shouldContain "timeoutSeconds"
-                result shouldContain "240"
+                result shouldContain ToolTimeout.MAX_SECONDS.toString()
             }
         }
 
-        "runTests accepts the maximum timeoutSeconds of 240" {
+        "runTests accepts the maximum timeoutSeconds" {
             val root = Files.createTempDirectory("agentos-test-max-timeout").toFile()
             try {
                 root.resolve("gradlew").apply {
@@ -282,7 +282,7 @@ class GradleTestToolUnitSpec :
                     setExecutable(true)
                 }
 
-                GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = 240).successText()
+                GradleTestTool(GradleRunner(root)).runTests(null, timeoutSeconds = ToolTimeout.MAX_SECONDS).successText()
             } finally {
                 root.deleteRecursively()
             }

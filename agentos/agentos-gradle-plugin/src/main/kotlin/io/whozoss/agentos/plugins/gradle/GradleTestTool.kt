@@ -1,6 +1,6 @@
 package io.whozoss.agentos.plugins.gradle
 
-import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.BlockingTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import mu.KLogging
@@ -16,13 +16,13 @@ import kotlin.time.Duration.Companion.seconds
  * Process execution is delegated to [GradleRunner].
  *
  * The business logic ([runTests]) is blocking and returns a [GradleToolResult];
- * [execute] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
+ * [executeBlocking] maps it to a [ToolExecutionResult] (`GRADLE_ERROR` / `GRADLE_FAILURE` error types).
  */
 class GradleTestTool(
     private val runner: GradleRunner,
     private val newReportsDir: () -> File = TestReportsInitScript::newReportsDir,
     configName: String? = null,
-) : StandardTool<GradleTestTool.Input> {
+) : BlockingTool<GradleTestTool.Input>() {
     private val parser = XmlTestReportParser()
 
     /** Input of the tool, as sent by the LLM. Nullable fields with defaults so partial JSON deserializes. */
@@ -113,20 +113,18 @@ To check again, re-run this tool."""
                 ),
         )
 
-    override suspend fun execute(
+    override fun executeBlocking(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
         val params = input ?: return missingTimeoutResult()
         val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
-        return runInterruptibleTool {
-            runTests(
-                testFilter = params.testFilter,
-                subproject = params.subproject,
-                targets = params.targets,
-                timeoutSeconds = timeoutSeconds,
-            )
-        }
+        return runTests(
+            testFilter = params.testFilter,
+            subproject = params.subproject,
+            targets = params.targets,
+            timeoutSeconds = timeoutSeconds,
+        ).toToolExecutionResult()
     }
 
     fun runTests(
