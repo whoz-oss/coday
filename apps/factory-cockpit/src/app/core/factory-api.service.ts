@@ -53,6 +53,16 @@ export interface LegalHoldResult {
   [key: string]: unknown
 }
 
+/** Instance-wide limit of parallel workflow runs (`/api/factory/admin/settings/run-concurrency`). */
+export interface RunConcurrencySettings {
+  maxParallelRuns: number
+  defaultMaxParallelRuns: number
+  min: number
+  max: number
+  updatedAt?: string | null
+  updatedBy?: string | null
+}
+
 /** One registered workflow definition. */
 export interface WorkflowDefinition {
   workflowType?: string
@@ -581,6 +591,16 @@ export class FactoryApiService {
     return this.post<unknown>(path, body, namespaceId)
   }
 
+  /** GET `/api/factory/admin/settings/run-concurrency` — the maximum number of parallel workflow runs. */
+  getRunConcurrency(): Observable<RunConcurrencySettings> {
+    return this.request<RunConcurrencySettings>('/api/factory/admin/settings/run-concurrency', {})
+  }
+
+  /** PUT `/api/factory/admin/settings/run-concurrency` — changes the limit at runtime (400 `INVALID_MAX_PARALLEL_RUNS` when out of range). */
+  updateRunConcurrency(maxParallelRuns: number): Observable<RunConcurrencySettings> {
+    return this.put<RunConcurrencySettings>('/api/factory/admin/settings/run-concurrency', { maxParallelRuns })
+  }
+
   /** Existing AgentOS discovery through the same-origin gateway, scoped by namespace. */
   getAgents(namespaceId: string): Observable<{ name: string; enabled?: boolean }[]> {
     return this.request<unknown>(
@@ -711,6 +731,17 @@ export class FactoryApiService {
     }
 
     return this.http.post<unknown>(path, body, { params, headers }).pipe(
+      map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
+      catchError((error: unknown) => throwError(() => normalizeError(error)))
+    )
+  }
+
+  /** Issue a PUT request and unwrap the response. Mirrors {@link post} without the namespace scoping. */
+  private put<T>(path: string, body: unknown): Observable<T> {
+    const headers = new HttpHeaders()
+      .set('X-Correlation-Id', generateCorrelationId())
+      .set('Content-Type', 'application/json')
+    return this.http.put<unknown>(path, body, { headers }).pipe(
       map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
       catchError((error: unknown) => throwError(() => normalizeError(error)))
     )

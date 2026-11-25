@@ -1,0 +1,73 @@
+<div class="page">
+  <header class="page-head">
+    <div class="titles">
+      <h1>Admin</h1>
+      <p class="sf-muted">Instance-wide settings of the Factory.</p>
+    </div>
+  </header>
+
+  <section class="sf-panel setting" aria-labelledby="run-concurrency-title" data-run-concurrency>
+    <h2 id="run-concurrency-title">Workflow execution</h2>
+
+    @if (loadError(); as message) {
+      <div class="banner banner--warn" role="alert" data-admin-load-error>
+        <mat-icon aria-hidden="true">cloud_off</mat-icon>
+        <span>{{ message }}</span>
+        <button mat-stroked-button class="sf-secondary" type="button" (click)="load()" data-admin-retry>Retry</button>
+      </div>
+    } @else if (loading() && !settings()) {
+      <div class="state" data-admin-loading>
+        <mat-progress-spinner diameter="32" mode="indeterminate" />
+        <span class="sf-muted">Loading…</span>
+      </div>
+    } @else if (settings(); as current) {
+      <form class="field" (ngSubmit)="save()">
+        <label for="max-parallel-runs">Maximum parallel workflow runs</label>
+        <div class="field__row">
+          <input
+            id="max-parallel-runs"
+            name="maxParallelRuns"
+            type="number"
+            step="1"
+            inputmode="numeric"
+            [min]="current.min"
+            [max]="current.max"
+            [ngModel]="draft()"
+            (ngModelChange)="onValueChange($event)"
+            [disabled]="saving()"
+            [attr.aria-invalid]="validation() ? 'true' : null"
+            aria-describedby="max-parallel-runs-hint max-parallel-runs-error"
+            data-max-parallel-runs
+          />
+          <button mat-flat-button class="sf-primary" type="submit" [disabled]="!canSave()" data-admin-save>
+            {{ saving() ? 'Saving…' : 'Save' }}
+          </button>
+        </div>
+        <p class="sf-muted" id="max-parallel-runs-hint" data-admin-hint>
+          Default: {{ current.defaultMaxParallelRuns }} · allowed {{ current.min }}–{{ current.max }}. Extra runs wait
+          in the queue.
+        </p>
+        <p id="max-parallel-runs-error" class="field__error" role="alert" data-admin-validation>
+          {{ validation() }}
+        </p>
+        @if (current.updatedBy || current.updatedAt) {
+          <p class="sf-muted" data-admin-updated>
+            Last changed
+            @if (current.updatedBy) {
+              by {{ current.updatedBy }}
+            }
+            @if (current.updatedAt; as updatedAt) {
+              on {{ formatUpdatedAt(updatedAt) }}
+            }
+          </p>
+        }
+        @if (savedMessage(); as message) {
+          <p role="status" data-admin-saved>{{ message }}</p>
+        }
+        @if (saveError(); as message) {
+          <p class="banner banner--warn" role="alert" data-admin-save-error>{{ message }}</p>
+        }
+      </form>
+    }
+  </section>
+</div>
