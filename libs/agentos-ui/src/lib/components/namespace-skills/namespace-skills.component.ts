@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, Skill } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, ConfigFileKindEnum, Skill } from '@whoz-oss/agentos-api-client'
 import { ButtonDirective, SectionHeaderComponent, TableDirective, TagComponent } from '@whoz-oss/design-system'
 import { BehaviorSubject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { AgentStateService } from '../../services/agent-state.service'
@@ -11,6 +11,8 @@ import { createRowFilter } from '../../utils/filter-rows'
 import { createRowDeletionState } from '../../utils/row-deletion-state'
 import { RowDeleteActionComponent } from '../row-delete-action/row-delete-action.component'
 import { TableFilterComponent } from '../table-filter/table-filter.component'
+import { injectConfigFileStatuses } from '../../services/config-files.service'
+import { ConfigFileTagComponent } from '../config-file-status/config-file-tag.component'
 
 interface SkillRow {
   key: string
@@ -46,6 +48,7 @@ interface SkillRow {
     TagComponent,
     TableFilterComponent,
     RowDeleteActionComponent,
+    ConfigFileTagComponent,
   ],
   templateUrl: './namespace-skills.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -60,6 +63,7 @@ export class NamespaceSkillsComponent {
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
+  protected readonly configFiles = injectConfigFileStatuses(this.namespaceId, ConfigFileKindEnum.SKILL, this.refresh$)
 
   protected readonly isLoading = signal(true)
   protected readonly deletion = createRowDeletionState()

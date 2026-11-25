@@ -15,6 +15,7 @@ api/case-membership-controller.service.ts
 api/case-side-question-controller.service.ts
 api/case-workspace-controller.service.ts
 api/config-change-controller.service.ts
+api/config-file-controller.service.ts
 api/effective-configuration-controller.service.ts
 api/exchange-controller.service.ts
 api/feedback-controller.service.ts
@@ -74,6 +75,11 @@ model/config-change-reject-request.ts
 model/config-change-report-dto.ts
 model/config-change-view-dto.ts
 model/config-field-change-dto.ts
+model/config-file-diff-entry.ts
+model/config-file-diff.ts
+model/config-file-write-request.ts
+model/config-file-write-result.ts
+model/config-file.ts
 model/config-operation-result-dto.ts
 model/config-operation-view-dto.ts
 model/config-secret-input-dto.ts

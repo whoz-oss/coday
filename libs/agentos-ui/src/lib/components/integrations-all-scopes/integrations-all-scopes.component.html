@@ -50,6 +50,8 @@
                 @if (row.source === 'FILESYSTEM') {
                   <ds-tag variant="neutral">YAML</ds-tag>
                   <ds-tag variant="outline">Read-only</ds-tag>
+                } @else if (row.scope === 'namespace') {
+                  <agentos-config-file-tag [file]="configFiles.of(row.config.id)" [showDatabase]="configFiles.any()" />
                 }
               </div>
             </td>

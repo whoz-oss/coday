@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core'
 
-export type TagVariant = 'accent' | 'neutral' | 'outline'
+export type TagVariant = 'accent' | 'neutral' | 'outline' | 'warning'
 
 @Component({
   selector: 'ds-tag',

@@ -29,6 +29,9 @@ import java.util.concurrent.ConcurrentHashMap
  * Defaults to `Int.MAX_VALUE`, i.e. unbounded — every existing caller keeps its current
  * fully-recursive behaviour unless it opts in to a bound.
  *
+ * [getEntries] also returns the file each entity was parsed from, for the callers that
+ * need to point at it (see [io.whozoss.agentos.plugin.filesystem.ConfigFile]).
+ *
  * Thread-safe: concurrent calls to [getAll] during a reload are serialised via
  * the instance lock. The lock is only held during the filesystem scan, not during
  * the return of the cached list.
@@ -40,12 +43,19 @@ class FilesystemYamlCache<T>(
     private val filePredicate: (Path) -> Boolean = { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") },
     private val maxDepth: Int = Int.MAX_VALUE,
 ) {
-    private data class CacheEntry<T>(val items: List<T>, val loadedAt: Instant)
+    private data class CacheEntry<T>(val items: List<FilesystemEntry<T>>, val loadedAt: Instant)
 
     @Volatile
     private var entry: CacheEntry<T>? = null
 
-    fun getAll(): List<T> {
+    fun getAll(): List<T> = getEntries().map { it.value }
+
+    /** Forgets the loaded entries: the next read scans the directory again, whatever the [ttl]. */
+    fun invalidate() {
+        entry = null
+    }
+
+    fun getEntries(): List<FilesystemEntry<T>> {
         val now = Instant.now()
         val current = entry
         if (current != null && Duration.between(current.loadedAt, now) < ttl) {
@@ -55,7 +65,7 @@ class FilesystemYamlCache<T>(
     }
 
     @Synchronized
-    private fun reload(now: Instant): List<T> {
+    private fun reload(now: Instant): List<FilesystemEntry<T>> {
         // double-checked: another thread may have reloaded while we waited for the lock
         val current = entry
         if (current != null && Duration.between(current.loadedAt, now) < ttl) {
@@ -86,6 +96,7 @@ class FilesystemYamlCache<T>(
                     runCatching { parser(file) }
                         .onFailure { logger.error(it) { "[FilesystemYamlCache] Failed to parse $file: ${it.message}" } }
                         .getOrNull()
+                        ?.let { FilesystemEntry<T>(it, file) }
                 }
 
         logger.debug { "[FilesystemYamlCache] Loaded ${items.size} item(s) from $directory" }
@@ -127,9 +138,23 @@ class FilesystemYamlCacheRegistry<T>(
 ) {
     private val caches = ConcurrentHashMap<Path, FilesystemYamlCache<T>>()
 
-    fun getAll(directory: Path): List<T> =
-        caches
-            .computeIfAbsent(directory) { dir ->
-                FilesystemYamlCache(dir, { file -> parser(dir, file) }, ttl, filePredicate, maxDepth)
-            }.getAll()
+    fun getAll(directory: Path): List<T> = cacheFor(directory).getAll()
+
+    fun getEntries(directory: Path): List<FilesystemEntry<T>> = cacheFor(directory).getEntries()
+
+    /** Makes the next read of [directory] scan it again, e.g. right after AgentOS wrote one of its files. */
+    fun invalidate(directory: Path) {
+        caches[directory]?.invalidate()
+    }
+
+    private fun cacheFor(directory: Path): FilesystemYamlCache<T> =
+        caches.computeIfAbsent(directory) { dir ->
+            FilesystemYamlCache(dir, { file -> parser(dir, file) }, ttl, filePredicate, maxDepth)
+        }
 }
+
+/** An entity parsed by a [FilesystemYamlCache], with the [file] it was read from. */
+data class FilesystemEntry<T>(
+    val value: T,
+    val file: Path,
+)

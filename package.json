@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@angular/core": "catalog:",
+    "diff": "8.0.4",
     "diff2html": "3.4.56",
     "glob": "catalog:",
     "yargs": "catalog:"

@@ -1,6 +1,10 @@
 package io.whozoss.agentos.plugin.filesystem
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.databind.node.JsonNodeFactory
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.fasterxml.jackson.databind.node.TextNode
 import io.whozoss.agentos.util.substituteJsonTokens
 
 /**
@@ -50,3 +54,30 @@ fun substituteConfigPath(
         null -> node
         else -> substituteJsonTokens(node, mapOf(NAMESPACE_CONFIG_PATH_TOKEN to configPath))
     }
+
+/**
+ * The reverse of [substituteConfigPath]: puts [NAMESPACE_CONFIG_PATH_TOKEN] back wherever [configPath]
+ * appears in a text node of [node], so a config rendered for its file carries the portable token
+ * rather than this host's path.
+ *
+ * Only a whole path is replaced: an occurrence followed by a character that would continue its last
+ * segment (`/repo/cfg` inside `/repo/cfg-old`) is left alone. A path that merely contains [configPath]
+ * cannot be told apart from one built with the token, so both render the same way.
+ */
+fun tokenizeConfigPath(
+    node: JsonNode?,
+    configPath: String,
+): JsonNode? {
+    val occurrence = Regex(Regex.escape(configPath) + "(?![A-Za-z0-9._-])")
+    fun walk(current: JsonNode?): JsonNode? =
+        when (current) {
+            is TextNode -> TextNode.valueOf(current.textValue().replace(occurrence) { NAMESPACE_CONFIG_PATH_TOKEN })
+            is ObjectNode ->
+                JsonNodeFactory.instance.objectNode().also { result ->
+                    current.properties().forEach { (key, value) -> result.set<JsonNode>(key, walk(value)) }
+                }
+            is ArrayNode -> JsonNodeFactory.instance.arrayNode().also { result -> current.forEach { result.add(walk(it)) } }
+            else -> current
+        }
+    return if (configPath.isEmpty()) node else walk(node)
+}

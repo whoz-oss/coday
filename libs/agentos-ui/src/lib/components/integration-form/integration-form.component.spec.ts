@@ -6,6 +6,7 @@ import { IntegrationConfigStateService } from '../../services/integration-config
 import { NamespaceRoleStateService } from '../../services/namespace-role-state.service'
 import { UserStateService } from '../../services/user-state.service'
 import { IntegrationFormComponent } from './integration-form.component'
+import { ConfigFilesService } from '../../services/config-files.service'
 
 const authSettings = [
   { name: 'Company Jira', namespaceId: null, userId: null },
@@ -126,6 +127,7 @@ function setup(
       { provide: AuthSettingControllerService, useValue: { listAuthSetting } },
       { provide: UserStateService, useValue: { currentUser: () => ({ id: 'user-1' }) } },
       { provide: NamespaceRoleStateService, useValue: { isAdminOfNamespace$: () => of(true) } },
+      { provide: ConfigFilesService, useValue: { list: () => of([]) } },
     ],
   })
   const fixture = TestBed.createComponent(IntegrationFormComponent)

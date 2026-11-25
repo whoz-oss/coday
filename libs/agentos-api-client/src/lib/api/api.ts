@@ -20,6 +20,8 @@ export * from './case-workspace-controller.service'
 import { CaseWorkspaceControllerService } from './case-workspace-controller.service'
 export * from './config-change-controller.service'
 import { ConfigChangeControllerService } from './config-change-controller.service'
+export * from './config-file-controller.service'
+import { ConfigFileControllerService } from './config-file-controller.service'
 export * from './effective-configuration-controller.service'
 import { EffectiveConfigurationControllerService } from './effective-configuration-controller.service'
 export * from './exchange-controller.service'
@@ -78,6 +80,7 @@ export const APIS = [
   CaseSideQuestionControllerService,
   CaseWorkspaceControllerService,
   ConfigChangeControllerService,
+  ConfigFileControllerService,
   EffectiveConfigurationControllerService,
   ExchangeControllerService,
   FeedbackControllerService,

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.skill
 
 import io.whozoss.agentos.entity.EntityRepository
+import io.whozoss.agentos.plugin.filesystem.ConfigFileSource
 import java.util.UUID
 
 /**
@@ -12,7 +13,9 @@ import java.util.UUID
  * Storage layout (Neo4j): `(:Skill)-[:BELONGS_TO]->(:Namespace)` for namespace-scoped skills.
  * Platform-level skills (`namespaceId == null`) have no `BELONGS_TO` edge to a Namespace.
  */
-interface SkillRepository : EntityRepository<Skill, UUID> {
+interface SkillRepository :
+    EntityRepository<Skill, UUID>,
+    ConfigFileSource<Skill> {
     /**
      * Find all non-removed skills scoped to the given namespace, ordered by name ASC.
      */

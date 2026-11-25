@@ -2,7 +2,9 @@ package io.whozoss.agentos.skill
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.plugin.filesystem.ConfigFile
 import io.whozoss.agentos.plugin.filesystem.FilesystemEntityKind
+import io.whozoss.agentos.plugin.filesystem.FilesystemEntry
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.plugin.filesystem.filesystemEntityId
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -127,43 +129,63 @@ class FilesystemSkillRepository(
     // Filesystem discovery helpers
     // -------------------------------------------------------------------------
 
+    /**
+     * Every skill file of [namespaceId]'s `configPath` that the listings would load, with the persisted
+     * skill of the namespace that masks it, if any (the rule of [findByNamespaceId]).
+     */
+    override fun configFiles(namespaceId: UUID): List<ConfigFile<Skill>> {
+        val configPath = configPathOf(namespaceId) ?: return emptyList()
+        val entries = distinctSkillEntries(Path.of(configPath, SKILLS_SUBDIR))
+        if (entries.isEmpty()) return emptyList()
+        val persisted = delegate.findByNamespaceId(namespaceId).associateBy { it.name.lowercase() }
+        return entries
+            .take(MAX_SKILL_COUNT)
+            .map { ConfigFile(it.value.inNamespace(namespaceId), Path.of(configPath), it.file, persisted[it.value.name.lowercase()]) }
+    }
+
+    override fun reloadConfigFiles(namespaceId: UUID) {
+        configPathOf(namespaceId)?.let { cacheRegistry.invalidate(Path.of(it, SKILLS_SUBDIR)) }
+    }
+
+    private fun configPathOf(namespaceId: UUID): String? = namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
+
     private fun filesystemSkills(
         namespaceId: UUID,
         excludeNames: Set<String> = emptySet(),
     ): List<Skill> {
-        val configPath =
-            namespaceRepository.findByIds(listOf(namespaceId)).firstOrNull()?.configPath
-                ?: return emptyList()
+        val configPath = configPathOf(namespaceId) ?: return emptyList()
         val skillsRoot = Path.of(configPath, SKILLS_SUBDIR)
-        val all = cacheRegistry.getAll(skillsRoot).sortedBy { it.name }
-
-        val seenNames = LinkedHashSet<String>() // lowercased name, first-by-path wins
-        val result = mutableListOf<Skill>()
-        for (skill in all) {
-            val nameKey = skill.name.lowercase()
-            if (seenNames.add(nameKey)) {
-                if (nameKey !in excludeNames) {
-                    if (result.size < MAX_SKILL_COUNT) {
-                        result += skill.copy(
-                            metadata = EntityMetadata(
-                                id = filesystemEntityId(FilesystemEntityKind.SKILL, namespaceId, skill.name),
-                            ),
-                            namespaceId = namespaceId,
-                        )
-                    }
-                }
-            } else {
-                logger.debug { "[FilesystemSkillRepository] Duplicate name '${skill.name}' (kept earlier)" }
-            }
-        }
-        if (seenNames.size > MAX_SKILL_COUNT) {
+        val distinct = distinctSkillEntries(skillsRoot)
+        if (distinct.size > MAX_SKILL_COUNT) {
             logger.warn {
-                "[FilesystemSkillRepository] Discovered ${seenNames.size} unique skills under $skillsRoot, " +
+                "[FilesystemSkillRepository] Discovered ${distinct.size} unique skills under $skillsRoot, " +
                     "exceeding MAX_SKILL_COUNT=$MAX_SKILL_COUNT; truncated to the first $MAX_SKILL_COUNT"
             }
         }
-        return result
+        return distinct
+            .filter { it.value.name.lowercase() !in excludeNames }
+            .take(MAX_SKILL_COUNT)
+            .map { it.value.inNamespace(namespaceId) }
     }
+
+    /** Skills under [skillsRoot] sorted by name, keeping the first of each (case-insensitive) name. */
+    private fun distinctSkillEntries(skillsRoot: Path): List<FilesystemEntry<Skill>> {
+        val seenNames = HashSet<String>()
+        return cacheRegistry
+            .getEntries(skillsRoot)
+            .sortedBy { it.value.name }
+            .filter { entry ->
+                seenNames.add(entry.value.name.lowercase()).also { kept ->
+                    if (!kept) logger.debug { "[FilesystemSkillRepository] Duplicate name '${entry.value.name}' (kept earlier)" }
+                }
+            }
+    }
+
+    private fun Skill.inNamespace(namespaceId: UUID): Skill =
+        copy(
+            metadata = EntityMetadata(id = filesystemEntityId(FilesystemEntityKind.SKILL, namespaceId, name)),
+            namespaceId = namespaceId,
+        )
 
     companion object : KLogging() {
         private const val SKILLS_SUBDIR = "skills"

@@ -3,7 +3,13 @@
     <button dsButton variant="ghost" type="button" title="Back to integrations" (click)="cancel()">
       &larr; Integrations
     </button>
+    @if (configFile()) {
+      <agentos-config-file-tag headerMeta [file]="configFile()" />
+    }
   </ds-section-header>
+  @if (configFile()) {
+    <agentos-config-file-panel [file]="configFile()" noun="integration" (settled)="cancel()" />
+  }
 
   @if (isLoading()) {
     <p class="ds-hint">Loading&hellip;</p>
