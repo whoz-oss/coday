@@ -236,6 +236,88 @@ class ExchangeStorageServiceSpec :
             service.listManifest(root, ExchangeScope.CASE).size shouldBe 5
         }
 
+        // -------------------------------------------------------------------------
+        // writeContent — editing an existing file
+        // -------------------------------------------------------------------------
+
+        "writeContent overwrites an existing file and returns the new content metadata" {
+            val service = newService()
+            val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
+            service.writeNew(root, "notes/doc.md", "old".toByteArray(), ExchangeScope.CASE)
+
+            val written = service.writeContent(root, "notes/doc.md", "new content é", null)
+
+            written.content shouldBe "new content é"
+            written.size shouldBe "new content é".toByteArray().size.toLong()
+            service.readContent(root, "notes/doc.md") shouldBe written
+            // no temp staging file is left next to the target
+            Files.newDirectoryStream(root.resolve("notes")).use { stream ->
+                stream.map { it.fileName.toString() }
+            } shouldContainExactlyInAnyOrder listOf("doc.md")
+        }
+
+        "writeContent accepts the etag that was read" {
+            val service = newService()
+            val root = service.namespaceRoot(UUID.randomUUID())
+            service.writeNew(root, "a.txt", "one".toByteArray(), ExchangeScope.NAMESPACE)
+            val etag = service.readContent(root, "a.txt").etag
+
+            service.writeContent(root, "a.txt", "two", etag).content shouldBe "two"
+        }
+
+        "writeContent refuses a stale etag and keeps the file untouched" {
+            val service = newService()
+            val root = service.namespaceRoot(UUID.randomUUID())
+            service.writeNew(root, "a.txt", "one".toByteArray(), ExchangeScope.NAMESPACE)
+
+            shouldThrow<ExchangeEditConflictException> {
+                service.writeContent(root, "a.txt", "two", "not-the-etag")
+            }
+            service.readContent(root, "a.txt").content shouldBe "one"
+        }
+
+        "writeContent on a missing file throws NoSuchFileException and creates nothing" {
+            val service = newService()
+            val root = service.namespaceRoot(UUID.randomUUID())
+            service.writeNew(root, "a.txt", "one".toByteArray(), ExchangeScope.NAMESPACE)
+
+            shouldThrow<NoSuchFileException> { service.writeContent(root, "missing.txt", "x", null) }
+            Files.exists(root.resolve("missing.txt")) shouldBe false
+        }
+
+        "writeContent on a directory throws NoSuchFileException" {
+            val service = newService()
+            val root = service.namespaceRoot(UUID.randomUUID())
+            service.writeNew(root, "dir/a.txt", "one".toByteArray(), ExchangeScope.NAMESPACE)
+
+            shouldThrow<NoSuchFileException> { service.writeContent(root, "dir", "x", null) }
+        }
+
+        "writeContent rejects path traversal" {
+            val service = newService()
+            val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)
+            service.writeNew(root, "ok.txt", "ok".toByteArray(), ExchangeScope.CASE)
+
+            shouldThrow<InvalidExchangePathException> { service.writeContent(root, "../escape.txt", "x", null) }
+            shouldThrow<InvalidExchangePathException> { service.writeContent(root, "  ", "x", null) }
+        }
+
+        "writeContent refuses content above the read limit and keeps the file untouched" {
+            val service =
+                ExchangeStorageService(
+                    ExchangeStorageConfigProperties(
+                        mountRoot = Files.createTempDirectory("exchange-test").toString(),
+                        readMaxSizeBytes = 4,
+                    ),
+                    listOf(GitMetadataEntries()),
+                )
+            val root = service.namespaceRoot(UUID.randomUUID())
+            service.writeNew(root, "small.txt", "abc".toByteArray(), ExchangeScope.NAMESPACE)
+
+            shouldThrow<ExchangeFileTooLargeException> { service.writeContent(root, "small.txt", "hello", null) }
+            service.readContent(root, "small.txt").content shouldBe "abc"
+        }
+
         "writeNew stores the file directly with no leftover staging artifact" {
             val service = newService()
             val root = service.caseRoot(UUID.randomUUID(), UUID.randomUUID(), createdAt)

@@ -85,7 +85,9 @@ describe('ExchangeContentViewerComponent html preview', () => {
 
   it('does not let Angular strip the scripts of the srcdoc', () => {
     const { el } = setup()
-    expect(el.querySelector('iframe')!.getAttribute('srcdoc')).toBe(REPORT)
+    const srcdoc = el.querySelector('iframe')!.getAttribute('srcdoc')!
+    expect(srcdoc).toContain(REPORT)
+    expect(srcdoc).toContain('<script>document.title')
   })
 
   it('offers the full view and the new tab next to the other actions, for a ready html file', () => {

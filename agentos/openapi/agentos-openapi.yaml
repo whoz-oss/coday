@@ -1396,6 +1396,30 @@ paths:
       summary: Read case exchange file content
       tags:
       - exchange-controller
+    put:
+      operationId: updateCaseFileContentExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExchangeFileUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileContent"
+          description: OK
+      tags:
+      - exchange-controller
   /api/cases/{caseId}/files/directory:
     get:
       operationId: browseCaseFilesExchange
@@ -2742,6 +2766,30 @@ paths:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
       summary: Read namespace exchange file content
+      tags:
+      - exchange-controller
+    put:
+      operationId: updateNamespaceFileContentExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExchangeFileUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileContent"
+          description: OK
       tags:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/directory:
@@ -5724,6 +5772,18 @@ components:
       - path
       - scope
       - size
+    ExchangeFileUpdateRequest:
+      type: object
+      properties:
+        content:
+          type: string
+        etag:
+          type: string
+        path:
+          type: string
+      required:
+      - content
+      - path
     ExchangeGitChanges:
       type: object
       properties:

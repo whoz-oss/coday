@@ -36,6 +36,8 @@
     "@angular/core": "catalog:",
     "diff2html": "3.4.56",
     "glob": "catalog:",
+    "turndown": "7.2.0",
+    "turndown-plugin-gfm": "1.0.2",
     "yargs": "catalog:"
   },
   "devDependencies": {
@@ -65,6 +67,7 @@
     "@trivago/prettier-plugin-sort-imports": "catalog:dev",
     "@types/jest": "catalog:dev",
     "@types/node": "catalog:dev",
+    "@types/turndown": "5.0.5",
     "@typescript-eslint/eslint-plugin": "catalog:dev",
     "@typescript-eslint/parser": "catalog:dev",
     "@typescript-eslint/utils": "catalog:dev",

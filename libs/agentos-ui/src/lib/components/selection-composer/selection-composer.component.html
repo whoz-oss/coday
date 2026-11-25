@@ -1,0 +1,34 @@
+<div
+  class="selection-composer"
+  dsBlueprint
+  [class.selection-composer--suggestions-below]="suggestionsPlacement() === 'below'"
+>
+  @if (autocomplete.atSuggestions().length > 0) {
+    <div class="selection-composer__autocomplete">
+      <agentos-agent-autocomplete
+        [agents]="autocomplete.atSuggestions()"
+        (selected)="onAgentSelected($event)"
+        (dismissed)="closeAgentSuggestions()"
+      />
+    </div>
+  }
+  <textarea
+    #textarea
+    class="selection-composer__input"
+    rows="1"
+    aria-label="Ask an agent about the selection"
+    placeholder="Ask an agent… (@ to pick one)"
+    [value]="value()"
+    (input)="onInput($event)"
+    (keydown)="onKeydown($event)"
+  ></textarea>
+  <div class="selection-composer__actions">
+    <ds-icon-button
+      icon="send"
+      variant="primary"
+      title="Send to the agent"
+      [disabled]="!value().trim()"
+      (action)="send()"
+    />
+  </div>
+</div>
