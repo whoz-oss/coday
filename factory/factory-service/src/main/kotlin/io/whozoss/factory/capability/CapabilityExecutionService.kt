@@ -283,6 +283,16 @@ class CapabilityExecutionService(
         return attempt.status.terminal
     }
 
+    /** The latest attempt of the step was explicitly cancelled by a user (Stop). */
+    fun isUserCancelled(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): Boolean {
+        val latest = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
+        return latest.status == AgentAttemptStatus.INTERRUPTED && latest.failureCode == USER_CANCELLED
+    }
+
+    /** Id of the latest durable attempt of the step, or `null` when none exists. */
+    fun latestAttemptId(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): String? =
+        durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId)?.attemptId
+
     /**
      * A waiting step may resume a completed turn, a standard queryUser turn returned to
      * RUNNING, or the fresh pending N+1 registered by a legacy question answer.
@@ -2749,6 +2759,9 @@ class CapabilityExecutionService(
     companion object {
         /** Evidence kind carrying the durable, structured outputs of an agent step. */
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
+
+        /** Failure code of an attempt sealed by an explicit user cancellation (Stop). */
+        const val USER_CANCELLED = "USER_CANCELLED"
         private const val RUN_BRIEF_KIND = "run-brief"
         private const val GITAY_AGENT = "Gitay"
         private const val A11Y_REVIEWER_AGENT = "A11yReviewer"

@@ -45,6 +45,7 @@ import java.nio.file.Paths
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import mu.KotlinLogging
 
 /**
  * Canonical HTTP surface of the workflow aggregate.
@@ -89,6 +90,8 @@ class WorkflowController(
      */
     private val bridgeCancellationService: BridgeCancellationService? = null,
 ) {
+
+    private val logger = KotlinLogging.logger {}
 
     // ----- collection / detail ------------------------------------------
 
@@ -566,7 +569,12 @@ class WorkflowController(
             attemptId,
             expectedRevision,
             reason,
+            caller.actorId,
         )
+        // The cancellation is committed. Enqueue a durable continuation (also on an idempotent
+        // replay, which heals a run left stuck by an earlier Stop) so the sequencer seals the step
+        // and the run as cancelled even when no live sequencer observed the kill.
+        enqueueCancellationContinuation(caller, user, workflowId, attemptId)
         return WorkflowDataEnvelope(
             mapOf(
                 "workflowId" to outcome.workflowId,
@@ -576,8 +584,38 @@ class WorkflowController(
                 "revision" to outcome.revision,
                 "idempotent" to outcome.idempotent,
                 "reconciledVerdict" to outcome.reconciledVerdict,
+                "killAcknowledged" to outcome.killAcknowledged,
             ),
         )
+    }
+
+    /**
+     * Best-effort durable continuation after a committed cancellation: never turns it into an error.
+     */
+    private fun enqueueCancellationContinuation(
+        caller: WorkflowCaller,
+        user: AuthenticatedUser,
+        workflowId: String,
+        attemptId: String,
+    ) {
+        val repoRoot = resolveRepoRoot(caller.namespaceId, user.userId)
+            ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
+        if (repoRoot == null) {
+            logger.warn { "No repository root resolvable: no continuation enqueued after cancelling attempt '$attemptId' of workflow '$workflowId'" }
+            return
+        }
+        runCatching {
+            sessionRunSubmissionService.submit(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                repoRoot,
+                "attempt-cancelled:$attemptId",
+                null,
+            )
+        }.onFailure { error ->
+            logger.warn(error) { "Continuation after cancelling attempt '$attemptId' of workflow '$workflowId' could not be enqueued" }
+        }
     }
 
     @GetMapping(path = ["/{workflowId}/session"], produces = [MediaType.APPLICATION_JSON_VALUE])

@@ -9,6 +9,13 @@ import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.service.BridgeCancellationService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.error.RevisionConflictException
+import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
+import io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStatus
+import io.whozoss.factory.worktree.persistence.Neo4jWorktreeExecutionOccupancyRepository
+import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
+import org.springframework.transaction.PlatformTransactionManager
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import org.assertj.core.api.Assertions.assertThat
@@ -29,13 +36,26 @@ class BridgeCancellationServiceTest : Neo4jDomainIntegrationTest() {
     @Autowired
     private lateinit var attempts: DurableAgentAttemptService
 
+    @Autowired
+    private lateinit var workflows: WorkflowRepository
+
+    @Autowired
+    private lateinit var occupations: Neo4jWorktreeExecutionOccupancyRepository
+
+    @Autowired
+    private lateinit var environments: WorkEnvironmentRepository
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
+
     private val namespace = "3c7f9e3f-9e2b-4f1a-8c7d-cancel-bridge"
 
-    private class FakeAdapter : AgentOsExecutionAdapter {
+    private class FakeAdapter(private val acknowledgeKill: Boolean = true) : AgentOsExecutionAdapter {
         val interruptCalls = AtomicInteger()
         val killCalls = AtomicInteger()
         val reconcileCalls = AtomicInteger()
         val observeCalls = AtomicInteger()
+        val interruptIdentities = java.util.concurrent.CopyOnWriteArrayList<String?>()
         private val interrupted = AtomicBoolean(false)
 
         override fun createOrRecoverExecution(
@@ -75,6 +95,12 @@ class BridgeCancellationServiceTest : Neo4jDomainIntegrationTest() {
         override fun interrupt(caseId: String, reason: String) {
             interruptCalls.incrementAndGet()
             interrupted.set(true)
+        }
+
+        override fun interrupt(caseId: String, reason: String, externalUserId: String?): Boolean {
+            interruptIdentities.add(externalUserId)
+            interrupt(caseId, reason)
+            return acknowledgeKill
         }
 
         override fun kill(caseId: String) {
@@ -164,5 +190,97 @@ class BridgeCancellationServiceTest : Neo4jDomainIntegrationTest() {
         assertThat(status("attempt-observe")).isEqualTo(AgentAttemptStatus.RUNNING)
         assertThat(adapter.interruptCalls.get()).isZero()
         assertThat(adapter.killCalls.get()).isZero()
+    }
+
+    private fun seedWorkflow(workflowId: String, actor: String?) {
+        workflows.insertInstance(
+            scope,
+            WorkflowInstanceRecord(
+                namespaceId = namespace,
+                workflowId = workflowId,
+                revision = 1,
+                status = "active",
+                creationCommandHash = "cancel-$workflowId",
+                instance = actor?.let { mapOf("controllerRequest" to mapOf("actorId" to it)) } ?: emptyMap(),
+                projection = emptyMap(),
+            ),
+        )
+    }
+
+    private fun occupiedAttempt(attemptId: String, resource: String): DurableAgentAttempt {
+        attempts.register(scope, attempt(attemptId))
+        claimToRunning(attemptId)
+        val ownerId = WorktreeExecutionOccupancyService.agentOwnerId(namespace, "wf-cancel", "step-1", attemptId)
+        val occupation = occupations.acquire(scope, resource, WorktreeExecutionOccupancyService.AGENT_OWNER_KIND, ownerId)
+        val current = attempts.find(scope, namespace, "wf-cancel", "step-1", attemptId)!!
+        return attempts.bindOccupancy(
+            scope, current, occupation.resourceIdentity, WorktreeExecutionOccupancyService.AGENT_OWNER_KIND, ownerId, occupation.generation,
+        )
+    }
+
+    private fun cancellationService(adapter: FakeAdapter) = BridgeCancellationService(
+        attempts,
+        adapter,
+        workflows,
+        WorktreeExecutionOccupancyService(environments, occupations, transactionManager = transactionManager),
+    )
+
+    @Test
+    fun `the kill carries the persisted workflow actor in preference to the caller`() {
+        seedWorkflow("wf-cancel", actor = "persisted-actor")
+        attempts.register(scope, attempt("attempt-identity"))
+        claimToRunning("attempt-identity")
+        val revision = attempts.find(scope, namespace, "wf-cancel", "step-1", "attempt-identity")!!.revision
+        val adapter = FakeAdapter()
+
+        cancellationService(adapter).requestCancel(
+            scope, namespace, "wf-cancel", "attempt-identity", revision, actorId = "caller-user",
+        )
+
+        assertThat(adapter.interruptIdentities).containsExactly("persisted-actor")
+    }
+
+    @Test
+    fun `the kill falls back to the caller when the workflow has no persisted actor`() {
+        attempts.register(scope, attempt("attempt-caller"))
+        claimToRunning("attempt-caller")
+        val revision = attempts.find(scope, namespace, "wf-cancel", "step-1", "attempt-caller")!!.revision
+        val adapter = FakeAdapter()
+
+        cancellationService(adapter).requestCancel(
+            scope, namespace, "wf-cancel", "attempt-caller", revision, actorId = "caller-user",
+        )
+
+        assertThat(adapter.interruptIdentities).containsExactly("caller-user")
+    }
+
+    @Test
+    fun `an acknowledged kill releases the worktree occupancy of the cancelled attempt`() {
+        val resource = "resource-cancel-released"
+        val bound = occupiedAttempt("attempt-release", resource)
+        val adapter = FakeAdapter(acknowledgeKill = true)
+
+        val outcome = cancellationService(adapter).requestCancel(
+            scope, namespace, "wf-cancel", "attempt-release", bound.revision, actorId = "caller-user",
+        )
+
+        assertThat(outcome.killAcknowledged).isTrue()
+        assertThat(status("attempt-release")).isEqualTo(AgentAttemptStatus.INTERRUPTED)
+        assertThat(occupations.find(resource)!!.status).isEqualTo(WorktreeExecutionOccupancyStatus.RELEASED)
+    }
+
+    @Test
+    fun `an unacknowledged kill keeps the worktree occupancy retained`() {
+        val resource = "resource-cancel-retained"
+        val bound = occupiedAttempt("attempt-retain", resource)
+        val adapter = FakeAdapter(acknowledgeKill = false)
+
+        val outcome = cancellationService(adapter).requestCancel(
+            scope, namespace, "wf-cancel", "attempt-retain", bound.revision, actorId = "caller-user",
+        )
+
+        assertThat(outcome.killAcknowledged).isFalse()
+        assertThat(status("attempt-retain")).isEqualTo(AgentAttemptStatus.INTERRUPTED)
+        assertThat(occupations.find(resource)!!.status).isEqualTo(WorktreeExecutionOccupancyStatus.ACTIVE)
     }
 }

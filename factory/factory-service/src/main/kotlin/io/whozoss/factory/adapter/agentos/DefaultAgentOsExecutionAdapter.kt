@@ -6,6 +6,7 @@ import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.MediaType
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
+import org.springframework.web.client.RestClientResponseException
 
 /** Thrown by [AgentOsExecutionAdapter.startTurn] when the case is not quiescent. */
 class AgentOsCaseBusyException(caseId: String, status: String) : RuntimeException(
@@ -343,12 +344,16 @@ class DefaultAgentOsExecutionAdapter(
     }
 
     override fun interrupt(caseId: String, reason: String) {
+        interrupt(caseId, reason, null)
+    }
+
+    override fun interrupt(caseId: String, reason: String, externalUserId: String?): Boolean {
         interruptReasons[caseId] = reason
-        postKill(caseId)
+        return postKill(caseId, externalUserId)
     }
 
     override fun kill(caseId: String) {
-        postKill(caseId)
+        postKill(caseId, null)
         registry.markState(caseId, ActiveCaseState.TERMINATED)
     }
 
@@ -448,12 +453,26 @@ class DefaultAgentOsExecutionAdapter(
         spec.retrieve().toBodilessEntity()
     }
 
-    /** Best-effort kill — mirrors `HttpAgentOsProxyClient.killQuietly`: never throws. */
-    private fun postKill(caseId: String) {
-        try {
-            client.post().uri("/api/cases/$caseId/kill").retrieve().toBodilessEntity()
-        } catch (_: Exception) {
-            // ignored: the caller decides the verdict; the kill is best-effort
+    /**
+     * Best-effort authenticated kill — never throws. AgentOS authorizes the kill
+     * (`Case` `DELETE`), so the request carries `X-External-User-Id`: the given
+     * [externalUserId], else the identity recorded when the case was bound.
+     *
+     * @return `true` only when AgentOS acknowledged the kill (2xx); a failure is
+     *   logged at WARN with the case id and HTTP status, and yields `false`.
+     */
+    private fun postKill(caseId: String, externalUserId: String?): Boolean {
+        val identity = externalUserId?.takeIf { it.isNotBlank() }
+            ?: executions.values.firstOrNull { it.caseId == caseId }?.externalUserId?.takeIf { it.isNotBlank() }
+        return try {
+            val spec = client.post().uri("/api/cases/$caseId/kill")
+            if (identity != null) spec.header("X-External-User-Id", identity)
+            spec.retrieve().toBodilessEntity()
+            true
+        } catch (e: Exception) {
+            val status = (e as? RestClientResponseException)?.statusCode?.value()
+            logger.warn(e) { "AgentOS kill of case $caseId failed (status=${status ?: "n/a"})" }
+            false
         }
     }
 

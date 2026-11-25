@@ -177,6 +177,36 @@ class SessionSequencerTest {
     }
 
     @Test
+    fun `a user cancelled step seals the session as cancelled and blocks its dependents`() {
+        val steps = listOf(step("a"), step("b", "a"), step("c"))
+
+        val evaluation = SessionSequencer.evaluate(
+            steps,
+            statuses("a" to WorkflowStatuses.CANCELLED, "b" to WorkflowStatuses.PENDING, "c" to WorkflowStatuses.READY),
+        )
+        val status = SessionSequencer.terminalStatus(
+            steps,
+            statuses("a" to WorkflowStatuses.CANCELLED, "b" to WorkflowStatuses.BLOCKED, "c" to WorkflowStatuses.READY),
+        )
+
+        assertThat(evaluation.blocked).containsExactly("b")
+        assertThat(status).isEqualTo(WorkflowStatuses.CANCELLED)
+        assertThat(SessionSequencer.isTerminal(status)).isTrue()
+    }
+
+    @Test
+    fun `a cancelled step does not seal the session while another step is still running`() {
+        val steps = listOf(step("a"), step("b"))
+
+        val status = SessionSequencer.terminalStatus(
+            steps,
+            statuses("a" to WorkflowStatuses.CANCELLED, "b" to WorkflowStatuses.RUNNING),
+        )
+
+        assertThat(status).isEqualTo(WorkflowStatuses.RUNNING)
+    }
+
+    @Test
     fun `a genuine failure still seals the session even alongside needs_research`() {
         val steps = listOf(step("a"), step("b"), step("c", "b"))
 

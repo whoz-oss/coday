@@ -93,6 +93,17 @@ interface AgentRuntimeAdapter {
      */
     fun interrupt(caseId: String, reason: String)
 
+    /**
+     * 5b. Authenticated controlled interruption. Returns `true` only when the
+     *     runtime acknowledged the kill. The default delegates to the
+     *     unauthenticated [interrupt] and reports `false` (fail-closed), so
+     *     every adapter and test double stays source-compatible.
+     */
+    fun interrupt(caseId: String, reason: String, externalUserId: String?): Boolean {
+        interrupt(caseId, reason)
+        return false
+    }
+
     /** 6. Forced, best-effort kill (last resort); never throws. */
     fun kill(caseId: String)
 

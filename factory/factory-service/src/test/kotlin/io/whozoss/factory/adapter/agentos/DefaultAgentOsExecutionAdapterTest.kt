@@ -542,6 +542,47 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
+    fun `interrupt with an identity sends X-External-User-Id on the kill and returns true`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1/kill"))
+            .andExpect(header("X-External-User-Id", "actor-1"))
+            .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
+
+        val acknowledged = adapter.interrupt("case-1", "User requested cancellation", "actor-1")
+
+        assertThat(acknowledged).isTrue()
+        server.verify()
+    }
+
+    @Test
+    fun `kill falls back to the identity recorded at case creation`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("$baseUrl/api/cases/case-1/kill"))
+            .andExpect(header("X-External-User-Id", "user-1"))
+            .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
+        adapter.createOrRecoverExecution("ns-1", "wf-1", "step-1", "user-1", "attempt-1", null, "case-1")
+
+        adapter.kill("case-1")
+
+        server.verify()
+    }
+
+    @Test
+    fun `an unauthorized kill returns false and never throws`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1/kill"))
+            .andRespond(withStatus(HttpStatus.FORBIDDEN))
+
+        val acknowledged = adapter.interrupt("case-1", "User requested cancellation", "actor-1")
+
+        assertThat(acknowledged).isFalse()
+        server.verify()
+    }
+
+    @Test
     fun `observeTurn derives a non-authoritative Indeterminate from the SSE replay of a completed free-text turn`() {
         val (adapter, server) = build(sseFactory())
         server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))

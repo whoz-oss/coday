@@ -209,6 +209,7 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         val observedStepIds = mutableListOf<String>()
         val firstCall = AtomicBoolean(true)
         val capability = mockk<CapabilityExecutionService>()
+        every { capability.isUserCancelled(any(), any(), any(), any()) } returns false
         every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } answers {
             val step = invocation.args[3] as WorkflowStepDefinition
             observedStepIds += step.id
@@ -264,6 +265,7 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         val workflowId = "wf-query-user-resume"
         startSession("query-user-resume", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))
         val capability = mockk<CapabilityExecutionService>()
+        every { capability.isUserCancelled(any(), any(), any(), any()) } returns false
         every { capability.canResumeWaitingAgentStep(scope, namespace, workflowId, "s1") } returns false
         every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
             CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired("s1", "architect"), attemptId = "attempt-1")
@@ -290,6 +292,7 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         val workflowId = "wf-waiting-recheck"
         startSession("waiting-recheck", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))
         val capability = mockk<CapabilityExecutionService>()
+        every { capability.isUserCancelled(any(), any(), any(), any()) } returns false
         every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns
             CapabilityExecution(CapabilityOutcome.HumanCheckpointRequired("s1", "architect"), attemptId = "attempt")
         val runner = SessionRunService(workflowRepository, evidenceRepository, interactionRepository, capability, sseHub)
@@ -672,6 +675,7 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
         ))
         val capability = mockk<CapabilityExecutionService>()
         every { capability.prepareAgentWorkspace(any(), any(), any(), any()) } returns Unit
+        every { capability.isUserCancelled(any(), any(), any(), any()) } returns false
         every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } answers {
             val step = invocation.args[3] as WorkflowStepDefinition
             if (step.id == "entry") {
