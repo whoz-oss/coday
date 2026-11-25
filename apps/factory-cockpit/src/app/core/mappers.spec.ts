@@ -229,7 +229,12 @@ describe('mappers', () => {
           status: 'completed',
           steps: [
             { id: 'a', name: 'First', status: 'completed', responsibility: { kind: 'agent', name: 'Planner' } },
-            { id: 'b', name: 'Last long sentence', status: 'completed', responsibility: { kind: 'agent', name: 'Archay' } },
+            {
+              id: 'b',
+              name: 'Last long sentence',
+              status: 'completed',
+              responsibility: { kind: 'agent', name: 'Archay' },
+            },
           ],
         },
       })
@@ -2345,10 +2350,7 @@ describe('mappers', () => {
         },
         undefined,
         {
-          items: [
-            ...previousExecutionEvidence.items,
-            evidenceOf('cr-2', 'code-review', 'running', 30),
-          ],
+          items: [...previousExecutionEvidence.items, evidenceOf('cr-2', 'code-review', 'running', 30)],
         }
       )
 
