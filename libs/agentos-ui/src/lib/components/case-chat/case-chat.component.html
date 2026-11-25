@@ -474,14 +474,42 @@
           (referenceRemoved)="removeReference($event)"
           (filesSelected)="attachments.addFiles($event)"
         />
+        <div class="case-chat__team-mode">
+          <button
+            type="button"
+            class="case-chat__notice-btn"
+            [attr.aria-pressed]="teamChat()"
+            [disabled]="voice.isBusy() || attachments.isUploading()"
+            (click)="onCaseMenuAction('team-chat')"
+          >
+            Discussion d’équipe
+          </button>
+          @if (teamChat()) {
+            <span class="case-chat__actions-hint"
+              >Les messages sont partagés sans lancer d’agent. Sélectionnez un &#64;agent au début du message pour
+              l’appeler.</span
+            >
+          }
+        </div>
+        @if (teamChat() && addressedAgent(); as agent) {
+          <div class="case-chat__notice-bar" role="status">
+            <span>Agent appelé : {{ agent }}</span>
+            @if (isRunning()) {
+              <span>Attendez la fin de l’exécution pour appeler un agent.</span>
+            }
+          </div>
+        }
+        @if (sendError()) {
+          <div class="case-chat__notice-bar" role="alert">{{ sendError() }}</div>
+        }
         <textarea
           #composerInput
           class="case-chat__input"
-          placeholder="Reply…"
+          [placeholder]="teamChat() ? 'Message à l’équipe…' : 'Reply…'"
           rows="3"
           [value]="inputValue()"
           [hidden]="voice.isActive()"
-          [disabled]="isRunning() || composerClosed() || attachments.isUploading()"
+          [disabled]="(!teamChat() && isRunning()) || composerClosed() || attachments.isUploading()"
           (input)="onInput($event)"
           (keydown)="onKeydown($event)"
           (paste)="canStageFiles() && attachments.onPaste($event)"
@@ -516,7 +544,7 @@
           <!-- Right next to the send button, on its left -->
           @if (voice.isRecording()) {
             <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
-          } @else if (voiceCapability.available()) {
+          } @else if (!teamChat() && voiceCapability.available()) {
             <ds-icon-button
               icon="mic"
               variant="default"
@@ -528,7 +556,8 @@
 
           @if (isRunning()) {
             <ds-icon-button icon="stop" variant="default" title="Interrupt" (action)="interrupt()" />
-          } @else {
+          }
+          @if (!isRunning() || teamChat()) {
             <ds-icon-button
               icon="send"
               variant="primary"

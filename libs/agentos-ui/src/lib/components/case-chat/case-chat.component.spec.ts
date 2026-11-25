@@ -127,6 +127,339 @@ describe('CaseChatComponent — submit with attachments', () => {
 
   afterEach(() => TestBed.resetTestingModule())
 
+  it('opts into live inactive-case SSE only for team discussion', () => {
+    const original = globalThis.EventSource
+    globalThis.EventSource = jest.fn(() =>
+      Object.assign(new EventTarget(), { close: jest.fn() })
+    ) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith('/api/cases/c-1/events')
+      ref.instance['teamChat'].set(true)
+      ref.instance['connectSse']()
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+      )
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
+  it('reconnects on team mode changes without losing drafts, history or a running response', () => {
+    const original = globalThis.EventSource
+    const sources: Array<EventTarget & { close: jest.Mock; onerror?: () => void }> = []
+    globalThis.EventSource = jest.fn(() => {
+      const source = Object.assign(new EventTarget(), { close: jest.fn() })
+      sources.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      ref.instance['inputValue'].set('draft')
+      ref.instance['isRunning'].set(true)
+      ref.instance['streamingText'].set('working')
+      ref.instance['onCaseMenuAction']('team-chat')
+      expect(sources[0]!.close).toHaveBeenCalledTimes(1)
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+      )
+      expect(ref.instance['inputValue']()).toBe('draft')
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['streamingText']()).toBe('working')
+      ref.instance['onCaseMenuAction']('team-chat')
+      expect(sources[1]!.close).toHaveBeenCalledTimes(1)
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith('/api/cases/c-1/events')
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
+  it('ignores queued callbacks from a stream replaced by the team mode toggle', () => {
+    const original = globalThis.EventSource
+    const handlers: Array<{ listener?: EventListener; onerror?: () => void; close: jest.Mock; readyState: number }> = []
+    globalThis.EventSource = jest.fn(() => {
+      const source = {
+        close: jest.fn(),
+        readyState: 2,
+        addEventListener: jest.fn((name: string, listener: EventListener) => {
+          if (name === 'case-event') source.listener = listener
+        }),
+        listener: undefined as EventListener | undefined,
+        onerror: undefined as (() => void) | undefined,
+      }
+      handlers.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      ref.instance['onCaseMenuAction']('team-chat')
+      ref.instance['isRunning'].set(true)
+      handlers[0]!.onerror?.()
+      handlers[0]!.listener?.(
+        new MessageEvent('case-event', {
+          data: JSON.stringify({ id: 'stale', type: 'CaseStatusEvent', caseId: 'c-1', status: 'IDLE' }),
+        })
+      )
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['events']()).toEqual([])
+      expect(ref.instance['streamUnavailable']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
+  it('integrates two team readers with a local transport stub and retains a denied invocation draft', async () => {
+    // The transport is a stub, not a live backend or an LLM. Both chat instances are real.
+    const original = globalThis.EventSource
+    const sources: Array<EventTarget & { close: jest.Mock }> = []
+    globalThis.EventSource = jest.fn(() => {
+      const source = Object.assign(new EventTarget(), { close: jest.fn() })
+      sources.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const first = makeComponent()
+    const second = makeComponent()
+    const log = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    let messageNumber = 0
+    http.post.mockImplementation((_url: string, body: { content: string; mode: string }) => {
+      if (body.mode === 'AGENT') return throwError(() => new HttpErrorResponse({ status: 400 }))
+      const event = {
+        id: `passive-${++messageNumber}`,
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T00:00:00Z',
+        startsAgentTurn: false,
+        actor: {
+          id: messageNumber === 1 ? 'alice' : 'bob',
+          role: 'USER',
+          displayName: messageNumber === 1 ? 'Alice' : 'Bob',
+        },
+        content: [{ type: 'Text', content: body.content }],
+      }
+      for (const source of sources) {
+        source.dispatchEvent(new MessageEvent('case-event', { data: JSON.stringify(event) }))
+      }
+      return of({})
+    })
+    try {
+      for (const ref of [first, second]) {
+        ref.instance['onCaseMenuAction']('team-chat')
+        ref.instance['connectSse']()
+      }
+      first.instance['inputValue'].set('Bonjour Bob')
+      await first.instance['submit']()
+      second.instance['inputValue'].set('Bonjour Alice')
+      await second.instance['submit']()
+      for (const ref of [first, second]) {
+        expect(ref.instance['events']().map((event) => event.id)).toEqual(['passive-1', 'passive-2'])
+        expect(ref.instance['isRunning']()).toBe(false)
+        expect(
+          ref.instance['timeline']()
+            .filter((item) => item.kind === 'message')
+            .map((item) => item.isFirstInGroup)
+        ).toEqual([true, true])
+      }
+      first.instance['inputValue'].set('@missing')
+      first.instance['onAgentSelected']({ name: 'missing' } as import('@whoz-oss/agentos-api-client').AgentConfig)
+      await first.instance['submit']()
+      expect(first.instance['inputValue']().trim()).toBe('@missing')
+      expect(first.instance['sendError']()).not.toBe('')
+      expect(first.instance['isRunning']()).toBe(false)
+      expect(second.instance['events']()).toHaveLength(2)
+      expect(globalThis.EventSource).toHaveBeenCalledTimes(2)
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+      )
+    } finally {
+      first.destroy()
+      second.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('keeps collaborative SSE on retry and case switch and deduplicates replayed human messages', () => {
+    const original = globalThis.EventSource
+    const sources: Array<EventTarget & { close: jest.Mock }> = []
+    globalThis.EventSource = jest.fn(() => {
+      const source = Object.assign(new EventTarget(), { close: jest.fn() })
+      sources.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const ref = makeComponent()
+    const passive = {
+      id: 'passive-replay',
+      type: 'MessageEvent',
+      caseId: 'c-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      actor: { id: 'alice', role: 'USER' },
+      content: [{ type: 'Text', content: 'hello' }],
+      startsAgentTurn: false,
+    }
+    try {
+      ref.instance['teamChat'].set(true)
+      ref.instance['connectSse']()
+      sources[0]!.dispatchEvent(new MessageEvent('case-event', { data: JSON.stringify(passive) }))
+      ref.instance['retryStream']()
+      sources[1]!.dispatchEvent(new MessageEvent('case-event', { data: JSON.stringify(passive) }))
+      expect(ref.instance['events']()).toHaveLength(1)
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+      )
+      ref.instance['caseId'] = 'c-2'
+      ref.instance['reinitialise']()
+      expect(sources[1]!.close).toHaveBeenCalledTimes(1)
+      expect(ref.instance['events']()).toEqual([])
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-2/events?includePreviousEvents=true&collaborative=true'
+      )
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
+  it('posts an opt-in team message without starting or interrupting an agent', async () => {
+    const ref = makeComponent()
+    ref.instance['onCaseMenuAction']('team-chat')
+    ref.instance['inputValue'].set('Bonjour équipe')
+    await ref.instance['submit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: 'Bonjour équipe',
+      userId: 'default-user',
+      mode: 'HUMAN',
+    })
+    expect(ref.instance['isRunning']()).toBe(false)
+  })
+
+  it('invokes the explicitly selected agent in team mode', async () => {
+    const ref = makeComponent()
+    ref.instance['onCaseMenuAction']('team-chat')
+    ref.instance['inputValue'].set('@code')
+    ref.instance['onAgentSelected']({ name: 'code-review' } as import('@whoz-oss/agentos-api-client').AgentConfig)
+    await ref.instance['submit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: '@code-review',
+      userId: 'default-user',
+      mode: 'AGENT',
+      agentName: 'code-review',
+    })
+    expect(ref.instance['isRunning']()).toBe(true)
+  })
+
+  it('allows a human team post while an agent is busy without clearing its streamed response', async () => {
+    const ref = makeComponent()
+    ref.instance['onCaseMenuAction']('team-chat')
+    ref.instance['isRunning'].set(true)
+    ref.instance['streamingText'].set('réponse en cours')
+    ref.instance['inputValue'].set('Je prépare les données')
+    expect(ref.instance['canSend']).toBe(true)
+    await ref.instance['submit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: 'Je prépare les données',
+      userId: 'default-user',
+      mode: 'HUMAN',
+    })
+    expect(ref.instance['isRunning']()).toBe(true)
+    expect(ref.instance['streamingText']()).toBe('réponse en cours')
+  })
+
+  it('keeps different collaborators in separate author groups', () => {
+    const ref = makeComponent()
+    ref.instance['events'].set(
+      ['alice', 'bob'].map((id) => ({
+        id,
+        type: 'MessageEvent',
+        timestamp: '2026-01-01T00:00:00Z',
+        actor: { id, role: 'USER', displayName: id },
+        content: [{ type: 'Text', content: id }],
+      })) as unknown as CaseMessageEvent[]
+    )
+    const messages = ref.instance['timeline']().filter((item) => item.kind === 'message')
+    expect(messages.map((item) => item.isFirstInGroup)).toEqual([true, true])
+    expect(messages.map((item) => item.isLastInGroup)).toEqual([true, true])
+  })
+
+  it('keeps a team draft on failure and prevents duplicate human posts', async () => {
+    const ref = makeComponent()
+    ref.instance['onCaseMenuAction']('team-chat')
+    ref.instance['inputValue'].set('draft')
+    const pending = new Subject<object>()
+    http.post.mockReturnValue(pending)
+    const log = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const first = ref.instance['submit']()
+      ref.instance['inputValue'].set('draft')
+      await ref.instance['submit']()
+      expect(http.post).toHaveBeenCalledTimes(1)
+      pending.error(new Error('offline'))
+      await first
+      expect(ref.instance['inputValue']()).toBe('draft')
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('does not let a team message steal the active agent answer’s usage footer', () => {
+    const ref = makeComponent()
+    ref.instance['events'].set([
+      { id: 'run', type: 'AgentRunningEvent', timestamp: '2026-01-01T00:00:00Z' },
+      { id: 'answer', type: 'MessageEvent', actor: { id: 'agent', role: 'AGENT' }, content: [] },
+      { id: 'team', type: 'MessageEvent', startsAgentTurn: false, actor: { id: 'alice', role: 'USER' }, content: [] },
+      {
+        id: 'done',
+        type: 'AgentFinishedEvent',
+        timestamp: '2026-01-01T00:00:01Z',
+        llmUsage: {
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 2,
+        },
+      },
+    ] as unknown as import('@whoz-oss/agentos-api-client').CaseEvent[])
+    const answer = ref.instance['timeline']().find((item) => item.kind === 'message' && item.event.id === 'answer')
+    expect(answer?.kind === 'message' && answer.metrics?.totalTokens).toBe(2)
+  })
+
+  it('blocks a selected agent invocation while busy but allows an edited human draft', async () => {
+    const ref = makeComponent()
+    ref.instance['onCaseMenuAction']('team-chat')
+    ref.instance['inputValue'].set('@code')
+    ref.instance['onAgentSelected']({ name: 'code-review' } as import('@whoz-oss/agentos-api-client').AgentConfig)
+    ref.instance['isRunning'].set(true)
+    expect(ref.instance['canSend']).toBe(false)
+    await ref.instance['submit']()
+    expect(http.post).not.toHaveBeenCalled()
+    ref.instance['inputValue'].set('@code-reviewer Bonjour')
+    expect(ref.instance['canSend']).toBe(true)
+    await ref.instance['submit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: '@code-reviewer Bonjour',
+      userId: 'default-user',
+      mode: 'HUMAN',
+    })
+  })
+
+  it('continues an iteration-limited agent even when the composer is in team mode', () => {
+    const ref = makeComponent()
+    ref.instance['onCaseMenuAction']('team-chat')
+    ref.instance['continueAfterLimit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: 'Continue',
+      userId: 'default-user',
+    })
+    expect(ref.instance['isRunning']()).toBe(true)
+  })
+
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
     const source = Object.assign(new EventTarget(), { close: jest.fn() })

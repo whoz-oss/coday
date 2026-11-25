@@ -1193,6 +1193,21 @@
     padding-left: 6px;
   }
 
+  &__team-mode {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+
+    [aria-pressed='true'] {
+      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    }
+
+    .case-chat__actions-hint {
+      white-space: normal;
+    }
+  }
+
   // ── Notice bar (case ended, or its event stream was refused) ───────────────
 
   &__notice-bar {

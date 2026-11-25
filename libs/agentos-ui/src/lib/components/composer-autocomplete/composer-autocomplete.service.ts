@@ -380,7 +380,7 @@ export class ComposerAutocompleteService {
     inputValue: { set: (v: string) => void; (): string }
   ): void {
     const completion = agentRef()?.completionFor(agent) ?? `@${agent.name} `
-    const replaced = inputValue().replace(/@\w*$/, completion)
+    const replaced = inputValue().replace(/(^|\s)@[^\s@]*$/, `$1${completion}`)
     inputValue.set(replaced)
     queueMicrotask(() => {
       const el = composerRef()?.nativeElement
@@ -528,8 +528,8 @@ export class ComposerAutocompleteService {
     }
     this.closeFileSuggestions()
 
-    // Agent @-mention (@): detects the last @ not followed by a space.
-    const atMatch = value.match(/@(\w*)$/)
+    // Agent addresses start at a word boundary; hyphenated names are valid, emails are not mentions.
+    const atMatch = value.match(/(?:^|\s)@([^\s@]*)$/)
     if (atMatch) {
       const prefix = atMatch[1] ?? ''
       if (this.agentsLoaded) {

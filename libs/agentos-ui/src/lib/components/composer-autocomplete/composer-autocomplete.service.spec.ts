@@ -99,6 +99,17 @@ function mockFileRef(): WritableSignal<FileAutocompleteComponent | undefined> {
 describe('ComposerAutocompleteService', () => {
   afterEach(() => TestBed.resetTestingModule())
 
+  it('completes a hyphenated agent address without leaving the typed prefix behind', fakeAsync(() => {
+    const { service, agentState } = setup()
+    agentState.listEffective.mockReturnValue(of([makeAgent('code-review')]))
+    const draft = signal('@code-r')
+    service.onInput(draft(), draft)
+    tick(60)
+    expect(service.atSuggestions().map((agent) => agent.name)).toEqual(['code-review'])
+    service.onAgentSelected(makeAgent('code-review'), refSignal(), refSignal(), draft)
+    expect(draft()).toBe('@code-review ')
+  }))
+
   // -------------------------------------------------------------------------
   // init / reset
   // -------------------------------------------------------------------------

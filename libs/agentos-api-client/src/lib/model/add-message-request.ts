@@ -9,7 +9,13 @@
  */
 
 export interface AddMessageRequest {
+  agentName?: string
   answerToEventId?: string
   content: string
+  mode?: AddMessageRequestModeEnum
   sessionContext?: { [key: string]: any }
+}
+export enum AddMessageRequestModeEnum {
+  HUMAN = 'HUMAN',
+  AGENT = 'AGENT',
 }

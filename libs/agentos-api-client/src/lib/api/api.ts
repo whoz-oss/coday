@@ -18,6 +18,8 @@ export * from './case-workspace-controller.service'
 import { CaseWorkspaceControllerService } from './case-workspace-controller.service'
 export * from './config-change-controller.service'
 import { ConfigChangeControllerService } from './config-change-controller.service'
+export * from './cumulative-usage-controller.service'
+import { CumulativeUsageControllerService } from './cumulative-usage-controller.service'
 export * from './effective-configuration-controller.service'
 import { EffectiveConfigurationControllerService } from './effective-configuration-controller.service'
 export * from './exchange-controller.service'
@@ -75,6 +77,7 @@ export const APIS = [
   CaseMembershipControllerService,
   CaseWorkspaceControllerService,
   ConfigChangeControllerService,
+  CumulativeUsageControllerService,
   EffectiveConfigurationControllerService,
   ExchangeControllerService,
   FeedbackControllerService,

@@ -229,6 +229,7 @@ class CaseEventNodeMapper(
                     node.modified,
                     node.modifiedBy,
                     removed,
+                    node.startsAgentTurn,
                 )
             }
 
@@ -504,6 +505,7 @@ class CaseEventNodeMapper(
             llmModel = n.llmModel,
             reasoningEffort = n.reasoningEffort?.let(ReasoningEffort::valueOf),
             requestedReasoningEffort = n.requestedReasoningEffort?.let(ReasoningEffort::valueOf),
+            startsAgentTurn = n.startsAgentTurn ?: true,
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -753,6 +755,7 @@ class CaseEventNodeMapper(
             llmModel = e.llmModel,
             reasoningEffort = e.reasoningEffort?.name,
             requestedReasoningEffort = e.requestedReasoningEffort?.name,
+            startsAgentTurn = e.startsAgentTurn,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

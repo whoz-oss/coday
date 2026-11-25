@@ -71,6 +71,9 @@ import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import io.whozoss.agentos.sdk.api.case.CaseMessageMode
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -458,7 +461,67 @@ class CaseServiceImpl(
         content: List<MessageContent>,
         answerToEventId: UUID?,
         sessionContext: Map<String, Any?>?,
+        mode: CaseMessageMode?,
+        agentName: String?,
     ) {
+        val explicitAgent = mode == CaseMessageMode.AGENT
+        val mentionedName = content.filterIsInstance<MessageContent.Text>().firstOrNull()?.content?.let(AgentMention::extractName)
+        when {
+            !explicitAgent && agentName != null -> throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "agentName requires AGENT mode")
+            mode != null && answerToEventId != null -> throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "Question answers use legacy interaction mode")
+            explicitAgent && (agentName.isNullOrBlank() || (mentionedName != null && mentionedName != agentName)) ->
+                throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "An unambiguous exact agentName is required")
+        }
+        // Explicit collaborative messages cannot implicitly reopen a terminal case.
+        // Closed team history is read-only until the dedicated reopen operation.
+        if (mode != null && getById(caseId).status.isTerminal()) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Reopen the case before posting messages")
+        }
+        if (explicitAgent) {
+            val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
+            val case = getById(caseId)
+            val targets = userId?.let {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(case.namespaceId, it, agentName)
+            }.orEmpty().filter { it.name == agentName }
+            if (targets.size != 1) {
+                throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Agent target is unavailable or ambiguous")
+            }
+            caseLaunchGate?.requireAccepting(caseId)
+            val runtime = getCaseRuntime(caseId)
+            val owner = synchronized(runtime) {
+                when {
+                    runtime.isRunning() || runtime.statusFlow.value in setOf(CaseStatus.PENDING, CaseStatus.RUNNING) -> null
+                    else -> runtime.claimAdmission()
+                }
+            } ?: throw ResponseStatusException(
+                HttpStatus.CONFLICT, "An agent turn is already active")
+            try {
+                if (!runtime.ownsAdmission(owner) || activeRuntimes[caseId] !== runtime) return
+                runtime.publishStatus(CaseStatus.PENDING)
+                if (!runtime.ownsAdmission(owner) || activeRuntimes[caseId] !== runtime) return
+                val ready = runtime.addAddressedMessage(actor, content, sessionContext,
+                    AgentSelectedEvent(namespaceId = case.namespaceId, caseId = caseId,
+                        agentId = targets.single().id, agentName = targets.single().name), owner)
+                if (ready && activeRuntimes[caseId] === runtime) launchRun(runtime, owner)
+            } catch (error: Exception) {
+                (if (runtime.ownsAdmission(owner)) runtime.claimCancelPending() else null)?.let { status ->
+                    runCatching { runtime.publishStatus(status) }
+                        .onFailure { error.addSuppressed(it) }
+                }
+                throw error
+            } finally {
+                runtime.releaseAdmission(owner)
+            }
+            return
+        }
+        if (mode == CaseMessageMode.HUMAN) {
+            getCaseRuntime(caseId).addHumanMessage(actor, content, sessionContext)
+            return
+        }
         caseLaunchGate?.requireAccepting(caseId)
         val runtime = getCaseRuntime(caseId)
         val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
@@ -957,7 +1020,15 @@ class CaseServiceImpl(
     ) {
         val case = getById(caseId)
         val oldStatus = case.status
-        val updated = caseRepository.saveChange(case) { it.copy(status = newStatus) }
+        // Revalidate cancellation on optimistic-lock retries after blocking persistence.
+        val runtimeAtWrite = activeRuntimes[caseId]
+        fun cancelledPending() = newStatus == CaseStatus.PENDING && runtimeAtWrite != null &&
+            (!runtimeAtWrite.pendingStatusMayPublish() || activeRuntimes[caseId] !== runtimeAtWrite)
+        if (cancelledPending()) return
+        val updated = caseRepository.saveChange(case) {
+            if (cancelledPending()) it else it.copy(status = newStatus)
+        }
+        if (cancelledPending()) return
 
         if (newStatus == CaseStatus.ERROR) {
             logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
@@ -1030,6 +1101,7 @@ class CaseServiceImpl(
                 it.cancelInterruptedTurn()
             }
         }
+        if (gatedRuns == null) family.forEach { it.claimCancelPending()?.let(it::publishStatus) }
     }
 
     /**
@@ -1215,9 +1287,9 @@ class CaseServiceImpl(
     // ======================================================
 
     /** Start an agent turn: now without a [caseLaunchGate], once it admits the turn with one. */
-    private fun launchRun(runtime: CaseRuntime) {
+    private fun launchRun(runtime: CaseRuntime, owner: CaseRuntime.Admission? = null) {
         if (gatedRuns != null) {
-            gatedRuns.launch(runtime)
+            gatedRuns.launch(runtime, owner)
         } else {
             val scheduledAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
             scope.launch {
@@ -1227,7 +1299,7 @@ class CaseServiceImpl(
                             "${(System.nanoTime() - scheduledAtNanos) / 1_000_000}ms"
                     }
                 }
-                runtime.run()
+                if (activeRuntimes[runtime.id] === runtime) runtime.run(owner)
             }
         }
     }

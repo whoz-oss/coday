@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.nulls.shouldBeNull
@@ -298,6 +299,329 @@ class CaseServiceImplSpec :
                 runCostService = runCostService,
                 coroutineContext = coroutineContext,
             )
+        }
+
+        listOf(false, true).forEach { gated ->
+            listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { terminal ->
+                "explicit messages reject $terminal without writes gated=$gated" {
+                    val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                    val gate = if (gated) mockk<CaseLaunchGate>(relaxed = true) else null
+                    val service = buildService(caseEventService = events, caseLaunchGate = gate,
+                        coroutineContext = StandardTestDispatcher())
+                    try {
+                        val case = service.create(Case(namespaceId = namespaceId, status = terminal))
+                        val before = events.findByParent(case.id)
+                        listOf(io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT,
+                            io.whozoss.agentos.sdk.api.case.CaseMessageMode.HUMAN).forEach { mode ->
+                            shouldThrow<org.springframework.web.server.ResponseStatusException> {
+                                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do not reopen")),
+                                    mode = mode, agentName = agentName.takeIf { mode == io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT })
+                            }.statusCode.value() shouldBe 409
+                        }
+                        service.getById(case.id).status shouldBe terminal
+                        events.findByParent(case.id) shouldBe before
+                        service.getCaseRuntime(case.id).claimPending().shouldBeNull()
+                    } finally { service.shutdown() }
+                }
+            }
+        }
+
+        listOf(false, true).forEach { gated ->
+            listOf(false, true).forEach { kill ->
+                "cancellation during explicit message persistence prevents launch gated=$gated kill=$kill" {
+                    val realEvents = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                    val entered = CountDownLatch(1)
+                    val release = CountDownLatch(1)
+                    val finished = CountDownLatch(1)
+                    var failure: Throwable? = null
+                    val executions = AtomicInteger()
+                    val agent = finishingAgent()
+                    every { agent.run(any<List<CaseEvent>>(), any()) } answers {
+                        executions.incrementAndGet()
+                        val id = firstArg<List<CaseEvent>>().first().caseId
+                        flow { emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = id,
+                            agentId = agentId, agentName = agentName)) }
+                    }
+                    val events = mockk<CaseEventService> {
+                        every { findByParent(any()) } answers { realEvents.findByParent(firstArg()) }
+                        every { create(any()) } answers {
+                            val event = firstArg<CaseEvent>()
+                            if (event is MessageEvent) {
+                                entered.countDown()
+                                check(release.await(5, TimeUnit.SECONDS))
+                            }
+                            realEvents.create(event)
+                        }
+                    }
+                    val gate = if (gated) mockk<CaseLaunchGate> {
+                        every { requireAccepting(any()) } just Runs
+                        every { launchDecision(any()) } returns LaunchDecision.Admit
+                        every { withAdmission(any(), any(), any<() -> Unit>()) } answers { thirdArg<() -> Unit>().invoke(); true }
+                        every { keepOpenOnShutdown(any()) } returns false
+                    } else null
+                    val service = buildService(agent = agent, caseEventService = events, caseLaunchGate = gate)
+                    try {
+                        val case = service.create(Case(namespaceId = namespaceId, title = "Team"))
+                        val runtime = service.getCaseRuntime(case.id)
+                        thread(isDaemon = true) {
+                            try {
+                                service.addMessage(case.id, userActor, listOf(MessageContent.Text("cancel me")),
+                                    mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT, agentName = agentName)
+                            } catch (e: Throwable) { failure = e } finally { finished.countDown() }
+                        }
+                        entered.await(5, TimeUnit.SECONDS) shouldBe true
+                        if (kill) service.killCase(case.id) else service.interruptCase(case.id)
+                        val statusEventsAtCancellation = realEvents.findByParent(case.id).filterIsInstance<CaseStatusEvent>().size
+                        release.countDown()
+                        finished.await(5, TimeUnit.SECONDS) shouldBe true
+                        failure.shouldBeNull()
+                        delay(100)
+                        executions.get() shouldBe 0
+                        realEvents.findByParent(case.id).filterIsInstance<AgentSelectedEvent>() shouldHaveSize 0
+                        realEvents.findByParent(case.id).filterIsInstance<CaseStatusEvent>().size shouldBe statusEventsAtCancellation
+                        service.getById(case.id).status shouldBe if (kill) CaseStatus.KILLED else CaseStatus.IDLE
+                        runtime.isRunning() shouldBe false
+                    } finally { release.countDown(); service.shutdown() }
+                }
+            }
+        }
+
+        listOf(false, true).forEach { kill ->
+            "cancelled explicit admission cannot overwrite status after blocked PENDING save kill=$kill" {
+                val repository = spyk(InMemoryCaseRepository())
+                val entered = CountDownLatch(1)
+                val release = CountDownLatch(1)
+                val finished = CountDownLatch(1)
+                val blockOnce = AtomicBoolean(true)
+                every { repository.save(any()) } answers {
+                    val candidate = firstArg<Case>()
+                    if (candidate.status == CaseStatus.PENDING && blockOnce.compareAndSet(true, false)) {
+                        val before = repository.findById(candidate.id)
+                        entered.countDown()
+                        check(release.await(5, TimeUnit.SECONDS))
+                        if (repository.findById(candidate.id) != before) {
+                            throw OptimisticLockingFailureException("Concurrent lifecycle status write")
+                        }
+                    }
+                    callOriginal()
+                }
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val service = buildService(caseRepository = repository, caseEventService = events)
+                var failure: Throwable? = null
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId, title = "Team"))
+                    thread(isDaemon = true) {
+                        try {
+                            service.addMessage(case.id, userActor, listOf(MessageContent.Text("cancel me")),
+                                mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT, agentName = agentName)
+                        } catch (e: Throwable) { failure = e } finally { finished.countDown() }
+                    }
+                    entered.await(5, TimeUnit.SECONDS) shouldBe true
+                    if (kill) service.killCase(case.id) else service.interruptCase(case.id)
+                    val statuses = events.findByParent(case.id).filterIsInstance<CaseStatusEvent>()
+                    release.countDown()
+                    finished.await(5, TimeUnit.SECONDS) shouldBe true
+                    failure.shouldBeNull()
+                    service.getById(case.id).status shouldBe if (kill) CaseStatus.KILLED else CaseStatus.IDLE
+                    events.findByParent(case.id).filterIsInstance<CaseStatusEvent>() shouldBe statuses
+                    events.findByParent(case.id).filterIsInstance<MessageEvent>() shouldHaveSize 0
+                } finally { release.countDown(); service.shutdown() }
+            }
+        }
+
+        listOf(false, true).forEach { gated ->
+            listOf(false, true).forEach { kill ->
+                "cancelled explicit dispatched launch cannot execute and Stop permits retry gated=$gated kill=$kill" {
+                    runTest {
+                        val executions = AtomicInteger()
+                        val agent = finishingAgent()
+                        every { agent.run(any<List<CaseEvent>>(), any()) } answers {
+                            executions.incrementAndGet()
+                            val id = firstArg<List<CaseEvent>>().first().caseId
+                            flow { emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = id,
+                                agentId = agentId, agentName = agentName)) }
+                        }
+                        val gate = if (gated) mockk<CaseLaunchGate> {
+                            every { requireAccepting(any()) } just Runs
+                            every { launchDecision(any()) } returns LaunchDecision.Admit
+                            every { withAdmission(any(), any(), any<() -> Unit>()) } answers { thirdArg<() -> Unit>().invoke() }
+                            every { keepOpenOnShutdown(any()) } returns false
+                        } else null
+                        val service = buildService(agent = agent, caseLaunchGate = gate,
+                            coroutineContext = StandardTestDispatcher(testScheduler))
+                        try {
+                            val case = service.create(Case(namespaceId = namespaceId, title = "Team"))
+                            service.addMessage(case.id, userActor, listOf(MessageContent.Text("cancel queued")),
+                                mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT, agentName = agentName)
+                            if (kill) service.killCase(case.id) else service.interruptCase(case.id)
+                            testScheduler.runCurrent()
+                            executions.get() shouldBe 0
+                            service.getById(case.id).status shouldBe if (kill) CaseStatus.KILLED else CaseStatus.IDLE
+                            if (!kill) {
+                                service.addMessage(case.id, userActor, listOf(MessageContent.Text("fresh invocation")),
+                                    mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT, agentName = agentName)
+                                testScheduler.runCurrent()
+                                executions.get() shouldBe 1
+                                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                            }
+                        } finally { service.shutdown() }
+                    }
+                }
+            }
+        }
+
+        "failed explicit message persistence releases admission for retry" {
+            val repository = InMemoryCaseEventRepository()
+            val realEvents = CaseEventServiceImpl(repository)
+            var fail = true
+            val events = mockk<CaseEventService> {
+                every { findByParent(any()) } answers { realEvents.findByParent(firstArg()) }
+                every { create(any()) } answers {
+                    val event = firstArg<CaseEvent>()
+                    if (fail && event is MessageEvent) throw IllegalStateException("storage unavailable")
+                    realEvents.create(event)
+                }
+            }
+            val service = buildService(caseEventService = events, coroutineContext = StandardTestDispatcher())
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "Team"))
+                shouldThrow<IllegalStateException> {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("First")),
+                        mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT, agentName = agentName)
+                }
+                service.getCaseRuntime(case.id).statusFlow.value shouldBe CaseStatus.IDLE
+                fail = false
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Retry")),
+                    mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT, agentName = agentName)
+                realEvents.findByParent(case.id).filterIsInstance<MessageEvent>() shouldHaveSize 1
+            } finally { service.shutdown() }
+        }
+
+        "second explicit invocation is rejected while first is admitted but not running" {
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseEventService = events, coroutineContext = StandardTestDispatcher())
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "Team"))
+                val ai = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("First")), mode = ai, agentName = agentName)
+                shouldThrow<org.springframework.web.server.ResponseStatusException> {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("Second")), mode = ai, agentName = agentName)
+                }.statusCode.value() shouldBe 409
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Discussion during admission")),
+                    mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.HUMAN)
+                events.findByParent(case.id).filterIsInstance<MessageEvent>() shouldHaveSize 2
+            } finally { service.shutdown() }
+        }
+
+        "explicit modes reject inconsistent payloads without storing messages" {
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseEventService = events, coroutineContext = StandardTestDispatcher())
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "Team"))
+                val human = io.whozoss.agentos.sdk.api.case.CaseMessageMode.HUMAN
+                val ai = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT
+                listOf(Triple(human, agentName, null), Triple(human, null, UUID.randomUUID()),
+                    Triple(ai, null, null), Triple(ai, " ", null), Triple(ai, agentName, UUID.randomUUID()),
+                    Triple(null, agentName, null)).forEach { (mode, target, answer) ->
+                    shouldThrow<org.springframework.web.server.ResponseStatusException> {
+                        service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")),
+                            answerToEventId = answer, mode = mode, agentName = target)
+                    }.statusCode.value() shouldBe 400
+                }
+                shouldThrow<org.springframework.web.server.ResponseStatusException> {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("@other hello")),
+                        mode = ai, agentName = agentName)
+                }.statusCode.value() shouldBe 400
+                events.findByParent(case.id) shouldHaveSize 0
+            } finally { service.shutdown() }
+        }
+
+        "AGENT mode selects the exact addressed target and sees previous team discussion" {
+            val selected = "exact-agent"
+            val agent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = UUID.randomUUID())
+                every { name } returns selected
+                every { id } returns metadata.id
+                every { llmProvider } returns "test"
+                every { llmModel } returns "test"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val history = firstArg<List<CaseEvent>>()
+                    history.filterIsInstance<MessageEvent>().map { it.content } shouldBe listOf(
+                        listOf(MessageContent.Text("Team decision")), listOf(MessageContent.Text("Please act")))
+                    flow { emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = history.first().caseId,
+                        agentId = UUID.randomUUID(), agentName = selected)) }
+                }
+            }
+            val agents = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(selected, any(), any()) } returns agent
+            }
+            val service = buildService(agentService = agents)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "Team"))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Team decision")),
+                    mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.HUMAN)
+                val runtime = service.getCaseRuntime(case.id)
+                val awaiter = expectCaseStatus(runtime, CaseStatus.IDLE)
+                awaitSubscribers(runtime)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Please act")),
+                    mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT, agentName = selected)
+                awaiter.join()
+                io.mockk.coVerify(exactly = 1) { agents.findAgentByName(selected, any(), any()) }
+            } finally { service.shutdown() }
+        }
+
+        "AGENT mode rejects unavailable target before writing instead of falling back" {
+            val configs = mockk<AgentConfigService> {
+                every { findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns emptyList()
+            }
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(agentConfigService = configs, caseEventService = events,
+                coroutineContext = StandardTestDispatcher())
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "Team"))
+                val error = shouldThrow<org.springframework.web.server.ResponseStatusException> {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("@missing help")),
+                        mode = io.whozoss.agentos.sdk.api.case.CaseMessageMode.AGENT, agentName = "missing")
+                }
+                error.statusCode.value() shouldBe 400
+                events.findByParent(case.id) shouldHaveSize 0
+            } finally { service.shutdown() }
+        }
+
+        "HUMAN transport stores and broadcasts discussion without selecting or launching AI" {
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val users = mockk<UserService> {
+                every { getCurrentUser() } returns activeUser
+                every { findById(userId) } returns activeUser
+                every { getById(userId) } returns activeUser
+            }
+            val dispatcher = StandardTestDispatcher()
+            val service = buildService(caseEventService = events, userService = users, coroutineContext = dispatcher)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "Team chat"))
+                val runtime = service.getCaseRuntime(case.id)
+                val controller = CaseController(service, events, mockk(relaxed = true), users,
+                    permissionService, mockk(relaxed = true), NoOpCaseReadService(), caseListUpdateBroadcaster)
+                val request = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readValue(
+                    """{"content":"@test-agent /prompt is just discussion", "mode":"HUMAN"}""",
+                    io.whozoss.agentos.sdk.api.case.AddMessageRequest::class.java,
+                )
+                val received = mutableListOf<CaseEvent>()
+                val subscriber = launch { runtime.events.collect { received.add(it) } }
+                awaitSubscribers(runtime)
+                controller.addMessage(case.id, request)
+                delay(100)
+                subscriber.cancel()
+                val stored = events.findByParent(case.id)
+                stored.filterIsInstance<MessageEvent>().single().actor.id shouldBe userId.toString()
+                stored.filterIsInstance<AgentSelectedEvent>() shouldHaveSize 0
+                received.filterIsInstance<MessageEvent>() shouldHaveSize 1
+                runtime.statusFlow.value shouldBe CaseStatus.CREATED
+                verify(exactly = 0) { promptService.findEffective(any(), any()) }
+            } finally {
+                service.shutdown()
+            }
         }
 
         // -------------------------------------------------------------------------

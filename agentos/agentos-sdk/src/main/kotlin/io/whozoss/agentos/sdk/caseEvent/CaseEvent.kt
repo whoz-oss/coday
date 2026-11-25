@@ -233,6 +233,8 @@ data class MessageEvent(
      * null, the level was not applied: the provider takes no effort (Anthropic, Gemini).
      */
     val requestedReasoningEffort: ReasoningEffort? = null,
+    /** False for passive human discussion; legacy messages start an agent turn. */
+    val startsAgentTurn: Boolean = true,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.MESSAGE
 }

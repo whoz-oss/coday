@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.case.CaseMessageMode
 import java.util.UUID
 
 /**
@@ -133,7 +134,8 @@ interface CaseService : EntityService<Case, UUID> {
     // ========================================
 
     /**
-     * Store a user message on the case and launch the execution loop in the background.
+     * Store a user message on the case. HUMAN mode is passive; AGENT requires an exact
+     * authorized target. Without mode the legacy execution loop is launched in the background.
      * Returns immediately — the caller is never blocked by agent execution.
      *
      * [sessionContext] is an optional opaque map of application-level context at the time
@@ -148,6 +150,8 @@ interface CaseService : EntityService<Case, UUID> {
         content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,
         answerToEventId: UUID? = null,
         sessionContext: Map<String, Any?>? = null,
+        mode: CaseMessageMode? = null,
+        agentName: String? = null,
     )
 
     // ========================================

@@ -68,6 +68,26 @@ class MethodSecurityIntegrationSpec : StringSpec() {
 
     init {
 
+        "collaborative message modes require case WRITE even for namespace readers" {
+            val caseId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns regularUser
+            every { permissionService.hasPermission(regularUser.id.toString(), EntityType.CASE, caseId.toString(), Action.WRITE) } returns false
+            listOf("HUMAN", "AGENT").forEach { mode ->
+                mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/api/cases/$caseId/messages")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"hello","mode":"$mode","agentName":"helper"}"""))
+                    .andExpect(status().isForbidden)
+            }
+        }
+
+        "case discussion replay remains hidden from callers without READ" {
+            val caseId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns regularUser
+            every { permissionService.hasPermission(regularUser.id.toString(), EntityType.CASE, caseId.toString(), Action.READ) } returns false
+            mockMvc.perform(get("/api/cases/$caseId"))
+                .andExpect(status().isNotFound)
+        }
+
         "endpoint without @PreAuthorize is reachable for any caller" {
             every { userService.getCurrentUser() } returns regularUser
 

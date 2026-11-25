@@ -359,6 +359,25 @@ class AgentSimpleUnitSpec :
             (contextIndex + 1) shouldBe userMsgIndex
         }
 
+        "passive discussion cannot replace simple agent invoking session context" {
+            val capturedPrompt = slot<Prompt>()
+            val client = mockk<ChatClient>(relaxed = true)
+            val stream = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+            every { client.prompt(capture(capturedPrompt)).stream() } returns stream
+            every { stream.chatResponse() } returns chatResponseFlux("ok")
+            val invoking = MessageEvent(namespaceId = UUID.randomUUID(), caseId = UUID.randomUUID(),
+                actor = Actor("alice", "Alice", ActorRole.USER), content = listOf(MessageContent.Text("invoke")),
+                sessionContext = mapOf("entityId" to "alice-entity"))
+            val passive = invoking.copy(actor = Actor("bob", "Bob", ActorRole.USER),
+                content = listOf(MessageContent.Text("discussion")), startsAgentTurn = false,
+                sessionContext = mapOf("entityId" to "bob-entity"))
+            makeAgent(UUID.randomUUID(), client).run(listOf(invoking, passive)).toList()
+            val text = capturedPrompt.captured.instructions.joinToString("\n") { it.text }
+            text shouldContain "entityId: alice-entity"
+            text.contains("entityId: bob-entity") shouldBe false
+            text shouldContain "discussion"
+        }
+
         "session context on earlier user messages is NOT injected into the LLM prompt" {
             // Only the last user message's sessionContext is injected.
             // A context on a previous turn must be silently ignored.

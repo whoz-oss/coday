@@ -26,6 +26,8 @@ import { SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
   Actor,
+  AddMessageRequest,
+  AddMessageRequestModeEnum,
   AgentFinishedEvent,
   AgentRunningEvent,
   AgentSelectedEvent,
@@ -291,6 +293,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected inputValue = signal('')
   protected isRunning = signal(false)
+  protected readonly teamChat = signal(false)
+  protected readonly sendError = signal('')
+  private readonly selectedTeamAgent = signal<string | null>(null)
+  protected readonly addressedAgent = computed(() => {
+    const name = this.selectedTeamAgent()
+    const text = this.inputValue().trimStart()
+    return name && (text === `@${name}` || text.startsWith(`@${name} `) || text.startsWith(`@${name}\n`)) ? name : null
+  })
 
   /**
    * True once the browser gave up on the event stream for good — EventSource reaching CLOSED.
@@ -368,7 +378,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   ])
 
   protected onCaseMenuAction(key: string): void {
-    if (key === 'stop' && !this.isTerminal()) this.confirmingKill.set(true)
+    if (key === 'team-chat' && !this.submitting && !this.voice.isBusy()) {
+      this.teamChat.update((enabled) => !enabled)
+      this.selectedTeamAgent.set(null)
+      this.autocomplete.effortSuggestions.set([])
+      // Keep the draft and timeline: only the subscription opt-in changes.
+      if (this.eventSource || this.streamUnavailable()) this.retryStream()
+    } else if (key === 'stop' && !this.isTerminal()) this.confirmingKill.set(true)
     else if (key === 'delete') this.confirmingDelete.set(true)
   }
 
@@ -644,11 +660,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       if (e.type === 'MessageEvent') {
         const msg = e as CaseMessageEvent
         const role = msg.actor.role
-        const isFirstInGroup = role !== lastMessageRole
-        lastMessageRole = role
+        const author = `${role}:${msg.actor.id}`
+        const isFirstInGroup = author !== lastMessageRole
+        lastMessageRole = author
         // A new user message opens a turn: a failure that persists is worth warning about again,
         // and no answer from before it may still collect figures.
-        if (role === 'USER') {
+        if (role === 'USER' && msg.startsAgentTurn !== false) {
           warningsThisTurn.clear()
           lastAgentMessageIndex = null
         }
@@ -721,7 +738,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       const item = items[index]
       if (item?.kind !== 'message') continue
       const next = items[index + 1]
-      item.isLastInGroup = next?.kind !== 'message' || next.event.actor.role !== item.event.actor.role
+      item.isLastInGroup = next?.kind !== 'message' || next.isFirstInGroup
     }
 
     return groupToolCalls(items)
@@ -732,7 +749,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const events = this.events()
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i]
-      if (e?.type === 'MessageEvent' && (e as CaseMessageEvent).actor.role === 'USER') return null
+      if (e?.type === 'MessageEvent' && e.actor.role === 'USER' && (e as CaseMessageEvent).startsAgentTurn !== false)
+        return null
       if (e?.type === 'AgentFinishedEvent') return (e as AgentFinishedEvent).maxIterationsReached != null ? e.id : null
     }
     return null
@@ -854,7 +872,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected get canSend(): boolean {
     return (
       (!!this.inputValue().trim() || this.attachments.hasAttachments() || this.referencedFiles().length > 0) &&
-      !this.isRunning() &&
+      (!this.isRunning() || (this.teamChat() && !this.addressedAgent())) &&
       // Only a confirmed deletion closes the composer: a dead stream alone may just be a backend
       // restarting, and a message posted then still reaches a healthy case.
       !this.composerClosed() &&
@@ -866,6 +884,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** The mic is usable under the conditions that enable the textarea, and while no recording is under way. */
   protected get canRecord(): boolean {
     return (
+      !this.teamChat() &&
       !this.isRunning() &&
       !this.composerClosed() &&
       !this.attachments.isUploading() &&
@@ -1046,13 +1065,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   private connectSse(): void {
-    const url = `${this.config.basePath}/api/cases/${this.caseId}/events`
+    const query = this.teamChat() ? '?includePreviousEvents=true&collaborative=true' : ''
+    const url = `${this.config.basePath}/api/cases/${this.caseId}/events${query}`
 
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
+    const source = this.eventSource
 
     // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
     // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
     const handler = (msg: globalThis.MessageEvent<string>) => {
+      if (this.eventSource !== source) return
       const sseEventName = (msg as unknown as { type?: string }).type
       const raw = msg.data
 
@@ -1241,7 +1263,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
 
     this.eventSource.onerror = () => {
-      const closed = this.eventSource?.readyState === EVENT_SOURCE_CLOSED
+      if (this.eventSource !== source) return
+      const closed = source.readyState === EVENT_SOURCE_CLOSED
       if (closed) console.warn('[AgentOS SSE] stream closed for case', this.caseId)
       this.zone.run(() => {
         this.isRunning.set(false)
@@ -1298,6 +1321,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   protected onAgentSelected(agent: AgentConfig): void {
+    this.selectedTeamAgent.set(agent.name)
     this.autocomplete.onAgentSelected(agent, this.agentAutocompleteRef, this.composerInput, this.inputValue)
   }
 
@@ -1335,7 +1359,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * opened through namespace access only is not in it), and a run reads it at its start.
    */
   private canChangeEffort(): boolean {
-    return !!this.activeCase() && !this.isTerminal()
+    return !this.teamChat() && !!this.activeCase() && !this.isTerminal()
   }
 
   /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
@@ -1369,6 +1393,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called when the router reuses this component instance for a different case.
    */
   private reinitialise(): void {
+    this.selectedTeamAgent.set(null)
+    this.sendError.set('')
     // Cancel any pending terminal-close timer before reconnecting: a stale timer must
     // not close the freshly created EventSource for the reopened case.
     if (this.terminalCloseTimer !== null) {
@@ -1413,7 +1439,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     const content = this.inputValue().trim()
     // A typed "/effort <level>" is a command for the case, never a message for the agent. When the
     // effort cannot be changed here, the text stays in the composer.
-    const effortCommand = parseEffortCommand(content)
+    const effortCommand = this.teamChat() ? undefined : parseEffortCommand(content)
     if (effortCommand !== undefined) {
       if (effortCommand) {
         this.onEffortSelected(effortCommand)
@@ -1455,35 +1481,49 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
       return
     }
-    this.inputValue.set('')
-    this.sendMessage(content)
-  }
-
-  private sendMessage(content: string): void {
-    void this.postMessage(content)
+    this.submitting = true
+    const caseIdAtSubmit = this.caseId
+    try {
+      const sent = await this.postMessage(content)
+      if (sent && this.caseId === caseIdAtSubmit && this.inputValue().trim() === content) this.inputValue.set('')
+    } finally {
+      this.submitting = false
+    }
   }
 
   /** The agent resumes from the history: its tool calls and its summary of the work so far. */
   protected continueAfterLimit(): void {
     // An attachment send in flight is not running yet: posting now would send two messages.
     if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.composerClosed()) return
-    this.sendMessage('Continue')
+    void this.postMessage('Continue', true)
   }
 
-  private postMessage(content: string): Promise<boolean> {
-    this.isRunning.set(true)
-    this.streamingText.set('')
+  private postMessage(content: string, resumeAgent = false): Promise<boolean> {
+    this.sendError.set('')
+    const collaborative = this.teamChat() && !resumeAgent
+    const agentName = collaborative ? this.addressedAgent() : null
+    const humanOnly = collaborative && !agentName
+    if (!humanOnly) {
+      this.isRunning.set(true)
+      this.streamingText.set('')
+    }
 
     return firstValueFrom(
       this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
         content,
         userId: 'default-user',
-      })
+        ...(collaborative
+          ? agentName
+            ? { mode: AddMessageRequestModeEnum.AGENT, agentName }
+            : { mode: AddMessageRequestModeEnum.HUMAN }
+          : {}),
+      } satisfies AddMessageRequest & { userId: string })
     ).then(
       () => true,
       (err) => {
+        this.sendError.set('Le message n’a pas été envoyé. Réessayez.')
         console.error('[CaseChat] Failed to send message', err)
-        this.isRunning.set(false)
+        if (!humanOnly) this.isRunning.set(false)
         return false
       }
     )

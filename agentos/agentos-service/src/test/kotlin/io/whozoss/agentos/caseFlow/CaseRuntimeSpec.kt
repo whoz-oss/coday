@@ -118,6 +118,31 @@ class CaseRuntimeSpec : StringSpec() {
         agentName = agentName,
     )
 
+    init {
+        "human discussion does not steal the active invoking user or hide its selection" {
+            val alice = UUID.randomUUID()
+            val bob = Actor(UUID.randomUUID().toString(), "Bob", ActorRole.USER)
+            val saved = mutableListOf<CaseEvent>()
+            val caseId = UUID.randomUUID()
+            var executingUser: UUID? = null
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(caseId, namespaceId, Instant.now(), { _, _ -> },
+                { saved.add(it); it }, { _, _ -> listOf(agentSelectedEvent(caseId, "helper")) },
+                { _, user -> user == alice },
+                { name, events, _, user, _ ->
+                    executingUser = user
+                    events.filterIsInstance<MessageEvent>().size shouldBe 2
+                    runtime.pushEvents(listOf(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
+                        agentId = UUID.randomUUID(), agentName = name)))
+                })
+            runtime.addUserMessage(Actor(alice.toString(), "Alice", ActorRole.USER), userMessage)
+            runtime.addHumanMessage(bob, listOf(MessageContent.Text("team context")))
+            runtime.run()
+            executingUser shouldBe alice
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+    }
+
     data class TestFixture(
         val runtime: CaseRuntime,
         val selectAgent: RecordingSelectAgent,

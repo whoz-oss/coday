@@ -70,7 +70,7 @@ class CaseEventSseController(
         description =
             "Every SSE frame uses the stable event name 'case-event'. " +
                 "Its JSON CaseEvent payload carries the subtype in its 'type' discriminant. " +
-                "includePreviousEvents defaults to true.",
+                "includePreviousEvents defaults to true. collaborative=true keeps inactive cases subscribed without running an agent.",
         responses = [
             ApiResponse(
                 responseCode = "200",
@@ -87,6 +87,7 @@ class CaseEventSseController(
     fun streamEvents(
         @PathVariable caseId: UUID,
         @RequestParam(defaultValue = "true") includePreviousEvents: Boolean = true,
+        @RequestParam(defaultValue = "false") collaborative: Boolean = false,
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
 
@@ -106,6 +107,7 @@ class CaseEventSseController(
             includePreviousEvents = includePreviousEvents,
             caseId = caseId,
             emitter = emitter,
+            collaborative = collaborative,
         )
 
          // Heartbeat: periodically send an SSE comment frame so that a client
@@ -142,8 +144,12 @@ class CaseEventSseController(
         includePreviousEvents: Boolean,
         caseId: UUID,
         emitter: SseEmitter,
+        collaborative: Boolean,
     ) {
-        val activeCase = caseService.findActiveRuntime(caseId)
+        val activeCase = when {
+            collaborative -> caseService.getCaseRuntime(caseId)
+            else -> caseService.findActiveRuntime(caseId)
+        }
         val liveEvents = Channel<CaseEvent>(LIVE_BUFFER_CAPACITY)
         val invalidated = AtomicBoolean(false)
 

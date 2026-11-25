@@ -346,6 +346,8 @@ class CaseController(
             content = listOf(MessageContent.Text(request.content)),
             answerToEventId = request.answerToEventId,
             sessionContext = request.sessionContext,
+            mode = request.mode,
+            agentName = request.agentName,
         )
         logger.info { "Message added to case: $caseId" }
     }
