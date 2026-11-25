@@ -187,7 +187,8 @@ describe('ComposerAttachmentsComponent — referenced exchange files', () => {
   const namespaceFile = { scope: ExchangeFileEntryScopeEnum.NAMESPACE, path: 'docs/readme.md' }
   const caseFile = { scope: ExchangeFileEntryScopeEnum.CASE, path: 'notes/todo.md' }
   const chipsOf = (ref: ComponentRef<ComposerAttachmentsComponent>) =>
-    (ref.location.nativeElement as HTMLElement).querySelectorAll('.composer-attachments__chip')
+    // The references are <agentos-file-chip> (.file-chip), the staged uploads keep their own chip: document order.
+    (ref.location.nativeElement as HTMLElement).querySelectorAll('.file-chip, .composer-attachments__chip')
 
   it('renders a chip when there are only references', () => {
     const ref = makeComponent([])
@@ -203,14 +204,14 @@ describe('ComposerAttachmentsComponent — referenced exchange files', () => {
     ref.changeDetectorRef.detectChanges()
     const [first, second] = Array.from(chipsOf(ref))
 
-    expect(first!.querySelector('.composer-attachments__icon')?.textContent).toContain('folder_shared')
-    expect(first!.querySelector('.composer-attachments__name')?.textContent).toContain('readme.md')
-    expect(first!.querySelector('.composer-attachments__name')?.getAttribute('title')).toBe('namespace:docs/readme.md')
-    expect(first!.querySelector('.composer-attachments__kind')?.textContent).toContain('MD')
-    expect(first!.querySelector('.composer-attachments__badge')?.textContent).toContain('namespace')
-    expect(second!.querySelector('.composer-attachments__icon')?.textContent).toContain('description')
-    expect(second!.querySelector('.composer-attachments__name')?.getAttribute('title')).toBe('case:notes/todo.md')
-    expect(second!.querySelector('.composer-attachments__badge')?.textContent).toContain('case')
+    expect(first!.querySelector('.file-chip__icon')?.textContent).toContain('folder_shared')
+    expect(first!.querySelector('.file-chip__name')?.textContent).toContain('readme.md')
+    expect(first!.querySelector('.file-chip__name')?.getAttribute('title')).toBe('namespace:docs/readme.md')
+    expect(first!.querySelector('.file-chip__kind')?.textContent).toContain('MD')
+    expect(first!.querySelector('.file-chip__badge')?.textContent).toContain('namespace')
+    expect(second!.querySelector('.file-chip__icon')?.textContent).toContain('description')
+    expect(second!.querySelector('.file-chip__name')?.getAttribute('title')).toBe('case:notes/todo.md')
+    expect(second!.querySelector('.file-chip__badge')?.textContent).toContain('case')
   })
 
   it('puts the references before the staged uploads', () => {
@@ -256,7 +257,17 @@ describe('ComposerAttachmentsComponent — referenced exchange files', () => {
     ref.setInput('namespaceBadge', true)
     ref.changeDetectorRef.detectChanges()
 
-    expect(chipsOf(ref)[0]!.querySelector('.composer-attachments__badge')?.textContent).toContain('case')
+    expect(chipsOf(ref)[0]!.querySelector('.file-chip__badge')?.textContent).toContain('case')
+  })
+
+  it('shows a reference as a removable <agentos-file-chip>', () => {
+    const ref = makeComponent([])
+    ref.setInput('references', [namespaceFile])
+    ref.changeDetectorRef.detectChanges()
+    const host = ref.location.nativeElement as HTMLElement
+
+    expect(host.querySelectorAll('agentos-file-chip')).toHaveLength(1)
+    expect(host.querySelector('agentos-file-chip button')).not.toBeNull()
   })
 })
 

@@ -16,4 +16,12 @@ object RunIntegrationCustomizerOrder {
 
     /** Resolves the exchange path tokens in every integration's parameters. */
     const val EXCHANGE_PATHS: Int = 200
+
+    /**
+     * Resolves the operator-declared environment tokens (`{{FACTORY_URL}}`...) in every integration's
+     * parameters. After the exchange paths, but nothing depends on it: the values are controlled by the
+     * operator, so they can neither spell an exchange token nor depend on what a customizer wrote, and
+     * no exchange path can spell a declared token.
+     */
+    const val ENVIRONMENT_TOKENS: Int = 300
 }

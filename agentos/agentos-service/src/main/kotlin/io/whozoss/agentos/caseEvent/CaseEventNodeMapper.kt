@@ -224,6 +224,7 @@ class CaseEventNodeMapper(
                     node.llmModel,
                     node.reasoningEffort,
                     node.requestedReasoningEffort,
+                    node.rerunOf,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -504,6 +505,7 @@ class CaseEventNodeMapper(
             llmModel = n.llmModel,
             reasoningEffort = n.reasoningEffort?.let(ReasoningEffort::valueOf),
             requestedReasoningEffort = n.requestedReasoningEffort?.let(ReasoningEffort::valueOf),
+            rerunOf = n.rerunOf?.let { UUID.fromString(it) },
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -753,6 +755,7 @@ class CaseEventNodeMapper(
             llmModel = e.llmModel,
             reasoningEffort = e.reasoningEffort?.name,
             requestedReasoningEffort = e.requestedReasoningEffort?.name,
+            rerunOf = e.rerunOf?.toString(),
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

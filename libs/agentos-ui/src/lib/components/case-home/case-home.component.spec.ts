@@ -17,14 +17,18 @@ import {
   ExchangeFileEntryScopeEnum,
   IntegrationTypeControllerService,
   NamespaceGitControllerService,
+  ReasoningEffort,
   VoiceMessageControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
+import { AiModelStateService } from '../../services/ai-model-state.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
+import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
+import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
 import { CaseHomeComponent } from './case-home.component'
@@ -64,6 +68,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
     canWriteNamespace: ReturnType<typeof signal<boolean>>
   }
   let queryParams$: Subject<Record<string, string>>
+  let aiModels: { listAvailable: jest.Mock }
   let calls: string[]
   let voiceApi: { postVoiceMessage: jest.Mock; capabilityVoiceMessage: jest.Mock }
   const track = { stop: jest.fn() }
@@ -94,6 +99,15 @@ describe('CaseHomeComponent — first message with attachments', () => {
       }),
     }
     router = { navigate: jest.fn() }
+    aiModels = {
+      listAvailable: jest.fn().mockReturnValue(
+        of([
+          { aiProviderId: 'p', apiModelName: 'claude-opus', alias: 'BIG', priority: 0 },
+          { aiProviderId: 'p', apiModelName: 'claude-haiku', alias: 'SMALL', priority: 0 },
+          { aiProviderId: 'p', apiModelName: 'whisper-1', alias: 'WHISPER', priority: 0 },
+        ])
+      ),
+    }
     track.stop.mockClear()
     voiceApi = {
       postVoiceMessage: jest.fn().mockImplementation(() => {
@@ -139,6 +153,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
         { provide: CaseWorkspaceService, useValue: workspaces },
         { provide: NamespaceGitControllerService, useValue: gitApi },
         { provide: IntegrationTypeControllerService, useValue: integrationTypes },
+        { provide: AiModelStateService, useValue: aiModels },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: { ns: 'ns-1' } }, queryParams: queryParams$ } },
         { provide: ExchangeStateService, useValue: exchangeState },
@@ -150,7 +165,6 @@ describe('CaseHomeComponent — first message with attachments', () => {
           provide: USER_PREFERENCES_PORT,
           useValue: {
             shouldSend: jest.fn().mockReturnValue(false),
-            composerHint: () => 'hint',
             enterKeyBehavior: signal('send'),
           },
         },
@@ -228,15 +242,15 @@ describe('CaseHomeComponent — first message with attachments', () => {
       ref.changeDetectorRef.detectChanges()
       const host = ref.location.nativeElement as HTMLElement
 
-      const chips = host.querySelectorAll('.composer-attachments__chip')
+      const chips = host.querySelectorAll('.file-chip')
       expect(chips).toHaveLength(1)
       expect(chips[0]!.textContent).toContain('readme.md')
       expect(chips[0]!.textContent).toContain('namespace')
       expect((host.querySelector('textarea') as HTMLTextAreaElement).value).toBe('')
 
-      host.querySelector<HTMLButtonElement>('.composer-attachments__chip button')!.click()
+      host.querySelector<HTMLButtonElement>('.file-chip button')!.click()
       ref.changeDetectorRef.detectChanges()
-      expect(host.querySelectorAll('.composer-attachments__chip')).toHaveLength(0)
+      expect(host.querySelectorAll('.file-chip')).toHaveLength(0)
       ref.destroy()
     })
 
@@ -367,14 +381,10 @@ describe('CaseHomeComponent — first message with attachments', () => {
       drawer.referenceToggled.emit({ ref: ns('docs/readme.md'), referenced: true })
       ref.changeDetectorRef.detectChanges()
       expect(drawer.referenced()).toEqual([ns('docs/readme.md')])
-      expect((ref.location.nativeElement as HTMLElement).querySelectorAll('.composer-attachments__chip')).toHaveLength(
-        1
-      )
+      expect((ref.location.nativeElement as HTMLElement).querySelectorAll('.file-chip')).toHaveLength(1)
 
       // Removing the chip unchecks the file in the drawer: the same list feeds both.
-      ;(ref.location.nativeElement as HTMLElement)
-        .querySelector<HTMLButtonElement>('.composer-attachments__chip button')!
-        .click()
+      ;(ref.location.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.file-chip button')!.click()
       ref.changeDetectorRef.detectChanges()
       expect(drawer.referenced()).toEqual([])
 
@@ -740,6 +750,346 @@ describe('CaseHomeComponent — first message with attachments', () => {
     expect(integrationTypes.listTypesIntegrationType).toHaveBeenCalledTimes(2)
     expect(ref.instance['worktreeOffered']()).toBe(true)
     ref.destroy()
+  })
+
+  describe('model and effort of the new case', () => {
+    const open = (): ComponentRef<CaseHomeComponent> => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      return ref
+    }
+    const submitText = async (ref: ComponentRef<CaseHomeComponent>, text: string): Promise<void> => {
+      ref.instance['inputValue'].set(text)
+      await ref.instance['submit']()
+    }
+    const autocomplete = (ref: ComponentRef<CaseHomeComponent>): ComposerAutocompleteService =>
+      ref.injector.get(ComposerAutocompleteService)
+    const MODELS = [null, 'BIG', 'SMALL', 'claude-haiku', 'claude-opus']
+
+    it('lists the chat models of the namespace for /model, transcription model left out', () => {
+      const ref = open()
+
+      expect(aiModels.listAvailable).toHaveBeenCalledWith('ns-1')
+      expect(ref.instance['modelOptions']().map((o) => o.value)).toEqual([
+        'BIG',
+        'SMALL',
+        'claude-haiku',
+        'claude-opus',
+      ])
+      autocomplete(ref).showModelChoices()
+      expect(
+        autocomplete(ref)
+          .modelSuggestions()
+          .map((c) => c.model)
+      ).toEqual(MODELS)
+      ref.destroy()
+    })
+
+    it('starts on the agents own model and effort, and sends neither', async () => {
+      const ref = open()
+      expect(ref.instance['modelName']()).toBeNull()
+      expect(ref.instance['reasoningEffort']()).toBeNull()
+
+      await submitText(ref, 'hello')
+
+      const body = api.createCase.mock.calls[0][0]
+      expect(body).not.toHaveProperty('modelName')
+      expect(body).not.toHaveProperty('reasoningEffort')
+      ref.destroy()
+    })
+
+    it('/model sets the held model, clears the command and creates no case', async () => {
+      const ref = open()
+
+      await submitText(ref, '/model big')
+
+      expect(ref.instance['modelName']()).toBe('BIG')
+      expect(ref.instance['inputValue']()).toBe('')
+      expect(api.createCase).not.toHaveBeenCalled()
+      expect(api.addMessageCase).not.toHaveBeenCalled()
+      expect(router.navigate).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
+    it('/effort sets the held effort, clears the command and creates no case', async () => {
+      const ref = open()
+
+      await submitText(ref, '/effort high')
+
+      expect(ref.instance['reasoningEffort']()).toBe(ReasoningEffort.HIGH)
+      expect(ref.instance['inputValue']()).toBe('')
+      expect(api.createCase).not.toHaveBeenCalled()
+      expect(api.addMessageCase).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
+    it('/model agent and /effort default go back to each agent and model', async () => {
+      const ref = open()
+      await submitText(ref, '/model BIG')
+      await submitText(ref, '/effort max')
+
+      await submitText(ref, '/model agent')
+      await submitText(ref, '/effort default')
+
+      expect(ref.instance['modelName']()).toBeNull()
+      expect(ref.instance['reasoningEffort']()).toBeNull()
+      ref.destroy()
+    })
+
+    it('opens the picker, and sets nothing, on an unknown or missing name or level', async () => {
+      const ref = open()
+
+      for (const text of ['/model nope', '/model']) {
+        autocomplete(ref).modelSuggestions.set([])
+        await submitText(ref, text)
+        expect(
+          autocomplete(ref)
+            .modelSuggestions()
+            .map((c) => c.model)
+        ).toEqual(MODELS)
+      }
+      for (const text of ['/effort hihg', '/effort']) {
+        autocomplete(ref).effortSuggestions.set([])
+        await submitText(ref, text)
+        expect(autocomplete(ref).effortSuggestions().length).toBeGreaterThan(0)
+      }
+      expect(ref.instance['modelName']()).toBeNull()
+      expect(ref.instance['reasoningEffort']()).toBeNull()
+      expect(api.createCase).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
+    it('picking from the chip keeps what is typed in the composer, the attachments and the references', () => {
+      const ref = open()
+      ref.instance['inputValue'].set('hello world')
+      attachments(ref).addFiles([new File(['x'], 'a.pdf')])
+
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+
+      expect(ref.instance['modelName']()).toBe('BIG')
+      expect(ref.instance['reasoningEffort']()).toBe(EFFORT_OPTIONS[4]!.effort)
+      expect(ref.instance['inputValue']()).toBe('hello world')
+      expect(attachments(ref).attachments()).toHaveLength(1)
+      ref.destroy()
+    })
+
+    it('leaves the textarea itself alone when the choice was made from the chip', () => {
+      const ref = makeComponent()
+      TestBed.inject(ApplicationRef).attachView(ref.hostView)
+      ref.instance.ngOnInit()
+      ref.changeDetectorRef.detectChanges()
+      const textarea = (ref.location.nativeElement as HTMLElement).querySelector('textarea')!
+      textarea.value = 'hello world'
+      textarea.dispatchEvent(new Event('input'))
+      const assigned = jest.spyOn(textarea, 'value', 'set')
+
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+
+      expect(assigned).not.toHaveBeenCalled()
+      expect(textarea.value).toBe('hello world')
+      ref.destroy()
+    })
+
+    it('picking after typing the command removes the command', () => {
+      const ref = open()
+
+      ref.instance['inputValue'].set('/model')
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      expect(ref.instance['inputValue']()).toBe('')
+
+      ref.instance['inputValue'].set('/effort h')
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+      expect(ref.instance['inputValue']()).toBe('')
+      ref.destroy()
+    })
+
+    it('a message that merely mentions a command is an ordinary first message', async () => {
+      const ref = open()
+
+      await submitText(ref, 'which /model should I use?')
+
+      expect(api.createCase).toHaveBeenCalledTimes(1)
+      expect(ref.instance['modelName']()).toBeNull()
+      ref.destroy()
+    })
+
+    it('sends the held model and effort when the case is created', async () => {
+      const ref = open()
+      await submitText(ref, '/model SMALL')
+      await submitText(ref, '/effort xhigh')
+
+      await submitText(ref, '@reviewer look at this')
+
+      expect(api.createCase).toHaveBeenCalledTimes(1)
+      expect(api.createCase).toHaveBeenCalledWith(
+        expect.objectContaining({ namespaceId: 'ns-1', modelName: 'SMALL', reasoningEffort: ReasoningEffort.XHIGH })
+      )
+      ref.destroy()
+    })
+
+    it('sends the held model and effort with a voice message as well', async () => {
+      const ref = open()
+      await submitText(ref, '/model BIG')
+      await submitText(ref, '/effort low')
+      ref.instance['startRecording']()
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+      ref.instance['sendRecording']()
+      for (let i = 0; i < 20; i++) await Promise.resolve()
+
+      expect(api.createCase).toHaveBeenCalledWith(
+        expect.objectContaining({ modelName: 'BIG', reasoningEffort: ReasoningEffort.LOW })
+      )
+      ref.destroy()
+    })
+
+    it('sends nothing for a value cleared before the case is created', async () => {
+      const ref = open()
+      await submitText(ref, '/model BIG')
+      await submitText(ref, '/model agent')
+
+      await submitText(ref, 'hello')
+
+      expect(api.createCase.mock.calls[0][0]).not.toHaveProperty('modelName')
+      ref.destroy()
+    })
+
+    it('keeps the choices once the case exists: a retry reuses it and nothing can change them', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const ref = open()
+      await submitText(ref, '/model BIG')
+      api.addMessageCase.mockReturnValueOnce(throwError(() => new Error('Message not accepted')))
+      await submitText(ref, 'hello')
+      expect(ref.instance['pendingCaseId']()).toBe('case-9')
+      expect(ref.instance['canChangeSettings']()).toBe(false)
+
+      ref.instance['onModelSelected']({ model: 'SMALL', label: 'SMALL', description: '' })
+
+      expect(ref.instance['modelName']()).toBe('BIG')
+      await submitText(ref, 'hello')
+      expect(api.createCase).toHaveBeenCalledTimes(1)
+      errorSpy.mockRestore()
+      ref.destroy()
+    })
+
+    it('is not offered while the case is being created', () => {
+      const ref = open()
+      ref.instance['isCreating'].set(true)
+
+      autocomplete(ref).onInput('/model', ref.instance['inputValue'])
+
+      expect(autocomplete(ref).modelSuggestions()).toEqual([])
+      ref.destroy()
+    })
+
+    it('resets the choices and lists the models of the new namespace when the composer switches namespace', async () => {
+      const ref = open()
+      await submitText(ref, '/model BIG')
+      await submitText(ref, '/effort high')
+      aiModels.listAvailable.mockReturnValue(
+        of([{ aiProviderId: 'p', apiModelName: 'gpt-4o', alias: 'OTHER', priority: 0 }])
+      )
+
+      queryParams$.next({ ns: 'ns-2' })
+
+      expect(aiModels.listAvailable).toHaveBeenLastCalledWith('ns-2')
+      expect(ref.instance['modelName']()).toBeNull()
+      expect(ref.instance['reasoningEffort']()).toBeNull()
+      expect(ref.instance['modelOptions']().map((o) => o.value)).toEqual(['OTHER', 'gpt-4o'])
+      ref.destroy()
+    })
+
+    describe('chips', () => {
+      const render = (): { ref: ComponentRef<CaseHomeComponent>; host: HTMLElement } => {
+        const ref = makeComponent()
+        TestBed.inject(ApplicationRef).attachView(ref.hostView)
+        ref.instance.ngOnInit()
+        ref.changeDetectorRef.detectChanges()
+        return { ref, host: ref.location.nativeElement as HTMLElement }
+      }
+      const chip = (host: HTMLElement, kind: 'model' | 'effort'): HTMLButtonElement =>
+        host.querySelector<HTMLButtonElement>(`.case-settings__chip--${kind}`)!
+
+      it('shows the agent defaults, and no select', () => {
+        const { ref, host } = render()
+
+        expect(chip(host, 'model').textContent?.trim()).toBe('model: agent default')
+        expect(chip(host, 'effort').textContent?.trim()).toBe('effort: default')
+        expect(host.querySelector('select')).toBeNull()
+        ref.destroy()
+      })
+
+      it('shows the held choices', async () => {
+        const { ref, host } = render()
+        await submitText(ref, '/model BIG')
+        await submitText(ref, '/effort xhigh')
+        ref.changeDetectorRef.detectChanges()
+
+        expect(chip(host, 'model').textContent?.trim()).toBe('model: BIG')
+        expect(chip(host, 'effort').textContent?.trim()).toBe('effort: xhigh')
+        ref.destroy()
+      })
+
+      it('opens the same pickers as the commands, with the way back to the defaults', () => {
+        const { ref, host } = render()
+
+        chip(host, 'model').click()
+        ref.changeDetectorRef.detectChanges()
+        expect(
+          autocomplete(ref)
+            .modelSuggestions()
+            .map((c) => c.model)
+        ).toEqual(MODELS)
+        expect(host.querySelector('agentos-model-autocomplete')).not.toBeNull()
+
+        chip(host, 'effort').click()
+        ref.changeDetectorRef.detectChanges()
+        expect(autocomplete(ref).effortSuggestions()[0]?.effort).toBeNull()
+        expect(host.querySelector('agentos-effort-autocomplete')).not.toBeNull()
+        expect(host.querySelector('agentos-model-autocomplete')).toBeNull()
+        ref.destroy()
+      })
+
+      it('holds the entry picked from a chip picker, the way back included', () => {
+        const { ref, host } = render()
+        chip(host, 'model').click()
+        ref.changeDetectorRef.detectChanges()
+        host.querySelectorAll<HTMLLIElement>('agentos-model-autocomplete li')[1]!.click()
+        ref.changeDetectorRef.detectChanges()
+        expect(ref.instance['modelName']()).toBe('BIG')
+
+        chip(host, 'model').click()
+        ref.changeDetectorRef.detectChanges()
+        host.querySelectorAll<HTMLLIElement>('agentos-model-autocomplete li')[0]!.click()
+        ref.changeDetectorRef.detectChanges()
+        expect(ref.instance['modelName']()).toBeNull()
+        ref.destroy()
+      })
+
+      it('leaves the chips inert once the case exists', async () => {
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        const { ref, host } = render()
+        api.addMessageCase.mockReturnValueOnce(throwError(() => new Error('Message not accepted')))
+        await submitText(ref, 'hello')
+        ref.changeDetectorRef.detectChanges()
+
+        expect(chip(host, 'model').disabled).toBe(true)
+        expect(chip(host, 'effort').disabled).toBe(true)
+        errorSpy.mockRestore()
+        ref.destroy()
+      })
+    })
+
+    it('does not show the Enter key hint any more', () => {
+      const ref = makeComponent()
+      TestBed.inject(ApplicationRef).attachView(ref.hostView)
+      ref.changeDetectorRef.detectChanges()
+      const host = ref.location.nativeElement as HTMLElement
+
+      expect(host.querySelector('.case-home__hint')).toBeNull()
+      expect(host.textContent).not.toContain('hint')
+      ref.destroy()
+    })
   })
 
   describe('first message as a voice message', () => {

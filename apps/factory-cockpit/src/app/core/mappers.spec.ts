@@ -228,7 +228,12 @@ describe('mappers', () => {
           status: 'completed',
           steps: [
             { id: 'a', name: 'First', status: 'completed', responsibility: { kind: 'agent', name: 'Planner' } },
-            { id: 'b', name: 'Last long sentence', status: 'completed', responsibility: { kind: 'agent', name: 'Archay' } },
+            {
+              id: 'b',
+              name: 'Last long sentence',
+              status: 'completed',
+              responsibility: { kind: 'agent', name: 'Archay' },
+            },
           ],
         },
       })

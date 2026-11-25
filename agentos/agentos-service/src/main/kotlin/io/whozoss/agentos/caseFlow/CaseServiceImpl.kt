@@ -5,7 +5,9 @@ import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.caseEvent.effectiveConversation
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.chat.UsageAccumulator
@@ -104,6 +106,11 @@ class CaseServiceImpl(
      */
     private val caseSummaryService: CaseSummaryService? = null,
     /**
+     * Checks the model a case is asked to use ([Case.modelName]). Optional so that a service built by hand
+     * without it accepts any name; the running service always has it.
+     */
+    private val aiModelService: AiModelService? = null,
+    /**
      * Coroutine context used to build the service scope.
      * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
      * in tests so all coroutines run on the test scheduler and virtual time applies.
@@ -188,6 +195,7 @@ class CaseServiceImpl(
         worktree: Boolean?,
     ): Case {
         entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
+        requireKnownModel(entity.namespaceId, entity.modelName)
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
         // A non-null value on the incoming entity is an explicit caller override — kept as-is.
@@ -263,6 +271,27 @@ class CaseServiceImpl(
         caseId: UUID,
         reasoningEffort: ReasoningEffort?,
     ): Case = edit(caseId) { it.copy(reasoningEffort = reasoningEffort) }
+
+    override fun setModel(
+        caseId: UUID,
+        modelName: String?,
+    ): Case {
+        val name = modelName?.trim()?.takeIf { it.isNotEmpty() }
+        val current = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        requireKnownModel(current.namespaceId, name)
+        return edit(caseId) { it.copy(modelName = name) }
+    }
+
+    /** A model name must answer to an alias or an API model name of the namespace or the platform. */
+    private fun requireKnownModel(
+        namespaceId: UUID,
+        modelName: String?,
+    ) {
+        val service = aiModelService ?: return
+        if (modelName != null && service.findAiModel(namespaceId, modelName) == null) {
+            throw BadRequestException("Unknown AI model: $modelName")
+        }
+    }
 
     override fun edit(
         id: UUID,
@@ -458,9 +487,27 @@ class CaseServiceImpl(
         content: List<MessageContent>,
         answerToEventId: UUID?,
         sessionContext: Map<String, Any?>?,
+        rerunOf: UUID?,
     ) {
+        if (rerunOf != null && answerToEventId != null) {
+            throw BadRequestException("A message cannot both answer a question and re-run a message")
+        }
         caseLaunchGate?.requireAccepting(caseId)
         val runtime = getCaseRuntime(caseId)
+        val postedContent =
+            if (rerunOf != null) contentForRerun(runtime, caseId, actor, content, rerunOf) else content
+        postMessage(runtime, caseId, actor, postedContent, answerToEventId, sessionContext, rerunOf)
+    }
+
+    private fun postMessage(
+        runtime: CaseRuntime,
+        caseId: UUID,
+        actor: Actor,
+        content: List<MessageContent>,
+        answerToEventId: UUID?,
+        sessionContext: Map<String, Any?>?,
+        rerunOf: UUID?,
+    ) {
         val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
         // Resolve prompt commands — a single user input may expand to multiple sequential
@@ -482,7 +529,7 @@ class CaseServiceImpl(
                     }
                 } catch (e: PromptResolutionException) {
                     logger.warn(e) { "Prompt resolution failed for case $caseId: ${e.message}" }
-                    runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                    runtime.addUserMessage(actor, content, answerToEventId, sessionContext, rerunOf)
                     runtime.emitEvent(
                         storeEvent(
                             WarnEvent(
@@ -524,7 +571,7 @@ class CaseServiceImpl(
 
         when {
             resolvedCommands.isNullOrEmpty() -> {
-                runtime.addUserMessage(actor, content, answerToEventId, sessionContext)
+                runtime.addUserMessage(actor, content, answerToEventId, sessionContext, rerunOf)
             }
 
             else -> {
@@ -536,6 +583,7 @@ class CaseServiceImpl(
                     listOf(MessageContent.Text(resolvedText(resolvedCommands.first()))) + nonTextContent,
                     answerToEventId,
                     sessionContext,
+                    rerunOf,
                 )
                 resolvedCommands.drop(1).forEach { cmd ->
                     runtime.enqueueCommand(listOf(MessageContent.Text(resolvedText(cmd))))
@@ -548,7 +596,56 @@ class CaseServiceImpl(
         // Trigger post-processing after each user message (e.g. automatic title generation).
         // Events are fetched fresh from the service so the newly stored MessageEvent is included.
         val case = findById(caseId) ?: return
-        triggerNamingIfNeeded(case, caseEventService.findByParent(caseId)) { event -> runtime.emitEvent(event) }
+        triggerNamingIfNeeded(case, caseEventService.findByParent(caseId).effectiveConversation()) { event -> runtime.emitEvent(event) }
+    }
+
+    /**
+     * Validates a re-run of the user message [rerunOf] and returns the content of the new message: the text
+     * [submitted] by the user in place of the text of the replaced message, whose other parts (audio, images)
+     * are kept where they were.
+     *
+     * An answer to a question is an [io.whozoss.agentos.sdk.caseEvent.AnswerEvent], not a message, so it
+     * is refused by the same rule as any event that is not a user message.
+     */
+    private fun contentForRerun(
+        runtime: CaseRuntime,
+        caseId: UUID,
+        actor: Actor,
+        submitted: List<MessageContent>,
+        rerunOf: UUID,
+    ): List<MessageContent> {
+        val target =
+            caseEventService.findById(rerunOf)?.takeIf { it.caseId == caseId } as? MessageEvent
+        if (target == null || target.actor.role != ActorRole.USER) {
+            throw BadRequestException("Message $rerunOf is not a user message of this case")
+        }
+        val newText = submitted.filterIsInstance<MessageContent.Text>()
+        if (newText.all { it.content.isBlank() }) {
+            throw BadRequestException("The text of a re-run message cannot be empty")
+        }
+        // Same author only: the identity of the actor is the user id, for the message as well as for its re-run.
+        if (target.actor.id != actor.id) {
+            throw AccessDeniedException("Only the author of a message can re-run it")
+        }
+        if (hasRunningExecutions(listOf(caseId))) {
+            throw ConflictException("A run is in progress in this case, wait for it to end before re-running a message")
+        }
+        if (runtime.conversationSnapshot().none { it.id == rerunOf }) {
+            throw ConflictException("Message $rerunOf is no longer part of the conversation")
+        }
+        var textPlaced = false
+        val merged =
+            target.content.flatMap { part ->
+                when {
+                    part !is MessageContent.Text -> listOf(part)
+                    textPlaced -> emptyList()
+                    else -> {
+                        textPlaced = true
+                        newText
+                    }
+                }
+            }
+        return if (textPlaced) merged else newText + merged
     }
 
     // ======================================================
@@ -764,6 +861,8 @@ class CaseServiceImpl(
 
         logger.info { "Running agent: $agentName for case $caseId" }
         val usageAccumulator = if (usageConfig.enabled) UsageAccumulator() else null
+        // One read for the per-case overrides (reasoning effort, model), fresh at every agent run.
+        val storedCase = findById(caseId)
         val context =
             AgentExecutionContext(
                 namespaceId = runtime.namespaceId,
@@ -778,7 +877,8 @@ class CaseServiceImpl(
                 },
                 usageAccumulator = usageAccumulator,
                 // Read at every agent run, so a change applies from the next run on, never during one.
-                reasoningEffort = findById(caseId)?.reasoningEffort,
+                reasoningEffort = storedCase?.reasoningEffort,
+                modelName = storedCase?.modelName,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
@@ -970,7 +1070,7 @@ class CaseServiceImpl(
         if (newStatus == CaseStatus.IDLE && postProcess) {
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
-                val events = caseEventService.findByParent(caseId)
+                val events = caseEventService.findByParent(caseId).effectiveConversation()
                 triggerNamingIfNeeded(
                     case = updated,
                     events = events,
@@ -1090,6 +1190,36 @@ class CaseServiceImpl(
         logger.info { "Reopening case: $caseId (was ${case.status})" }
         handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
         return findById(caseId) ?: error("Case $caseId not found after reopen status change")
+    }
+
+    override fun rewindCase(
+        caseId: UUID,
+        eventId: UUID,
+    ): Case {
+        val case = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        // Known race, accepted: this guard is not atomic with a concurrent addMessage. A message posted
+        // between the guard and the truncation below can lose events. The UI hides Rewind while a message
+        // is in flight; a claim flag on the runtime would close the window (follow-up).
+        if (case.status == CaseStatus.RUNNING ||
+            case.status == CaseStatus.PENDING ||
+            case.status.isTerminal() ||
+            hasRunningExecutions(listOf(caseId))
+        ) {
+            throw ConflictException("A case can only be rewound while it is idle (status: ${case.status})")
+        }
+        val target = caseEventService.findById(eventId)
+        if (target == null || target.caseId != caseId) {
+            throw ResourceNotFoundException("Event not found in case $caseId: $eventId")
+        }
+        if (target !is MessageEvent || target.actor.role != ActorRole.USER) {
+            throw BadRequestException("Only a user message can be rewound to")
+        }
+        // Persistence first, memory second: a live runtime runs its agents on its in-memory history.
+        val removed = caseEventService.deleteFrom(caseId, eventId)
+        activeRuntimes[caseId]?.rewindFrom(eventId)
+        logger.info { "Rewinding case $caseId to event $eventId: $removed event(s) removed" }
+        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+        return findById(caseId) ?: error("Case $caseId not found after rewind status change")
     }
 
     override fun resumeSubCase(

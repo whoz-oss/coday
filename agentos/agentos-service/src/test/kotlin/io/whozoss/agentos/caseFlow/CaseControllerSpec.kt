@@ -19,6 +19,7 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.RewindCaseRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -145,6 +146,11 @@ class CaseControllerSpec :
             result.title shouldBe "engineering case"
             result.created shouldBe now
             result.modified shouldBe later
+        }
+
+        "toDto maps modelName, null when the case has no override" {
+            toDto(caseEntity().copy(modelName = "BIG")).modelName shouldBe "BIG"
+            toDto(caseEntity()).modelName shouldBe null
         }
 
         // -------------------------------------------------------------------------
@@ -298,6 +304,46 @@ class CaseControllerSpec :
 
                 verify(exactly = 1) { caseService.create(any(), worktree) }
             }
+        }
+
+        "create passes the requested model, trimmed, to the service and drops a blank one" {
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+            val seen = mutableListOf<String?>()
+            every { caseService.create(any(), any()) } answers {
+                seen.add(firstArg<Case>().modelName)
+                caseEntity()
+            }
+
+            controller.create(caseResource(id = null).copy(modelName = "  BIG "))
+            controller.create(caseResource(id = null).copy(modelName = "   "))
+            controller.create(caseResource(id = null))
+
+            seen shouldBe listOf("BIG", null, null)
+        }
+
+        "setModel delegates to the service and returns the updated case" {
+            val id = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.setModel(id, "BIG") } returns caseEntity(id = id).copy(modelName = "BIG")
+
+            controller.setModel(id, io.whozoss.agentos.sdk.api.case.CaseModelRequest("BIG")).modelName shouldBe "BIG"
+
+            verify(exactly = 1) { caseService.setModel(id, "BIG") }
+        }
+
+        "update keeps the model override: PUT /api/cases/{id} does not touch it" {
+            val existing = caseEntity().copy(modelName = "BIG")
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.edit(existing.metadata.id, any()) } answers {
+                val saved = secondArg<(Case) -> Case>()(existing)
+                saved.modelName shouldBe "BIG"
+                saved
+            }
+
+            controller.update(existing.metadata.id, caseResource(id = existing.metadata.id).copy(modelName = "SMALL"))
+
+            verify(exactly = 1) { caseService.edit(existing.metadata.id, any()) }
         }
 
         "create auto-grants ADMIN on the new case to the creator" {
@@ -1052,6 +1098,28 @@ class CaseControllerSpec :
 
             result.favorite shouldBe true
             result.role shouldBe "MEMBER"
+        }
+
+        // -------------------------------------------------------------------------
+        // rewindCase — POST /api/cases/{caseId}/rewind
+        // -------------------------------------------------------------------------
+
+        "rewindCase delegates to the service and maps the result with the caller's meta" {
+            val entity = caseEntity().copy(status = CaseStatus.IDLE)
+            val eventId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.rewindCase(entity.id, eventId) } returns entity
+            every {
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favorite = true))
+
+            val result = controller.rewindCase(entity.id, RewindCaseRequest(eventId))
+
+            result.id shouldBe entity.id
+            result.status shouldBe CaseStatus.IDLE
+            result.role shouldBe "ADMIN"
+            result.favorite shouldBe true
+            verify(exactly = 1) { caseService.rewindCase(entity.id, eventId) }
         }
 
         // -------------------------------------------------------------------------

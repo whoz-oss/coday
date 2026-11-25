@@ -1,5 +1,16 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
+import {
+  ApplicationRef,
+  Component,
+  ComponentRef,
+  createComponent,
+  EnvironmentInjector,
+  input,
+  model,
+  output,
+  signal,
+  WritableSignal,
+} from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -18,12 +29,15 @@ import {
   ToolRequestEvent,
   ToolResponseEvent,
   ThinkingEvent,
+  UsageConfigurationControllerService,
   User,
   VoiceMessageControllerService,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { of, Observable, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
+import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
+import { AiModelStateService } from '../../services/ai-model-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
@@ -35,7 +49,91 @@ import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
+import { AGENT_MODEL_CHOICE } from '../composer-autocomplete/model-command'
+import { SideQuestionApiService } from '../../services/side-question-api.service'
+import { ConfirmDialogComponent, DrawerComponent, KebabMenuComponent } from '@whoz-oss/design-system'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
+import { CaseUsageComponent } from '../case-usage/case-usage.component'
+import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
+import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
+import { REWIND_TOOLTIP } from '../message-actions/message-actions.component'
 import { CaseChatComponent } from './case-chat.component'
+
+/*
+ * Stand-ins for the parts of the chat around the timeline, used by the few tests that render the template: the
+ * drawer (Material sidenav and breakpoints), the panels that call their own APIs (files, usage), and the composer
+ * pieces. They declare the inputs and outputs the chat binds, nothing else. The timeline and the actions bar under
+ * each bubble stay real: they are what those tests are about.
+ */
+@Component({
+  selector: 'ds-drawer',
+  template: '<ng-content select="[dsDrawerSide]" /><ng-content select="[dsDrawerContent]" />',
+})
+class StubDrawerComponent {
+  readonly open = model(false)
+  readonly position = input('start')
+  readonly drawerWidth = input('')
+  readonly mobileFullWidth = input(false)
+  readonly resizable = input(false)
+  readonly widthChange = output<number>()
+}
+
+@Component({ selector: 'agentos-exchange-shell', template: '' })
+class StubExchangeShellComponent {
+  readonly active = input(false)
+  readonly selectable = input(false)
+  readonly referenced = input<unknown[]>([])
+  readonly referenceToggled = output<unknown>()
+  readonly closeRequested = output<void>()
+}
+
+@Component({ selector: 'agentos-case-usage', template: '' })
+class StubCaseUsageComponent {
+  readonly caseId = input('')
+  readonly canWrite = input(false)
+  readonly running = input(false)
+}
+
+@Component({ selector: 'ds-kebab-menu', template: '' })
+class StubKebabMenuComponent {
+  readonly items = input<unknown[]>([])
+  readonly itemSelected = output<string>()
+}
+
+@Component({ selector: 'ds-confirm-dialog', template: '' })
+class StubConfirmDialogComponent {
+  readonly open = input(false)
+  readonly title = input('')
+  readonly message = input('')
+  readonly confirmLabel = input('')
+  readonly cancelLabel = input('')
+  readonly confirmed = output<void>()
+  readonly cancelled = output<void>()
+}
+
+@Component({ selector: 'agentos-composer-attachments', template: '' })
+class StubComposerAttachmentsComponent {
+  readonly attachments = input<unknown[]>([])
+  readonly references = input<unknown[]>([])
+  readonly namespaceBadge = input(false)
+  readonly limitError = input<string | null>(null)
+  readonly disabled = input(false)
+  readonly removed = output<string>()
+  readonly referenceRemoved = output<unknown>()
+  readonly filesSelected = output<File[]>()
+  openPicker(): void {
+    // Nothing to open in a test.
+  }
+}
+
+@Component({ selector: 'agentos-voice-recorder', template: '' })
+class StubVoiceRecorderComponent {
+  readonly state = input<unknown>(null)
+  readonly elapsedMs = input(0)
+  readonly error = input<string | null>(null)
+  readonly sendKey = input('')
+  readonly keyPressed = output<KeyboardEvent>()
+}
 
 /**
  * The component is created WITHOUT rendering (no attachView / detectChanges): ngOnInit never
@@ -57,6 +155,7 @@ describe('CaseChatComponent — submit with attachments', () => {
   }
   let calls: string[]
   let showTechnical: ReturnType<typeof signal<boolean>>
+  let aiModels: { listAvailable: jest.Mock }
 
   function makeComponent(): ComponentRef<CaseChatComponent> {
     const environmentInjector = TestBed.inject(EnvironmentInjector)
@@ -70,6 +169,15 @@ describe('CaseChatComponent — submit with attachments', () => {
   beforeEach(() => {
     calls = []
     showTechnical = signal(true)
+    aiModels = {
+      listAvailable: jest.fn().mockReturnValue(
+        of([
+          { aiProviderId: 'p', apiModelName: 'claude-opus', alias: 'BIG', priority: 0 },
+          { aiProviderId: 'p', apiModelName: 'claude-haiku', alias: 'SMALL', priority: 0 },
+          { aiProviderId: 'p', apiModelName: 'whisper-1', alias: 'WHISPER', priority: 0 },
+        ])
+      ),
+    }
     http = {
       post: jest.fn().mockImplementation(() => {
         calls.push('post')
@@ -99,6 +207,11 @@ describe('CaseChatComponent — submit with attachments', () => {
           useValue: { snapshot: { queryParams: { case: 'c-1', ns: 'ns-1' } }, queryParams: of({}) },
         },
         { provide: ExchangeStateService, useValue: exchangeState },
+        // The chat owns the run cost state, which reads the usage setting when it is created.
+        {
+          provide: UsageConfigurationControllerService,
+          useValue: { getUsageConfiguration: jest.fn().mockReturnValue(of({ enabled: false })) },
+        },
         {
           provide: CaseStateService,
           useValue: {
@@ -108,7 +221,13 @@ describe('CaseChatComponent — submit with attachments', () => {
             updateCaseStatus: jest.fn(),
             notifyAgentMessageEvent: jest.fn(),
             setReasoningEffort: jest.fn().mockReturnValue(of({})),
+            setModel: jest.fn().mockReturnValue(of({})),
           },
+        },
+        { provide: AiModelStateService, useValue: aiModels },
+        {
+          provide: VoiceMessageControllerService,
+          useValue: { capabilityVoiceMessage: jest.fn().mockReturnValue(of({ available: false })) },
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
         { provide: UserStateService, useValue: { currentUser: signal<User | null>(null) } },
@@ -654,6 +773,189 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
   })
 
+  describe('/btw side question', () => {
+    let sideApi: { ask: jest.Mock }
+    let answer: Subject<{ answer: string }>
+
+    beforeEach(() => {
+      answer = new Subject<{ answer: string }>()
+      sideApi = { ask: jest.fn().mockReturnValue(answer) }
+      TestBed.overrideProvider(SideQuestionApiService, { useValue: sideApi })
+    })
+
+    it('asks aside, posts nothing to the case, clears the composer and does not set the case running', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'what is the plan?')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['inputValue']()).toBe('')
+      expect(ref.instance['sideQuestions'].pending()).toBe(true)
+
+      answer.next({ answer: 'The plan is X.' })
+      expect(ref.instance['sideQuestions'].answer()).toBe('The plan is X.')
+      expect(ref.instance['events']()).toEqual([])
+    })
+
+    it('works while the agent runs: the case stays running and nothing is posted or interrupted', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('/btw how long will it take?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'how long will it take?')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('while the agent runs, any other text is not sent and stays in the composer', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('please also fix the tests')
+
+      await ref.instance['submit']()
+
+      expect(http.post).not.toHaveBeenCalled()
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('please also fix the tests')
+    })
+
+    it('while the agent runs, a typed /effort command is not applied and nothing is sent', async () => {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'RUNNING' } as Case])
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('/effort high')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/effort high')
+    })
+
+    it('while the agent runs, staged attachments and references are not sent either', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+      ref.instance['inputValue'].set('with a file')
+
+      await ref.instance['submit']()
+
+      expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('with a file')
+    })
+
+    it('while the agent runs, the mic and the Continue button stay out of reach', () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+
+      expect(ref.instance['canRecord']).toBe(false)
+      ref.instance['continueAfterLimit']()
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('a /btw without a question asks nothing and keeps the text to be completed', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/btw')
+    })
+
+    it('asks nothing on a case that has ended or is gone', async () => {
+      const ref = makeComponent()
+      ref.instance['caseGone'].set(true)
+      ref.instance['inputValue'].set('/btw still there?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/btw still there?')
+    })
+
+    it('a new /btw replaces the previous aside', async () => {
+      const second = new Subject<{ answer: string }>()
+      sideApi.ask.mockReturnValueOnce(answer).mockReturnValueOnce(second)
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw first?')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('/btw second?')
+      await ref.instance['submit']()
+
+      answer.next({ answer: 'stale' })
+
+      expect(ref.instance['sideQuestions'].question()).toBe('second?')
+      expect(ref.instance['sideQuestions'].answer()).toBeNull()
+    })
+
+    it('Escape dismisses the aside, and leaves the composer text alone', () => {
+      const ref = makeComponent()
+      ref.instance['sideQuestions'].ask('c-1', 'q')
+      ref.instance['inputValue'].set('typing')
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+
+      ref.instance['onKeydown'](escape)
+
+      expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      expect(escape.defaultPrevented).toBe(true)
+      expect(ref.instance['inputValue']()).toBe('typing')
+    })
+
+    it('Escape does nothing special without an aside', () => {
+      const ref = makeComponent()
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+
+      ref.instance['onKeydown'](escape)
+
+      expect(escape.defaultPrevented).toBe(false)
+    })
+
+    it('a case switch closes the aside', () => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        ref.instance['sideQuestions'].ask('c-1', 'q')
+
+        ref.instance['reinitialise']()
+
+        expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        log.mockRestore()
+      }
+    })
+
+    it('renders the answer with the markdown of the agent messages', () => {
+      const ref = makeComponent()
+      ref.instance['sideQuestions'].ask('c-1', 'q')
+      answer.next({ answer: 'It is **bold**' })
+
+      expect(String(ref.instance['sideAnswerHtml']())).toContain('bold')
+    })
+
+    it('is component-scoped: each chat gets its own aside', () => {
+      const a = makeComponent()
+      const b = makeComponent()
+      a.instance['sideQuestions'].ask('c-1', 'q')
+
+      expect(b.instance['sideQuestions'].visible()).toBe(false)
+    })
+  })
+
   describe('/effort command', () => {
     const loadCase = (): void => {
       TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'IDLE' } as Case])
@@ -692,6 +994,162 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(ref.injector.get(ComposerAutocompleteService).effortSuggestions()).toHaveLength(EFFORT_OPTIONS.length)
       expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
       expect(http.post).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('/model command', () => {
+    const MODELS = [null, 'BIG', 'SMALL', 'claude-haiku', 'claude-opus']
+    const loadCase = (extra: Partial<Case> = {}): void => {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'IDLE', ...extra } as Case])
+    }
+    const open = (): ComponentRef<CaseChatComponent> => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      globalThis.EventSource = original
+      log.mockRestore()
+      return ref
+    }
+
+    it('loads the chat models of the namespace once the chat opens, transcription model left out', () => {
+      const ref = open()
+
+      expect(aiModels.listAvailable).toHaveBeenCalledWith('ns-1')
+      expect(ref.instance['modelChoiceList']().map((c) => c.model)).toEqual(MODELS)
+      ref.destroy()
+    })
+
+    it('sets the case model and sends nothing to the agent', async () => {
+      loadCase()
+      const ref = open()
+      ref.instance['inputValue'].set('/model big')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', 'BIG')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('')
+      ref.destroy()
+    })
+
+    it('goes back to each agents own model with /model agent', async () => {
+      loadCase({ modelName: 'BIG' })
+      const ref = open()
+      ref.instance['inputValue'].set('/model agent')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', null)
+      expect(http.post).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
+    it('picking the way back in the picker clears the override', () => {
+      loadCase({ modelName: 'BIG' })
+      const ref = makeComponent()
+
+      ref.instance['onModelSelected'](AGENT_MODEL_CHOICE)
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', null)
+    })
+
+    it('picking from the chip keeps the text of the composer: nothing typed is lost', () => {
+      loadCase()
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello world')
+
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', 'BIG')
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('hello world')
+    })
+
+    it('picking after typing the command removes the command', () => {
+      loadCase()
+      const ref = makeComponent()
+
+      ref.instance['inputValue'].set('/model')
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      expect(ref.instance['inputValue']()).toBe('')
+
+      ref.instance['inputValue'].set('/effort h')
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('keeps the text and sends nothing when the case is not in the loaded list', async () => {
+      const ref = open()
+      ref.instance['inputValue'].set('/model BIG')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/model BIG')
+      ref.destroy()
+    })
+
+    it('opens the model picker on an unknown or missing name instead of doing nothing', async () => {
+      loadCase()
+      const ref = open()
+      const autocomplete = ref.injector.get(ComposerAutocompleteService)
+
+      for (const text of ['/model nope', '/model']) {
+        autocomplete.modelSuggestions.set([])
+        ref.instance['inputValue'].set(text)
+        await ref.instance['submit']()
+        expect(autocomplete.modelSuggestions().map((c) => c.model)).toEqual(MODELS)
+      }
+      expect(TestBed.inject(CaseStateService).setModel).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
+    it('is not a command when the text only mentions it: the message still goes to the agent', async () => {
+      loadCase()
+      const ref = open()
+      ref.instance['inputValue'].set('which /model should I use?')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).not.toHaveBeenCalled()
+      expect(http.post).toHaveBeenCalledTimes(1)
+      ref.destroy()
+    })
+
+    it('is not offered on an ended case', () => {
+      loadCase({ status: CaseStatusEnum.KILLED })
+      const ref = open()
+      ref.instance['_sseStatus'].set('KILLED')
+      const autocomplete = ref.injector.get(ComposerAutocompleteService)
+
+      autocomplete.onInput('/model', ref.instance['inputValue'])
+
+      expect(autocomplete.modelSuggestions()).toEqual([])
+      ref.destroy()
+    })
+
+    it('lets the user choose a model, then address an agent: the case model applies to the next message', async () => {
+      loadCase()
+      const ref = open()
+      ref.instance['inputValue'].set('/model BIG')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('@reviewer check this')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', 'BIG')
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: '@reviewer check this',
+        userId: 'default-user',
+      })
+      ref.destroy()
     })
   })
 
@@ -764,6 +1222,16 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(ref.instance['canSend']).toBe(false)
   })
 
+  describe('cost pause in the composer', () => {
+    // Placement in the composer and the focus on the pause are covered by case-chat.cost-pause.spec.ts, which renders
+    // the real template: this spec never does.
+    it('owns one run cost state per chat', () => {
+      const ref = makeComponent()
+      const other = makeComponent()
+      expect(ref.injector.get(CaseRunCostStateService)).not.toBe(other.injector.get(CaseRunCostStateService))
+    })
+  })
+
   describe('case header overflow menu', () => {
     it('offers labelled danger items for stop and delete', () => {
       const ref = makeComponent()
@@ -818,6 +1286,292 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.instance['kill']()
       expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/kill', {})
       expect(ref.instance['confirmingKill']()).toBe(false)
+    })
+  })
+
+  describe('rewind', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const message = (id: string, role: 'USER' | 'AGENT', text: string): CaseMessageEvent =>
+      ({
+        id,
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T10:00:00Z',
+        metadata,
+        actor: { id: role === 'USER' ? 'u-1' : 'a-1', role, displayName: role },
+        content: [{ type: 'Text', content: text }],
+      }) as unknown as CaseMessageEvent
+    const userMessage = (id = 'm-1', text = 'first question') => message(id, 'USER', text)
+
+    let original: typeof EventSource
+    let eventSourceCtor: jest.Mock
+
+    beforeEach(() => {
+      original = globalThis.EventSource
+      eventSourceCtor = jest.fn(() => Object.assign(new EventTarget(), { close: jest.fn() }))
+      globalThis.EventSource = eventSourceCtor as unknown as typeof EventSource
+    })
+
+    afterEach(() => {
+      globalThis.EventSource = original
+    })
+
+    it('POSTs the event id, reinitialises the chat and puts the message text back in the composer', () => {
+      const ref = makeComponent()
+      try {
+        ref.instance['events'].set([userMessage('m-1', 'first question'), message('m-2', 'AGENT', 'an answer')])
+        const caseState = TestBed.inject(CaseStateService)
+
+        ref.instance['askRewind'](userMessage('m-1', 'first question'))
+        // Asking never acts: the confirmation comes first.
+        expect(http.post).not.toHaveBeenCalled()
+        ref.instance['rewind']()
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/rewind', { eventId: 'm-1' })
+        expect(caseState.updateCaseStatus).toHaveBeenCalledWith('c-1', 'IDLE')
+        // reinitialise(): the history is cleared and the stream reopened, to replay the shortened one.
+        expect(ref.instance['events']()).toEqual([])
+        expect(eventSourceCtor).toHaveBeenCalledTimes(1)
+        expect(ref.instance['inputValue']()).toBe('first question')
+        expect(ref.instance['rewindTarget']()).toBeNull()
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('leaves the chat and the composer unchanged when the server refuses', () => {
+      const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        const events = [userMessage('m-1'), message('m-2', 'AGENT', 'an answer')]
+        ref.instance['events'].set(events)
+        ref.instance['inputValue'].set('a draft')
+        http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })))
+
+        ref.instance['askRewind'](userMessage('m-1'))
+        ref.instance['rewind']()
+
+        expect(ref.instance['events']()).toEqual(events)
+        expect(ref.instance['inputValue']()).toBe('a draft')
+        expect(eventSourceCtor).not.toHaveBeenCalled()
+        expect(TestBed.inject(CaseStateService).updateCaseStatus).not.toHaveBeenCalled()
+        // The request is over: rewinding is possible again.
+        expect(ref.instance['canRewind']()).toBe(true)
+      } finally {
+        ref.destroy()
+        error.mockRestore()
+      }
+    })
+
+    it('does nothing when the confirmation is cancelled', () => {
+      const ref = makeComponent()
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).not.toBeNull()
+
+      ref.instance['rewindTarget'].set(null)
+      ref.instance['rewind']()
+
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('is not offered while the agent runs', () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+
+      expect(ref.instance['canRewind']()).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    it('is not offered on a terminal case', () => {
+      const ref = makeComponent()
+      ref.instance['_sseStatus'].set('KILLED')
+
+      expect(ref.instance['canRewind']()).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    it('is not offered without write access to the case', () => {
+      const ref = makeComponent()
+      exchangeState.canWriteCase.set(false)
+
+      expect(ref.instance['canRewind']()).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    it('is not offered for an agent message', () => {
+      const ref = makeComponent()
+
+      ref.instance['askRewind'](message('m-2', 'AGENT', 'an answer'))
+
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    /**
+     * What the actions bar under a bubble offers: the template binds its rewind button to canRewindMessage, like the
+     * pencil to canEditMessage. The rendering of the button itself is covered by message-actions.component.spec.
+     */
+    describe('the rewind button under a bubble', () => {
+      it('is offered under a user message, and never under an agent message', () => {
+        const ref = makeComponent()
+
+        expect(ref.instance['canRewindMessage'](userMessage())).toBe(true)
+        expect(ref.instance['canRewindMessage'](message('m-2', 'AGENT', 'an answer'))).toBe(false)
+      })
+
+      it('is offered under the message of a collaborator too, unlike the pencil', () => {
+        const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+        userState.currentUser.set({ id: 'u-1' } as User)
+        const ref = makeComponent()
+        const bob = {
+          ...userMessage('m-3', 'from Bob'),
+          actor: { id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' },
+        } as CaseMessageEvent
+
+        expect(ref.instance['canRewindMessage'](bob)).toBe(true)
+        expect(ref.instance['canEditMessage'](bob)).toBe(false)
+      })
+
+      describe('as rendered', () => {
+        /** Renders the chat with [events] in its timeline. Must run before anything else injects from the TestBed. */
+        function renderChat(events: CaseMessageEvent[]): { ref: ComponentRef<CaseChatComponent>; host: HTMLElement } {
+          TestBed.overrideComponent(CaseChatComponent, {
+            remove: {
+              imports: [
+                DrawerComponent,
+                ExchangeShellComponent,
+                CaseUsageComponent,
+                KebabMenuComponent,
+                ConfirmDialogComponent,
+                ComposerAttachmentsComponent,
+                VoiceRecorderComponent,
+              ],
+            },
+            add: {
+              imports: [
+                StubDrawerComponent,
+                StubExchangeShellComponent,
+                StubCaseUsageComponent,
+                StubKebabMenuComponent,
+                StubConfirmDialogComponent,
+                StubComposerAttachmentsComponent,
+                StubVoiceRecorderComponent,
+              ],
+            },
+          })
+          const ref = makeComponent()
+          ref.instance['events'].set(events)
+          TestBed.inject(ApplicationRef).attachView(ref.hostView)
+          ref.changeDetectorRef.detectChanges()
+          return { ref, host: ref.location.nativeElement as HTMLElement }
+        }
+
+        /** The rewind buttons of the actions bar of each bubble, in timeline order. */
+        const rewindButtons = (host: HTMLElement): HTMLButtonElement[][] =>
+          Array.from(host.querySelectorAll('agentos-message-actions')).map((bar) =>
+            Array.from(bar.querySelectorAll('button')).filter((button) => button.title === REWIND_TOOLTIP)
+          )
+
+        it('shows the button in the actions bar of a user message, and not in the one of an agent message', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            expect(rewindButtons(host).map((buttons) => buttons.length)).toEqual([1, 0])
+            // The old floating button over the bubble is gone.
+            expect(host.querySelector('.case-chat__bubble-rewind')).toBeNull()
+          } finally {
+            ref.destroy()
+          }
+        })
+
+        it('opens the confirmation for that message when clicked, and sends nothing', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            rewindButtons(host)[0]![0]!.click()
+
+            expect(ref.instance['rewindTarget']()?.id).toBe('m-1')
+            expect(http.post).not.toHaveBeenCalled()
+          } finally {
+            ref.destroy()
+          }
+        })
+
+        it('removes the button once the case can no longer be rewound', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            exchangeState.canWriteCase.set(false)
+            ref.changeDetectorRef.detectChanges()
+
+            expect(rewindButtons(host).map((buttons) => buttons.length)).toEqual([0, 0])
+          } finally {
+            ref.destroy()
+          }
+        })
+      })
+
+      it('is hidden on every bubble whenever the case cannot be rewound', () => {
+        const ref = makeComponent()
+        const blockers: Array<() => void> = [
+          () => ref.instance['isRunning'].set(true),
+          () => ref.instance['_sseStatus'].set('KILLED'),
+          () => exchangeState.canWriteCase.set(false),
+        ]
+
+        for (const block of blockers) {
+          ref.instance['isRunning'].set(false)
+          ref.instance['_sseStatus'].set('')
+          exchangeState.canWriteCase.set(true)
+          expect(ref.instance['canRewindMessage'](userMessage())).toBe(true)
+
+          block()
+
+          expect(ref.instance['canRewindMessage'](userMessage())).toBe(false)
+        }
+      })
+    })
+
+    it('is not offered while a message is being sent', () => {
+      const ref = makeComponent()
+      ref.instance['submitting'] = true
+
+      expect(ref.instance['canRewind']()).toBe(false)
+    })
+
+    it('does not refill the composer of another case when the user switched during the request', () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        const response = new Subject<unknown>()
+        http.post.mockReturnValueOnce(response)
+        ref.instance['askRewind'](userMessage('m-1', 'text of the old case'))
+        ref.instance['rewind']()
+
+        ref.instance['caseId'] = 'c-2'
+        ref.instance['reinitialise']()
+        eventSourceCtor.mockClear()
+        response.next({})
+        response.complete()
+
+        expect(ref.instance['inputValue']()).toBe('')
+        expect(eventSourceCtor).not.toHaveBeenCalled()
+        expect(TestBed.inject(CaseStateService).updateCaseStatus).not.toHaveBeenCalled()
+      } finally {
+        ref.destroy()
+        log.mockRestore()
+      }
+    })
+
+    it('blocks a second rewind while the first is in flight', () => {
+      const ref = makeComponent()
+      http.post.mockReturnValueOnce(new Subject<unknown>())
+      ref.instance['askRewind'](userMessage())
+      ref.instance['rewind']()
+
+      expect(ref.instance['canRewind']()).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
     })
   })
 
@@ -1604,6 +2358,814 @@ describe('CaseChatComponent — submit with attachments', () => {
       }>
       expect(messages.map((m) => m.metrics?.cost)).toEqual([0.1, 0.25])
       expect(messages.map((m) => m.metrics?.cumulativeCost)).toEqual([0.1, 0.35])
+    })
+  })
+
+  /**
+   * Edit and re-run of a user message. Like the rest of this spec the template is not rendered: what the pencil
+   * shows is decided by canEditMessage, which the template reads, and the rendering of the bar itself is covered by
+   * message-actions.component.spec (copy alone, pencil, no fork) and message-editor.component.spec (labels, keys).
+   */
+  describe('edit and re-run of a user message', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const textMessage = (id: string, role: ActorRoleEnum, text: string, rerunOf?: string): CaseMessageEvent =>
+      ({
+        id,
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T10:00:00Z',
+        metadata,
+        actor: { id: role === ActorRoleEnum.USER ? 'u-1' : 'agent-1', role, displayName: id },
+        content: [{ type: 'Text', content: text }],
+        rerunOf,
+      }) as unknown as CaseMessageEvent
+    const user = (id: string, text = id, rerunOf?: string) => textMessage(id, ActorRoleEnum.USER, text, rerunOf)
+    const agent = (id: string, text = id) => textMessage(id, ActorRoleEnum.AGENT, text)
+    const toolRequest = (id: string): ToolRequestEvent => ({
+      id,
+      type: 'ToolRequestEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T10:00:00Z',
+      metadata,
+      toolName: 'case-exchange__editFiles',
+      toolRequestId: id,
+      args: '{}',
+    })
+
+    /** The messages of the timeline, as [id, text]. */
+    const shown = (ref: ComponentRef<CaseChatComponent>): Array<[string, string]> =>
+      ref.instance['timeline']().flatMap((item) =>
+        item.kind === 'message' ? [[item.event.id, ref.instance['messageText'](item)] as [string, string]] : []
+      )
+    const kinds = (ref: ComponentRef<CaseChatComponent>): string[] =>
+      ref.instance['timeline']().map((item) => (item.kind === 'message' ? `message:${item.event.id}` : item.kind))
+
+    /** A chat of the current user (u-1) with two turns, ready to re-run the first or the second message. */
+    function makeChat(): ComponentRef<CaseChatComponent> {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-1' } as User)
+      showTechnical.set(false)
+      const ref = makeComponent()
+      ref.instance['events'].set([
+        user('u1', 'first question'),
+        toolRequest('t1'),
+        agent('a1', 'first answer'),
+        user('u2', 'second question'),
+        agent('a2', 'second answer'),
+      ])
+      return ref
+    }
+
+    describe('who can edit what', () => {
+      it('offers the pencil on a message of the current user, on an idle case', () => {
+        const ref = makeChat()
+
+        expect(ref.instance['canEditMessage'](user('u1'))).toBe(true)
+      })
+
+      it('never offers it on an agent message', () => {
+        const ref = makeChat()
+
+        expect(ref.instance['canEditMessage'](agent('a1'))).toBe(false)
+      })
+
+      it('hides it while the case runs', () => {
+        const ref = makeChat()
+        ref.instance['isRunning'].set(true)
+
+        expect(ref.instance['canEditMessage'](user('u1'))).toBe(false)
+      })
+
+      it('hides it on a case that has ended', () => {
+        const ref = makeChat()
+        ref.instance['_sseStatus'].set('KILLED')
+
+        expect(ref.instance['canEditMessage'](user('u1'))).toBe(false)
+      })
+
+      it('hides it on the message of someone else, and while the current user is not known', () => {
+        const ref = makeChat()
+        const bob = { ...user('u1'), actor: { id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' } }
+
+        expect(ref.instance['canEditMessage'](bob)).toBe(false)
+
+        const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+        userState.currentUser.set(null)
+        expect(ref.instance['canEditMessage'](user('u1'))).toBe(false)
+      })
+
+      it('hides it on every other bubble while one is being edited, and offers it again once closed', () => {
+        const ref = makeChat()
+
+        ref.instance['startMessageEdit'](user('u1'))
+
+        expect(ref.instance['isEditingMessage'](user('u1'))).toBe(true)
+        expect(ref.instance['canEditMessage'](user('u2'))).toBe(false)
+        ref.instance['startMessageEdit'](user('u2'))
+        expect(ref.instance['isEditingMessage'](user('u2'))).toBe(false)
+
+        ref.instance['cancelMessageEdit']()
+
+        expect(ref.instance['isEditingMessage'](user('u1'))).toBe(false)
+        expect(ref.instance['canEditMessage'](user('u2'))).toBe(true)
+      })
+
+      it('does not open the editor on a message that cannot be edited', () => {
+        const ref = makeChat()
+        ref.instance['isRunning'].set(true)
+
+        ref.instance['startMessageEdit'](user('u1'))
+
+        expect(ref.instance['isEditingMessage'](user('u1'))).toBe(false)
+      })
+
+      it('starts the editor from the text of the message', () => {
+        const ref = makeChat()
+
+        expect(ref.instance['editText'](user('u1', 'first question'))).toBe('first question')
+      })
+    })
+
+    describe('the timeline follows the effective conversation', () => {
+      it('shows the re-run message in place of the one it replaces, and not what the replaced run produced', () => {
+        const ref = makeChat()
+        ref.instance['events'].update((events) => [...events, user('u3', 'second question, edited', 'u2')])
+
+        expect(shown(ref)).toEqual([
+          ['u1', 'first question'],
+          ['a1', 'first answer'],
+          ['u3', 'second question, edited'],
+        ])
+      })
+
+      it('keeps the whole log: nothing is removed from the events', () => {
+        const ref = makeChat()
+        ref.instance['events'].update((events) => [...events, user('u3', 'second question, edited', 'u2')])
+
+        expect(ref.instance['events']().map((event) => event.id)).toEqual(['u1', 't1', 'a1', 'u2', 'a2', 'u3'])
+      })
+
+      it('follows a chain of re-runs', () => {
+        const ref = makeChat()
+        ref.instance['events'].update((events) => [
+          ...events,
+          user('u3', 'once', 'u2'),
+          agent('a3'),
+          user('u4', 'twice', 'u3'),
+        ])
+
+        expect(shown(ref).map(([id]) => id)).toEqual(['u1', 'a1', 'u4'])
+      })
+    })
+
+    describe('sending a re-run', () => {
+      it('posts the new text with the id of the message it replaces, and nothing else of the composer', async () => {
+        const ref = makeChat()
+
+        await ref.instance['rerunMessage'](user('u2'), '  second question, edited ')
+
+        expect(http.post).toHaveBeenCalledTimes(1)
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: 'second question, edited',
+          rerunOf: 'u2',
+        })
+      })
+
+      it('sends the original text as it is when the user just reruns', async () => {
+        const ref = makeChat()
+
+        await ref.instance['rerunMessage'](user('u2'), ref.instance['editText'](user('u2', 'second question')))
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: 'second question',
+          rerunOf: 'u2',
+        })
+      })
+
+      it('sends nothing for an empty text', async () => {
+        const ref = makeChat()
+
+        await ref.instance['rerunMessage'](user('u2'), '  \n ')
+
+        expect(http.post).not.toHaveBeenCalled()
+        expect(ref.instance['pendingRerun']()).toBeNull()
+      })
+
+      it('sends nothing while the case runs', async () => {
+        const ref = makeChat()
+        ref.instance['isRunning'].set(true)
+
+        await ref.instance['rerunMessage'](user('u2'), 'edited')
+
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('closes the editor and locks the case at once', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+        ref.instance['startMessageEdit'](user('u2'))
+
+        void ref.instance['rerunMessage'](user('u2'), 'edited')
+
+        expect(ref.instance['isEditingMessage'](user('u2'))).toBe(false)
+        expect(ref.instance['isRunning']()).toBe(true)
+        expect(ref.instance['canSend']).toBe(false)
+      })
+    })
+
+    describe('a message that carries files', () => {
+      const attachedLine = '[Files attached to the case exchange: pasted.png]'
+      const referencedLine = '[Files referenced: namespace:docs/readme.md]'
+      const withFiles = (id = 'u2', text = 'look at this', ...lines: string[]) =>
+        // As the composer writes it: the text, a blank line, then the lines of the block joined by a newline.
+        user(id, lines.length > 0 ? `${text}\n\n${lines.join('\n')}` : text)
+      const timelineMessage = (ref: ComponentRef<CaseChatComponent>, id: string) => {
+        const item = ref.instance['timeline']().find(
+          (candidate) => candidate.kind === 'message' && candidate.event.id === id
+        )
+        if (item?.kind !== 'message') throw new Error(`no message ${id}`)
+        return item
+      }
+
+      /** A chat of the current user, whose last message carries files. */
+      function makeChatWithFiles(...lines: string[]): ComponentRef<CaseChatComponent> {
+        const ref = makeChat()
+        ref.instance['events'].set([
+          user('u1', 'first question'),
+          agent('a1', 'first answer'),
+          withFiles('u2', 'look at this', ...lines),
+        ])
+        return ref
+      }
+
+      it('carries the files of its lines on the timeline, and shows and copies the text alone', () => {
+        const ref = makeChatWithFiles(attachedLine, referencedLine)
+        const item = timelineMessage(ref, 'u2')
+
+        expect(item.files.map((file) => `${file.kind}:${file.scope}:${file.path}`)).toEqual([
+          `attached:${ExchangeFileEntryScopeEnum.CASE}:pasted.png`,
+          `referenced:${ExchangeFileEntryScopeEnum.NAMESPACE}:docs/readme.md`,
+        ])
+        // What the copy button gets, and what the bubble shows.
+        expect(ref.instance['messageText'](item)).toBe('look at this')
+      })
+
+      it('carries no file for a message without lines, nor for an agent message that has such a line', () => {
+        const ref = makeChat()
+        ref.instance['events'].set([user('u1', 'plain'), agent('a1', `quoting\n\n${attachedLine}`)])
+
+        expect(timelineMessage(ref, 'u1').files).toEqual([])
+        // An agent message is left as it is: its text, line included.
+        expect(timelineMessage(ref, 'a1').files).toEqual([])
+        expect(ref.instance['messageText'](timelineMessage(ref, 'a1'))).toBe(`quoting\n\n${attachedLine}`)
+      })
+
+      it('leaves a line in the middle of the text where it is', () => {
+        const ref = makeChat()
+        const text = `before\n\n${attachedLine}\n\nafter`
+        ref.instance['events'].set([user('u1', text)])
+
+        const item = timelineMessage(ref, 'u1')
+        expect(item.files).toEqual([])
+        expect(ref.instance['messageText'](item)).toBe(text)
+      })
+
+      it('renders the markdown of the text alone: the cache holds no line', () => {
+        const original = globalThis.EventSource
+        const source = Object.assign(new EventTarget(), { close: jest.fn() })
+        globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        const ref = makeChat()
+        try {
+          ref.instance['events'].set([])
+          ref.instance['connectSse']()
+          source.dispatchEvent(
+            new MessageEvent('MessageEvent', {
+              data: JSON.stringify(withFiles('u2', 'look at **this**', attachedLine, referencedLine)),
+            })
+          )
+
+          const html = String(ref.instance['messageHtmlCache'].get('u2'))
+          expect(html).toContain('<strong>this</strong>')
+          expect(html).not.toContain('Files attached')
+          expect(html).not.toContain('Files referenced')
+          expect(String(timelineMessage(ref, 'u2').html)).toBe(html)
+          expect(timelineMessage(ref, 'u2').files).toHaveLength(2)
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
+
+      it('starts the editor from the text alone', () => {
+        const ref = makeChatWithFiles(attachedLine, referencedLine)
+
+        expect(ref.instance['editText'](withFiles('u2', 'look at this', attachedLine, referencedLine))).toBe(
+          'look at this'
+        )
+      })
+
+      it('puts the lines back after the edited text, as they were sent, with the id of the message it replaces', async () => {
+        const ref = makeChatWithFiles(attachedLine)
+
+        await ref.instance['rerunMessage'](withFiles('u2', 'look at this', attachedLine), '  edited ')
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: 'edited\n\n[Files attached to the case exchange: pasted.png]',
+          rerunOf: 'u2',
+        })
+      })
+
+      it('puts back every line of the block, in order', async () => {
+        const ref = makeChatWithFiles(attachedLine, referencedLine)
+
+        await ref.instance['rerunMessage'](withFiles('u2', 'look at this', attachedLine, referencedLine), 'edited')
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: `edited\n\n${attachedLine}\n${referencedLine}`,
+          rerunOf: 'u2',
+        })
+      })
+
+      it('sends the original content as it was on a plain Rerun', async () => {
+        const ref = makeChatWithFiles(attachedLine, referencedLine)
+        const message = withFiles('u2', 'look at this', attachedLine, referencedLine)
+
+        await ref.instance['rerunMessage'](message, ref.instance['editText'](message))
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: `look at this\n\n${attachedLine}\n${referencedLine}`,
+          rerunOf: 'u2',
+        })
+      })
+
+      it('can run a message of files only again: the content is the lines alone', async () => {
+        const ref = makeChat()
+        const filesOnly = user('u2', attachedLine)
+        ref.instance['events'].set([user('u1', 'first question'), agent('a1', 'first answer'), filesOnly])
+
+        expect(ref.instance['editText'](filesOnly)).toBe('')
+        await ref.instance['rerunMessage'](filesOnly, '')
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: attachedLine, rerunOf: 'u2' })
+      })
+
+      it('can give text to a message of files only', async () => {
+        const ref = makeChat()
+        const filesOnly = user('u2', attachedLine)
+        ref.instance['events'].set([user('u1', 'first question'), filesOnly])
+
+        await ref.instance['rerunMessage'](filesOnly, 'now with words')
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: `now with words\n\n${attachedLine}`,
+          rerunOf: 'u2',
+        })
+      })
+
+      it('still sends nothing for a message with neither text nor file', async () => {
+        const ref = makeChat()
+
+        await ref.instance['rerunMessage'](user('u2', 'second question'), ' ')
+
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('shows the new text and the chips while the re-run is pending, never the raw line', async () => {
+        const ref = makeChatWithFiles(attachedLine)
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['rerunMessage'](withFiles('u2', 'look at this', attachedLine), 'edited **text**')
+
+        const bubble = timelineMessage(ref, 'u2')
+        expect(bubble.pending).toBe(true)
+        expect(ref.instance['messageText'](bubble)).toBe('edited **text**')
+        expect(String(bubble.html)).toContain('<strong>text</strong>')
+        expect(String(bubble.html)).not.toContain('Files attached')
+        expect(bubble.files).toEqual([
+          { name: 'pasted.png', path: 'pasted.png', scope: ExchangeFileEntryScopeEnum.CASE, kind: 'attached' },
+        ])
+      })
+
+      it('shows the chips of a message of files only while its re-run is pending', () => {
+        const ref = makeChat()
+        const filesOnly = user('u2', attachedLine)
+        ref.instance['events'].set([user('u1', 'first question'), filesOnly])
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['rerunMessage'](filesOnly, '')
+
+        const bubble = timelineMessage(ref, 'u2')
+        expect(bubble.pending).toBe(true)
+        expect(ref.instance['messageText'](bubble)).toBe('')
+        expect(bubble.files).toHaveLength(1)
+      })
+    })
+
+    describe('reload: a re-run of the message as it is', () => {
+      const attachedLine = '[Files attached to the case exchange: pasted.png]'
+      const referencedLine = '[Files referenced: namespace:docs/readme.md]'
+
+      /** What the editor does on Rerun without a change: the text the editor starts from, sent through rerunMessage. */
+      const editorRerun = (ref: ComponentRef<CaseChatComponent>, message: CaseMessageEvent) =>
+        ref.instance['rerunMessage'](message, ref.instance['editText'](message))
+
+      it('posts exactly what Edit then Rerun without a change posts', async () => {
+        const viaEditor = makeChat()
+        await editorRerun(viaEditor, user('u2', 'second question'))
+        const editorRequest = http.post.mock.calls[0]!
+        http.post.mockClear()
+        const viaReload = makeChat()
+
+        await viaReload.instance['reloadMessage'](user('u2', 'second question'))
+
+        expect(http.post).toHaveBeenCalledTimes(1)
+        expect(http.post.mock.calls[0]).toEqual(editorRequest)
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: 'second question',
+          rerunOf: 'u2',
+        })
+      })
+
+      it('puts the lines of the files back after the text, as they were sent', async () => {
+        const ref = makeChat()
+        const message = user('u2', `look at this\n\n${attachedLine}\n${referencedLine}`)
+        ref.instance['events'].set([user('u1', 'first question'), agent('a1', 'first answer'), message])
+
+        await ref.instance['reloadMessage'](message)
+
+        expect(http.post).toHaveBeenCalledTimes(1)
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+          content: `look at this\n\n${attachedLine}\n${referencedLine}`,
+          rerunOf: 'u2',
+        })
+      })
+
+      it('posts the same content as the editor for a message with files', async () => {
+        const message = user('u2', `look at this\n\n${attachedLine}`)
+        const viaEditor = makeChat()
+        await editorRerun(viaEditor, message)
+        const editorBody = http.post.mock.calls[0]![1]
+        http.post.mockClear()
+        const viaReload = makeChat()
+
+        await viaReload.instance['reloadMessage'](message)
+
+        expect(http.post.mock.calls[0]![1]).toEqual(editorBody)
+      })
+
+      it('can run a message of files only again: the content is the lines alone', async () => {
+        const ref = makeChat()
+        const filesOnly = user('u2', attachedLine)
+        ref.instance['events'].set([user('u1', 'first question'), filesOnly])
+
+        await ref.instance['reloadMessage'](filesOnly)
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: attachedLine, rerunOf: 'u2' })
+      })
+
+      it('posts nothing while the case runs', async () => {
+        const ref = makeChat()
+        ref.instance['isRunning'].set(true)
+
+        await ref.instance['reloadMessage'](user('u2', 'second question'))
+
+        expect(http.post).not.toHaveBeenCalled()
+        expect(ref.instance['pendingRerun']()).toBeNull()
+      })
+
+      it('posts nothing on a message of someone else', async () => {
+        const ref = makeChat()
+        const bob = {
+          ...user('u2', 'second question'),
+          actor: { id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' },
+        }
+
+        await ref.instance['reloadMessage'](bob)
+
+        expect(http.post).not.toHaveBeenCalled()
+        expect(ref.instance['pendingRerun']()).toBeNull()
+      })
+
+      it('posts nothing on an agent message', async () => {
+        const ref = makeChat()
+
+        await ref.instance['reloadMessage'](agent('a1', 'first answer'))
+
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('posts nothing on a case that has ended', async () => {
+        const ref = makeChat()
+        ref.instance['_sseStatus'].set('KILLED')
+
+        await ref.instance['reloadMessage'](user('u2', 'second question'))
+
+        expect(http.post).not.toHaveBeenCalled()
+      })
+
+      it('posts nothing while a bubble is being edited', async () => {
+        const ref = makeChat()
+        ref.instance['startMessageEdit'](user('u1', 'first question'))
+
+        await ref.instance['reloadMessage'](user('u2', 'second question'))
+
+        expect(http.post).not.toHaveBeenCalled()
+        expect(ref.instance['isEditingMessage'](user('u1'))).toBe(true)
+      })
+
+      it('posts nothing a second time while the first reload is pending', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['reloadMessage'](user('u2', 'second question'))
+        void ref.instance['reloadMessage'](user('u2', 'second question'))
+        void ref.instance['reloadMessage'](user('u1', 'first question'))
+
+        expect(http.post).toHaveBeenCalledTimes(1)
+      })
+
+      it('shows the same pending state as the editor: same bubble, what followed hidden, case locked, log untouched', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+        const eventsBefore = ref.instance['events']()
+
+        void ref.instance['reloadMessage'](user('u1', 'first question'))
+
+        expect(ref.instance['pendingRerun']()).toEqual({ targetId: 'u1', text: 'first question' })
+        expect(shown(ref)).toEqual([['u1', 'first question']])
+        const bubble = ref.instance['timeline']().find((item) => item.kind === 'message')
+        expect(bubble?.kind === 'message' && bubble.pending).toBe(true)
+        expect(ref.instance['isRunning']()).toBe(true)
+        expect(ref.instance['canEditMessage'](user('u1'))).toBe(false)
+        expect(ref.instance['events']()).toBe(eventsBefore)
+      })
+
+      it('keeps the files as chips while pending, never the raw line', () => {
+        const ref = makeChat()
+        const message = user('u2', `look at this\n\n${attachedLine}`)
+        ref.instance['events'].set([user('u1', 'first question'), message])
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['reloadMessage'](message)
+
+        const bubble = ref.instance['timeline']().find((item) => item.kind === 'message' && item.event.id === 'u2')
+        expect(bubble?.kind === 'message' && bubble.pending).toBe(true)
+        expect(bubble?.kind === 'message' && ref.instance['messageText'](bubble)).toBe('look at this')
+        expect(bubble?.kind === 'message' && bubble.files).toHaveLength(1)
+        expect(bubble?.kind === 'message' && String(bubble.html)).not.toContain('Files attached')
+      })
+
+      it('puts the display back and says why when the server refuses, like the editor', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        try {
+          const ref = makeChat()
+          const before = shown(ref)
+          http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })))
+
+          await ref.instance['reloadMessage'](user('u1', 'first question'))
+
+          expect(ref.instance['pendingRerun']()).toBeNull()
+          expect(shown(ref)).toEqual(before)
+          expect(ref.instance['isRunning']()).toBe(false)
+          expect(ref.instance['rerunErrorOf'](user('u1'))).toContain('run is in progress')
+          expect(ref.instance['rerunErrorOf'](user('u2'))).toBeNull()
+          // And the reload is offered again.
+          expect(ref.instance['canEditMessage'](user('u1'))).toBe(true)
+        } finally {
+          consoleError.mockRestore()
+        }
+      })
+
+      it('says it too for a failure that is not an answer of the server', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        try {
+          const ref = makeChat()
+          http.post.mockReturnValueOnce(throwError(() => new Error('network down')))
+
+          await ref.instance['reloadMessage'](user('u1', 'first question'))
+
+          expect(ref.instance['pendingRerun']()).toBeNull()
+          expect(ref.instance['rerunErrorOf'](user('u1'))).toContain('could not be sent')
+        } finally {
+          consoleError.mockRestore()
+        }
+      })
+
+      it('forgets a previous error when it is sent again', async () => {
+        const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        try {
+          const ref = makeChat()
+          http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })))
+          await ref.instance['reloadMessage'](user('u1', 'first question'))
+          expect(ref.instance['rerunErrorOf'](user('u1'))).not.toBeNull()
+          http.post.mockReturnValueOnce(new Subject())
+
+          void ref.instance['reloadMessage'](user('u1', 'first question'))
+
+          expect(ref.instance['rerunErrorOf'](user('u1'))).toBeNull()
+        } finally {
+          consoleError.mockRestore()
+        }
+      })
+    })
+
+    describe('while the re-run is pending', () => {
+      it('keeps the bubble, with the new text, and hides what followed it, without touching the log', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+        const eventsBefore = ref.instance['events']()
+
+        void ref.instance['rerunMessage'](user('u1'), 'first question, edited')
+
+        // The bubble is still there, with the new text and the pending look; what came after it is gone.
+        expect(shown(ref)).toEqual([['u1', 'first question, edited']])
+        const bubble = ref.instance['timeline']().find((item) => item.kind === 'message')
+        expect(bubble?.kind === 'message' && bubble.pending).toBe(true)
+        expect(kinds(ref)).toEqual(['message:u1'])
+        // And nothing was cleared or rebuilt: no blink.
+        expect(ref.instance['events']()).toBe(eventsBefore)
+      })
+
+      it('keeps what came before the message', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['rerunMessage'](user('u2'), 'second question, edited')
+
+        expect(shown(ref)).toEqual([
+          ['u1', 'first question'],
+          ['a1', 'first answer'],
+          ['u2', 'second question, edited'],
+        ])
+        const pending = ref.instance['timeline']().filter((item) => item.kind === 'message' && item.pending)
+        expect(pending).toHaveLength(1)
+      })
+
+      it('renders the new text through the markdown path', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['rerunMessage'](user('u2'), 'second **question**')
+
+        const bubble = ref.instance['timeline']().find((item) => item.kind === 'message' && item.pending)
+        expect(bubble?.kind === 'message' && String(bubble.html)).toContain('<strong>question</strong>')
+      })
+
+      it('offers no pencil on any bubble', () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(new Subject())
+
+        void ref.instance['rerunMessage'](user('u2'), 'edited')
+
+        expect(ref.instance['canEditMessage'](user('u1'))).toBe(false)
+      })
+
+      it('is lifted by the re-run message of the server, which then takes the place of the bubble', () => {
+        const original = globalThis.EventSource
+        const source = Object.assign(new EventTarget(), { close: jest.fn() })
+        globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        const ref = makeChat()
+        try {
+          ref.instance['connectSse']()
+          http.post.mockReturnValueOnce(new Subject())
+          void ref.instance['rerunMessage'](user('u2'), 'second question, edited')
+          expect(ref.instance['pendingRerun']()).not.toBeNull()
+
+          // What the server records: the new message, which re-runs u2.
+          const rerun = user('u3', 'second question, edited', 'u2')
+          source.dispatchEvent(new MessageEvent('MessageEvent', { data: JSON.stringify(rerun) }))
+
+          expect(ref.instance['pendingRerun']()).toBeNull()
+          expect(shown(ref)).toEqual([
+            ['u1', 'first question'],
+            ['a1', 'first answer'],
+            ['u3', 'second question, edited'],
+          ])
+          const pending = ref.instance['timeline']().filter((item) => item.kind === 'message' && item.pending)
+          expect(pending).toHaveLength(0)
+          // The log only grew.
+          expect(ref.instance['events']().map((event) => event.id)).toEqual(['u1', 't1', 'a1', 'u2', 'a2', 'u3'])
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
+
+      it('is not lifted by an unrelated message', () => {
+        const original = globalThis.EventSource
+        const source = Object.assign(new EventTarget(), { close: jest.fn() })
+        globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+        const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+        const ref = makeChat()
+        try {
+          ref.instance['connectSse']()
+          http.post.mockReturnValueOnce(new Subject())
+          void ref.instance['rerunMessage'](user('u2'), 'edited')
+
+          source.dispatchEvent(new MessageEvent('MessageEvent', { data: JSON.stringify(agent('a9')) }))
+
+          expect(ref.instance['pendingRerun']()).not.toBeNull()
+        } finally {
+          ref.destroy()
+          globalThis.EventSource = original
+          log.mockRestore()
+        }
+      })
+    })
+
+    describe('when the server refuses', () => {
+      let consoleError: jest.SpyInstance
+
+      beforeEach(() => {
+        consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      })
+
+      afterEach(() => consoleError.mockRestore())
+
+      it('puts the display back, with what followed the message, and says why', async () => {
+        const ref = makeChat()
+        const before = shown(ref)
+        http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })))
+
+        await ref.instance['rerunMessage'](user('u1'), 'first question, edited')
+
+        expect(ref.instance['pendingRerun']()).toBeNull()
+        expect(shown(ref)).toEqual(before)
+        expect(ref.instance['rerunErrorOf'](user('u1'))).toContain('run is in progress')
+        expect(ref.instance['rerunErrorOf'](user('u2'))).toBeNull()
+      })
+
+      it('unlocks the composer again', async () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 403 })))
+
+        await ref.instance['rerunMessage'](user('u1'), 'edited')
+
+        expect(ref.instance['isRunning']()).toBe(false)
+        expect(ref.instance['rerunErrorOf'](user('u1'))).toContain('author')
+      })
+
+      it('keeps the case running when the log says that it runs', async () => {
+        const ref = makeChat()
+        ref.instance['events'].update((events) => [
+          ...events,
+          { ...toolRequest('x'), type: 'AgentRunningEvent' } as never,
+        ])
+        http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })))
+
+        await ref.instance['rerunMessage'](user('u2'), 'edited')
+
+        expect(ref.instance['isRunning']()).toBe(true)
+      })
+
+      it('says it too for a failure that is not an answer of the server', async () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(throwError(() => new Error('network down')))
+
+        await ref.instance['rerunMessage'](user('u1'), 'edited')
+
+        expect(ref.instance['rerunErrorOf'](user('u1'))).toContain('could not be sent')
+      })
+
+      it('forgets the error when the message is edited again', async () => {
+        const ref = makeChat()
+        http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 400 })))
+        await ref.instance['rerunMessage'](user('u1'), 'edited')
+
+        ref.instance['startMessageEdit'](user('u1'))
+
+        expect(ref.instance['rerunErrorOf'](user('u1'))).toBeNull()
+      })
+    })
+
+    it('forgets the editor, the pending re-run and the error on a case switch', () => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeChat()
+      try {
+        http.post.mockReturnValueOnce(new Subject())
+        void ref.instance['rerunMessage'](user('u2'), 'edited')
+        ref.instance['rerunError'].set({ eventId: 'u1', message: 'nope' })
+
+        ref.instance['reinitialise']()
+
+        expect(ref.instance['pendingRerun']()).toBeNull()
+        expect(ref.instance['rerunError']()).toBeNull()
+        expect(ref.instance['activeEditId']()).toBeNull()
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        log.mockRestore()
+      }
     })
   })
 

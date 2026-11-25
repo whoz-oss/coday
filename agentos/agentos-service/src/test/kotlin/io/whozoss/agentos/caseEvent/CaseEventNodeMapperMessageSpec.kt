@@ -119,6 +119,25 @@ class CaseEventNodeMapperMessageSpec :
             roundTripped.sessionContext shouldBe sessionCtx
         }
 
+        "MessageEvent rerunOf survives the round-trip and a soft delete, and is null by default" {
+            val target = UUID.randomUUID()
+            val original =
+                MessageEvent(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    actor = userActor,
+                    content = listOf(MessageContent.Text("edited")),
+                    rerunOf = target,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+
+            (nodeMapper.toDomain(node) as MessageEvent).rerunOf shouldBe target
+            (nodeMapper.toDomain(nodeMapper.withRemoved(node, true)) as MessageEvent).rerunOf shouldBe target
+            (nodeMapper.toDomain(nodeMapper.fromDomain(original.copy(rerunOf = null))) as MessageEvent).rerunOf shouldBe null
+        }
+
         "MessageEvent with null sessionContext survives the round-trip" {
             val original =
                 MessageEvent(

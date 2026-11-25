@@ -141,6 +141,14 @@ interface CaseService : EntityService<Case, UUID> {
      * it is embedded directly on [io.whozoss.agentos.sdk.caseEvent.MessageEvent.sessionContext]
      * and persisted with the message. Only the last user message's context is injected into
      * the LLM prompt; earlier turns' context is ignored during message conversion.
+     *
+     * [rerunOf] re-runs a previous user message of the case: [content] takes its place and the conversation
+     * restarts from just before it (see [io.whozoss.agentos.sdk.caseEvent.MessageEvent.rerunOf]). The non-text
+     * parts of the replaced message are kept, only its text is replaced. Refused when:
+     * - it comes with [answerToEventId] (`BadRequestException`) or the text is blank (`BadRequestException`)
+     * - the target is not a user message of this case (`BadRequestException`)
+     * - a run is in flight, or the target is no longer part of the conversation (`ConflictException`)
+     * - [actor] is not the author of the target (`AccessDeniedException`)
      */
     fun addMessage(
         caseId: UUID,
@@ -148,6 +156,7 @@ interface CaseService : EntityService<Case, UUID> {
         content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,
         answerToEventId: UUID? = null,
         sessionContext: Map<String, Any?>? = null,
+        rerunOf: UUID? = null,
     )
 
     // ========================================
@@ -205,6 +214,23 @@ interface CaseService : EntityService<Case, UUID> {
     fun reopenCase(caseId: UUID): Case
 
     /**
+     * Rewind an idle case to the user message [eventId]: that message and every event after it are
+     * soft-deleted, in persistence and in the live runtime's history if there is one, and the case
+     * goes back to [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE] with a fresh persisted status event.
+     * Nothing is sent to an agent. Sub-cases, exchange files and usage records are left as they are.
+     *
+     * @return The updated case
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist, or the event
+     *   is unknown, already removed or belongs to another case
+     * @throws [io.whozoss.agentos.exception.ConflictException] if the case is RUNNING, PENDING or terminated
+     * @throws [io.whozoss.agentos.exception.BadRequestException] if the event is not a user message
+     */
+    fun rewindCase(
+        caseId: UUID,
+        eventId: UUID,
+    ): Case
+
+    /**
      * Set the case-level reasoning effort ([Case.reasoningEffort]), or remove it with null.
      *
      * Goes through [edit], so only that field changes: the status stays as the runtime left it, and
@@ -217,6 +243,21 @@ interface CaseService : EntityService<Case, UUID> {
     fun setReasoningEffort(
         caseId: UUID,
         reasoningEffort: ReasoningEffort?,
+    ): Case
+
+    /**
+     * Set the case-level AI model ([Case.modelName]), or remove it with null.
+     *
+     * [modelName] is an alias or an API model name, resolved among the models of the case's namespace and the
+     * platform. A blank name is read as null. Goes through [edit], so only that field changes.
+     *
+     * @throws [io.whozoss.agentos.exception.BadRequestException] if no model answers to [modelName]
+     * @throws [io.whozoss.agentos.exception.ResourceNotFoundException] if the case does not exist or is soft-deleted
+     * @throws [io.whozoss.agentos.exception.ConflictException] if concurrent writes keep winning
+     */
+    fun setModel(
+        caseId: UUID,
+        modelName: String?,
     ): Case
 
     /**

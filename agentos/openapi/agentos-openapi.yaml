@@ -1587,6 +1587,39 @@ paths:
       summary: Reopen a case
       tags:
       - case-controller
+  /api/cases/{caseId}/rewind:
+    post:
+      description: "POST /api/cases/{caseId}/rewind — soft-delete the user message\
+        \ identified by eventId and every event after it, and put the case back to\
+        \ IDLE. The case must be IDLE (or CREATED): it is refused with 409 while the\
+        \ case is RUNNING or PENDING, or terminated (KILLED or ERROR). 404 when the\
+        \ event is unknown, already removed or belongs to another case; 400 when it\
+        \ is not a user message. Sub-cases, exchange files and usage records are left\
+        \ as they are. Returns the updated Case DTO."
+      operationId: rewindCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RewindCaseRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Rewind a case to a user message
+      tags:
+      - case-controller
   /api/cases/{caseId}/run-cost:
     get:
       operationId: getRunCost
@@ -1646,6 +1679,37 @@ paths:
           description: No Content
       tags:
       - run-cost-controller
+  /api/cases/{caseId}/side-questions:
+    post:
+      description: "POST /api/cases/{caseId}/side-questions: answers a quick question\
+        \ from the conversation of the case, without tools. Nothing is persisted or\
+        \ broadcast, and a running turn is not interrupted. 400 for a blank or too\
+        \ long question, 409 when the namespace has no default AI model, 502 when\
+        \ the model fails to answer."
+      operationId: askSideQuestionCaseSideQuestion
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SideQuestionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SideQuestionResponse"
+          description: OK
+      summary: Ask a side question about a case
+      tags:
+      - case-side-question-controller
   /api/cases/{caseId}/voice-messages:
     post:
       operationId: postVoiceMessage
@@ -1909,6 +1973,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/Case"
           description: OK
+      tags:
+      - case-controller
+  /api/cases/{id}/model:
+    put:
+      description: "PUT /api/cases/{id}/model — set the case-level override of the\
+        \ AI model (an alias or an API model name) of the agents running in the case,\
+        \ or remove it with a null value so each agent uses its own model again. An\
+        \ unknown name is refused with 400. Read at the start of each agent run. Replaces\
+        \ the model of every agent of the case; sub-cases do not inherit it. Returns\
+        \ the updated Case DTO."
+      operationId: setModelCase
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaseModelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Set the AI model of a case
       tags:
       - case-controller
   /api/cases/{id}/reasoning-effort:
@@ -4275,6 +4371,9 @@ components:
           format: uuid
         content:
           type: string
+        rerunOf:
+          type: string
+          format: uuid
         sessionContext:
           type: object
           additionalProperties: {}
@@ -4821,6 +4920,12 @@ components:
         lastMessageAt:
           type: string
           format: date-time
+        modelName:
+          type: string
+          description: Per-case override of the AI model of the agents running in
+            the case (an alias or an API model name). Null means each agent uses its
+            own model. Replaces the model of every agent of the case; sub-cases do
+            not inherit it.
         modified:
           type: string
           format: date-time
@@ -4938,6 +5043,11 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseModelRequest:
+      type: object
+      properties:
+        modelName:
+          type: string
     CaseReasoningEffortRequest:
       type: object
       properties:
@@ -6015,6 +6125,9 @@ components:
             $ref: "#/components/schemas/ReasoningEffort"
           requestedReasoningEffort:
             $ref: "#/components/schemas/ReasoningEffort"
+          rerunOf:
+            type: string
+            format: uuid
           sessionContext:
             type: object
             additionalProperties: {}
@@ -6707,6 +6820,14 @@ components:
       - days
       - timeUtc
       - unit
+    RewindCaseRequest:
+      type: object
+      properties:
+        eventId:
+          type: string
+          format: uuid
+      required:
+      - eventId
     RunCostDto:
       type: object
       properties:
@@ -6856,6 +6977,25 @@ components:
         withRemoved:
           type: boolean
           default: false
+    SideQuestionRequest:
+      type: object
+      properties:
+        question:
+          type: string
+          description: "The question, asked about the conversation of the case. Not\
+            \ blank, at most 4000 characters."
+          maxLength: 4000
+          minLength: 1
+      required:
+      - question
+    SideQuestionResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: "The answer, in Markdown. It is not saved anywhere."
+      required:
+      - answer
     Skill:
       type: object
       properties:

@@ -136,11 +136,7 @@
       }
     </header>
     @if (caseId) {
-      <agentos-case-usage
-        [caseId]="caseId"
-        [canWrite]="canAttach()"
-        [running]="isRunning() || caseStatus() === 'RUNNING'"
-      />
+      <agentos-case-usage />
     }
 
     <div
@@ -170,6 +166,7 @@
                   class="case-chat__turn"
                   [class.case-chat__turn--user]="item.event.actor.role === 'USER'"
                   [class.case-chat__turn--agent]="item.event.actor.role === 'AGENT'"
+                  [class.case-chat__turn--pending]="item.pending"
                 >
                   @if (item.isFirstInGroup) {
                     <span class="case-chat__role-label">
@@ -186,35 +183,76 @@
                     </div>
                   }
                   <div class="case-chat__bubble-wrapper">
-                    @if (item.event.actor.role === 'USER') {
-                      @if (audioOf(item.event); as audio) {
-                        <!-- A voice message: the player, then its transcript like a normal user bubble. -->
-                        <!-- The transcript is spoken text, not markdown: shown as plain text so a leading space or an
-                             indented line can never turn into a code block or shift the text. -->
-                        <div class="case-chat__bubble case-chat__bubble--audio" dsBlueprint>
-                          <agentos-audio-message [caseId]="caseId" [audio]="audio" />
-                          <p class="case-chat__transcript">{{ messageText(item).trim() }}</p>
-                        </div>
-                      } @else {
-                        <div
-                          class="case-chat__bubble case-chat__message-text--markdown"
-                          dsBlueprint
-                          [innerHTML]="item.html"
-                        ></div>
-                      }
+                    @if (isEditingMessage(item.event)) {
+                      <!-- The bubble is the editor: the message is edited where it stands, not in the composer. -->
+                      <div class="case-chat__bubble case-chat__bubble--editing">
+                        <agentos-message-editor
+                          [text]="editText(item.event)"
+                          [files]="item.files"
+                          [busy]="isRunning()"
+                          (rerun)="rerunMessage(item.event, $event)"
+                          (cancelled)="cancelMessageEdit()"
+                        />
+                      </div>
                     } @else {
-                      <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
-                    }
-                    <ds-copy-button class="case-chat__bubble-copy" [text]="messageText(item)" title="Copy message" />
-                    @if (item.isLastInGroup) {
-                      <time
-                        class="case-chat__message-time"
-                        [attr.datetime]="item.event.timestamp"
-                        [title]="formatMessageTimestampTitle(item.event.timestamp)"
-                        >{{ formatMessageTime(item.event.timestamp) }}</time
-                      >
+                      @if (item.event.actor.role === 'USER') {
+                        @if (audioOf(item.event); as audio) {
+                          <!-- A voice message: the player, then its transcript like a normal user bubble. -->
+                          <!-- The transcript is spoken text, not markdown: shown as plain text so a leading space or an
+                             indented line can never turn into a code block or shift the text. -->
+                          <div class="case-chat__bubble case-chat__bubble--audio" dsBlueprint>
+                            <agentos-audio-message [caseId]="caseId" [audio]="audio" />
+                            <p class="case-chat__transcript">{{ messageText(item).trim() }}</p>
+                          </div>
+                        } @else if (item.files.length > 0) {
+                          <!-- The files the message carries, as chips under its text: the lines that tell them to the agent
+                               are not shown. A message of files only has no text to render. -->
+                          <div class="case-chat__bubble case-chat__bubble--with-files" dsBlueprint>
+                            @if (messageText(item).trim()) {
+                              <div class="case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                            }
+                            <div class="case-chat__bubble-files">
+                              @for (file of item.files; track file.scope + ':' + file.path) {
+                                <agentos-file-chip [name]="file.name" [path]="file.path" [scope]="file.scope" />
+                              }
+                            </div>
+                          </div>
+                        } @else {
+                          <div
+                            class="case-chat__bubble case-chat__message-text--markdown"
+                            dsBlueprint
+                            [innerHTML]="item.html"
+                          ></div>
+                        }
+                      } @else {
+                        <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
+                      }
+                      @if (item.isLastInGroup) {
+                        <time
+                          class="case-chat__message-time"
+                          [attr.datetime]="item.event.timestamp"
+                          [title]="formatMessageTimestampTitle(item.event.timestamp)"
+                          >{{ formatMessageTime(item.event.timestamp) }}</time
+                        >
+                      }
                     }
                   </div>
+                  <!-- Under the bubble, always visible: copy for every message, reload and the pencil for the user's own,
+                       rewind for any user message while the case can be rewound. -->
+                  @if (!isEditingMessage(item.event)) {
+                    <agentos-message-actions
+                      class="case-chat__message-actions"
+                      [text]="messageText(item)"
+                      [editable]="canEditMessage(item.event)"
+                      [rewindable]="canRewindMessage(item.event)"
+                      (reloadRequested)="reloadMessage(item.event)"
+                      (editRequested)="startMessageEdit(item.event)"
+                      (rewindRequested)="askRewind(item.event)"
+                    />
+                  }
+                  @if (rerunErrorOf(item.event); as rerunFailure) {
+                    <p class="case-chat__rerun-error" role="alert">{{ rerunFailure }}</p>
+                  }
                   <!-- What this answer cost, from the usage the service attached to the turn. -->
                   @if (item.metrics; as metrics) {
                     <dl class="case-chat__turn-metrics" role="group" aria-label="Usage for this answer">
@@ -305,11 +343,6 @@
                       <div class="case-chat__bubble case-chat__bubble--plain" [id]="questionElementId(item.event)">
                         {{ item.event.question }}
                       </div>
-                      <ds-copy-button
-                        class="case-chat__bubble-copy"
-                        [text]="item.event.question"
-                        title="Copy message"
-                      />
                       <time
                         class="case-chat__message-time"
                         [attr.datetime]="item.event.timestamp"
@@ -317,6 +350,7 @@
                         >{{ formatMessageTime(item.event.timestamp) }}</time
                       >
                     </div>
+                    <agentos-message-actions class="case-chat__message-actions" [text]="item.event.question" />
                     @if (!item.answer) {
                       <div [attr.data-question-controls]="item.event.id" class="case-chat__question-controls">
                         @if (configChangeQuestionIds().has(item.event.id)) {
@@ -343,7 +377,6 @@
                       <span class="case-chat__role-label">{{ answerLabel(answer) }}</span>
                       <div class="case-chat__bubble-wrapper">
                         <div class="case-chat__bubble case-chat__bubble--plain">{{ answer.answer }}</div>
-                        <ds-copy-button class="case-chat__bubble-copy" [text]="answer.answer" title="Copy message" />
                         <time
                           class="case-chat__message-time"
                           [attr.datetime]="answer.timestamp"
@@ -351,6 +384,7 @@
                           >{{ formatMessageTime(answer.timestamp) }}</time
                         >
                       </div>
+                      <agentos-message-actions class="case-chat__message-actions" [text]="answer.answer" />
                     </div>
                   }
                 }
@@ -425,119 +459,148 @@
         }
       </div>
 
-      <div class="case-chat__composer" dsBlueprint>
-        @if (autocomplete.atSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-agent-autocomplete
-              [agents]="autocomplete.atSuggestions()"
-              (selected)="onAgentSelected($event)"
-              (dismissed)="closeAtAutocomplete()"
-            />
-          </div>
-        }
-        @if (autocomplete.fileSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-file-autocomplete
-              [files]="autocomplete.fileSuggestions()"
-              (selected)="onFileSelected($event)"
-              (dismissed)="closeFileAutocomplete()"
-            />
-          </div>
-        }
-        @if (autocomplete.effortSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-effort-autocomplete
-              [options]="autocomplete.effortSuggestions()"
-              [current]="activeCase()?.reasoningEffort ?? null"
-              (selected)="onEffortSelected($event)"
-              (dismissed)="closeEffortAutocomplete()"
-            />
-          </div>
-        }
-        @if (autocomplete.slashSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-prompt-autocomplete
-              [prompts]="autocomplete.slashSuggestions()"
-              (selected)="onPromptSelected($event)"
-              (dismissed)="closeSlashAutocomplete()"
-            />
-          </div>
-        }
-        <agentos-composer-attachments
-          #attachmentsUi
-          [attachments]="attachments.attachments()"
-          [namespaceBadge]="namespaceTargeted()"
-          [limitError]="attachments.limitError()"
-          [disabled]="attachments.isUploading()"
-          [references]="referencedFiles()"
-          (removed)="attachments.remove($event)"
-          (referenceRemoved)="removeReference($event)"
-          (filesSelected)="attachments.addFiles($event)"
-        />
-        <textarea
-          #composerInput
-          class="case-chat__input"
-          placeholder="Reply…"
-          rows="3"
-          [value]="inputValue()"
-          [hidden]="voice.isActive()"
-          [disabled]="isRunning() || composerClosed() || attachments.isUploading()"
-          (input)="onInput($event)"
-          (keydown)="onKeydown($event)"
-          (paste)="canStageFiles() && attachments.onPaste($event)"
-        ></textarea>
-        <agentos-voice-recorder
-          [state]="voice.state()"
-          [elapsedMs]="voice.elapsedMs()"
-          [error]="voice.error()"
-          [sendKey]="sendKeyLabel"
-          (keyPressed)="onRecordingKeydown($event)"
-        />
-        <div class="case-chat__actions">
-          @if (canAttach()) {
+      @if (sideQuestions.visible()) {
+        <!-- The aside of a /btw side question: not a timeline item, nothing of it is saved in the case. -->
+        <section
+          class="case-chat__aside"
+          role="complementary"
+          aria-label="Side question"
+          [attr.aria-busy]="sideQuestions.pending()"
+          (keydown.escape)="sideQuestions.dismiss()"
+        >
+          <header class="case-chat__aside-header">
+            <span class="case-chat__aside-label">By the way</span>
+            <span class="case-chat__aside-note">Not saved in the case</span>
             <ds-icon-button
-              icon="attach_file"
+              class="case-chat__aside-close"
+              icon="close"
               variant="default"
-              title="Attach files"
-              [disabled]="!canStageFiles()"
-              (action)="attachmentsUi.openPicker()"
+              title="Dismiss (Esc)"
+              (action)="sideQuestions.dismiss()"
             />
+          </header>
+          <p class="case-chat__aside-question">{{ sideQuestions.question() }}</p>
+          @if (sideQuestions.pending()) {
+            <p class="case-chat__aside-pending" role="status">Thinking…</p>
+          } @else if (sideQuestions.error(); as sideError) {
+            <p class="case-chat__aside-error" role="alert">{{ sideError }}</p>
+          } @else if (sideQuestions.answer(); as sideAnswer) {
+            <div class="case-chat__aside-answer case-chat__message-text--markdown" [innerHTML]="sideAnswerHtml()"></div>
+            <ds-copy-button class="case-chat__aside-copy" [text]="sideAnswer" title="Copy answer" />
           }
-          @if (activeCase()) {
-            <span
-              class="case-chat__effort"
-              title="Type /effort to change it. Not applied to Anthropic and Gemini providers."
-            >
-              effort: {{ caseEffortLabel() }}
-            </span>
-          }
-          <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
+        </section>
+      }
 
-          <!-- Right next to the send button, on its left -->
-          @if (voice.isRecording()) {
-            <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
-          } @else if (voiceCapability.available()) {
-            <ds-icon-button
-              icon="mic"
-              variant="default"
-              title="Record a voice message"
-              [disabled]="!canRecord"
-              (action)="startRecording()"
-            />
+      <div class="case-chat__composer" dsBlueprint [class.case-chat__composer--paused]="runCostPaused()">
+        @if (runCostPaused()) {
+          <!-- A run stopped at its cost threshold asks its decision in place of the composer, like a question to the
+               user: nothing else can be posted until it is taken. The draft and the staged files are kept. -->
+          <agentos-cost-pause-card />
+        } @else {
+          @if (autocomplete.atSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-agent-autocomplete
+                [agents]="autocomplete.atSuggestions()"
+                (selected)="onAgentSelected($event)"
+                (dismissed)="closeAtAutocomplete()"
+              />
+            </div>
           }
+          @if (autocomplete.fileSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-file-autocomplete
+                [files]="autocomplete.fileSuggestions()"
+                (selected)="onFileSelected($event)"
+                (dismissed)="closeFileAutocomplete()"
+              />
+            </div>
+          }
+          @if (autocomplete.slashSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-prompt-autocomplete
+                [prompts]="autocomplete.slashSuggestions()"
+                (selected)="onPromptSelected($event)"
+                (dismissed)="closeSlashAutocomplete()"
+              />
+            </div>
+          }
+          <agentos-composer-attachments
+            #attachmentsUi
+            [attachments]="attachments.attachments()"
+            [namespaceBadge]="namespaceTargeted()"
+            [limitError]="attachments.limitError()"
+            [disabled]="attachments.isUploading()"
+            [references]="referencedFiles()"
+            (removed)="attachments.remove($event)"
+            (referenceRemoved)="removeReference($event)"
+            (filesSelected)="attachments.addFiles($event)"
+          />
+          <textarea
+            #composerInput
+            class="case-chat__input"
+            [placeholder]="isRunning() ? 'Agent is working — use /btw to ask a side question' : 'Reply…'"
+            rows="3"
+            [value]="inputValue()"
+            [hidden]="voice.isActive()"
+            [disabled]="composerClosed() || attachments.isUploading()"
+            (input)="onInput($event)"
+            (keydown)="onKeydown($event)"
+            (paste)="canStageFiles() && attachments.onPaste($event)"
+          ></textarea>
+          <agentos-voice-recorder
+            [state]="voice.state()"
+            [elapsedMs]="voice.elapsedMs()"
+            [error]="voice.error()"
+            [sendKey]="sendKeyLabel"
+            (keyPressed)="onRecordingKeydown($event)"
+          />
+          <div class="case-chat__actions">
+            @if (canAttach()) {
+              <ds-icon-button
+                icon="attach_file"
+                variant="default"
+                title="Attach files"
+                [disabled]="!canStageFiles()"
+                (action)="attachmentsUi.openPicker()"
+              />
+            }
+            @if (activeCase()) {
+              <agentos-case-settings
+                [model]="activeCase()?.modelName ?? null"
+                [effort]="activeCase()?.reasoningEffort ?? null"
+                [disabled]="isTerminal()"
+                (modelSelected)="onModelSelected($event)"
+                (effortSelected)="onEffortSelected($event)"
+              />
+            }
+            <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 
-          @if (isRunning()) {
-            <ds-icon-button icon="stop" variant="default" title="Interrupt" (action)="interrupt()" />
-          } @else {
-            <ds-icon-button
-              icon="send"
-              variant="primary"
-              [title]="voice.isRecording() ? 'Send voice message' : preferences.composerHint()"
-              [disabled]="!canSendNow"
-              (action)="onSendClick()"
-            />
-          }
-        </div>
+            <!-- Right next to the send button, on its left -->
+            @if (voice.isRecording()) {
+              <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
+            } @else if (voiceCapability.available()) {
+              <ds-icon-button
+                icon="mic"
+                variant="default"
+                title="Record a voice message"
+                [disabled]="!canRecord"
+                (action)="startRecording()"
+              />
+            }
+
+            @if (isRunning()) {
+              <ds-icon-button icon="stop" variant="default" title="Interrupt" (action)="interrupt()" />
+            } @else {
+              <ds-icon-button
+                icon="send"
+                variant="primary"
+                [title]="voice.isRecording() ? 'Send voice message' : preferences.composerHint()"
+                [disabled]="!canSendNow"
+                (action)="onSendClick()"
+              />
+            }
+          </div>
+        }
 
         @if (isTerminal()) {
           <div class="case-chat__notice-bar">
@@ -694,4 +757,14 @@
   cancelLabel="Cancel"
   (confirmed)="kill()"
   (cancelled)="confirmingKill.set(false)"
+/>
+
+<ds-confirm-dialog
+  [open]="rewindTarget() !== null"
+  title="Rewind to this message?"
+  message="This message and everything after it will be removed from the conversation. Its text goes back in the composer so you can edit and resend it. Files, sub-cases and costs already spent are kept."
+  confirmLabel="Rewind"
+  cancelLabel="Cancel"
+  (confirmed)="rewind()"
+  (cancelled)="rewindTarget.set(null)"
 />

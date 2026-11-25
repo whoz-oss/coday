@@ -8,6 +8,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { DelegationPresentation } from '../delegation/models/delegation.models'
 import { TurnMetrics } from './turn-metrics'
+import { MentionedFile } from '../composer-attachments/composer-attachments.utils'
 
 export interface ToolCall {
   requestId: string
@@ -40,8 +41,18 @@ export type TimelineItem =
       kind: 'message'
       event: CaseMessageEvent
       html: SafeHtml
+      /**
+       * The files the message carries, read from the lines the composer put at the end of its text (the text shown
+       * in [html] is what comes before them). Only a user message has any.
+       */
+      files: MentionedFile[]
       isFirstInGroup: boolean
       isLastInGroup: boolean
+      /**
+       * True while the message is being re-run: it shows the text that was sent, and what followed the
+       * message it replaces is already hidden, until the server's own re-run message comes back.
+       */
+      pending: boolean
       /**
        * What the agent turn this message closes cost, when the turn reported any usage.
        *
