@@ -1,0 +1,73 @@
+:host {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.message-image {
+  &__thumb {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
+    background: var(--color-surface);
+    cursor: zoom-in;
+
+    &:hover {
+      border-color: var(--color-accent);
+    }
+
+    img {
+      display: block;
+      max-width: min(100%, 280px);
+      max-height: 200px;
+      object-fit: contain;
+    }
+  }
+
+  // Keeps the room of the image while it is read, so that the conversation does not jump when it arrives.
+  &__placeholder {
+    display: block;
+    width: 160px;
+    height: 100px;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md, 0);
+    background: var(--color-neutral-100);
+  }
+
+  &__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    padding: 2rem;
+  }
+
+  &__backdrop {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    border: 0;
+    background: color-mix(in srgb, var(--color-text) 75%, transparent);
+    cursor: zoom-out;
+  }
+
+  &__full {
+    position: relative;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-lg);
+  }
+
+  &__close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: var(--color-surface);
+  }
+}

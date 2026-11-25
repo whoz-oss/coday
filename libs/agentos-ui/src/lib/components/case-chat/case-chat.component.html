@@ -8,7 +8,7 @@
 >
   <div dsDrawerSide class="case-chat__drawer-side">
     @if (drawerPanel() === 'members') {
-      <agentos-case-members [caseId]="caseId" [namespaceId]="namespaceId" (closeRequested)="exchangeOpen.set(false)" />
+      <agentos-case-members [caseId]="caseId" [namespaceId]="namespaceId" (closeRequested)="onMembersPanelClosed()" />
     } @else {
       <agentos-exchange-shell
         [active]="exchangeOpen()"
@@ -71,12 +71,33 @@
             [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
             >{{ caseStatus().toLowerCase() }}</span
           >
+          @if (conversationMode(); as mode) {
+            <span
+              class="case-chat__header-mode"
+              [class.case-chat__header-mode--team]="mode === 'team'"
+              [title]="conversationModeHint()"
+            >
+              <span class="material-icons" aria-hidden="true">{{ mode === 'team' ? 'groups' : 'person' }}</span>
+              {{ mode === 'team' ? 'Team' : 'Solo' }}
+            </span>
+          }
           @if (activeCase()?.runCostThreshold !== null && activeCase()?.runCostThreshold !== undefined) {
             <span class="case-chat__header-cost-threshold" title="Run cost threshold">
               max {{ activeCase()!.runCostThreshold }}
             </span>
           }
         </div>
+
+        <!-- Who else has this shared case open right now: first of the icons, like a document editor's -->
+        @if (presentPeople().length > 0) {
+          <ul class="case-chat__presence" [attr.aria-label]="presenceTitle()" [title]="presenceTitle()">
+            @for (person of presentPeople(); track person.id) {
+              <li class="case-chat__presence-person" [style.--presence-hue]="person.hue" [title]="person.label">
+                <ds-avatar [src]="memberAvatars().get(person.id.toLowerCase()) ?? null" [initials]="person.initials" />
+              </li>
+            }
+          </ul>
+        }
 
         <!-- Exchange toggle -->
         <div class="case-chat__header-exchange">
@@ -165,17 +186,32 @@
               @if (item.kind === 'message') {
                 <div
                   class="case-chat__turn"
-                  [class.case-chat__turn--user]="item.event.actor.role === 'USER'"
-                  [class.case-chat__turn--agent]="item.event.actor.role === 'AGENT'"
+                  [class.case-chat__turn--user]="item.event.actor.role === 'USER' && !isTeammate(item.event.actor)"
+                  [class.case-chat__turn--agent]="item.event.actor.role === 'AGENT' || isTeammate(item.event.actor)"
+                  [class.case-chat__turn--teammate]="isTeammate(item.event.actor)"
+                  [class.case-chat__turn--ai]="item.event.actor.role === 'AGENT'"
+                  [class.case-chat__turn--team]="isTeamMessage(item.event)"
+                  [style.--teammate-hue]="authorHue(item.event.actor)"
                   [class.case-chat__turn--pending]="item.pending"
                 >
                   @if (item.isFirstInGroup) {
-                    <span class="case-chat__role-label">
-                      {{ actorLabel(item.event.actor) }}
-                      @if (agentModelAttribution(item.event); as modelAttribution) {
-                        <span class="case-chat__role-model">({{ modelAttribution }})</span>
-                      }
-                    </span>
+                    @if (isTeammate(item.event.actor) || isTeamMessage(item.event)) {
+                      <ng-container
+                        *ngTemplateOutlet="
+                          teammateAuthor;
+                          context: { $implicit: item.event.actor, label: actorLabel(item.event.actor) }
+                        "
+                      />
+                    } @else if (item.event.actor.role === 'AGENT') {
+                      <ng-container
+                        *ngTemplateOutlet="
+                          agentAuthor;
+                          context: { label: actorLabel(item.event.actor), model: agentModelAttribution(item.event) }
+                        "
+                      />
+                    } @else {
+                      <span class="case-chat__role-label">{{ actorLabel(item.event.actor) }}</span>
+                    }
                   }
                   @if (showTechnical() && item.event.sessionContext) {
                     <div class="case-chat__session-context">
@@ -214,7 +250,17 @@
                             }
                             <div class="case-chat__bubble-files">
                               @for (file of item.files; track file.scope + ':' + file.path) {
-                                <agentos-file-chip [name]="file.name" [path]="file.path" [scope]="file.scope" />
+                                @if (isImage(file)) {
+                                  <agentos-message-image
+                                    [caseId]="caseId"
+                                    [namespaceId]="namespaceId"
+                                    [scope]="file.scope"
+                                    [path]="file.path"
+                                    [name]="file.name"
+                                  />
+                                } @else {
+                                  <agentos-file-chip [name]="file.name" [path]="file.path" [scope]="file.scope" />
+                                }
                               }
                             </div>
                           </div>
@@ -240,7 +286,7 @@
                   </div>
                   <!-- Under the bubble, always visible: copy for every message, reload and the pencil for the user's own,
                        rewind for any user message while the case can be rewound. -->
-                  @if (!isEditingMessage(item.event)) {
+                  @if (!isEditingMessage(item.event) && hasMessageActions(item.event)) {
                     <agentos-message-actions
                       class="case-chat__message-actions"
                       [text]="messageText(item)"
@@ -285,8 +331,8 @@
                   }
                 </div>
               } @else if (item.kind === 'streaming') {
-                <div class="case-chat__turn case-chat__turn--agent case-chat__turn--streaming">
-                  <span class="case-chat__role-label">{{ agentDisplayName() }}</span>
+                <div class="case-chat__turn case-chat__turn--agent case-chat__turn--ai case-chat__turn--streaming">
+                  <ng-container *ngTemplateOutlet="agentAuthor; context: { label: agentDisplayName(), model: null }" />
                   <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="streamingHtml()"></div>
                 </div>
               } @else if (item.kind === 'notice') {
@@ -338,8 +384,10 @@
                   oauthPendingQuestion()?.id === item.event.id
                 ) {
                   <!-- The question is an agent turn (left), with its answer controls attached under the bubble. -->
-                  <div class="case-chat__turn case-chat__turn--agent">
-                    <span class="case-chat__role-label">{{ item.event.agentName || 'Agent' }}</span>
+                  <div class="case-chat__turn case-chat__turn--agent case-chat__turn--ai">
+                    <ng-container
+                      *ngTemplateOutlet="agentAuthor; context: { label: item.event.agentName || 'Agent', model: null }"
+                    />
                     <div class="case-chat__bubble-wrapper">
                       <div class="case-chat__bubble case-chat__bubble--plain" [id]="questionElementId(item.event)">
                         {{ item.event.question }}
@@ -374,8 +422,23 @@
                   </div>
                   @if (item.answer; as answer) {
                     <!-- The answer is a user turn (right), like any other user message. -->
-                    <div class="case-chat__turn case-chat__turn--user">
-                      <span class="case-chat__role-label">{{ answerLabel(answer) }}</span>
+                    <div
+                      class="case-chat__turn"
+                      [class.case-chat__turn--user]="!isTeammate(answer.actor)"
+                      [class.case-chat__turn--agent]="isTeammate(answer.actor)"
+                      [class.case-chat__turn--teammate]="isTeammate(answer.actor)"
+                      [style.--teammate-hue]="authorHue(answer.actor)"
+                    >
+                      @if (isTeammate(answer.actor)) {
+                        <ng-container
+                          *ngTemplateOutlet="
+                            teammateAuthor;
+                            context: { $implicit: answer.actor, label: answerLabel(answer) }
+                          "
+                        />
+                      } @else {
+                        <span class="case-chat__role-label">{{ answerLabel(answer) }}</span>
+                      }
                       <div class="case-chat__bubble-wrapper">
                         <div class="case-chat__bubble case-chat__bubble--plain">{{ answer.answer }}</div>
                         <time
@@ -385,7 +448,9 @@
                           >{{ formatMessageTime(answer.timestamp) }}
                         </time>
                       </div>
-                      <agentos-message-actions class="case-chat__message-actions" [text]="answer.answer" />
+                      @if (!isTeammate(answer.actor)) {
+                        <agentos-message-actions class="case-chat__message-actions" [text]="answer.answer" />
+                      }
                     </div>
                   }
                 }
@@ -497,11 +562,13 @@
           <!-- A run stopped at its cost threshold asks its decision in place of the composer, like a question to the
                user: nothing else can be posted until it is taken. The draft and the staged files are kept. -->
           <agentos-cost-pause-card />
-        } @else if (autocomplete.atSuggestions().length > 0) {
+        } @else if (autocomplete.atSuggestions().length > 0 || autocomplete.memberSuggestions().length > 0) {
           <div class="case-chat__autocomplete">
             <agentos-agent-autocomplete
               [agents]="autocomplete.atSuggestions()"
+              [members]="autocomplete.memberSuggestions()"
               (selected)="onAgentSelected($event)"
+              (memberSelected)="onMemberMentioned($event)"
               (dismissed)="closeAtAutocomplete()"
             />
           </div>
@@ -538,7 +605,13 @@
         <textarea
           #composerInput
           class="case-chat__input"
-          [placeholder]="isRunning() ? 'Agent is working — use /btw to ask a side question' : 'Reply…'"
+          [placeholder]="
+            teamChat()
+              ? 'Message the team — @mention an agent to get a reply, or a teammate to notify them'
+              : isRunning()
+                ? 'Agent is working — use /btw to ask a side question'
+                : 'Reply…'
+          "
           rows="3"
           [value]="inputValue()"
           [hidden]="voice.isActive()"
@@ -574,29 +647,9 @@
             />
           }
           <span class="case-chat__actions-hint"></span>
-          <div class="case-chat__team-mode">
-            <button
-              type="button"
-              class="case-chat__notice-btn"
-              [attr.aria-pressed]="teamChat()"
-              [disabled]="voice.isBusy() || attachments.isUploading()"
-              (click)="onCaseMenuAction('team-chat')"
-            >
-              Discussion equipped
-            </button>
-            @if (teamChat()) {
-              <span class="case-chat__actions-hint"
-                >Les messages sont partagés sans lancer d’agent. Sélectionnez un &#64;agent au début du message pour
-                l’appeler.</span
-              >
-            }
-          </div>
-          @if (teamChat() && addressedAgent(); as agent) {
+          @if (teamChat() && addressedAgent() && isRunning()) {
             <div class="case-chat__notice-bar" role="status">
-              <span>Agent appelé : {{ agent }}</span>
-              @if (isRunning()) {
-                <span>Attendez la fin de l’exécution pour appeler un agent.</span>
-              }
+              <span>Wait for the agent to finish before calling another one.</span>
             </div>
           }
           @if (sendError()) {
@@ -654,6 +707,31 @@
     </div>
   </div>
 </ds-drawer>
+
+<!-- Who wrote a human turn of a shared case: their avatar (the colour of the header's) and their name. -->
+<ng-template #teammateAuthor let-actor let-label="label">
+  <span class="case-chat__teammate-author">
+    <span class="case-chat__teammate-avatar">
+      <ds-avatar [src]="teammateAvatar(actor)" [initials]="authorInitials(actor)" />
+    </span>
+    <span class="case-chat__teammate-name">{{ label }}</span>
+  </span>
+</ng-template>
+
+<!-- Who wrote an agent's turn: a robot avatar, to tell it at a glance from a person's, and its name. -->
+<ng-template #agentAuthor let-label="label" let-model="model">
+  <span class="case-chat__agent-author">
+    <span class="case-chat__agent-avatar" aria-hidden="true">
+      <span class="material-icons">smart_toy</span>
+    </span>
+    <span class="case-chat__role-label">
+      {{ label }}
+      @if (model) {
+        <span class="case-chat__role-model">({{ model }})</span>
+      }
+    </span>
+  </span>
+</ng-template>
 
 <!-- One tool call: standalone in the timeline, or inside an expanded group. -->
 <ng-template #toolCallCard let-call>

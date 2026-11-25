@@ -15,6 +15,7 @@ import {
   effectiveConversation,
   findLegitimateAnswer,
   isAuthorOf,
+  isTeammateOf,
   rerunErrorMessage,
   runningAfter,
   senderLabel,
@@ -124,6 +125,30 @@ describe('senderLabel', () => {
     expect(
       senderLabel(human('ABCDEF00-0000-0000-0000-000000000001', 'Alice'), 'abcdef00-0000-0000-0000-000000000001')
     ).toBe('You')
+  })
+
+  describe('with the people of the case', () => {
+    const identities = new Map([['u-2', 'bob@example.com']])
+
+    it('shows the email of a sender the service could only name by their id', () => {
+      expect(senderLabel(human('u-2', 'u-2'), 'u-1', identities)).toBe('bob@example.com')
+    })
+
+    it('shows it for a sender without any name, whatever the letter case of the id', () => {
+      expect(senderLabel(human('U-2'), 'u-1', identities)).toBe('bob@example.com')
+    })
+
+    it('keeps a real name over the member list', () => {
+      expect(senderLabel(human('u-2', 'Bob'), 'u-1', identities)).toBe('Bob')
+    })
+
+    it('still says You for the current user', () => {
+      expect(senderLabel(human('u-2', 'u-2'), 'u-2', identities)).toBe('You')
+    })
+
+    it('falls back to what the event says for a sender nobody knows', () => {
+      expect(senderLabel(human('u-9', 'u-9'), 'u-1', identities)).toBe('u-9')
+    })
   })
 
   it('names an agent, or says Agent when it has no name', () => {
@@ -338,6 +363,26 @@ describe('isAuthorOf', () => {
     expect(isAuthorOf({ id: 'u-1', role: ActorRoleEnum.AGENT, displayName: 'x' }, 'u-1')).toBe(false)
     expect(isAuthorOf(human('u-1'), null)).toBe(false)
     expect(isAuthorOf(human('u-1'), undefined)).toBe(false)
+  })
+})
+
+describe('isTeammateOf', () => {
+  const human = (id?: string) =>
+    ({ id, role: ActorRoleEnum.USER, displayName: 'x' }) as Parameters<typeof isTeammateOf>[0]
+
+  it('is true for another human than the current user, whatever the letter case of the ids', () => {
+    expect(isTeammateOf(human('u-2'), 'u-1')).toBe(true)
+    expect(isTeammateOf(human('ABCDEF00-0000-0000-0000-000000000002'), 'abcdef00-0000-0000-0000-000000000001')).toBe(
+      true
+    )
+  })
+
+  it('is false for the current user, for an agent, for an actor without id, and while the user is not loaded', () => {
+    expect(isTeammateOf(human('U-1'), 'u-1')).toBe(false)
+    expect(isTeammateOf({ id: 'agent-1', role: ActorRoleEnum.AGENT, displayName: 'Dev' }, 'u-1')).toBe(false)
+    expect(isTeammateOf(human(undefined), 'u-1')).toBe(false)
+    expect(isTeammateOf(human('u-2'), null)).toBe(false)
+    expect(isTeammateOf(human('u-2'), undefined)).toBe(false)
   })
 })
 

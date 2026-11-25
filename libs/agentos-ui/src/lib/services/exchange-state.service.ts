@@ -641,6 +641,16 @@ export class ExchangeStateService {
     return this.downloadStream(scope, id, path)
   }
 
+  /**
+   * Binary content of a file of the case or namespace [id], whatever scope the state is on at that moment.
+   *
+   * For what the chat shows next to a message (a thumbnail): it must keep working while the drawer is closed or on
+   * another panel, when the state may not point at this case.
+   */
+  getBlobIn(scope: ExchangeScope, id: string, path: string): Observable<Blob> {
+    return this.downloadStream(scope, id, path)
+  }
+
   /** Download endpoint of a scope. Typed Observable<string> but requests responseType:'blob', so it yields a Blob. */
   private downloadStream(scope: ExchangeScope, id: string, path: string): Observable<Blob> {
     const download$ =

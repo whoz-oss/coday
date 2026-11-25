@@ -33,6 +33,7 @@ import {
   manifestToSuggestions,
   rankFiles,
 } from './file-mention'
+import { filterMemberMentions, MemberMention } from './member-mention'
 import { filterModelChoices, ModelChoice, modelCommandArg } from './model-command'
 
 /** How long the files fetched on a `#` stay valid: past it, the next `#` fetches them again. */
@@ -92,6 +93,9 @@ export class ComposerAutocompleteService {
   /** Filtered agents matching the current @-mention prefix. Empty = dropdown closed. */
   readonly atSuggestions = signal<AgentConfig[]>([])
 
+  /** People of the case matching the current @-mention prefix, listed with the agents. Empty = none. */
+  readonly memberSuggestions = signal<MemberMention[]>([])
+
   /** /effort levels matching the current value. Empty = dropdown closed. */
   readonly effortSuggestions = signal<EffortOption[]>([])
 
@@ -123,6 +127,9 @@ export class ComposerAutocompleteService {
 
   /** Null until the host enables /btw; then tells whether it is the only command offered right now. */
   private btwOnly: (() => boolean) | null = null
+
+  /** Null until the host enables mentions of people; then gives the people of the case that can be mentioned. */
+  private memberSource: (() => MemberMention[]) | null = null
 
   /** Null until the host enables `#` file mentions; then tells where the composer is. */
   private fileScopes: (() => FileMentionScopes) | null = null
@@ -235,6 +242,15 @@ export class ComposerAutocompleteService {
   }
 
   /**
+   * Offer the people of the case in the `@` suggestions, next to the agents. [members] is read on each keystroke,
+   * so a host whose case becomes shared later always lists the current people. Mentioning a person is plain text:
+   * it never calls an agent.
+   */
+  enableMemberMentions(members: () => MemberMention[]): void {
+    this.memberSource = members
+  }
+
+  /**
    * Offer `#` file references in this composer. [scopes] is read when files are needed, so a host whose case
    * changes under the same composer always asks for the current one.
    */
@@ -273,6 +289,7 @@ export class ComposerAutocompleteService {
     this.promptsLoaded = false
     this.atSuggestions.set([])
     this.effectiveAgents = []
+    this.memberSuggestions.set([])
     this.agentsLoaded = false
     this.effortSuggestions.set([])
     this.modelSuggestions.set([])
@@ -381,7 +398,7 @@ export class ComposerAutocompleteService {
       }
     }
 
-    if (this.atSuggestions().length > 0) {
+    if (this.atSuggestions().length > 0 || this.memberSuggestions().length > 0) {
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault()
         agentRef()?.navigate(event.key)
@@ -390,6 +407,7 @@ export class ComposerAutocompleteService {
       if (event.key === 'Escape') {
         event.preventDefault()
         this.atSuggestions.set([])
+        this.memberSuggestions.set([])
         return true
       }
       if (event.key === 'Tab' || event.key === 'Enter') {
@@ -485,6 +503,32 @@ export class ComposerAutocompleteService {
     this.closeFileSuggestions()
   }
 
+  /**
+   * Apply a mention of a person: replace the trailing `@<prefix>` in the composer with `@handle `. Nothing else
+   * changes: a person is not an agent, so the message stays a message to the team.
+   *
+   * @param member       The selected person.
+   * @param composerRef  The textarea ElementRef (for DOM value + cursor sync).
+   * @param inputValue   The signal holding the composer value (read + write).
+   */
+  onMemberSelected(
+    member: MemberMention,
+    composerRef: Signal<ElementRef<HTMLTextAreaElement> | undefined>,
+    inputValue: { set: (v: string) => void; (): string }
+  ): void {
+    const replaced = inputValue().replace(/(^|\s)@[^\s@]*$/, (_match, lead: string) => `${lead}@${member.handle} `)
+    inputValue.set(replaced)
+    queueMicrotask(() => {
+      const el = composerRef()?.nativeElement
+      if (!el) return
+      el.value = replaced
+      el.setSelectionRange(replaced.length, replaced.length)
+      el.focus()
+    })
+    this.atSuggestions.set([])
+    this.memberSuggestions.set([])
+  }
+
   /** Close the `#` dropdown, and ignore any file answer still on its way. */
   closeFileSuggestions(): void {
     this.fileMentionActive = false
@@ -568,6 +612,9 @@ export class ComposerAutocompleteService {
   }
 
   private updateAutocomplete(value: string): void {
+    // People are only suggested by the @ branch below, which sets them again.
+    if (this.memberSuggestions().length) this.memberSuggestions.set([])
+
     // /effort and /model take precedence over the prompts whose name starts the same way.
     const effortOptions = this.effortCommandAvailable?.() ? effortOptionsFor(value) : null
     if (effortOptions?.length) {
@@ -626,6 +673,7 @@ export class ComposerAutocompleteService {
     const atMatch = value.match(/(?:^|\s)@([^\s@]*)$/)
     if (atMatch) {
       const prefix = atMatch[1] ?? ''
+      if (this.memberSource) this.memberSuggestions.set(filterMemberMentions(this.memberSource(), prefix))
       if (this.agentsLoaded) {
         this.atSuggestions.set(filterAndSortAgents(this.effectiveAgents, prefix))
       }

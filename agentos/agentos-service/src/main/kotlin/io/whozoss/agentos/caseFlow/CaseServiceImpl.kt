@@ -7,6 +7,7 @@ import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.caseEvent.CaseMentionService
 import io.whozoss.agentos.caseEvent.effectiveConversation
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
@@ -120,6 +121,11 @@ class CaseServiceImpl(
      */
     private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
     coroutineContext: CoroutineContext = Dispatchers.IO,
+    /**
+     * Notifies the people a team message mentions with `@handle`. Optional: a service built by hand without it
+     * simply notifies nobody.
+     */
+    private val mentionService: CaseMentionService? = null,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -549,10 +555,14 @@ class CaseServiceImpl(
             } finally {
                 runtime.releaseAdmission(owner)
             }
+            // The agent is addressed by the first word; a person named further on is a mention.
+            mentionService?.notifyMentions(caseId, case.namespaceId, actor, content, ignoring = agentName)
             return
         }
         if (mode == CaseMessageMode.HUMAN) {
-            getCaseRuntime(caseId).addHumanMessage(actor, content, sessionContext)
+            val runtime = getCaseRuntime(caseId)
+            runtime.addHumanMessage(actor, content, sessionContext)
+            mentionService?.notifyMentions(caseId, runtime.namespaceId, actor, content)
             return
         }
         caseLaunchGate?.requireAccepting(caseId)
@@ -1209,7 +1219,7 @@ class CaseServiceImpl(
      *
      * Throws [ResourceNotFoundException] when no user exists for [userId].
      * The display name is the user's full name when available, falling back to
-     * the UUID string so the actor is always identifiable in event history.
+     * the email, then the UUID string, so the actor is always identifiable in event history.
      */
     private fun resolveActor(userId: UUID): Actor {
         val user =

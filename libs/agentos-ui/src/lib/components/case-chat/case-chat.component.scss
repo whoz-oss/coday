@@ -155,6 +155,32 @@
   }
 }
 
+// Who the next message reaches: solo (the agent answers every message) or team (only when @mentioned).
+.case-chat__header-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-family: var(--font-heading);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-neutral-600);
+  padding: 2px 7px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-pill, 0);
+  white-space: nowrap;
+
+  .material-icons {
+    font-size: 14px;
+  }
+
+  &--team {
+    color: var(--color-accent-800);
+    border-color: var(--color-accent-300);
+    background: var(--color-accent-200);
+  }
+}
+
 // ── Inline header edit mode ──────────────────────────────────────────────
 
 .case-chat__header-edit {
@@ -240,6 +266,49 @@
 .case-chat__header-exchange {
   position: relative;
   flex: none;
+}
+
+// The people of a shared case who have it open: a row of overlapping avatars, like a document editor's. Each person
+// has a colour of their own (--presence-hue, set per person), on the border and, behind the initials, the background.
+.case-chat__presence {
+  display: flex;
+  align-items: center;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.case-chat__presence-person {
+  --presence-hue: 210;
+
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  margin-left: -8px;
+  border: 2px solid hsl(var(--presence-hue) 60% 45%);
+  border-radius: var(--radius-pill, 50%);
+  background: hsl(var(--presence-hue) 60% 88%);
+  color: hsl(var(--presence-hue) 60% 25%);
+  // A ring of the page colour keeps two overlapping avatars apart.
+  box-shadow: 0 0 0 2px var(--color-bg);
+  font-family: var(--font-heading);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+
+  &:first-child {
+    margin-left: 0;
+  }
+
+  @media (max-width: 600px) {
+    // Room is short in the header: the first person stays, the others are in the tooltip.
+    &:not(:first-child) {
+      display: none;
+    }
+  }
 }
 
 // Vertical separator between exchange toggle and case actions
@@ -361,6 +430,12 @@
       }
     }
 
+    // An agent's turn takes the whole width, with no bubble (see the bubble below): its text is the page.
+    &--ai {
+      width: 100%;
+      max-width: 100%;
+    }
+
     &--streaming {
       opacity: 0.95;
     }
@@ -387,6 +462,10 @@
     .case-chat__turn--user & {
       color: var(--color-neutral-700);
     }
+    // A teammate's name takes the colour of their avatar (after the agent rule it overrides, same specificity).
+    .case-chat__turn--teammate & {
+      color: hsl(var(--teammate-hue, 210) 60% 30%);
+    }
 
     & .case-chat__role-model {
       margin-left: 0.25rem;
@@ -407,6 +486,61 @@
   }
 
   // ── Bubbles ────────────────────────────────────────────────────
+
+  // A teammate's turn takes less room than an agent's: no buttons under it, a smaller bubble, the author on one line.
+  &__teammate-author,
+  &__agent-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    line-height: 1;
+  }
+
+  // The avatar of a teammate: the colour of their avatar in the header, from the same id.
+  &__teammate-avatar {
+    display: grid;
+    place-items: center;
+    flex: none;
+    box-sizing: border-box;
+    width: 22px;
+    height: 22px;
+    border: 2px solid hsl(var(--teammate-hue, 210) 60% 45%);
+    border-radius: var(--radius-pill, 50%);
+    background: hsl(var(--teammate-hue, 210) 60% 88%);
+    color: hsl(var(--teammate-hue, 210) 60% 25%);
+    font-family: var(--font-heading);
+    font-size: 9px;
+    font-weight: 600;
+    overflow: hidden;
+  }
+
+  // The avatar of an agent: a robot, in the accent colour, where a person has their initials and their own colour.
+  &__agent-avatar {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: var(--radius-pill, 50%);
+    background: var(--color-accent-200);
+    color: var(--color-accent-800);
+
+    .material-icons {
+      font-size: 14px;
+    }
+  }
+
+  &__teammate-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-heading);
+    font-size: 11px;
+    font-weight: 600;
+    color: hsl(var(--teammate-hue, 210) 60% 30%);
+  }
 
   &__bubble-wrapper {
     position: relative;
@@ -445,6 +579,13 @@
 
     .case-chat__turn--user & {
       color: var(--color-accent-700);
+    }
+
+    // With no bubble to sit in, the time goes under the text of an agent's reply.
+    .case-chat__turn--ai & {
+      position: static;
+      display: block;
+      margin-top: 2px;
     }
   }
 
@@ -546,6 +687,27 @@
       @media (max-width: 600px) {
         padding: 10px 12px 24px;
       }
+    }
+
+    // A teammate's bubble sits on the left like an agent's, with the border colour of their avatar in the header.
+    .case-chat__turn--teammate & {
+      border-left: 3px solid hsl(var(--teammate-hue, 210) 60% 45%);
+    }
+
+    // A message to the team, a teammate's or one's own, is more compact than an agent's: it carries no buttons under it.
+    .case-chat__turn--teammate &,
+    .case-chat__turn--team & {
+      padding: 8px 12px 20px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    // An agent's reply has no bubble, like in ChatGPT or LibreChat: bubbles are for the messages between people.
+    .case-chat__turn--ai & {
+      padding: 0;
+      background: none;
+      border-left: none;
+      border-radius: 0;
     }
 
     // Plain-text content (question / answer): keep the author's line breaks
@@ -1297,21 +1459,6 @@
       flex: 1 1 0;
       min-width: 0;
       padding: 0;
-    }
-  }
-
-  &__team-mode {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 0;
-
-    [aria-pressed='true'] {
-      background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    }
-
-    .case-chat__actions-hint {
-      white-space: normal;
     }
   }
 

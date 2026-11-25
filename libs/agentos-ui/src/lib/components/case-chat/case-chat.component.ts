@@ -2,7 +2,7 @@ import { CaseUsageComponent } from '../case-usage/case-usage.component'
 import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { JsonPipe, NgTemplateOutlet } from '@angular/common'
-import { firstValueFrom, Subscription } from 'rxjs'
+import { firstValueFrom, from, Subscription, switchMap } from 'rxjs'
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -22,7 +22,7 @@ import {
   Signal,
   viewChild,
 } from '@angular/core'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -43,6 +43,7 @@ import {
   Configuration,
   ErrorEvent,
   IntentionGeneratedEvent,
+  MemberItem,
   MessageEvent as CaseMessageEvent,
   Prompt,
   QuestionEvent,
@@ -53,6 +54,7 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import {
+  AvatarComponent,
   BlueprintDirective,
   ConfirmDialogComponent,
   CopyButtonComponent,
@@ -63,6 +65,12 @@ import {
 } from '@whoz-oss/design-system'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
+import { CaseMemberStateService } from '../../services/case-member-state.service'
+import { memberMentions } from '../composer-autocomplete/member-mention'
+import { MemberMention } from '../composer-autocomplete/member-mention'
+import { memberLabel } from '../namespace-members/namespace-members.util'
+import { avatarUrlsOf, hueOf, initialsOf, PresentMember, presentMembers } from './case-presence'
+import { gravatarUrl } from '../../services/gravatar.utils'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { questionElementId, QuestionPanelComponent } from '../question-panel/question-panel.component'
 import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
@@ -93,7 +101,7 @@ import { ComposerAutocompleteService } from '../composer-autocomplete/composer-a
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeFileRef, ExchangeSelectionAction, ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
-import { exchangeMutationScope } from '../../services/exchange-content.utils'
+import { exchangeMutationScope, isImageFile } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { buildSelectionMessage } from '../exchange-content-viewer/exchange-selection-message'
 import { parseProposal } from '../exchange-content-viewer/exchange-proposal'
@@ -104,6 +112,7 @@ import {
   effectiveConversation,
   findLegitimateAnswer,
   isAuthorOf,
+  isTeammateOf,
   rerunErrorMessage,
   rerunTargetOf,
   runningAfter,
@@ -118,10 +127,13 @@ import {
   isNamespaceTargeted,
   joinAttachmentMentions,
   joinMentionLines,
+  MentionedFile,
+  mentionScopeWord,
   resolveUploadScope,
   splitAttachmentMentions,
 } from '../composer-attachments/composer-attachments.utils'
 import { FileChipComponent } from '../file-chip/file-chip.component'
+import { MessageImageComponent } from '../message-image/message-image.component'
 import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
 import { groupToolCalls, summarizeToolGroup, ToolGroupSummary, toolRunKey } from './tool-call-groups'
@@ -132,10 +144,12 @@ import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
 import { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
-import { ComposerAttachmentsComponent } from 'libs/agentos-ui/src/lib/components/composer-attachments/composer-attachments.component'
-import { EffortAutocompleteComponent } from 'libs/agentos-ui/src/lib/components/effort-autocomplete/effort-autocomplete.component'
+import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
-import { CostPauseCardComponent } from 'libs/agentos-ui/src/lib/components/cost-pause-card/cost-pause-card.component'
+import { CostPauseCardComponent } from '../cost-pause-card/cost-pause-card.component'
+
+/** Rendered size of a presence avatar in the header, in CSS pixels (see .case-chat__presence-person). */
+const PRESENCE_AVATAR_SIZE = 32
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -150,6 +164,12 @@ const SCROLL_BOTTOM_THRESHOLD = 64
  * a history/live boundary.
  */
 const TERMINAL_CLOSE_DEBOUNCE_MS = 300
+
+/**
+ * How long to wait before refreshing the exchanges after teammates posted files: a replayed history delivers all its
+ * messages at once, and one refresh is enough for the lot.
+ */
+const EXCHANGE_REFRESH_DEBOUNCE_MS = 300
 
 /**
  * `EventSource.CLOSED`, spelled out: the browser gave up and will not reconnect.
@@ -184,6 +204,7 @@ function hasActiveSelection(): boolean {
   imports: [
     AgentActivityComponent,
     AudioMessageComponent,
+    AvatarComponent,
     BlueprintDirective,
     CaseMembersComponent,
     CaseStatusGlyphComponent,
@@ -196,6 +217,7 @@ function hasActiveSelection(): boolean {
     DrawerComponent,
     ExchangeShellComponent,
     FileChipComponent,
+    MessageImageComponent,
     IconButtonComponent,
     JsonPipe,
     KebabMenuComponent,
@@ -206,7 +228,6 @@ function hasActiveSelection(): boolean {
     TokenCountPipe,
     ComposerAttachmentsComponent,
     PromptAutocompleteComponent,
-    EffortAutocompleteComponent,
     FileAutocompleteComponent,
     AgentAutocompleteComponent,
     CaseSettingsComponent,
@@ -242,6 +263,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly oauthService = inject(OAuthAgentosService)
   private readonly aiModels = inject(AiModelStateService)
   private readonly userState = inject(UserStateService)
+  private readonly memberState = inject(CaseMemberStateService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
@@ -403,7 +425,84 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected inputValue = signal('')
   protected isRunning = signal(false)
-  protected readonly teamChat = signal(false)
+  /** How many people hold a role on the case (admins and members); 0 until they are loaded. */
+  private readonly memberCount = signal(0)
+
+  /**
+   * Team chat is not something the user switches: it holds exactly while the case is shared with at least one other
+   * person. Messages are then shared without starting an agent, and the stream is the collaborative one, so that the
+   * others' messages arrive live even while the case is idle.
+   */
+  protected readonly teamChat = computed(() => this.memberCount() > 1)
+
+  /**
+   * Who the next message reaches, said in the header: `solo` (every message goes to the agent) or `team` (the agent
+   * answers only when it is @mentioned). Null until the members are known, so that a shared case does not flash as solo.
+   */
+  protected readonly conversationMode = computed<'solo' | 'team' | null>(() =>
+    this.memberCount() === 0 ? null : this.teamChat() ? 'team' : 'solo'
+  )
+
+  /** What the mode chip of the header says on hover. */
+  protected readonly conversationModeHint = computed(() =>
+    this.conversationMode() === 'team'
+      ? 'Team conversation: your messages are for the people of the case. @mention an agent to get a reply; @mentioning a person only notifies them.'
+      : 'Solo conversation: every message you send goes straight to the agent.'
+  )
+
+  /** The people the case is shared with, as last read. */
+  private readonly memberDirectory = signal<MemberItem[]>([])
+
+  /**
+   * Name of each person of the case by lowercase user id: their name, else their email. It names the senders whose
+   * events carry no usable name, the service having fallen back to their id.
+   */
+  private readonly memberLabels = computed(
+    () => new Map(this.memberDirectory().map((member) => [member.id.toLowerCase(), memberLabel(member)] as const))
+  )
+
+  /** The people the composer can mention with `@`: the others of a shared case, nobody otherwise. */
+  protected readonly mentionableMembers = computed<MemberMention[]>(() =>
+    this.teamChat() ? memberMentions(this.memberDirectory(), this.currentUserId()) : []
+  )
+
+  /** Ids of the users who have this case open right now, as the server last said on the stream. */
+  private readonly presentUserIds = signal<string[]>([])
+
+  /**
+   * The members of the case looking at it, for the avatars of the header: only in a shared case, where somebody else
+   * can be there, and only once somebody is.
+   */
+  protected readonly presentPeople = computed<PresentMember[]>(() =>
+    this.teamChat() ? presentMembers(this.memberDirectory(), this.presentUserIds(), this.currentUserId()) : []
+  )
+
+  /**
+   * Gravatar of each member of the case, by lowercase user id, where one can be computed: for the avatars of the header
+   * and of the teammates' turns. A member missing from the map shows their initials, as one whose Gravatar does not
+   * exist does (`ds-avatar` falls back on a failed load).
+   */
+  protected readonly memberAvatars = toSignal(
+    toObservable(this.memberDirectory).pipe(
+      switchMap((members) =>
+        from(
+          avatarUrlsOf(
+            members.map((member) => ({ id: member.id, email: member.email ?? '' })),
+            (email) => gravatarUrl(email, PRESENCE_AVATAR_SIZE)
+          ).then((urls) => new Map(Array.from(urls, ([id, url]) => [id.toLowerCase(), url] as const)))
+        )
+      )
+    ),
+    { initialValue: new Map<string, string>() }
+  )
+
+  /** Tooltip of the avatars: who is here. */
+  protected readonly presenceTitle = computed(
+    () =>
+      `Here now: ${this.presentPeople()
+        .map((person) => person.label)
+        .join(', ')}`
+  )
   protected readonly sendError = signal('')
   private readonly selectedTeamAgent = signal<string | null>(null)
   protected readonly addressedAgent = computed(() => {
@@ -494,14 +593,50 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   ])
 
   protected onCaseMenuAction(key: string): void {
-    if (key === 'team-chat' && !this.submitting && !this.voice.isBusy()) {
-      this.teamChat.update((enabled) => !enabled)
-      this.selectedTeamAgent.set(null)
-      this.autocomplete.effortSuggestions.set([])
-      // Keep the draft and timeline: only the subscription opt-in changes.
-      if (this.eventSource || this.streamUnavailable()) this.retryStream()
-    } else if (key === 'stop' && !this.isTerminal()) this.confirmingKill.set(true)
+    if (key === 'stop' && !this.isTerminal()) this.confirmingKill.set(true)
     else if (key === 'delete') this.confirmingDelete.set(true)
+  }
+
+  /** The members request in flight, dropped when the chat moves to another case or asks again. */
+  private membersRequest: Subscription | null = null
+
+  /**
+   * Reads who the case is shared with, which is what decides [teamChat]. A failure leaves the chat as it is: a
+   * plain conversation until the members are known.
+   */
+  private loadMembers(): void {
+    this.membersRequest?.unsubscribe()
+    const caseIdAtRequest = this.caseId
+    this.membersRequest = this.memberState
+      .listMembers(caseIdAtRequest)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (members) => {
+          if (this.caseId !== caseIdAtRequest) return
+          this.memberDirectory.set(members)
+          this.applyMemberCount(members.length)
+        },
+        error: (err) => console.warn('[CaseChat] Failed to load the members of the case', err),
+      })
+  }
+
+  /**
+   * Takes the number of people the case is shared with into account. Becoming (or ceasing to be) a team
+   * discussion changes what the stream subscribes to, so it is reopened; the draft and the timeline are kept.
+   */
+  private applyMemberCount(count: number): void {
+    const wasTeamChat = this.teamChat()
+    this.memberCount.set(count)
+    if (this.teamChat() === wasTeamChat) return
+    this.selectedTeamAgent.set(null)
+    this.autocomplete.effortSuggestions.set([])
+    if (this.eventSource || this.streamUnavailable()) this.retryStream()
+  }
+
+  /** The sharing panel was saved or dismissed: close the drawer, and read the members again, they may have changed. */
+  protected onMembersPanelClosed(): void {
+    this.exchangeOpen.set(false)
+    this.loadMembers()
   }
 
   /** The chat models the case can be switched to, loaded once for the namespace (empty until then, or on failure). */
@@ -626,6 +761,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.autocomplete.enableBtwCommand(() => this.isRunning())
     // `#` lists what the agent reaches through its exchange tools: the namespace and this case.
     this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: this.caseId }))
+    // `@` also lists the people of a shared case: mentioning one is text for the team, not a call to an agent.
+    this.autocomplete.enableMemberMentions(() => this.mentionableMembers())
 
     // Restore focus to the composer whenever we return to an interactive state,
     // but only when the user has no active text selection (avoid clearing copy intent)
@@ -945,12 +1082,55 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Label above a turn: 'You' for the current user, the sender's name for anyone else. */
   protected actorLabel(actor: Actor): string {
-    return senderLabel(actor, this.currentUserId())
+    return senderLabel(actor, this.currentUserId(), this.memberLabels())
   }
 
   /** Role label of an answer bubble, by the same rule as a message. */
   protected answerLabel(answer: AnswerEvent): string {
     return this.actorLabel(answer.actor)
+  }
+
+  /** Whether a turn is a teammate's: another human than the current user. Shown on the left, like an agent's. */
+  protected isTeammate(actor: Actor): boolean {
+    return isTeammateOf(actor, this.currentUserId())
+  }
+
+  /** The colour of a teammate's turn: the one of their avatar in the header, from the same id. Null for anyone else. */
+  /**
+   * The colour of a human's turn: the one of their avatar in the header, from the same id. Null for an agent or an
+   * actor without id. Only a teammate's turn uses it for its border and name (see `.case-chat__turn--teammate`).
+   */
+  protected authorHue(actor: Actor): number | null {
+    return actor.role === 'USER' && actor.id ? hueOf(actor.id) : null
+  }
+
+  /**
+   * Whether a message is a plain message to the team: a human message that does not start an agent turn (HUMAN mode of
+   * a shared case), whoever wrote it. Nothing runs from it, so it has no re-run, edit or rewind.
+   */
+  protected isTeamMessage(message: CaseMessageEvent): boolean {
+    return message.actor.role === 'USER' && message.startsAgentTurn === false
+  }
+
+  /** Whether a file a message carries is an image, shown as a thumbnail rather than a chip. */
+  protected isImage(file: MentionedFile): boolean {
+    return isImageFile(file.name)
+  }
+
+  /** Whether the buttons are offered under a message: not under a teammate's turn, nor under a message to the team. */
+  protected hasMessageActions(message: CaseMessageEvent): boolean {
+    return !this.isTeammate(message.actor) && !this.isTeamMessage(message)
+  }
+
+  /** Initials of the author of a human turn: of their name in the member list, else of the name the event carries. */
+  protected authorInitials(actor: Actor): string {
+    const label = this.memberLabels().get(actor.id?.toLowerCase() ?? '') || actor.displayName || ''
+    return initialsOf(label) || '?'
+  }
+
+  /** The Gravatar of a teammate, when they have one. */
+  protected teammateAvatar(actor: Actor): string | null {
+    return this.memberAvatars().get(actor.id?.toLowerCase() ?? '') ?? null
   }
 
   /**
@@ -1054,7 +1234,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** The mic is usable under the conditions that enable the textarea, and while no recording is under way. */
   protected get canRecord(): boolean {
     return (
-      !this.teamChat() &&
       !this.isRunning() &&
       !this.composerClosed() &&
       !this.attachments.isUploading() &&
@@ -1136,6 +1315,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((models) => this.availableModels.set(chatModelOptions(models)))
     this.connectSse()
+    this.loadMembers()
 
     // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
     this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -1143,7 +1323,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       if (newCaseId && newCaseId !== this.caseId) {
         this.caseId = newCaseId
         this._activeCaseId.set(newCaseId)
+        // The new case is a plain conversation until its own members say otherwise.
+        this.memberCount.set(0)
+        this.memberDirectory.set([])
         this.reinitialise()
+        this.loadMembers()
       }
     })
   }
@@ -1154,6 +1338,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.terminalCloseTimer = null
     }
     this.eventSource?.close()
+    if (this.exchangeRefreshTimer !== null) clearTimeout(this.exchangeRefreshTimer)
     this.scrollListenerCleanup?.()
   }
 
@@ -1278,6 +1463,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             }
             if (msg.actor.role === 'AGENT') {
               this.caseState.notifyAgentMessageEvent(msg)
+            } else {
+              this.refreshFilesCarriedBy(msg)
             }
           }
 
@@ -1444,12 +1631,26 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.eventSource.addEventListener(name, handler)
     }
 
+    // Who else has the case open: a frame of its own, not a case event, sent on the collaborative stream only.
+    // Each frame is the whole list, so the last one is the truth; what a closed stream left is forgotten below.
+    this.eventSource.addEventListener('case-presence', (msg: Event) => {
+      if (this.eventSource !== source) return
+      try {
+        const { userIds } = JSON.parse((msg as globalThis.MessageEvent<string>).data) as { userIds?: string[] }
+        this.zone.run(() => this.presentUserIds.set(Array.isArray(userIds) ? userIds : []))
+      } catch (err) {
+        console.warn('[AgentOS SSE] failed to parse presence data', err)
+      }
+    })
+
     this.eventSource.onerror = () => {
       if (this.eventSource !== source) return
       const closed = source.readyState === EVENT_SOURCE_CLOSED
       if (closed) console.warn('[AgentOS SSE] stream closed for case', this.caseId)
       this.zone.run(() => {
         this.isRunning.set(false)
+        // Without a stream nobody can be said to be here: the next one opens with the list as it stands then.
+        this.presentUserIds.set([])
         // Do not mark terminal on transport error: EventSource may reconnect.
         // CLOSED is the exception — the browser will not retry, so say the stream is gone
         // rather than leave a chat that silently never updates again.
@@ -1463,6 +1664,30 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
   private anyToolResponseThisTurn = false
+
+  /** The exchanges that teammates' files were added to, waiting for their refresh (see [refreshFilesCarriedBy]). */
+  private readonly exchangesToRefresh = new Set<'case' | 'namespace'>()
+  private exchangeRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+  /**
+   * A message of someone else that carries uploaded files tells that they were just added to an exchange: the file
+   * drawer and its count follow, without a reload. The author's own upload already refreshed their drawer.
+   * Debounced, since a replayed history delivers all its messages at once.
+   */
+  private refreshFilesCarriedBy(message: CaseMessageEvent): void {
+    if (isAuthorOf(message.actor, this.currentUserId())) return
+    for (const file of splitAttachmentMentions(this.extractText(message)).files) {
+      if (file.kind === 'attached') this.exchangesToRefresh.add(mentionScopeWord(file.scope))
+    }
+    if (this.exchangesToRefresh.size === 0 || this.exchangeRefreshTimer !== null) return
+    this.exchangeRefreshTimer = setTimeout(() => {
+      this.exchangeRefreshTimer = null
+      const scopes = [...this.exchangesToRefresh]
+      this.exchangesToRefresh.clear()
+      if (scopes.includes('case')) this.exchangeState.refreshCase()
+      if (scopes.includes('namespace')) this.exchangeState.refreshNamespace()
+    }, EXCHANGE_REFRESH_DEBOUNCE_MS)
+  }
 
   protected onInput(event: Event): void {
     const input = event.target as HTMLTextAreaElement
@@ -1512,6 +1737,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected onAgentSelected(agent: AgentConfig): void {
     this.selectedTeamAgent.set(agent.name)
     this.autocomplete.onAgentSelected(agent, this.agentAutocompleteRef, this.composerInput, this.inputValue)
+  }
+
+  protected onMemberMentioned(member: MemberMention): void {
+    this.autocomplete.onMemberSelected(member, this.composerInput, this.inputValue)
   }
 
   protected onFileSelected(file: FileSuggestion): void {
@@ -1600,6 +1829,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected closeAtAutocomplete(): void {
     this.autocomplete.atSuggestions.set([])
+    this.autocomplete.memberSuggestions.set([])
   }
 
   /**
@@ -1843,7 +2073,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     ).then(
       () => true,
       (err) => {
-        this.sendError.set('Le message n’a pas été envoyé. Réessayez.')
+        this.sendError.set('The message was not sent. Please try again.')
         console.error('[CaseChat] Failed to send message', err)
         if (!humanOnly) this.isRunning.set(false)
         return false
@@ -1866,7 +2096,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       !this.composerClosed() &&
       this.activeEditId() === null &&
       this.pendingRerun() === null &&
-      isAuthorOf(message.actor, this.currentUserId())
+      isAuthorOf(message.actor, this.currentUserId()) &&
+      !this.isTeamMessage(message)
     )
   }
 
@@ -1980,10 +2211,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /**
    * Rewinding rewrites the history, so it is offered only when nothing else is moving on the case: the agent
    * is idle, the case is open (a terminal case is reopened first), nothing is being posted, and the user
-   * can write to it.
+   * can write to it. Never in a shared case: it would erase or fork history that the others have read or answered.
    */
   protected canRewind(): boolean {
     return (
+      !this.teamChat() &&
       this.canAttach() &&
       !this.isRunning() &&
       !this.composerClosed() &&
@@ -1995,11 +2227,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Whether the rewind button is offered under [message], in its actions bar: any user message (the current user's
-   * or a collaborator's), never an agent message, while the case can be rewound (see [canRewind]).
+   * Whether the rewind button is offered under [message], in its actions bar: a user message of the current user, never
+   * an agent message nor a teammate's (a teammate's turn carries no buttons), while the case can be rewound (see
+   * [canRewind]).
    */
   protected canRewindMessage(message: CaseMessageEvent): boolean {
-    return message.actor.role === 'USER' && this.canRewind()
+    return (
+      message.actor.role === 'USER' &&
+      !this.isTeammate(message.actor) &&
+      !this.isTeamMessage(message) &&
+      this.canRewind()
+    )
   }
 
   /** Opens the confirmation for a user message; rewinding is destructive, so it never acts directly. */
