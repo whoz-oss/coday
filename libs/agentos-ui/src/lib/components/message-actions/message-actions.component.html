@@ -8,3 +8,11 @@
   />
   <ds-icon-button icon="edit" inputTrack="CaseChat-editMessage" [title]="editTooltip" (action)="editRequested.emit()" />
 }
+@if (rewindable()) {
+  <ds-icon-button
+    icon="history"
+    inputTrack="CaseChat-rewindMessage"
+    [title]="rewindTooltip"
+    (action)="rewindRequested.emit()"
+  />
+}

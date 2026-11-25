@@ -1,13 +1,14 @@
 import { ApplicationRef, ComponentRef, createComponent, EnvironmentInjector } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
-import { MessageActionsComponent, RELOAD_TOOLTIP, RERUN_TOOLTIP } from './message-actions.component'
+import { MessageActionsComponent, RELOAD_TOOLTIP, RERUN_TOOLTIP, REWIND_TOOLTIP } from './message-actions.component'
 
 describe('MessageActionsComponent', () => {
-  function makeComponent(editable: boolean): ComponentRef<MessageActionsComponent> {
+  function makeComponent(editable: boolean, rewindable = false): ComponentRef<MessageActionsComponent> {
     const ref = createComponent(MessageActionsComponent, { environmentInjector: TestBed.inject(EnvironmentInjector) })
     TestBed.inject(ApplicationRef).attachView(ref.hostView)
     ref.setInput('text', 'Some message')
     ref.setInput('editable', editable)
+    ref.setInput('rewindable', rewindable)
     ref.changeDetectorRef.detectChanges()
     return ref
   }
@@ -76,6 +77,37 @@ describe('MessageActionsComponent', () => {
 
     expect(reloads).toBe(1)
     expect(edits).toBe(0)
+  })
+
+  it('adds the rewind button last when the message can be rewound', () => {
+    const ref = makeComponent(true, true)
+
+    expect(buttons(ref)).toHaveLength(4)
+    expect(buttons(ref)[3]!.textContent).toContain('history')
+    expect(buttons(ref)[3]!.title).toBe(REWIND_TOOLTIP)
+  })
+
+  it('offers rewind even when the message cannot be edited', () => {
+    const ref = makeComponent(false, true)
+
+    expect(buttons(ref)).toHaveLength(2)
+    expect(buttons(ref)[1]!.title).toBe(REWIND_TOOLTIP)
+  })
+
+  it('asks the host to rewind when the rewind button is clicked, and only that', () => {
+    const ref = makeComponent(true, true)
+    let rewinds = 0
+    let edits = 0
+    let reloads = 0
+    ref.instance.rewindRequested.subscribe(() => rewinds++)
+    ref.instance.editRequested.subscribe(() => edits++)
+    ref.instance.reloadRequested.subscribe(() => reloads++)
+
+    buttons(ref)[3]!.click()
+
+    expect(rewinds).toBe(1)
+    expect(edits).toBe(0)
+    expect(reloads).toBe(0)
   })
 
   it('offers neither a fork nor a speaker', () => {

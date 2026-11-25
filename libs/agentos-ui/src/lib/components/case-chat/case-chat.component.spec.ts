@@ -1,5 +1,16 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { ComponentRef, createComponent, EnvironmentInjector, signal, WritableSignal } from '@angular/core'
+import {
+  ApplicationRef,
+  Component,
+  ComponentRef,
+  createComponent,
+  EnvironmentInjector,
+  input,
+  model,
+  output,
+  signal,
+  WritableSignal,
+} from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
@@ -38,7 +49,89 @@ import { ComposerAutocompleteService } from '../composer-autocomplete/composer-a
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
 import { AGENT_MODEL_CHOICE } from '../composer-autocomplete/model-command'
 import { SideQuestionApiService } from '../../services/side-question-api.service'
+import { ConfirmDialogComponent, DrawerComponent, KebabMenuComponent } from '@whoz-oss/design-system'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
+import { CaseUsageComponent } from '../case-usage/case-usage.component'
+import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
+import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
+import { REWIND_TOOLTIP } from '../message-actions/message-actions.component'
 import { CaseChatComponent } from './case-chat.component'
+
+/*
+ * Stand-ins for the parts of the chat around the timeline, used by the few tests that render the template: the
+ * drawer (Material sidenav and breakpoints), the panels that call their own APIs (files, usage), and the composer
+ * pieces. They declare the inputs and outputs the chat binds, nothing else. The timeline and the actions bar under
+ * each bubble stay real: they are what those tests are about.
+ */
+@Component({
+  selector: 'ds-drawer',
+  template: '<ng-content select="[dsDrawerSide]" /><ng-content select="[dsDrawerContent]" />',
+})
+class StubDrawerComponent {
+  readonly open = model(false)
+  readonly position = input('start')
+  readonly drawerWidth = input('')
+  readonly mobileFullWidth = input(false)
+  readonly resizable = input(false)
+  readonly widthChange = output<number>()
+}
+
+@Component({ selector: 'agentos-exchange-shell', template: '' })
+class StubExchangeShellComponent {
+  readonly active = input(false)
+  readonly selectable = input(false)
+  readonly referenced = input<unknown[]>([])
+  readonly referenceToggled = output<unknown>()
+  readonly closeRequested = output<void>()
+}
+
+@Component({ selector: 'agentos-case-usage', template: '' })
+class StubCaseUsageComponent {
+  readonly caseId = input('')
+  readonly canWrite = input(false)
+  readonly running = input(false)
+}
+
+@Component({ selector: 'ds-kebab-menu', template: '' })
+class StubKebabMenuComponent {
+  readonly items = input<unknown[]>([])
+  readonly itemSelected = output<string>()
+}
+
+@Component({ selector: 'ds-confirm-dialog', template: '' })
+class StubConfirmDialogComponent {
+  readonly open = input(false)
+  readonly title = input('')
+  readonly message = input('')
+  readonly confirmLabel = input('')
+  readonly cancelLabel = input('')
+  readonly confirmed = output<void>()
+  readonly cancelled = output<void>()
+}
+
+@Component({ selector: 'agentos-composer-attachments', template: '' })
+class StubComposerAttachmentsComponent {
+  readonly attachments = input<unknown[]>([])
+  readonly references = input<unknown[]>([])
+  readonly namespaceBadge = input(false)
+  readonly limitError = input<string | null>(null)
+  readonly disabled = input(false)
+  readonly removed = output<string>()
+  readonly referenceRemoved = output<unknown>()
+  readonly filesSelected = output<File[]>()
+  openPicker(): void {
+    // Nothing to open in a test.
+  }
+}
+
+@Component({ selector: 'agentos-voice-recorder', template: '' })
+class StubVoiceRecorderComponent {
+  readonly state = input<unknown>(null)
+  readonly elapsedMs = input(0)
+  readonly error = input<string | null>(null)
+  readonly sendKey = input('')
+  readonly keyPressed = output<KeyboardEvent>()
+}
 
 /**
  * The component is created WITHOUT rendering (no attachView / detectChanges): ngOnInit never
@@ -1298,6 +1391,128 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.instance['askRewind'](message('m-2', 'AGENT', 'an answer'))
 
       expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    /**
+     * What the actions bar under a bubble offers: the template binds its rewind button to canRewindMessage, like the
+     * pencil to canEditMessage. The rendering of the button itself is covered by message-actions.component.spec.
+     */
+    describe('the rewind button under a bubble', () => {
+      it('is offered under a user message, and never under an agent message', () => {
+        const ref = makeComponent()
+
+        expect(ref.instance['canRewindMessage'](userMessage())).toBe(true)
+        expect(ref.instance['canRewindMessage'](message('m-2', 'AGENT', 'an answer'))).toBe(false)
+      })
+
+      it('is offered under the message of a collaborator too, unlike the pencil', () => {
+        const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+        userState.currentUser.set({ id: 'u-1' } as User)
+        const ref = makeComponent()
+        const bob = {
+          ...userMessage('m-3', 'from Bob'),
+          actor: { id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' },
+        } as CaseMessageEvent
+
+        expect(ref.instance['canRewindMessage'](bob)).toBe(true)
+        expect(ref.instance['canEditMessage'](bob)).toBe(false)
+      })
+
+      describe('as rendered', () => {
+        /** Renders the chat with [events] in its timeline. Must run before anything else injects from the TestBed. */
+        function renderChat(events: CaseMessageEvent[]): { ref: ComponentRef<CaseChatComponent>; host: HTMLElement } {
+          TestBed.overrideComponent(CaseChatComponent, {
+            remove: {
+              imports: [
+                DrawerComponent,
+                ExchangeShellComponent,
+                CaseUsageComponent,
+                KebabMenuComponent,
+                ConfirmDialogComponent,
+                ComposerAttachmentsComponent,
+                VoiceRecorderComponent,
+              ],
+            },
+            add: {
+              imports: [
+                StubDrawerComponent,
+                StubExchangeShellComponent,
+                StubCaseUsageComponent,
+                StubKebabMenuComponent,
+                StubConfirmDialogComponent,
+                StubComposerAttachmentsComponent,
+                StubVoiceRecorderComponent,
+              ],
+            },
+          })
+          const ref = makeComponent()
+          ref.instance['events'].set(events)
+          TestBed.inject(ApplicationRef).attachView(ref.hostView)
+          ref.changeDetectorRef.detectChanges()
+          return { ref, host: ref.location.nativeElement as HTMLElement }
+        }
+
+        /** The rewind buttons of the actions bar of each bubble, in timeline order. */
+        const rewindButtons = (host: HTMLElement): HTMLButtonElement[][] =>
+          Array.from(host.querySelectorAll('agentos-message-actions')).map((bar) =>
+            Array.from(bar.querySelectorAll('button')).filter((button) => button.title === REWIND_TOOLTIP)
+          )
+
+        it('shows the button in the actions bar of a user message, and not in the one of an agent message', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            expect(rewindButtons(host).map((buttons) => buttons.length)).toEqual([1, 0])
+            // The old floating button over the bubble is gone.
+            expect(host.querySelector('.case-chat__bubble-rewind')).toBeNull()
+          } finally {
+            ref.destroy()
+          }
+        })
+
+        it('opens the confirmation for that message when clicked, and sends nothing', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            rewindButtons(host)[0]![0]!.click()
+
+            expect(ref.instance['rewindTarget']()?.id).toBe('m-1')
+            expect(http.post).not.toHaveBeenCalled()
+          } finally {
+            ref.destroy()
+          }
+        })
+
+        it('removes the button once the case can no longer be rewound', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            exchangeState.canWriteCase.set(false)
+            ref.changeDetectorRef.detectChanges()
+
+            expect(rewindButtons(host).map((buttons) => buttons.length)).toEqual([0, 0])
+          } finally {
+            ref.destroy()
+          }
+        })
+      })
+
+      it('is hidden on every bubble whenever the case cannot be rewound', () => {
+        const ref = makeComponent()
+        const blockers: Array<() => void> = [
+          () => ref.instance['isRunning'].set(true),
+          () => ref.instance['_sseStatus'].set('KILLED'),
+          () => exchangeState.canWriteCase.set(false),
+        ]
+
+        for (const block of blockers) {
+          ref.instance['isRunning'].set(false)
+          ref.instance['_sseStatus'].set('')
+          exchangeState.canWriteCase.set(true)
+          expect(ref.instance['canRewindMessage'](userMessage())).toBe(true)
+
+          block()
+
+          expect(ref.instance['canRewindMessage'](userMessage())).toBe(false)
+        }
+      })
     })
 
     it('is not offered while a message is being sent', () => {

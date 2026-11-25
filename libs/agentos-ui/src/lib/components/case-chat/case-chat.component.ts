@@ -1828,9 +1828,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     )
   }
 
+  /**
+   * Whether the rewind button is offered under [message], in its actions bar: any user message (the current user's
+   * or a collaborator's), never an agent message, while the case can be rewound (see [canRewind]).
+   */
+  protected canRewindMessage(message: CaseMessageEvent): boolean {
+    return message.actor.role === 'USER' && this.canRewind()
+  }
+
   /** Opens the confirmation for a user message; rewinding is destructive, so it never acts directly. */
   protected askRewind(event: CaseMessageEvent): void {
-    if (event.actor.role !== 'USER' || !this.canRewind()) return
+    if (!this.canRewindMessage(event)) return
     this.rewindTarget.set(event)
   }
 

@@ -231,15 +231,6 @@
                       } @else {
                         <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
                       }
-                      @if (item.event.actor.role === 'USER' && canRewind()) {
-                        <ds-icon-button
-                          class="case-chat__bubble-rewind"
-                          icon="history"
-                          variant="default"
-                          title="Rewind to this message"
-                          (action)="askRewind(item.event)"
-                        />
-                      }
                       @if (item.isLastInGroup) {
                         <time
                           class="case-chat__message-time"
@@ -250,14 +241,17 @@
                       }
                     }
                   </div>
-                  <!-- Under the bubble, always visible: copy for every message, reload and the pencil for the user's own. -->
+                  <!-- Under the bubble, always visible: copy for every message, reload and the pencil for the user's own,
+                       rewind for any user message while the case can be rewound. -->
                   @if (!isEditingMessage(item.event)) {
                     <agentos-message-actions
                       class="case-chat__message-actions"
                       [text]="messageText(item)"
                       [editable]="canEditMessage(item.event)"
+                      [rewindable]="canRewindMessage(item.event)"
                       (reloadRequested)="reloadMessage(item.event)"
                       (editRequested)="startMessageEdit(item.event)"
+                      (rewindRequested)="askRewind(item.event)"
                     />
                   }
                   @if (rerunErrorOf(item.event); as rerunFailure) {
