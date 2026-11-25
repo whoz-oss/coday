@@ -58,6 +58,9 @@ class DefaultAgentOsExecutionAdapter(
     /** caseId → caller-initiated interruption reason (intent for verdict mapping). */
     private val interruptReasons = ConcurrentHashMap<String, String>()
 
+    /** Cases whose local observation a user Stop abandoned (see [abandonObservation]). */
+    private val abandonedObservations: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
     private data class ExecutionRecord(
         val caseId: String,
         val namespaceId: String?,
@@ -237,6 +240,8 @@ class DefaultAgentOsExecutionAdapter(
         }
         checkpointStore.setBaseline(caseId, binding.attemptId, baseline)
         registry.markBaseline(caseId, baseline)
+        // A new turn starts a new observation: an abandonment requested for a previous turn of this case must not carry over.
+        abandonedObservations.remove(caseId)
         val spec = client.post()
             .uri("/api/cases/$caseId/messages")
             .contentType(MediaType.APPLICATION_JSON)
@@ -265,6 +270,7 @@ class DefaultAgentOsExecutionAdapter(
             checkpoint = checkpoint,
             context = contextFor(caseId),
             reconcile = { reconcileSnapshot(caseId, record?.externalUserId, baseline.takeIf { it.isPositioned() }) },
+            abandoned = { abandonedObservations.contains(caseId) },
             onEvent = { event -> observeModel(turn, listOf(event)) },
             onIntermediateVerdict = onIntermediateVerdict,
             onAnswerObserved = onAnswerObserved,
@@ -347,10 +353,26 @@ class DefaultAgentOsExecutionAdapter(
         interrupt(caseId, reason, null)
     }
 
-    override fun interrupt(caseId: String, reason: String, externalUserId: String?): Boolean {
+    override fun interrupt(caseId: String, reason: String, externalUserId: String?): KillResult {
         interruptReasons[caseId] = reason
-        return postKill(caseId, externalUserId)
+        val result = postKill(caseId, externalUserId)
+        // A refused kill proves nothing about the case: the intent must not turn a later, unrelated KILLED into an Interrupted.
+        if (result == KillResult.REFUSED) interruptReasons.remove(caseId)
+        return result
     }
+
+    override fun abandonObservation(caseId: String) {
+        abandonedObservations.add(caseId)
+    }
+
+    override fun caseStatus(caseId: String, externalUserId: String?): String? =
+        try {
+            getRemoteCase(caseId, externalUserId)?.get("status") as? String
+        } catch (e: Exception) {
+            logger.warn { "AgentOS status read of case $caseId failed (${describeFailure(e)})" }
+            logger.debug(e) { "AgentOS status read of case $caseId failed" }
+            null
+        }
 
     override fun kill(caseId: String) {
         postKill(caseId, null)
@@ -460,21 +482,28 @@ class DefaultAgentOsExecutionAdapter(
      * the case was bound, so the escalation and shutdown kills ([interrupt] without identity and
      * [kill]) keep their current, unauthenticated request.
      *
-     * @return `true` only when AgentOS acknowledged the kill (2xx); a failure is
-     *   logged at WARN with the case id and HTTP status, and yields `false`.
+     * @return [KillResult.ACKNOWLEDGED] when AgentOS accepted the kill (2xx), [KillResult.REFUSED] when it answered
+     *   401/403, [KillResult.UNREACHABLE] for any other failure. A failure is logged at WARN with the case id and the
+     *   HTTP status only (no stack trace: it would flood the logs on a down runtime); the stack trace is at DEBUG.
      */
-    private fun postKill(caseId: String, externalUserId: String?): Boolean {
+    private fun postKill(caseId: String, externalUserId: String?): KillResult {
         return try {
             val spec = client.post().uri("/api/cases/$caseId/kill")
             externalUserId?.takeIf { it.isNotBlank() }?.let { spec.header("X-External-User-Id", it) }
             spec.retrieve().toBodilessEntity()
-            true
+            KillResult.ACKNOWLEDGED
         } catch (e: Exception) {
             val status = (e as? RestClientResponseException)?.statusCode?.value()
-            logger.warn(e) { "AgentOS kill of case $caseId failed (status=${status ?: "n/a"})" }
-            false
+            logger.warn { "AgentOS kill of case $caseId failed (${describeFailure(e)})" }
+            logger.debug(e) { "AgentOS kill of case $caseId failed" }
+            if (status == 401 || status == 403) KillResult.REFUSED else KillResult.UNREACHABLE
         }
     }
+
+    /** Short, stack-free description of a failed AgentOS call: the HTTP status, else the exception type. */
+    private fun describeFailure(error: Exception): String =
+        (error as? RestClientResponseException)?.statusCode?.value()?.let { "status=$it" }
+            ?: "error=${error.javaClass.simpleName}"
 
     /**
      * REST catch-up against `GET /api/case-events/by-parentId/{caseId}`: the

@@ -1305,8 +1305,8 @@ paths:
     post:
       tags:
       - workflows
-      summary: "Explicitly cancel a durable agent attempt (owner only, durable cancel\
-        \ then authenticated kill + reconcile)."
+      summary: "Explicitly cancel a durable agent attempt (Stop): authenticated kill,\
+        \ durable cancel, kill proof; also retries a Stop whose kill is not proven."
       operationId: cancelAttemptWorkflow
       parameters:
       - name: workflowId
@@ -1327,11 +1327,33 @@ paths:
               additionalProperties: {}
       responses:
         "200":
-          description: OK
+          description: Stop recorded; killResult and killProven report what AgentOS
+            did
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+        "403":
+          description: "STOP_NOT_AUTHORIZED: AgentOS refused the caller's kill; nothing\
+            \ was changed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ATTEMPT_INVALID_TRANSITION or REVISION_CONFLICT; nothing was
+            sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: "STOP_RUNTIME_UNAVAILABLE: AgentOS could not be reached to\
+            \ authorize the caller; nothing was changed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/factory/workflows/{workflowId}/agent-step-questions/{interactionId}/answer:
     post:
       tags:
@@ -2734,6 +2756,24 @@ components:
         data: {}
       required:
       - data
+    ErrorDetail:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
+      required:
+      - code
+      - message
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+      required:
+      - error
     DependencyChangeDto:
       type: object
       properties:
@@ -2935,24 +2975,6 @@ components:
           type: string
         agentName:
           type: string
-    ErrorDetail:
-      type: object
-      properties:
-        code:
-          type: string
-        message:
-          type: string
-        details: {}
-      required:
-      - code
-      - message
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          $ref: "#/components/schemas/ErrorDetail"
-      required:
-      - error
     AgentStepResultData:
       type: object
       properties:

@@ -8,6 +8,8 @@ import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseHandle
+import io.whozoss.factory.adapter.agentos.KillResult
+import io.whozoss.factory.adapter.agentos.VerdictDeriver
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
@@ -36,6 +38,7 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.service.SessionRunResult
 import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.SessionRunSubmissionService
+import io.whozoss.factory.workflow.service.OutcomeTransitionService
 import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import io.whozoss.factory.workspace.WorkspacePrecheckService
@@ -47,6 +50,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
@@ -79,6 +83,7 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
     @Autowired private lateinit var submissions: SessionRunSubmissionService
     @Autowired private lateinit var outboxDrain: OutboxDrainService
     @Autowired private lateinit var outbox: SpringDataNeo4jOutboxRepository
+    @Autowired private lateinit var outcomeTransitions: OutcomeTransitionService
 
     @TempDir
     lateinit var repoRoot: Path
@@ -89,19 +94,31 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
     private val actor = "engineer-stop"
 
     /**
-     * Fake AgentOS boundary. The observation optionally blocks until the test releases it; the kill only
-     * records the identity it carried and never releases anything itself.
+     * Fake AgentOS boundary. The observation optionally blocks until the test releases it, and also returns
+     * as soon as the observation is abandoned (as the real adapter does). The kill records the identity it
+     * carried; [killResult] is what it answers and [caseStatus] what the status read reports.
      */
     private class StopAdapter(
         private val blockObservation: Boolean = true,
         private val verdict: AgentOsExecutionVerdict = AgentOsExecutionVerdict.Interrupted("User requested cancellation"),
+        var killResult: KillResult = KillResult.ACKNOWLEDGED,
     ) : AgentOsExecutionAdapter {
+        /** When true, the kill itself ends the observation (the case dies before the durable cancel is written). */
+        var releaseOnInterrupt = false
+
+        /** Status AgentOS reports once it acknowledged a kill (the case really died). */
+        var statusAfterAcknowledgedKill: String? = null
         val observing = CountDownLatch(1)
         val release = CountDownLatch(1)
+        val abandonedSignal = CountDownLatch(1)
         val createCalls = AtomicInteger()
         val startCalls = AtomicInteger()
         val interruptCalls = AtomicInteger()
         val interruptIdentities = CopyOnWriteArrayList<String?>()
+        val caseStatus = AtomicReference<String?>(null)
+
+        /** When set, the observation returns this verdict once released by a kill (the case really died). */
+        var verdictOnAbandon: AgentOsExecutionVerdict? = null
 
         override fun createOrRecoverExecution(
             namespaceId: String,
@@ -130,8 +147,18 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
 
         override fun observeTurn(caseId: String, attemptId: String, timeoutMs: Long): AgentOsExecutionVerdict {
             observing.countDown()
-            if (blockObservation) release.await(30, TimeUnit.SECONDS)
-            return verdict
+            if (blockObservation) {
+                // Released by the test, or by an abandonment (the real adapter returns within a second).
+                var waited = 0
+                while (waited < 300 && release.count > 0 && abandonedSignal.count > 0) {
+                    release.await(100, TimeUnit.MILLISECONDS)
+                    waited++
+                }
+                if (abandonedSignal.count == 0L) {
+                    return AgentOsExecutionVerdict.Interrupted("${VerdictDeriver.USER_CANCELLED_PREFIX}: observation abandoned")
+                }
+            }
+            return verdictOnAbandon?.takeIf { abandonedSignal.count == 0L } ?: verdict
         }
 
         override fun reconcile(caseId: String): AgentOsExecutionVerdict =
@@ -139,11 +166,19 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
 
         override fun interrupt(caseId: String, reason: String) = Unit
 
-        override fun interrupt(caseId: String, reason: String, externalUserId: String?): Boolean {
+        override fun interrupt(caseId: String, reason: String, externalUserId: String?): KillResult {
             interruptCalls.incrementAndGet()
             interruptIdentities.add(externalUserId)
-            return true
+            if (releaseOnInterrupt) release.countDown()
+            if (killResult == KillResult.ACKNOWLEDGED) statusAfterAcknowledgedKill?.let(caseStatus::set)
+            return killResult
         }
+
+        override fun abandonObservation(caseId: String) {
+            abandonedSignal.countDown()
+        }
+
+        override fun caseStatus(caseId: String, externalUserId: String?): String? = caseStatus.get()
 
         override fun kill(caseId: String) = Unit
     }
@@ -155,13 +190,19 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
         "dependsOn" to dependsOn,
     )
 
-    private fun startWorkflow(workflowType: String, workflowId: String) {
+    private fun startWorkflow(workflowType: String, workflowId: String, outcomeManaged: Boolean = false) {
+        val first = if (outcomeManaged) {
+            stepJson("A", emptyList()) +
+                ("outcomeTransitions" to mapOf("fail" to mapOf("action" to "return", "target" to "A")))
+        } else {
+            stepJson("A", emptyList())
+        }
         val raw = linkedMapOf<String, Any?>(
             "schemaVersion" to "1",
             "workflowType" to workflowType,
             "version" to "1.0.0",
             "title" to "Session $workflowType",
-            "steps" to listOf(stepJson("A", emptyList()), stepJson("B", listOf("A"))),
+            "steps" to listOf(first, stepJson("B", listOf("A"))),
         )
         val valid = WorkflowDefinitionValidator.validate(raw) as WorkflowDefinitionValidation.Valid
         workflowService.registerDefinition(
@@ -201,6 +242,7 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
     private fun sessionRunner(
         adapter: AgentOsExecutionAdapter,
         precheck: WorkspacePrecheckService? = null,
+        outcomeService: OutcomeTransitionService? = null,
     ): SessionRunService = SessionRunService(
         workflowRepository,
         evidenceRepository,
@@ -211,10 +253,15 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
         oracleExecutionService = null,
         transactionManager = transactionManager,
         workspacePrecheckService = precheck,
+        outcomeTransitionService = outcomeService,
     )
 
     private fun cancellation(adapter: AgentOsExecutionAdapter) =
         BridgeCancellationService(durableAgentAttemptService, adapter, workflowRepository)
+
+    /** The Stop command as production wires it: with the evidence that feeds the "Retry stop" read model. */
+    private fun cancellationWithEvidence(adapter: AgentOsExecutionAdapter) =
+        BridgeCancellationService(durableAgentAttemptService, adapter, workflowRepository, evidenceRepository = evidenceRepository)
 
     private fun statusOf(workflowId: String, stepId: String): String =
         workflowRepository.findStepStates(scope, namespace, workflowId).first { it.stepId == stepId }.status
@@ -275,7 +322,7 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
             adapter.release.countDown()
 
             val result = running.get(30, TimeUnit.SECONDS)
-            assertThat(outcome.killAcknowledged).isTrue()
+            assertThat(outcome.killResult).isEqualTo(KillResult.ACKNOWLEDGED)
             // The kill is issued as the run owner.
             assertThat(adapter.interruptIdentities).containsExactly(actor)
             assertThat(result.status).isEqualTo(WorkflowStatuses.CANCELLED)
@@ -322,6 +369,156 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(cancellationEvidence(workflowId)).isEmpty()
         val attempt = durableAgentAttemptService.find(scope, namespace, workflowId, "A", attemptId)!!
         assertThat(attempt.status).isEqualTo(AgentAttemptStatus.FAILED)
+    }
+
+    // ---- a run already stuck by a Stop, healed by the next continuation ----
+
+    @Test
+    fun `kill first - a non owner AgentOS lets stop whose kill ends the observation seals the run, and the cancel is idempotent`() {
+        val workflowId = "wf-stop-killfirst-${UUID.randomUUID()}"
+        startWorkflow("stop-killfirst", workflowId)
+        // The case dies the moment the kill reaches AgentOS, BEFORE the durable cancel is written.
+        val adapter = StopAdapter(
+            verdict = AgentOsExecutionVerdict.Interrupted("${VerdictDeriver.USER_CANCELLED_PREFIX}: User requested cancellation"),
+        ).also { it.releaseOnInterrupt = true }
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        val admin = "namespace-admin"
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val running = pool.submit<SessionRunResult> {
+                sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+            }
+            assertThat(adapter.observing.await(30, TimeUnit.SECONDS)).isTrue()
+
+            val outcome = cancellation(adapter)
+                .requestCancel(scope, namespace, workflowId, attemptId, expectedRevision = null, actorId = admin)
+
+            val result = running.get(30, TimeUnit.SECONDS)
+            assertThat(adapter.interruptIdentities).containsExactly(admin)
+            assertThat(outcome.killResult).isEqualTo(KillResult.ACKNOWLEDGED)
+            assertThat(result.status).isEqualTo(WorkflowStatuses.CANCELLED)
+            assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.CANCELLED)
+            assertThat(statusOf(workflowId, "B")).isEqualTo(WorkflowStatuses.BLOCKED)
+            assertThat(projectionStatus(workflowId)).isEqualTo(WorkflowStatuses.CANCELLED)
+            val attempt = durableAgentAttemptService.find(scope, namespace, workflowId, "A", attemptId)!!
+            assertThat(attempt.status).isEqualTo(AgentAttemptStatus.INTERRUPTED)
+            assertThat(attempt.failureCode).isEqualTo(CapabilityExecutionService.USER_CANCELLED)
+            assertThat(cancellationEvidence(workflowId)).hasSize(1)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `a refused kill of the owner still seals the run, exposes Retry stop, and a second Stop proves the kill`() {
+        val workflowId = "wf-stop-refused-${UUID.randomUUID()}"
+        startWorkflow("stop-refused", workflowId)
+        // The observation only ends once the Stop abandons it: AgentOS never answered the kill.
+        val adapter = StopAdapter(killResult = KillResult.REFUSED)
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val running = pool.submit<SessionRunResult> {
+                sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+            }
+            assertThat(adapter.observing.await(30, TimeUnit.SECONDS)).isTrue()
+
+            val first = cancellationWithEvidence(adapter)
+                .requestCancel(scope, namespace, workflowId, attemptId, expectedRevision = null, actorId = actor)
+
+            // The run leaves `running` although the kill was refused (never `release`d by the test).
+            val result = running.get(30, TimeUnit.SECONDS)
+            assertThat(first.killResult).isEqualTo(KillResult.REFUSED)
+            assertThat(first.killProven).isFalse()
+            assertThat(result.status).isEqualTo(WorkflowStatuses.CANCELLED)
+            assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.CANCELLED)
+            assertThat(projectionStatus(workflowId)).isEqualTo(WorkflowStatuses.CANCELLED)
+
+            val unconfirmed = workflowService.workflowActions(scope, namespace, workflowId, canReply = true, actorId = actor)
+            assertThat(unconfirmed.blockers.map { it.code }).contains("AGENT_KILL_UNCONFIRMED")
+            assertThat(unconfirmed.allowedActions.filter { it.type == "cancel_attempt" }.map { it.label }).contains("Retry stop")
+
+            // AgentOS accepts the retried kill, and the case then reports KILLED (it did not before).
+            adapter.killResult = KillResult.ACKNOWLEDGED
+            adapter.statusAfterAcknowledgedKill = "KILLED"
+            val retry = cancellationWithEvidence(adapter)
+                .requestCancel(scope, namespace, workflowId, attemptId, expectedRevision = null, actorId = actor)
+
+            assertThat(retry.idempotent).isTrue()
+            assertThat(retry.killProven).isTrue()
+            assertThat(adapter.interruptCalls.get()).isEqualTo(2)
+            val proven = workflowService.workflowActions(scope, namespace, workflowId, canReply = true, actorId = actor)
+            assertThat(proven.blockers.map { it.code }).doesNotContain("AGENT_KILL_UNCONFIRMED")
+            assertThat(proven.allowedActions.filter { it.type == "cancel_attempt" }).isEmpty()
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `a Stop of an outcome-managed run cancels the execution, creates no correction cycle and seals the run`() {
+        val workflowId = "wf-stop-outcome-${UUID.randomUUID()}"
+        startWorkflow("stop-outcome", workflowId, outcomeManaged = true)
+        val adapter = StopAdapter()
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val running = pool.submit<SessionRunResult> {
+                sessionRunner(adapter, outcomeService = outcomeTransitions).runSession(scope, namespace, workflowId, repoRoot)
+            }
+            assertThat(adapter.observing.await(30, TimeUnit.SECONDS)).isTrue()
+
+            cancellation(adapter)
+                .requestCancel(scope, namespace, workflowId, attemptId, expectedRevision = null, actorId = actor)
+            adapter.release.countDown()
+
+            val result = running.get(30, TimeUnit.SECONDS)
+            assertThat(result.status).isEqualTo(WorkflowStatuses.CANCELLED)
+            assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.CANCELLED)
+            assertThat(statusOf(workflowId, "B")).isEqualTo(WorkflowStatuses.BLOCKED)
+            val projection = workflowRepository.findInstance(scope, namespace, workflowId)!!.projection
+            assertThat(projection["status"]).isEqualTo(WorkflowStatuses.CANCELLED)
+            // The ledger holds the single execution of A, cancelled; a FAIL-return cycle was never opened.
+            val executions = (projection["stepExecutions"] as List<*>).map { it as Map<*, *> }.filter { it["stepId"] == "A" }
+            assertThat(executions).hasSize(1)
+            assertThat(executions.single()["status"]).isEqualTo(WorkflowStatuses.CANCELLED)
+            assertThat(executions.single()["cycleNumber"]).isEqualTo(0)
+            assertThat(projection["correction"]).isNull()
+            assertThat(adapter.startCalls.get()).isEqualTo(1)
+
+            // A replay changes nothing and still dispatches nothing.
+            val replay = sessionRunner(adapter, outcomeService = outcomeTransitions).runSession(scope, namespace, workflowId, repoRoot)
+            assertThat(replay.status).isEqualTo(WorkflowStatuses.CANCELLED)
+            assertThat(adapter.startCalls.get()).isEqualTo(1)
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `an unreadable context envelope never turns a step that was not cancelled into an error`() {
+        val workflowId = "wf-stop-envelope-${UUID.randomUUID()}"
+        startWorkflow("stop-envelope", workflowId)
+        val capability = capabilityService(StopAdapter(blockObservation = false))
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        durableAgentAttemptService.register(scope, stepAttempt(workflowId, attemptId, contextEnvelope = "{ this is not an envelope"))
+        durableAgentAttemptService.claim(scope, namespace, workflowId, "A", attemptId, "worker", leaseTtlMs = 60_000)
+        durableAgentAttemptService.transition(scope, namespace, workflowId, "A", attemptId, "worker", AgentAttemptStatus.STARTING)
+        durableAgentAttemptService.transition(scope, namespace, workflowId, "A", attemptId, "worker", AgentAttemptStatus.RUNNING)
+        workflowRepository.upsertStepState(
+            scope,
+            WorkflowStepStateRecord(
+                namespace, workflowId, "A", 1, WorkflowStatuses.RUNNING,
+                mapOf("execution" to mapOf("executionId" to "execution-1")),
+            ),
+        )
+
+        // Not cancelled: the envelope is not even read.
+        assertThat(capability.userCancelledAttemptId(scope, namespace, workflowId, "A")).isNull()
+
+        // Cancelled, bound to an execution the unreadable envelope cannot prove: not bound, and no exception.
+        durableAgentAttemptService.requestCancel(scope, namespace, workflowId, "A", attemptId)
+        assertThat(capability.userCancelledAttemptId(scope, namespace, workflowId, "A")).isNull()
     }
 
     // ---- a run already stuck by a Stop, healed by the next continuation ----

@@ -34,6 +34,9 @@ object WorkflowBlockerCodes {
     const val VERIFICATION_FAILED = "VERIFICATION_FAILED"
     const val UNKNOWN_RUNTIME = "UNKNOWN_RUNTIME"
     const val NEEDS_RESEARCH = "NEEDS_RESEARCH"
+
+    /** A user Stop sealed the run, but AgentOS has not been proven to have killed the agents. */
+    const val AGENT_KILL_UNCONFIRMED = "AGENT_KILL_UNCONFIRMED"
 }
 
 /**

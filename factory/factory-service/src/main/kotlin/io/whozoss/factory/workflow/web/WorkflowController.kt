@@ -2,6 +2,10 @@ package io.whozoss.factory.workflow.web
 
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptDto
 import io.whozoss.factory.agentattempt.domain.toDto
@@ -9,6 +13,7 @@ import io.whozoss.factory.agentattempt.service.AgentStepQuestionService
 import io.whozoss.factory.agentattempt.service.BridgeCancellationService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.config.SessionProperties
+import io.whozoss.factory.error.ErrorResponse
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.web.AuthenticatedUser
@@ -533,16 +538,35 @@ class WorkflowController(
     }
 
     /**
-     * Explicit business cancellation of a durable agent attempt.
+     * Explicit business cancellation of a durable agent attempt (Stop).
      *
      * Closing the SSE stream (or a browser tab) only stops *observing* the run;
      * it never cancels it. Cancellation requires this explicit, revision-fenced
-     * command, restricted to the user who launched the run: it first moves the attempt
-     * to the durable terminal `interrupted` status, then kills the AgentOS case as that
-     * user and reconciles its post-kill state.
+     * command. AgentOS decides who may stop the run: the kill is sent with the caller's identity
+     * (`403 STOP_NOT_AUTHORIZED` when refused, `503 STOP_RUNTIME_UNAVAILABLE` when AgentOS cannot be
+     * reached for a caller who is not the run owner; nothing is changed in both cases). A Stop on an
+     * attempt already stopped is a retry of the kill, which a cockpit offers while the kill is not proven.
      */
     @PostMapping(path = ["/{workflowId}/attempts/{attemptId}/cancel"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(summary = "Explicitly cancel a durable agent attempt (owner only, durable cancel then authenticated kill + reconcile).")
+    @Operation(summary = "Explicitly cancel a durable agent attempt (Stop): authenticated kill, durable cancel, kill proof; also retries a Stop whose kill is not proven.")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Stop recorded; killResult and killProven report what AgentOS did"),
+        ApiResponse(
+            responseCode = "403",
+            description = "STOP_NOT_AUTHORIZED: AgentOS refused the caller's kill; nothing was changed",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "409",
+            description = "ATTEMPT_INVALID_TRANSITION or REVISION_CONFLICT; nothing was sent",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "503",
+            description = "STOP_RUNTIME_UNAVAILABLE: AgentOS could not be reached to authorize the caller; nothing was changed",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
     fun cancelAttempt(
         @PathVariable workflowId: String,
         @PathVariable attemptId: String,
@@ -573,8 +597,8 @@ class WorkflowController(
             caller.actorId,
         )
         // The cancellation is committed. Enqueue a durable continuation (also on an idempotent
-        // replay, which heals a run left stuck by an earlier Stop) so the sequencer seals the step
-        // and the run as cancelled even when no live sequencer observed the kill.
+        // replay or a retry of the Stop, which heals a run left stuck by an earlier Stop) so the
+        // sequencer seals the step and the run as cancelled even when no live sequencer observed the kill.
         enqueueCancellationContinuation(caller, user, workflowId, attemptId)
         return WorkflowDataEnvelope(
             mapOf(
@@ -585,7 +609,8 @@ class WorkflowController(
                 "revision" to outcome.revision,
                 "idempotent" to outcome.idempotent,
                 "reconciledVerdict" to outcome.reconciledVerdict,
-                "killAcknowledged" to outcome.killAcknowledged,
+                "killResult" to outcome.killResult.name,
+                "killProven" to outcome.killProven,
             ),
         )
     }

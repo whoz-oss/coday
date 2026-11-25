@@ -28,6 +28,15 @@ data class TurnToken(
 }
 
 /**
+ * Outcome of an authenticated kill request, as seen from the Factory.
+ *
+ * [ACKNOWLEDGED] the runtime accepted the kill (2xx); [REFUSED] the runtime answered 401/403 (the caller may
+ * not kill this case); [UNREACHABLE] no usable answer (connection failure, 5xx or any other error), so nothing
+ * is known about the case.
+ */
+enum class KillResult { ACKNOWLEDGED, REFUSED, UNREACHABLE }
+
+/**
  * Explicit, runtime-agnostic contract driving an agent execution (case)
  * through its full lifecycle.
  *
@@ -94,15 +103,28 @@ interface AgentRuntimeAdapter {
     fun interrupt(caseId: String, reason: String)
 
     /**
-     * 5b. Authenticated controlled interruption. Returns `true` only when the
-     *     runtime acknowledged the kill. The default delegates to the
-     *     unauthenticated [interrupt] and reports `false` (fail-closed), so
-     *     every adapter and test double stays source-compatible.
+     * 5b. Authenticated controlled interruption. Reports whether the runtime
+     *     acknowledged, refused or could not be asked. The default delegates to
+     *     the unauthenticated [interrupt] and reports [KillResult.UNREACHABLE]
+     *     (fail-closed), so every adapter and test double stays source-compatible.
      */
-    fun interrupt(caseId: String, reason: String, externalUserId: String?): Boolean {
+    fun interrupt(caseId: String, reason: String, externalUserId: String?): KillResult {
         interrupt(caseId, reason)
-        return false
+        return KillResult.UNREACHABLE
     }
+
+    /**
+     * 5c. Stops the local observation of [caseId]: a blocked [observeTurn] returns promptly with an
+     *     interrupted verdict instead of waiting for the case to end. Used after a user Stop so the
+     *     sequencer is released even when the kill was refused or the runtime is down. Default no-op.
+     */
+    fun abandonObservation(caseId: String) {}
+
+    /**
+     * 5d. Current lifecycle status of [caseId] as the runtime reports it (for example `KILLED`), read as
+     *     [externalUserId]; `null` when it cannot be read. Default `null`.
+     */
+    fun caseStatus(caseId: String, externalUserId: String?): String? = null
 
     /** 6. Forced, best-effort kill (last resort); never throws. */
     fun kill(caseId: String)

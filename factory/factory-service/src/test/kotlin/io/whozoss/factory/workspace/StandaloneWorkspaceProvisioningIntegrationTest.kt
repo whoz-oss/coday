@@ -68,7 +68,8 @@ class StandaloneWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTes
             io.whozoss.factory.workflow.domain.ControllerExecutionInput("test", "agentos", "runner", namespaceId = "ns"))
         val capabilities = mockk<io.whozoss.factory.capability.CapabilityExecutionService>(relaxed = true)
         // No user Stop here: a relaxed mock would otherwise answer a non-null attempt id and seal the step.
-        every { capabilities.userCancelledAttemptId(any(), any(), any(), any()) } returns null
+        every { capabilities.attemptsOf(any(), any(), any()) } returns emptyList()
+        every { capabilities.userCancelledAttemptId(any(), any(), any(), any(), any()) } returns null
         val parent = mockk<io.whozoss.factory.run.service.RunService>(relaxed = true)
         var notifications = 0
         every { parent.onFragmentSessionUpdated(any(), any(), any(), any(), any(), any()) } answers {

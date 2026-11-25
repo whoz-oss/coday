@@ -123,7 +123,8 @@ class WorkflowCancelAttemptHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(first.statusCode).withFailMessage { "cancel answered ${first.statusCode}: ${first.body}" }.isEqualTo(HttpStatus.OK)
         assertThat(data(first.body)["status"]).isEqualTo("interrupted")
         assertThat(data(first.body)["idempotent"]).isEqualTo(false)
-        assertThat(data(first.body)["killAcknowledged"]).isEqualTo(false)
+        assertThat(data(first.body)["killResult"]).isEqualTo("UNREACHABLE")
+        assertThat(data(first.body)["killProven"]).isEqualTo(false)
         val enqueued = continuations(attemptId)
         assertThat(enqueued).hasSize(1)
         assertThat(enqueued.single().status).isEqualTo("pending")
@@ -133,18 +134,22 @@ class WorkflowCancelAttemptHttpTest : Neo4jDomainIntegrationTest() {
 
         assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
         assertThat(data(replay.body)["idempotent"]).isEqualTo(true)
-        assertThat(data(replay.body)["killAcknowledged"]).isEqualTo(false)
+        assertThat(data(replay.body)["killProven"]).isEqualTo(false)
+        // The retry re-sends the kill (still unreachable) and the continuation is not duplicated.
+        assertThat(data(replay.body)["killResult"]).isEqualTo("UNREACHABLE")
         assertThat(continuations(attemptId)).hasSize(1)
     }
 
     @Test
-    fun `a caller who is not the run owner gets 403 ACTION_NOT_ALLOWED and nothing is written`() {
+    fun `a caller who is not the run owner needs AgentOS to accept the kill - unreachable AgentOS gives 503 and nothing is written`() {
         val revision = attempts.find(scope, namespace, foreignWorkflowId, "step-1", foreignAttemptId)!!.revision
 
         val refused = cancel(foreignWorkflowId, foreignAttemptId, revision)
 
-        assertThat(refused.statusCode).withFailMessage { "cancel answered ${refused.statusCode}: ${refused.body}" }.isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat(error(refused.body)["code"]).isEqualTo("ACTION_NOT_ALLOWED")
+        // The kill is the access check of a non-owner: AgentOS cannot be reached here, so nothing may change.
+        assertThat(refused.statusCode).withFailMessage { "cancel answered ${refused.statusCode}: ${refused.body}" }
+            .isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
+        assertThat(error(refused.body)["code"]).isEqualTo("STOP_RUNTIME_UNAVAILABLE")
         assertThat(attempts.find(scope, namespace, foreignWorkflowId, "step-1", foreignAttemptId)!!.status)
             .isEqualTo(AgentAttemptStatus.RUNNING)
         assertThat(continuations(foreignAttemptId)).isEmpty()

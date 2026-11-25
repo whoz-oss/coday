@@ -283,6 +283,10 @@ class CapabilityExecutionService(
         return attempt.status.terminal
     }
 
+    /** Every durable attempt of the workflow, read once so a caller can check several steps without rereading. */
+    fun attemptsOf(scope: TenantScope, namespaceId: String, workflowId: String): List<DurableAgentAttempt> =
+        durableAgentAttemptService.findByWorkflow(scope, namespaceId, workflowId)
+
     /**
      * Id of the attempt a user cancelled (Stop) that the step must now be sealed `cancelled` for, or
      * `null` when there is none.
@@ -294,14 +298,39 @@ class CapabilityExecutionService(
      * (retry, research or answer resumption) registers a new attempt or starts a new execution, so it
      * is never re-sealed by the cancellation of a previous one. The caller additionally restricts the
      * check to a step whose status a live attempt holds (`running` or `waiting_human`).
+     *
+     * [attempts] are the attempts of the workflow when the caller already loaded them (the sequencer prelude
+     * loads them once for all steps); otherwise they are read here. The attempt status and failure code are
+     * checked BEFORE the context envelope is read, and an unreadable envelope means "not bound" (logged at
+     * WARN), never an exception: a step that is not cancelled must never fail because of an old envelope.
      */
-    fun userCancelledAttemptId(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): String? {
-        val latest = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return null
-        val cancelled = latest.status == AgentAttemptStatus.INTERRUPTED && latest.failureCode == USER_CANCELLED
+    fun userCancelledAttemptId(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attempts: List<DurableAgentAttempt>? = null,
+    ): String? {
+        val latest = (attempts ?: durableAgentAttemptService.findByWorkflow(scope, namespaceId, workflowId))
+            .filter { it.stepId == stepId }
+            .maxByOrNull { it.attemptNumber }
+            ?: return null
+        if (latest.status != AgentAttemptStatus.INTERRUPTED || latest.failureCode != USER_CANCELLED) return null
         val currentExecutionId = currentExecution(scope, namespaceId, workflowId, stepId)?.get("executionId")
-        val pinnedExecutionId = latest.contextEnvelope?.let { AttemptContextEnvelope.fromJson(it).inputs["stepExecutionId"] }
-        val boundToCurrentExecution = currentExecutionId == null || pinnedExecutionId == currentExecutionId
-        return latest.attemptId.takeIf { cancelled && boundToCurrentExecution }
+        val boundToCurrentExecution = currentExecutionId == null ||
+            pinnedExecutionId(latest) == currentExecutionId
+        return latest.attemptId.takeIf { boundToCurrentExecution }
+    }
+
+    /** The execution an attempt is pinned to, or `null` when it has none or its context envelope cannot be read. */
+    private fun pinnedExecutionId(attempt: DurableAgentAttempt): Any? {
+        val envelope = attempt.contextEnvelope ?: return null
+        return try {
+            AttemptContextEnvelope.fromJson(envelope).inputs["stepExecutionId"]
+        } catch (error: Exception) {
+            logger.warn { "Context envelope of attempt '${attempt.attemptId}' is unreadable (${error.javaClass.simpleName}); treated as not bound to the current execution" }
+            null
+        }
     }
 
     /**
@@ -2448,16 +2477,25 @@ class CapabilityExecutionService(
                 )
             }
             is AgentOsExecutionVerdict.Interrupted -> {
+                // An interruption that records a user Stop is the user's cancellation, not a failure: the attempt
+                // keeps the USER_CANCELLED code (so a replay recognises it) and the step is sealed `cancelled`.
+                val userCancelled = verdict.reason.startsWith(VerdictDeriver.USER_CANCELLED_PREFIX)
                 val evidenceId = persistEvidence(
                     "fail",
                     mapOf("status" to "INTERRUPTED", "reason" to verdict.reason, "evidence" to verdict.evidence),
                 )
                 durableAgentAttemptService.finalize(
                     scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
-                    AgentAttemptStatus.INTERRUPTED, failureCode = "AGENT_INTERRUPTED", resultEvidenceId = evidenceId,
+                    AgentAttemptStatus.INTERRUPTED,
+                    failureCode = if (userCancelled) USER_CANCELLED else "AGENT_INTERRUPTED",
+                    resultEvidenceId = evidenceId,
                 )
                 CapabilityExecution(
-                    CapabilityOutcome.AgentFailed(step.id, step.responsibility.name, "AGENT_INTERRUPTED", verdict.reason, verdict.evidence),
+                    if (userCancelled) {
+                        CapabilityOutcome.AgentCancelled(step.id, step.responsibility.name, reservation.attemptId)
+                    } else {
+                        CapabilityOutcome.AgentFailed(step.id, step.responsibility.name, "AGENT_INTERRUPTED", verdict.reason, verdict.evidence)
+                    },
                     evidenceId = evidenceId,
                     attemptId = reservation.attemptId,
                 )

@@ -298,8 +298,11 @@ class SessionRunService(
         // A user Stop is final for the run, and it is recognised BEFORE the workspace pre-check: a run
         // already stuck by a Stop must be sealed `cancelled` even when its workspace prerequisites would
         // now fail, and sealing never dispatches anything.
-        val sealedByUserStop = sealUserCancelledSteps(scope, namespaceId, workflowId, steps, statuses, expectedRevision)
-        if (sealedByUserStop) {
+        sealUserCancelledSteps(scope, namespaceId, workflowId, steps, statuses, expectedRevision)
+        // Any cancelled step state ends the run. The only producer of such a state is the user Stop
+        // (`recordStepCancellation`), so this is in practice a user-Stop rule.
+        val runCancelled = statuses.statuses.values.any { it == WorkflowStatuses.CANCELLED }
+        if (runCancelled) {
             // Block the dependents of the cancelled step. No pre-check, no replay prelude, no dispatch.
             reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
             applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
@@ -339,8 +342,8 @@ class SessionRunService(
         val guard = steps.size * (if (steps.any { it.outcomeTransitions != null }) 48 else 4) + 8
         var iterations = 0
         run {
-            // A Stop already sealed the run: nothing is dispatched or resumed afterwards.
-            if (sealedByUserStop) return@run
+            // A cancelled run: nothing is dispatched or resumed afterwards.
+            if (runCancelled) return@run
             while (iterations++ < guard) {
                 outcomeTransitionService?.advance(scope, namespaceId, workflowId, steps, effectiveRepoRoot.toString(), effectiveTicket)
                 val correction = repository.findInstance(scope, namespaceId, workflowId)?.projection?.get("correction") as? Map<*, *>
@@ -485,13 +488,13 @@ class SessionRunService(
     }
 
     /**
-     * Seals as `cancelled` every agent step whose latest attempt was cancelled by a user (Stop), and
-     * returns whether the run is now sealed by a Stop (a step cancelled now or by an earlier pass).
+     * Seals as `cancelled` every agent step whose latest attempt was cancelled by a user (Stop).
      *
      * Only a step a live attempt holds (`running` or `waiting_human`) is sealed, and only for the
      * attempt bound to its current execution ([CapabilityExecutionService.userCancelledAttemptId]):
      * a step that was re-armed (`ready`) or that runs a newer execution is never re-sealed by the
-     * cancellation of a previous attempt.
+     * cancellation of a previous attempt. This runs at the start of every pass, so it costs nothing
+     * when no step is held by a live attempt, and loads the attempts of the workflow once otherwise.
      */
     private fun sealUserCancelledSteps(
         scope: TenantScope,
@@ -500,13 +503,17 @@ class SessionRunService(
         steps: List<WorkflowStepDefinition>,
         statuses: SessionProgress,
         expectedRevision: () -> Int,
-    ): Boolean {
-        for (step in steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }) {
-            if (statuses.statuses[step.id] !in USER_CANCELLABLE_STATUSES) continue
-            val attemptId = capabilityExecutionService.userCancelledAttemptId(scope, namespaceId, workflowId, step.id) ?: continue
+    ) {
+        val held = steps.filter {
+            it.responsibility.kind == ResponsibilityKind.AGENT && statuses.statuses[it.id] in USER_CANCELLABLE_STATUSES
+        }
+        if (held.isEmpty()) return
+        val attempts = capabilityExecutionService.attemptsOf(scope, namespaceId, workflowId)
+        for (step in held) {
+            val attemptId = capabilityExecutionService
+                .userCancelledAttemptId(scope, namespaceId, workflowId, step.id, attempts) ?: continue
             recordStepCancellation(scope, namespaceId, workflowId, step, attemptId, expectedRevision(), statuses)
         }
-        return statuses.statuses.values.any { it == WorkflowStatuses.CANCELLED }
     }
 
     /** The parent Run id carried by a fragment workflow instance, or null for standalone workflows. */
@@ -777,6 +784,13 @@ class SessionRunService(
             // workflow step.
             return null
         }
+        if (execution.outcome is CapabilityOutcome.AgentCancelled) {
+            // The interruption the sequencer observed records a user Stop (the kill landed before the
+            // durable cancel, or the observation was abandoned): the attempt is already finalized as the
+            // user's cancellation, and the sequencer, the only writer of the step status, seals the step.
+            recordStepCancellation(scope, namespaceId, workflowId, step, execution.outcome.attemptId, expectedRevision, statuses)
+            return WorkflowStatuses.CANCELLED
+        }
         var terminal = classify(execution.outcome)
         // Lot E: an authoritative NEEDS_RESEARCH verdict BLOCKS the step (its
         // dependants are not launched) but NEVER seals the run as FAILED. The
@@ -938,6 +952,7 @@ class SessionRunService(
         is CapabilityOutcome.AgentFailed -> WorkflowStatuses.FAILED
         is CapabilityOutcome.AgentDeferred -> WorkflowStatuses.FAILED
         is CapabilityOutcome.AgentNeedsResearch -> WorkflowStatuses.NEEDS_RESEARCH
+        is CapabilityOutcome.AgentCancelled -> WorkflowStatuses.CANCELLED
         is CapabilityOutcome.HumanCheckpointRequired -> WorkflowStatuses.WAITING_HUMAN
     }
 

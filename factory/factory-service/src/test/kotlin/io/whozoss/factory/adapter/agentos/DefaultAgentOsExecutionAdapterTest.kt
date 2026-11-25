@@ -542,15 +542,15 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
-    fun `interrupt with an identity sends X-External-User-Id on the kill and returns true`() {
+    fun `interrupt with an identity sends X-External-User-Id on the kill and is acknowledged`() {
         val (adapter, server) = build()
         server.expect(requestTo("$baseUrl/api/cases/case-1/kill"))
             .andExpect(header("X-External-User-Id", "actor-1"))
             .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
 
-        val acknowledged = adapter.interrupt("case-1", "User requested cancellation", "actor-1")
+        val result = adapter.interrupt("case-1", "User requested cancellation", "actor-1")
 
-        assertThat(acknowledged).isTrue()
+        assertThat(result).isEqualTo(KillResult.ACKNOWLEDGED)
         server.verify()
     }
 
@@ -583,14 +583,103 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
-    fun `an unauthorized kill returns false and never throws`() {
+    fun `a refused kill is REFUSED and the interruption intent is removed so a later KILLED stays a failure`() {
         val (adapter, server) = build()
         server.expect(requestTo("$baseUrl/api/cases/case-1/kill"))
             .andRespond(withStatus(HttpStatus.FORBIDDEN))
+        server.expect(requestTo(eventsUrl)).andRespond(
+            withSuccess(
+                """[{"id":"e2","type":"CaseStatusEvent","status":"KILLED","caseId":"case-1","timestamp":"2026-01-01T00:00:01Z"}]""",
+                MediaType.APPLICATION_JSON,
+            ),
+        )
 
-        val acknowledged = adapter.interrupt("case-1", "User requested cancellation", "actor-1")
+        val result = adapter.interrupt("case-1", "User requested cancellation", "actor-1")
+        val verdict = adapter.reconcile("case-1")
 
-        assertThat(acknowledged).isFalse()
+        assertThat(result).isEqualTo(KillResult.REFUSED)
+        // The refused kill proves nothing: a KILLED that happens for another reason is not the user's stop.
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Failed::class.java)
+        server.verify()
+    }
+
+    @Test
+    fun `a 401 kill is also REFUSED`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1/kill")).andRespond(withStatus(HttpStatus.UNAUTHORIZED))
+
+        assertThat(adapter.interrupt("case-1", "User requested cancellation", "actor-1")).isEqualTo(KillResult.REFUSED)
+        server.verify()
+    }
+
+    @Test
+    fun `a kill that gets a server error or no answer is UNREACHABLE and never throws`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1/kill")).andRespond(withServerError())
+        server.expect(requestTo("$baseUrl/api/cases/case-2/kill")).andRespond { throw java.io.IOException("connection refused") }
+
+        assertThat(adapter.interrupt("case-1", "User requested cancellation", "actor-1")).isEqualTo(KillResult.UNREACHABLE)
+        assertThat(adapter.interrupt("case-2", "User requested cancellation", "actor-1")).isEqualTo(KillResult.UNREACHABLE)
+        server.verify()
+    }
+
+    @Test
+    fun `a failed kill is logged at WARN without a stack trace`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1/kill")).andRespond(withServerError())
+        val appender = ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>().also { it.start() }
+        val logger = org.slf4j.LoggerFactory.getLogger(DefaultAgentOsExecutionAdapter::class.java) as ch.qos.logback.classic.Logger
+        logger.addAppender(appender)
+        try {
+            adapter.interrupt("case-1", "User requested cancellation", "actor-1")
+        } finally {
+            logger.detachAppender(appender)
+        }
+
+        val warnings = appender.list.filter { it.level == ch.qos.logback.classic.Level.WARN }
+        assertThat(warnings).hasSize(1)
+        assertThat(warnings.single().throwableProxy).isNull()
+        assertThat(warnings.single().formattedMessage).contains("case-1").contains("500")
+        server.verify()
+    }
+
+    @Test
+    fun `caseStatus reads the status of the case as the given identity`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1"))
+            .andExpect(header("X-External-User-Id", "actor-1"))
+            .andRespond(withSuccess("""{"id":"case-1","status":"KILLED"}""", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("$baseUrl/api/cases/case-2")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases/case-3")).andRespond(withServerError())
+
+        assertThat(adapter.caseStatus("case-1", "actor-1")).isEqualTo("KILLED")
+        assertThat(adapter.caseStatus("case-2", "actor-1")).isNull()
+        assertThat(adapter.caseStatus("case-3", "actor-1")).isNull()
+        server.verify()
+    }
+
+    @Test
+    fun `observeTurn of an abandoned case returns promptly as a user cancellation while the stream is idle`() {
+        val (adapter, server) = build(sseFactory())
+        server.expect(requestTo("$baseUrl/api/cases/case-1/kill")).andRespond(withSuccess("", MediaType.APPLICATION_JSON))
+        sseServer.enqueue(
+            FakeAgentOsSseServer.Script(frames = (1..100).map { FakeAgentOsSseServer.heartbeat(delayAfterMs = 50) }),
+        )
+        val result = arrayOfNulls<AgentOsExecutionVerdict>(1)
+        val observer = Thread { result[0] = adapter.observeTurn("case-1", "attempt-x", timeoutMs = 30_000) }
+        observer.start()
+        Thread.sleep(150)
+
+        val abandonedAt = System.nanoTime()
+        adapter.interrupt("case-1", "${VerdictDeriver.USER_CANCELLED_PREFIX}: stop", "actor-1")
+        adapter.abandonObservation("case-1")
+        observer.join(5_000)
+
+        assertThat(observer.isAlive).isFalse()
+        assertThat(java.time.Duration.ofNanos(System.nanoTime() - abandonedAt)).isLessThan(java.time.Duration.ofSeconds(3))
+        val verdict = result[0]
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Interrupted::class.java)
+        assertThat((verdict as AgentOsExecutionVerdict.Interrupted).reason).startsWith(VerdictDeriver.USER_CANCELLED_PREFIX)
         server.verify()
     }
 
