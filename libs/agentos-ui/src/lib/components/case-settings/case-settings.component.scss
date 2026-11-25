@@ -1,0 +1,158 @@
+// No box of its own: the chips join the actions row of the composer, and the pickers are positioned against the
+// composer itself (the nearest positioned ancestor).
+:host {
+  display: contents;
+}
+
+.case-settings__picker {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0;
+  right: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md, 0);
+  // Clips the hover/active rows of the list to the rounded corners; the list scrolls inside (max-height), so
+  // nothing else overflows and nothing changes when the radius is 0.
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  z-index: 20;
+  animation: case-settings-picker-in 0.12s ease;
+  // The shared list caps its height with this variable: never taller than half the viewport.
+  --autocomplete-max-height: min(400px, 50dvh);
+}
+
+// Dims the page behind the bottom sheet; mobile only.
+.case-settings__backdrop {
+  display: none;
+}
+
+.case-settings__chip {
+  flex-shrink: 0;
+  max-width: 16rem;
+  // Target size (WCAG 2.5.8): at least 24px tall, 44px on mobile (see below). Centered, so the label stays in the
+  // middle of a taller chip.
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-pill, 0);
+  background: transparent;
+  color: var(--color-neutral-700);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 11px;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-accent);
+  }
+
+  // The picker is open: the chip says so with more than its colour (a tinted background on top of the border).
+  &[aria-expanded='true'] {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+// The chip is a flex container, which cannot ellipsize its own text: the value does. The key keeps its trailing
+// space, which a flex item would otherwise trim.
+.case-settings__chip-key {
+  flex: none;
+  white-space: pre;
+}
+
+.case-settings__chip-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// ── Mobile: the picker is a bottom sheet ───────────────────────────────────────
+// Against the composer, the list would be clipped by the viewport and by the overflow-hidden ancestors (the hero
+// of the case home): it is pinned to the viewport instead, over a backdrop whose tap closes it.
+@media (max-width: 600px) {
+  .case-settings__backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .case-settings__picker {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    max-height: 70dvh;
+    padding-bottom: env(safe-area-inset-bottom);
+    border-radius: var(--radius-md, 0) var(--radius-md, 0) 0 0;
+    border-bottom: none;
+    // The list takes the height of the sheet, minus the safe area, and scrolls inside.
+    --autocomplete-max-height: calc(70dvh - env(safe-area-inset-bottom));
+    // Rows comfortable to tap.
+    --autocomplete-item-min-height: 44px;
+    animation-name: case-settings-sheet-in;
+  }
+
+  // Only the value: the key is in the title and the aria-label. Comfortable to tap (WCAG 2.5.5 level, beyond the
+  // 24px minimum of 2.5.8).
+  .case-settings__chip {
+    max-width: 7rem;
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .case-settings__chip-key {
+    display: none;
+  }
+}
+
+@keyframes case-settings-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes case-settings-picker-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// After the mobile block, whose `animation-name` it must override.
+@media (prefers-reduced-motion: reduce) {
+  .case-settings__picker {
+    animation: none;
+  }
+}

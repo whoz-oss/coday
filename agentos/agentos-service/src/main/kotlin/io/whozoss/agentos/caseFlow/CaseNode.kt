@@ -32,6 +32,7 @@ data class CaseNode(
     val originCaseId: String? = null,
     val runCostThreshold: Double? = null,
     val reasoningEffort: String? = null,
+    val modelName: String? = null,
     val summary: String? = null,
     val summaryMessageCount: Int? = null,
     val created: Instant = Instant.now(),
@@ -63,6 +64,7 @@ data class CaseNode(
             originCaseId = originCaseId?.let { UUID.fromString(it) },
             runCostThreshold = runCostThreshold,
             reasoningEffort = reasoningEffort?.let(ReasoningEffort::valueOf),
+            modelName = modelName,
             summary = summary,
             summaryMessageCount = summaryMessageCount,
         )
@@ -79,6 +81,7 @@ data class CaseNode(
                 originCaseId = case.originCaseId?.toString(),
                 runCostThreshold = case.runCostThreshold,
                 reasoningEffort = case.reasoningEffort?.name,
+                modelName = case.modelName,
                 summary = case.summary,
                 summaryMessageCount = case.summaryMessageCount,
                 created = case.metadata.created,

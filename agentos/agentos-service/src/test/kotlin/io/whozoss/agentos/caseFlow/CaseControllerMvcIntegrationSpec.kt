@@ -2,6 +2,11 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.aiModel.AiModelService
+import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.security.SuperAdminCallerSpec
@@ -47,6 +52,29 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
     @Autowired lateinit var userService: UserService
     @Autowired lateinit var userRepository: UserRepository
     @Autowired lateinit var permissionNodeRepository: PermissionNodeNeo4jRepository
+    @Autowired lateinit var aiProviderService: AiProviderService
+    @Autowired lateinit var aiModelService: AiModelService
+
+    /** A model of [namespaceId] that [alias] resolves to, as the case-level model override needs. */
+    private fun createModel(namespaceId: UUID, alias: String) {
+        val provider = aiProviderService.create(
+            AiProvider(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "provider-${UUID.randomUUID()}",
+                apiType = AiApiType.Anthropic,
+            ),
+        )
+        aiModelService.create(
+            AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                aiProviderId = provider.id,
+                namespaceId = namespaceId,
+                apiModelName = "claude-$alias-test",
+                alias = alias,
+            ),
+        )
+    }
 
     init {
 
@@ -235,6 +263,91 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "reasoningEffort": "minimal" }""")
             ).andExpect(status().isBadRequest)
+        }
+
+        "PUT /api/cases/{id}/model sets and clears the override, which PUT /api/cases/{id} keeps" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-model"),
+            )
+            createModel(ns.id, "BIG")
+            createModel(ns.id, "SMALL")
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "title": "initial", "modelName": "SMALL" }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.modelName").value("SMALL"))
+                .andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/model")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "modelName": "BIG" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.modelName").value("BIG"))
+
+            mockMvc.perform(
+                put("/api/cases/$caseId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "$caseId", "namespaceId": "${ns.id}", "title": "renamed" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.title").value("renamed"))
+                .andExpect(jsonPath("$.modelName").value("BIG"))
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/model")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "modelName": null }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.modelName").doesNotExist())
+        }
+
+        "PUT /api/cases/{id}/model with an unknown model returns 400 and keeps the current override" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-model-400"),
+            )
+            createModel(ns.id, "BIG")
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "modelName": "BIG" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/model")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "modelName": "no-such-model" }""")
+            ).andExpect(status().isBadRequest)
+
+            mockMvc.perform(get("/api/cases/$caseId"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.modelName").value("BIG"))
+        }
+
+        "POST /api/cases with an unknown model returns 400" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-create-model-400"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "modelName": "no-such-model" }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "PUT /api/cases/{id}/model returns 404 when the case does not exist" {
+            mockMvc.perform(
+                put("/api/cases/${UUID.randomUUID()}/model")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "modelName": null }""")
+            ).andExpect(status().isNotFound)
         }
 
         "PUT /api/cases/{id} returns 404 when case does not exist" {
