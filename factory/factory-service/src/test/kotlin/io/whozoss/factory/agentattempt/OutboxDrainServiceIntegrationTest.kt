@@ -242,7 +242,8 @@ class OutboxDrainServiceIntegrationTest : Neo4jDomainIntegrationTest() {
             override fun instant() = now
         }
         fun run() = io.whozoss.factory.agentattempt.service.OutboxDrainWorker(drain, session, proxy,
-            com.fasterxml.jackson.databind.ObjectMapper(), clock).drain()
+            com.fasterxml.jackson.databind.ObjectMapper(), clock,
+            continuationExecutor = io.whozoss.factory.agentattempt.service.ContinuationExecutor { it.run() }).drain()
         repeat(12) {
             run() // Fresh worker, same durable context, no source poison after ten HTTP errors.
             val pending = outbox.findAllByOrganization(ORGANIZATION_ID).single { it.eventType == "session_continuation" }
@@ -270,7 +271,8 @@ class OutboxDrainServiceIntegrationTest : Neo4jDomainIntegrationTest() {
         val session = io.mockk.mockk<io.whozoss.factory.workflow.service.SessionRunService>()
         io.mockk.every { session.runSession(any(), any(), any(), any(), any()) } returns
             io.whozoss.factory.workflow.service.SessionRunResult("ns", "wf", "completed", emptyList())
-        io.whozoss.factory.agentattempt.service.OutboxDrainWorker(drain, session, proxy, com.fasterxml.jackson.databind.ObjectMapper()).drain()
+        io.whozoss.factory.agentattempt.service.OutboxDrainWorker(drain, session, proxy, com.fasterxml.jackson.databind.ObjectMapper(),
+            continuationExecutor = io.whozoss.factory.agentattempt.service.ContinuationExecutor { it.run() }).drain()
         io.mockk.verify(exactly = 0) { proxy.resolveRepoRoot(any(), any()) }
         io.mockk.verify(exactly = 1) { session.runSession(scope, "ns", "wf", java.nio.file.Path.of("/original"), "#1684") }
     }

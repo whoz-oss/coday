@@ -3,6 +3,7 @@ package io.whozoss.factory.workflow
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.persistence.SpringDataNeo4jOutboxRepository
+import io.whozoss.factory.agentattempt.service.ContinuationExecutor
 import io.whozoss.factory.agentattempt.service.OutboxDrainService
 import io.whozoss.factory.agentattempt.service.OutboxDrainWorker
 import io.whozoss.factory.proxy.AgentOsProxyClient
@@ -203,7 +204,10 @@ class WorkflowRunAsyncHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(sessionRunService.sessionState(scope, namespace, workflowId)!!.status).isNotEqualTo(WorkflowStatuses.WAITING_HUMAN)
 
         // The bounded, replayable worker drains the submission and runs the DAG.
-        OutboxDrainWorker(outboxDrainService, sessionRunService, agentOsProxyClient, objectMapper).drain()
+        OutboxDrainWorker(
+            outboxDrainService, sessionRunService, agentOsProxyClient, objectMapper,
+            continuationExecutor = ContinuationExecutor { it.run() },
+        ).drain()
 
         val state = sessionRunService.sessionState(scope, namespace, workflowId)!!
         assertThat(state.status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
