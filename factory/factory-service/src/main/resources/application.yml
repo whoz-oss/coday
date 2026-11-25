@@ -85,6 +85,9 @@ factory:
     drain-enabled: ${FACTORY_OUTBOX_DRAIN_ENABLED:true}
     drain-interval-ms: ${FACTORY_OUTBOX_DRAIN_INTERVAL_MS:5000}
     drain-initial-delay-ms: ${FACTORY_OUTBOX_DRAIN_INITIAL_DELAY_MS:10000}
+    # Maximum workflow continuations run in parallel. This default applies until an admin
+    # persists a value in the cockpit Admin page; hard ceiling 20, minimum 1 (serialized).
+    max-parallel-runs: ${FACTORY_OUTBOX_MAX_PARALLEL_RUNS:5}
   workspace:
     # Lot F: read-only workspace pre-check + run-worktree binding of code steps.
     enabled: ${FACTORY_WORKSPACE_ENABLED:true}
