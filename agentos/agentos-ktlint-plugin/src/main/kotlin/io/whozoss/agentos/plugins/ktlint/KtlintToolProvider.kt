@@ -31,41 +31,28 @@ class KtlintToolProvider : ToolPlugin {
         config: JsonNode?,
         configName: String?,
         context: ToolContext?,
-    ): List<StandardTool<*>> =
-        when {
-            config == null || config.isNull -> {
-                logger.warn { "KTLINT integration '$configName': no config provided, no tools registered" }
-                emptyList()
-            }
-
-            else -> {
-                buildTools(config = config, configName = configName)
-            }
+    ): List<StandardTool<*>> {
+        if (config == null || config.isNull) {
+            logger.warn { "KTLINT integration '$configName': no config provided, no tools registered" }
+            return emptyList()
         }
 
-    private fun buildTools(
-        config: JsonNode,
-        configName: String?,
-    ): List<StandardTool<*>> {
         val projectRoot =
             try {
                 realProjectRoot(config = config)
             } catch (e: IllegalArgumentException) {
                 logger.error { "KTLINT integration '$configName': invalid config — ${e.message}" }
-                null
+                return emptyList()
             } catch (e: IOException) {
                 logger.error { "KTLINT integration '$configName': projectDirectory cannot be resolved — ${e.message}" }
-                null
+                return emptyList()
             }
-        return projectRoot
-            ?.let { root -> BoundedKtlintRun(projectRoot = root) }
-            ?.let { bounded ->
-                listOf(
-                    KtlintCheckTool(bounded = bounded, configName = configName),
-                    KtlintFormatTool(bounded = bounded, configName = configName),
-                )
-            }
-            ?: emptyList()
+
+        val bounded = BoundedKtlintRun(projectRoot = projectRoot)
+        return listOf(
+            KtlintCheckTool(bounded = bounded, configName = configName),
+            KtlintFormatTool(bounded = bounded, configName = configName),
+        )
     }
 
     private fun realProjectRoot(config: JsonNode): Path {

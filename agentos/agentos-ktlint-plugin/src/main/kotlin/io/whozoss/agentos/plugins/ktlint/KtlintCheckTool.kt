@@ -1,10 +1,8 @@
 package io.whozoss.agentos.plugins.ktlint
 
-import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.BlockingTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runInterruptible
 import java.nio.file.Path
 
 /**
@@ -12,13 +10,14 @@ import java.nio.file.Path
  *
  * Works on files only (never a whole tree) and is time-boxed by a mandatory `timeoutSeconds`.
  *
- * The business logic ([check]) is blocking and returns a String starting with `ERROR` on problems;
- * [execute] runs it interruptibly on [Dispatchers.IO] and maps it to a [ToolExecutionResult] (`KTLINT_ERROR` error type).
+ * The business logic ([check]) is blocking and returns a [KtlintToolResult]; [executeBlocking] maps it to a
+ * [ToolExecutionResult] (`KTLINT_FAILURE` / `KTLINT_ERROR` error types). Running it interruptibly on the IO
+ * dispatcher, so that cancelling the case releases the caller and the worker, is the job of [BlockingTool].
  */
 class KtlintCheckTool internal constructor(
     private val bounded: BoundedKtlintRun,
     configName: String? = null,
-) : StandardTool<KtlintCheckTool.Input> {
+) : BlockingTool<KtlintCheckTool.Input>() {
     /** Run on the real ktlint engine, for the Kotlin files of [projectRoot]. */
     constructor(projectRoot: Path, configName: String? = null) : this(
         bounded = BoundedKtlintRun(projectRoot = projectRoot),
@@ -37,7 +36,8 @@ class KtlintCheckTool internal constructor(
         """Check Kotlin code style with ktlint (standard ruleset, the project's .editorconfig applies). Never modifies files.
 Works on files only, never on a directory or a whole project: pass the .kt / .kts files one by one.
 'timeoutSeconds' is mandatory (1 to ${ToolTimeout.MAX_SECONDS}): the check stops when it is exceeded.
-Returns one line per violation: file:line:column message (rule-id), flagged [auto-correctable] when ktlint_format can fix it."""
+Returns one line per violation: file:line:column message (rule-id), flagged [auto-correctable] when ktlint_format can fix it.
+A run that finds violations is answered as a KTLINT_FAILURE whose text is the report; KTLINT_ERROR means the check itself could not run."""
 
     override val version: String = "1.0.0"
 
@@ -53,39 +53,25 @@ Returns one line per violation: file:line:column message (rule-id), flagged [aut
                 ),
         )
 
-    /**
-     * Runs [check] with [runInterruptible] on [Dispatchers.IO]: cancelling the calling coroutine (the user stops the
-     * case) interrupts the thread waiting for the run, which cancels the worker (see [BoundedKtlintRun]), and the
-     * caller receives the cancellation instead of a result.
-     */
-    override suspend fun execute(
+    override fun executeBlocking(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
-        val timeoutSeconds = input?.timeoutSeconds
-        return when {
-            input == null || timeoutSeconds == null -> {
-                missingTimeoutResult()
-            }
-
-            else -> {
-                runInterruptible(
-                    context = Dispatchers.IO,
-                    block = { check(files = input.files.orEmpty(), timeoutSeconds = timeoutSeconds) },
-                ).toToolExecutionResult()
-            }
-        }
+        val params = input ?: return missingTimeoutResult()
+        val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
+        return check(files = params.files.orEmpty(), timeoutSeconds = timeoutSeconds).toToolExecutionResult()
     }
 
     /**
      * Reports the violations of [files], one line each, or that there is none.
      *
-     * @return the report, or a text starting with `ERROR` (invalid timeout or files, timeout, failure).
+     * @return [KtlintToolResult.Success] when no file has a violation, [KtlintToolResult.Failure] with the report
+     * when some have, [KtlintToolResult.Error] when the check could not run (invalid timeout or files, timeout, failure).
      */
     fun check(
         files: List<String>,
         timeoutSeconds: Int,
-    ): String =
+    ): KtlintToolResult =
         bounded.execute(files = files, timeoutSeconds = timeoutSeconds) { resolved ->
             val violations =
                 resolved.flatMap { file ->
@@ -93,10 +79,13 @@ Returns one line per violation: file:line:column message (rule-id), flagged [aut
                     bounded.runner.lint(file = file)
                 }
             if (violations.isEmpty()) {
-                "Checked ${resolved.size} file(s): no violation"
+                KtlintToolResult.Success(text = "Checked ${resolved.size} file(s): no violation")
             } else {
-                "Checked ${resolved.size} file(s): ${violations.size} violation(s)\n" +
-                    violations.joinToString(separator = "\n") { it.describe() }
+                KtlintToolResult.Failure(
+                    text =
+                        "Checked ${resolved.size} file(s): ${violations.size} violation(s)\n" +
+                            violations.joinToString(separator = "\n") { it.describe() },
+                )
             }
         }
 

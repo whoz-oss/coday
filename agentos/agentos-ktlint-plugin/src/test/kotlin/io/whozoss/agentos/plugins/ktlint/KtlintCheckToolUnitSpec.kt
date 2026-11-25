@@ -15,24 +15,24 @@ class KtlintCheckToolUnitSpec :
 
         val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
 
-        "check reports a violation with its location, message and rule id" {
+        "check reports a violation with its location, message and rule id as a Failure" {
             withProject { projectDir ->
                 projectDir.writeFile(relativePath = "Sample.kt", content = WILDCARD_IMPORT_SOURCE)
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                val report = tool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                val report = tool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText()
 
                 report shouldContain "Sample.kt:1:"
                 report shouldContain "no-wildcard-imports"
             }
         }
 
-        "check reports no violation on a clean file" {
+        "check reports no violation on a clean file as a Success" {
             withProject { projectDir ->
                 projectDir.writeFile(relativePath = "Sample.kt", content = CLEAN_SOURCE)
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                tool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS) shouldContain "no violation"
+                tool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).successText() shouldContain "no violation"
             }
         }
 
@@ -41,7 +41,7 @@ class KtlintCheckToolUnitSpec :
                 projectDir.writeFile(relativePath = "Sample.kt", content = TRAILING_SPACE_SOURCE)
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                val report = tool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                val report = tool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText()
 
                 report shouldContain "no-trailing-spaces"
                 report shouldContain "auto-correctable"
@@ -65,7 +65,8 @@ class KtlintCheckToolUnitSpec :
                 projectDir.writeFile(relativePath = "src/nested/B.kt", content = WILDCARD_IMPORT_SOURCE)
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                val report = tool.check(files = listOf("src/A.kt", "src/nested/B.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                val report =
+                    tool.check(files = listOf("src/A.kt", "src/nested/B.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText()
 
                 report shouldContain "src/A.kt:1:"
                 report shouldContain "src/nested/B.kt:1:"
@@ -77,11 +78,10 @@ class KtlintCheckToolUnitSpec :
                 projectDir.writeFile(relativePath = "src/A.kt", content = WILDCARD_IMPORT_SOURCE)
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                val report = tool.check(files = listOf("src"), timeoutSeconds = TIMEOUT_SECONDS)
+                val error = tool.check(files = listOf("src"), timeoutSeconds = TIMEOUT_SECONDS).errorText()
 
-                report shouldStartWith "ERROR"
-                report shouldContain "is a directory"
-                report shouldNotContain "no-wildcard-imports"
+                error shouldContain "is a directory"
+                error shouldNotContain "no-wildcard-imports"
             }
         }
 
@@ -89,10 +89,7 @@ class KtlintCheckToolUnitSpec :
             withProject { projectDir ->
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                val report = tool.check(files = listOf("../outside.kt"), timeoutSeconds = TIMEOUT_SECONDS)
-
-                report shouldStartWith "ERROR"
-                report shouldContain "outside the project"
+                tool.check(files = listOf("../outside.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText() shouldContain "outside the project"
             }
         }
 
@@ -100,10 +97,7 @@ class KtlintCheckToolUnitSpec :
             withProject { projectDir ->
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                val report = tool.check(files = emptyList(), timeoutSeconds = TIMEOUT_SECONDS)
-
-                report shouldStartWith "ERROR"
-                report shouldContain "No file provided"
+                tool.check(files = emptyList(), timeoutSeconds = TIMEOUT_SECONDS).errorText() shouldContain "No file provided"
             }
         }
 
@@ -115,26 +109,24 @@ class KtlintCheckToolUnitSpec :
                         bounded = BoundedKtlintRun(projectRoot = projectDir, runner = HangingRunner(hangingOn = setOf("Slow.kt"))),
                     )
 
-                val report = tool.check(files = listOf("Slow.kt"), timeoutSeconds = 1)
+                val error = tool.check(files = listOf("Slow.kt"), timeoutSeconds = 1).errorText()
 
-                report shouldStartWith "ERROR"
-                report shouldContain "timed out after 1 seconds"
-                report shouldContain "timeoutSeconds"
+                error shouldContain "timed out after 1 seconds"
+                error shouldContain "timeoutSeconds"
             }
         }
 
-        listOf(0, -5, 301).forEach { invalid ->
+        listOf(0, -5, ToolTimeout.MAX_SECONDS + 1).forEach { invalid ->
             "check refuses timeoutSeconds=$invalid before looking at the files" {
                 withProject { projectDir ->
                     val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                    val report = tool.check(files = listOf("Missing.kt"), timeoutSeconds = invalid)
+                    val error = tool.check(files = listOf("Missing.kt"), timeoutSeconds = invalid).errorText()
 
-                    report shouldStartWith "ERROR"
-                    report shouldContain "timeoutSeconds"
-                    report shouldContain "between 1 and 300"
-                    report shouldContain "got $invalid"
-                    report shouldNotContain "not found"
+                    error shouldContain "timeoutSeconds"
+                    error shouldContain "between 1 and ${ToolTimeout.MAX_SECONDS}"
+                    error shouldContain "got $invalid"
+                    error shouldNotContain "not found"
                 }
             }
         }
@@ -144,7 +136,7 @@ class KtlintCheckToolUnitSpec :
                 projectDir.writeFile(relativePath = "Sample.kt", content = CLEAN_SOURCE)
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                tool.check(files = listOf("Sample.kt"), timeoutSeconds = ToolTimeout.MAX_SECONDS) shouldContain "no violation"
+                tool.check(files = listOf("Sample.kt"), timeoutSeconds = ToolTimeout.MAX_SECONDS).successText() shouldContain "no violation"
             }
         }
 
@@ -183,19 +175,34 @@ class KtlintCheckToolUnitSpec :
                 val result = KtlintCheckTool(projectRoot = projectDir).executeWithJson(null, ctx)
 
                 result.success shouldBe false
+                result.errorType shouldBe "KTLINT_ERROR"
                 result.output shouldContain "timeoutSeconds"
             }
         }
 
-        "execute reports the violations as a success result" {
+        "execute answers a KTLINT_FAILURE with the report when there are violations" {
             withProject { projectDir ->
                 projectDir.writeFile(relativePath = "Sample.kt", content = WILDCARD_IMPORT_SOURCE)
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
                 val result = tool.executeWithJson("""{"files":["Sample.kt"],"timeoutSeconds":60}""", ctx)
 
-                result.success shouldBe true
+                result.success shouldBe false
+                result.errorType shouldBe "KTLINT_FAILURE"
                 result.output shouldContain "no-wildcard-imports"
+                result.output shouldNotContain "ERROR"
+            }
+        }
+
+        "execute answers a success on a clean file" {
+            withProject { projectDir ->
+                projectDir.writeFile(relativePath = "Sample.kt", content = CLEAN_SOURCE)
+                val tool = KtlintCheckTool(projectRoot = projectDir)
+
+                val result = tool.executeWithJson("""{"files":["Sample.kt"],"timeoutSeconds":60}""", ctx)
+
+                result.success shouldBe true
+                result.output shouldContain "no violation"
             }
         }
 

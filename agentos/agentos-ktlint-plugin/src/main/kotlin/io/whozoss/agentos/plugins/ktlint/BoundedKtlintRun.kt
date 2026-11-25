@@ -36,23 +36,23 @@ internal class BoundedKtlintRun(
      * On expiry the worker is interrupted: [ensureRunning] stops it before the next file, the file in progress is
      * finished first because the engine does not check interruption while parsing. The same happens when the
      * calling thread is interrupted while waiting (cancellation of the calling coroutine, see the tools' `execute`):
-     * the worker is cancelled, the interrupt flag is restored and the answer is `ERROR: ktlint interrupted.`.
+     * the worker is cancelled, the interrupt flag is restored and the answer is an [KtlintToolResult.Error].
      *
      * @param onTimeout text appended to the timeout error, e.g. the files already modified.
-     * @return the report of [action], or a text starting with `ERROR` (invalid timeout, invalid files, timeout, failure).
+     * @return the result of [action], or a [KtlintToolResult.Error] (invalid timeout, invalid files, timeout, failure).
      */
     fun execute(
         files: List<String>,
         timeoutSeconds: Int,
         onTimeout: () -> String = { "" },
-        action: (List<Path>) -> String,
-    ): String =
-        ToolTimeout.validate(seconds = timeoutSeconds)?.let { "ERROR: $it" }
+        action: (List<Path>) -> KtlintToolResult,
+    ): KtlintToolResult =
+        ToolTimeout.validate(seconds = timeoutSeconds)?.let { KtlintToolResult.Error(text = it) }
             ?: resolve(files = files).fold(
                 onSuccess = { resolved ->
                     runBounded(files = files, timeoutSeconds = timeoutSeconds, onTimeout = onTimeout) { action(resolved) }
                 },
-                onFailure = { error -> "ERROR: ${error.message}" },
+                onFailure = { error -> KtlintToolResult.Error(text = "${error.message}") },
             )
 
     private fun resolve(files: List<String>): Result<List<Path>> =
@@ -69,23 +69,29 @@ internal class BoundedKtlintRun(
         files: List<String>,
         timeoutSeconds: Int,
         onTimeout: () -> String,
-        work: () -> String,
-    ): String {
+        work: () -> KtlintToolResult,
+    ): KtlintToolResult {
+        logger.info { "[BoundedKtlintRun] files=$files timeoutSeconds=$timeoutSeconds" }
         val future = worker.submit(Callable { work() })
         return try {
             future.get(timeoutSeconds.toLong(), TimeUnit.SECONDS)
         } catch (_: TimeoutException) {
             future.cancel(true)
             logger.warn { "ktlint timed out after $timeoutSeconds seconds on files=$files" }
-            "ERROR: ktlint timed out after $timeoutSeconds seconds. " +
-                "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or fewer files.${onTimeout()}"
+            KtlintToolResult.Error(
+                text =
+                    "ktlint timed out after $timeoutSeconds seconds. " +
+                        "Retry with a larger timeoutSeconds (max ${ToolTimeout.MAX_SECONDS}) or fewer files.${onTimeout()}",
+            )
         } catch (_: InterruptedException) {
+            // the worker is cancelled, the flag is set again: BlockingTool discards what is returned after it
             future.cancel(true)
             Thread.currentThread().interrupt()
-            "ERROR: ktlint interrupted."
+            logger.warn { "[BoundedKtlintRun] interrupted, files=$files" }
+            KtlintToolResult.Error(text = "ktlint interrupted.")
         } catch (e: ExecutionException) {
             logger.warn(e.cause) { "ktlint failed on files=$files" }
-            "ERROR: ktlint failed: ${e.cause?.message}"
+            KtlintToolResult.Error(text = "ktlint failed: ${e.cause?.message}")
         }
     }
 

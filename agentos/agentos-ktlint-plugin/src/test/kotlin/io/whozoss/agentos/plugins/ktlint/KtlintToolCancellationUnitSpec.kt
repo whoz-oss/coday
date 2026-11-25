@@ -182,7 +182,8 @@ class KtlintToolCancellationUnitSpec :
                         )
                     }
 
-                result.success shouldBe true
+                result.success shouldBe false
+                result.errorType shouldBe "KTLINT_FAILURE"
                 result.output shouldContain "no-wildcard-imports"
             }
         }

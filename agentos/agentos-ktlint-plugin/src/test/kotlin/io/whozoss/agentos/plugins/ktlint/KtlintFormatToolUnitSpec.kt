@@ -15,12 +15,12 @@ class KtlintFormatToolUnitSpec :
 
         val ctx = ToolContext(UUID.randomUUID(), null, null, emptyList())
 
-        "format autocorrects violations and rewrites the file" {
+        "format autocorrects violations, rewrites the file and is a Success when nothing remains" {
             withProject { projectDir ->
                 val file = projectDir.writeFile(relativePath = "Sample.kt", content = TRAILING_SPACE_SOURCE)
                 val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                val report = tool.format(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                val report = tool.format(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).successText()
 
                 report shouldContain "1 file(s) modified"
                 report shouldContain "Sample.kt"
@@ -28,12 +28,12 @@ class KtlintFormatToolUnitSpec :
             }
         }
 
-        "format lists the violations that cannot be autocorrected" {
+        "format lists the violations that cannot be autocorrected as a Failure" {
             withProject { projectDir ->
                 val file = projectDir.writeFile(relativePath = "Sample.kt", content = WILDCARD_IMPORT_SOURCE)
                 val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                val report = tool.format(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                val report = tool.format(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText()
 
                 report shouldContain "no-wildcard-imports"
                 report shouldContain "0 file(s) modified"
@@ -46,7 +46,7 @@ class KtlintFormatToolUnitSpec :
                 val file = projectDir.writeFile(relativePath = "Sample.kt", content = CLEAN_SOURCE)
                 val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                val report = tool.format(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                val report = tool.format(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).successText()
 
                 Files.readString(file) shouldBe CLEAN_SOURCE
                 report shouldContain "0 file(s) modified"
@@ -59,10 +59,7 @@ class KtlintFormatToolUnitSpec :
                 val file = projectDir.writeFile(relativePath = "src/Sample.kt", content = TRAILING_SPACE_SOURCE)
                 val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                val report = tool.format(files = listOf("src"), timeoutSeconds = TIMEOUT_SECONDS)
-
-                report shouldStartWith "ERROR"
-                report shouldContain "is a directory"
+                tool.format(files = listOf("src"), timeoutSeconds = TIMEOUT_SECONDS).errorText() shouldContain "is a directory"
                 Files.readString(file) shouldBe TRAILING_SPACE_SOURCE
             }
         }
@@ -73,13 +70,14 @@ class KtlintFormatToolUnitSpec :
                     val outsideFile = outsideDir.writeFile(relativePath = "Outside.kt", content = TRAILING_SPACE_SOURCE)
                     val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                    val report =
-                        tool.format(
-                            files = listOf("../${outsideDir.fileName}/Outside.kt"),
-                            timeoutSeconds = TIMEOUT_SECONDS,
-                        )
+                    val error =
+                        tool
+                            .format(
+                                files = listOf("../${outsideDir.fileName}/Outside.kt"),
+                                timeoutSeconds = TIMEOUT_SECONDS,
+                            ).errorText()
 
-                    report shouldContain "outside the project"
+                    error shouldContain "outside the project"
                     Files.readString(outsideFile) shouldBe TRAILING_SPACE_SOURCE
                 }
             }
@@ -87,10 +85,9 @@ class KtlintFormatToolUnitSpec :
 
         "format asks for at least one file when none is given" {
             withProject { projectDir ->
-                val report = KtlintFormatTool(projectRoot = projectDir).format(files = emptyList(), timeoutSeconds = TIMEOUT_SECONDS)
+                val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                report shouldStartWith "ERROR"
-                report shouldContain "No file provided"
+                tool.format(files = emptyList(), timeoutSeconds = TIMEOUT_SECONDS).errorText() shouldContain "No file provided"
             }
         }
 
@@ -104,27 +101,25 @@ class KtlintFormatToolUnitSpec :
                         bounded = BoundedKtlintRun(projectRoot = projectDir, runner = HangingRunner(hangingOn = setOf("B.kt"))),
                     )
 
-                val report = tool.format(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = 1)
+                val error = tool.format(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = 1).errorText()
 
-                report shouldStartWith "ERROR"
-                report shouldContain "timed out after 1 seconds"
-                report shouldContain "modified: A.kt"
-                report shouldNotContain "modified: C.kt"
+                error shouldContain "timed out after 1 seconds"
+                error shouldContain "modified: A.kt"
+                error shouldNotContain "modified: C.kt"
             }
         }
 
-        listOf(0, -5, 301).forEach { invalid ->
+        listOf(0, -5, ToolTimeout.MAX_SECONDS + 1).forEach { invalid ->
             "format refuses timeoutSeconds=$invalid and writes nothing" {
                 withProject { projectDir ->
                     val file = projectDir.writeFile(relativePath = "Sample.kt", content = TRAILING_SPACE_SOURCE)
                     val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                    val report = tool.format(files = listOf("Sample.kt"), timeoutSeconds = invalid)
+                    val error = tool.format(files = listOf("Sample.kt"), timeoutSeconds = invalid).errorText()
 
-                    report shouldStartWith "ERROR"
-                    report shouldContain "timeoutSeconds"
-                    report shouldContain "between 1 and 300"
-                    report shouldContain "got $invalid"
+                    error shouldContain "timeoutSeconds"
+                    error shouldContain "between 1 and ${ToolTimeout.MAX_SECONDS}"
+                    error shouldContain "got $invalid"
                     Files.readString(file) shouldBe TRAILING_SPACE_SOURCE
                 }
             }
@@ -135,7 +130,7 @@ class KtlintFormatToolUnitSpec :
                 projectDir.writeFile(relativePath = "Sample.kt", content = CLEAN_SOURCE)
                 val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                tool.format(files = listOf("Sample.kt"), timeoutSeconds = ToolTimeout.MAX_SECONDS) shouldContain "0 file(s) modified"
+                tool.format(files = listOf("Sample.kt"), timeoutSeconds = ToolTimeout.MAX_SECONDS).successText() shouldContain "0 file(s) modified"
             }
         }
 
@@ -180,6 +175,19 @@ class KtlintFormatToolUnitSpec :
 
                 result.success shouldBe true
                 Files.readString(file) shouldBe CLEAN_SOURCE
+            }
+        }
+
+        "execute answers a KTLINT_FAILURE with the report when violations remain" {
+            withProject { projectDir ->
+                projectDir.writeFile(relativePath = "Sample.kt", content = WILDCARD_IMPORT_SOURCE)
+                val tool = KtlintFormatTool(projectRoot = projectDir)
+
+                val result = tool.executeWithJson("""{"files":["Sample.kt"],"timeoutSeconds":60}""", ctx)
+
+                result.success shouldBe false
+                result.errorType shouldBe "KTLINT_FAILURE"
+                result.output shouldContain "no-wildcard-imports"
             }
         }
     })

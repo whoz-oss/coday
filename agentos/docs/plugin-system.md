@@ -97,7 +97,9 @@ parameters:
   by hand.
 
 Both tools take files only (directories are refused), every path must stay under `projectDirectory`, and
-`timeoutSeconds` (1 to 300) is mandatory. The `.editorconfig` of the target project applies. A missing,
+`timeoutSeconds` (1 to 270) is mandatory. A run that leaves violations is answered as a `KTLINT_FAILURE` whose text
+is the report; `KTLINT_ERROR` means the tool itself could not run (bad path, timeout, interruption). The `.editorconfig`
+of the target project applies. A missing,
 relative or nonexistent `projectDirectory` registers no tool and logs an error.
 
 ## Filesystem Plugin

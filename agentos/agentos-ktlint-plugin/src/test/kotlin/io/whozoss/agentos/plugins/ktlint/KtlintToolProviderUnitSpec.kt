@@ -126,7 +126,7 @@ class KtlintToolProviderUnitSpec :
                 val tools = provider.provideTools(json("""{"projectDirectory": "$dir"}"""), null)
                 val check = tools.filterIsInstance<KtlintCheckTool>().single()
 
-                check.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS) shouldContain "no-wildcard-imports"
+                check.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText() shouldContain "no-wildcard-imports"
             }
         }
     })
