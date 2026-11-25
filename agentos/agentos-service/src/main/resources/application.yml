@@ -203,7 +203,7 @@ agentos:
   # (user-global or user x namespace), because a user overlay of a network-reaching type could
   # redirect a shared credential to a host the user controls, a BASH or GRADLE overlay could run a
   # command (or a build) that reads the secret of the bound Auth Setting or the environment of the service,
-  # and a KTLINT or KOTLIN overlay could point projectDirectory at / to rewrite any Kotlin file the service can write. Platform and namespace-shared
+  # and a KTLINT or KOTLIN overlay could point projectDirectory at / to rewrite any Kotlin file the service can write, a KOTLIN one could also name any executable as serverBinary. Platform and namespace-shared
   # configs are unaffected. Setting the list replaces the default entirely.
   # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
   # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT,KOTLIN

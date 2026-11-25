@@ -29,14 +29,20 @@ class KotlinToolProviderUnitSpec :
             provider.integrationType shouldBe "KOTLIN"
         }
 
-        "configSchema should be a JSON object schema requiring projectDirectory" {
+        "configSchema should be a closed JSON object schema that requires nothing, so a platform layer can set serverBinary alone" {
             // given
             val schema = provider.configSchema
 
             // when / then
             schema.get("type").asText() shouldBe "object"
-            schema.get("required").toString() shouldContain "projectDirectory"
+            schema.has("required") shouldBe false
+            schema.get("properties").has("projectDirectory") shouldBe true
+            schema.get("properties").has("serverBinary") shouldBe true
             schema.get("additionalProperties").asBoolean() shouldBe false
+        }
+
+        "a configuration with a serverBinary but no projectDirectory should return empty tool list" {
+            provider.provideTools(config = json("""{"serverBinary": "/opt/lsp/intellij-server"}"""), configName = "TEST").shouldBeEmpty()
         }
 
         "configSchema should document the path tokens and where the binary comes from" {

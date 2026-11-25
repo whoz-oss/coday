@@ -6,7 +6,8 @@ import org.pf4j.Plugin
 /**
  * PF4J lifecycle entry point of the Kotlin plugin (`Plugin-Class` of the jar manifest).
  *
- * It only logs and releases the language servers and the worker threads: the tools are contributed by
+ * It only logs and releases the connections to the language servers and the worker threads: the servers themselves are
+ * shared and stop on their own idle timeout. The tools are contributed by
  * [KotlinToolProvider], discovered as a PF4J extension.
  */
 class KotlinPlugin : Plugin() {

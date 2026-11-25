@@ -41,4 +41,31 @@ class KotlinConfigParserUnitSpec :
                 KotlinConfigParser.parse(config = json("""{"projectDirectory": "relative/path"}"""))
             }.message shouldContain "absolute"
         }
+
+        "an absolute serverBinary should parse, trimmed" {
+            // given
+            val config = json("""{"projectDirectory": "/tmp", "serverBinary": "  /opt/lsp/intellij-server  "}""")
+
+            // when
+            val parsed = KotlinConfigParser.parse(config = config)
+
+            // then
+            parsed.serverBinary shouldBe "/opt/lsp/intellij-server"
+        }
+
+        "a missing, null or blank serverBinary means none" {
+            listOf(
+                """{"projectDirectory": "/tmp"}""",
+                """{"projectDirectory": "/tmp", "serverBinary": null}""",
+                """{"projectDirectory": "/tmp", "serverBinary": "   "}""",
+            ).forEach { block ->
+                KotlinConfigParser.parse(config = json(block)).serverBinary shouldBe null
+            }
+        }
+
+        "a relative serverBinary should throw" {
+            shouldThrow<IllegalArgumentException> {
+                KotlinConfigParser.parse(config = json("""{"projectDirectory": "/tmp", "serverBinary": "bin/intellij-server"}"""))
+            }.message shouldContain "serverBinary"
+        }
     })

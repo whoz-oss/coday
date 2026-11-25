@@ -2,12 +2,12 @@ package io.whozoss.agentos.plugins.kotlin
 
 import org.eclipse.lsp4j.services.LanguageServer
 
-/** A running language server the tools talk to, with the documents it has open. [LspConnection] is the real one. */
+/** A connection to a running language server the tools talk to, with the documents it has open. [LspConnection] is the real one. */
 internal interface LanguageServerConnection : AutoCloseable {
     /** The remote language server. */
     val server: LanguageServer
 
-    /** `true` as long as the server process is running. */
+    /** `true` as long as the server is reachable. */
     fun isAlive(): Boolean
 
     /**

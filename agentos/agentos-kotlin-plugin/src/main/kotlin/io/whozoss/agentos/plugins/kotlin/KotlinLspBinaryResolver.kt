@@ -4,10 +4,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Environment variable naming the Kotlin LSP server binary, so it can live outside the project: it weighs over 1 GB.
- *
- * The binary is deliberately not an integration parameter: parameters can be overlaid by a user scope, and the
- * binary is executed by the service. It is chosen by whoever operates the service.
+ * Environment variable naming the Kotlin LSP server binary when the integration does not, so that it can live outside
+ * the project: the binary weighs over 1 GB.
  */
 internal const val ENV_SERVER_BINARY = "AGENTOS_KOTLIN_LSP_BINARY"
 
@@ -15,11 +13,16 @@ private const val BINARY_RELATIVE = "server/bin/intellij-server"
 
 /**
  * Finds the Kotlin LSP server binary, first match wins:
- * 1. the environment variable [ENV_SERVER_BINARY];
- * 2. the user install `~/kotlin-lsp`.
+ * 1. the `serverBinary` parameter of the integration;
+ * 2. the environment variable [ENV_SERVER_BINARY] of the service;
+ * 3. the user install `~/kotlin-lsp`.
  *
- * No location lies inside the project: an agent able to write there could otherwise have the service run its file.
- * Location 1 is explicit: when set but unusable, resolution fails rather than silently using another binary.
+ * The service executes the binary with its own rights, so it is chosen by whoever configures the integration, which
+ * only an administrator can do (`KOTLIN` is refused in user scopes). No default location lies inside the project: an
+ * agent able to write there could otherwise have the service run its file (an explicit one is refused by
+ * [KotlinToolProvider]).
+ *
+ * Locations 1 and 2 are explicit: when set but unusable, resolution fails rather than silently using another binary.
  * Depends on nothing but its inputs (no class location, no real file system), so it is testable as is.
  */
 internal class KotlinLspBinaryResolver(
@@ -30,17 +33,20 @@ internal class KotlinLspBinaryResolver(
     /**
      * The binary to start.
      *
-     * @throws IllegalStateException when the explicit location is unusable, or when nothing is found
+     * @param configured the `serverBinary` parameter of the integration, null or blank when it sets none
+     * @throws IllegalStateException when an explicit location is unusable, or when nothing is found
      */
-    fun resolve(): Path {
+    fun resolve(configured: String? = null): Path {
+        val fromIntegration = configured?.takeIf { it.isNotBlank() }?.let { Path.of(it.trim()) }
         val fromEnvironment = env(ENV_SERVER_BINARY)?.takeIf { it.isNotBlank() }?.let { Path.of(it) }
         val userInstall = Path.of(userHome, "kotlin-lsp", BINARY_RELATIVE)
         return when {
+            fromIntegration != null -> {
+                usable(path = fromIntegration, origin = "the integration parameter '${KotlinConfigParser.SERVER_BINARY}'")
+            }
+
             fromEnvironment != null -> {
-                check(isExecutable(fromEnvironment)) {
-                    "Kotlin LSP binary from environment variable $ENV_SERVER_BINARY is missing or not executable: $fromEnvironment"
-                }
-                fromEnvironment
+                usable(path = fromEnvironment, origin = "environment variable $ENV_SERVER_BINARY")
             }
 
             isExecutable(userInstall) -> {
@@ -50,9 +56,18 @@ internal class KotlinLspBinaryResolver(
             else -> {
                 error(
                     "Kotlin LSP binary not found. Tried: $userInstall. " +
-                        "Set the environment variable $ENV_SERVER_BINARY of the AgentOS service, or install it at $userInstall.",
+                        "Set the '${KotlinConfigParser.SERVER_BINARY}' parameter of the integration or the environment variable " +
+                        "$ENV_SERVER_BINARY of the AgentOS service, or install it at $userInstall.",
                 )
             }
         }
     }
+
+    private fun usable(
+        path: Path,
+        origin: String,
+    ): Path =
+        path.also {
+            check(isExecutable(it)) { "Kotlin LSP binary from $origin is missing or not executable: $it" }
+        }
 }

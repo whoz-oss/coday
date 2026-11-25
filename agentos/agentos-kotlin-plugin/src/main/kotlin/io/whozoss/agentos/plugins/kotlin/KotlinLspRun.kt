@@ -26,9 +26,11 @@ import java.util.concurrent.TimeoutException
  * still in its handshake is stopped and started again on the next call.
  *
  * @property paths the paths of the project, through which every file of an agent goes
+ * @param serverBinary the `serverBinary` of the integration, null to fall back on the environment and the user install
  */
 internal class KotlinLspRun(
     projectRoot: Path,
+    private val serverBinary: String? = null,
     private val pool: LspConnectionPool = LspConnectionPool.SHARED,
     private val worker: ExecutorService = KotlinLspWorkers.executor,
 ) {
@@ -93,7 +95,10 @@ internal class KotlinLspRun(
     ): KotlinToolResult =
         try {
             awaitBounded(
-                future = worker.submit(Callable { work(LspContext(connection = pool.obtain(root = root), paths = paths)) }),
+                future =
+                    worker.submit(
+                        Callable { work(LspContext(connection = pool.obtain(root = root, serverBinary = serverBinary), paths = paths)) },
+                    ),
                 timeoutSeconds = timeoutSeconds,
             )
         } catch (_: RejectedExecutionException) {

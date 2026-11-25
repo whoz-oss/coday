@@ -21,36 +21,34 @@ import org.eclipse.lsp4j.WorkspaceEditCapabilities
 import org.eclipse.lsp4j.jsonrpc.Launcher
 import org.eclipse.lsp4j.launch.LSPLauncher
 import org.eclipse.lsp4j.services.LanguageServer
+import java.io.IOException
+import java.net.Socket
 import java.nio.file.Path
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
-import kotlin.io.path.createDirectories
-import kotlin.io.path.isExecutable
 import kotlin.io.path.readText
 
 /**
- * Launches [serverBinary] with `--stdio` and wires lsp4j to the process stdin/stdout.
+ * A client connection to a language server over the loopback TCP port it published (see [LspServerHost]).
  *
- * Performs the LSP handshake (initialize + initialized) right after launch, bounded by [INITIALIZE_TIMEOUT_SECONDS].
- * When it fails, times out or is interrupted, the process is killed and [LspInitializationException] is thrown: the
- * next call starts a new one. The server's stderr is drained on a virtual thread. The process gets a minimal
- * environment, not the one of the service, which holds secrets.
+ * Performs the LSP handshake (initialize + initialized) right after connecting, bounded by [INITIALIZE_TIMEOUT_SECONDS].
+ * When it fails, times out or is interrupted, the connection is dropped and [LspInitializationException] is thrown:
+ * the next call starts again. A server this plugin started for this very connection is stopped with it; one that was
+ * already running, and may serve others, is left alone.
  *
- * @param serverBinary absolute path to the `intellij-server` binary
- * @param projectUri   file URI of the project root
- * @param systemPath   where the server keeps its index, caches and `log/intellij-server.log`, outside the project
+ * Closing a connection only hangs up. The server is shared and stops by itself when the last client left and its idle
+ * timeout passed, so no `shutdown` or `exit` is ever sent: they would stop it for everyone.
+ *
+ * @param endpoint where the server listens, and the process started for it, if any
+ * @param projectUri file URI of the project root
  */
 internal class LspConnection(
-    serverBinary: Path,
+    private val endpoint: ServerEndpoint,
     private val projectUri: String,
-    systemPath: Path,
 ) : LanguageServerConnection {
-    init {
-        require(serverBinary.isExecutable()) { "Kotlin LSP binary not executable: $serverBinary" }
-    }
-
     private val client: LspLanguageClient = LspLanguageClient()
 
     private val listenerExecutor =
@@ -58,12 +56,13 @@ internal class LspConnection(
             Thread(runnable, "kotlin-lsp-listener").also { it.isDaemon = true }
         }
 
-    private val process: Process = startServer(serverBinary = serverBinary, systemPath = systemPath)
+    private val socket: Socket = connectedSocket(endpoint = endpoint)
 
     private val launcher: Launcher<LanguageServer> =
-        LSPLauncher
-            .createClientLauncher(client, process.inputStream, process.outputStream, listenerExecutor) { it }
-            .also { it.startListening() }
+        LSPLauncher.createClientLauncher(client, socket.getInputStream(), socket.getOutputStream(), listenerExecutor) { it }
+
+    /** Done when the server hung up: the connection is then of no more use. */
+    private val listening: Future<Void> = launcher.startListening()
 
     override val server: LanguageServer = launcher.remoteProxy
 
@@ -79,7 +78,8 @@ internal class LspConnection(
         handshake()
     }
 
-    override fun isAlive(): Boolean = process.isAlive
+    override fun isAlive(): Boolean =
+        !socket.isClosed && !listening.isDone && LspServerHost.isProcessAlive(processId = endpoint.server.processId)
 
     @Synchronized
     override fun syncFile(filePath: String): String {
@@ -128,39 +128,48 @@ internal class LspConnection(
     }
 
     override fun close() {
-        logger.info { "Closing Kotlin LSP connection pid=${process.pid()} project=$projectUri" }
-        runCatching { process.destroyForcibly() }
-            .onFailure { logger.warn { "Error destroying Kotlin LSP process: ${it.message}" } }
+        logger.info {
+            "Hanging up from Kotlin LSP server pid=${endpoint.server.processId} port=${endpoint.server.port} project=$projectUri"
+        }
+        runCatching { socket.close() }
+            .onFailure { logger.warn { "Error closing the Kotlin LSP socket: ${it.message}" } }
         listenerExecutor.shutdownNow()
     }
 
+    /** Drops the connection after a failed handshake, and the server too when it was started for this connection. */
+    private fun abandon() {
+        close()
+        endpoint.launched?.let { process -> LspServerHost.stopTree(process = process) }
+    }
+
     private fun handshake() {
-        logger.info { "Kotlin LSP handshake: initialize -> $projectUri" }
+        logger.info { "Kotlin LSP handshake: initialize -> $projectUri (port ${endpoint.server.port})" }
         try {
             val result =
                 server
                     .initialize(
                         InitializeParams().apply {
                             capabilities = clientCapabilities()
-                            processId = ProcessHandle.current().pid().toInt()
+                            // not our child: a server that watches its parent would otherwise stop with this service
+                            processId = null
                             rootUri = projectUri
                         },
                     ).get(INITIALIZE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            logger.info { "Kotlin LSP ready pid=${process.pid()} project=$projectUri" }
+            logger.info { "Kotlin LSP ready pid=${endpoint.server.processId} project=$projectUri" }
             logger.debug { "Kotlin LSP capabilities=${result.capabilities}" }
             server.initialized(InitializedParams())
         } catch (e: InterruptedException) {
-            close()
+            abandon()
             Thread.currentThread().interrupt()
             throw LspInitializationException(message = "Kotlin LSP server start interrupted", cause = e)
         } catch (e: TimeoutException) {
-            close()
+            abandon()
             throw LspInitializationException(
-                message = "Kotlin LSP server did not answer its handshake within ${INITIALIZE_TIMEOUT_SECONDS}s: stopped",
+                message = "Kotlin LSP server did not answer its handshake within ${INITIALIZE_TIMEOUT_SECONDS}s: dropped",
                 cause = e,
             )
         } catch (e: ExecutionException) {
-            close()
+            abandon()
             throw LspInitializationException(message = "Kotlin LSP server handshake failed: ${e.cause?.message}", cause = e)
         }
     }
@@ -198,72 +207,16 @@ internal class LspConnection(
         private const val INITIAL_VERSION = 1
         private const val INITIALIZE_TIMEOUT_SECONDS = 30L
 
-        /**
-         * Variables of the service the server may need. Everything else is withheld: the service environment
-         * holds its encryption key and the keys of the AI providers, and the server is a third-party binary.
-         */
-        private val INHERITED_ENVIRONMENT =
-            listOf(
-                "PATH",
-                "HOME",
-                "USER",
-                "LANG",
-                "LC_ALL",
-                "TMPDIR",
-                "JAVA_HOME",
-                "GRADLE_USER_HOME",
-                "HTTP_PROXY",
-                "HTTPS_PROXY",
-                "NO_PROXY",
-            )
-
-        /** The bundled JARs would try to phone home without this. */
-        private val TELEMETRY_DISABLED =
-            mapOf(
-                "OTEL_SDK_DISABLED" to "true",
-                "OTEL_TRACES_EXPORTER" to "none",
-                "OTEL_METRICS_EXPORTER" to "none",
-                "OTEL_LOGS_EXPORTER" to "none",
-            )
-
-        private fun startServer(
-            serverBinary: Path,
-            systemPath: Path,
-        ): Process {
-            logger.info { "Starting Kotlin LSP server: $serverBinary, system path: $systemPath" }
-            val builder =
-                ProcessBuilder(listOf(serverBinary.toString(), "--stdio", "--system-path", systemPath.createDirectories().toString()))
-            builder.environment().apply {
-                clear()
-                INHERITED_ENVIRONMENT.forEach { variable -> System.getenv(variable)?.let { put(variable, it) } }
-                putAll(TELEMETRY_DISABLED)
+        /** Connects to [endpoint]; when it refuses, the server started for it is stopped. */
+        private fun connectedSocket(endpoint: ServerEndpoint): Socket =
+            try {
+                LspServerHost.openSocket(port = endpoint.server.port)
+            } catch (e: IOException) {
+                endpoint.launched?.let { process -> LspServerHost.stopTree(process = process) }
+                throw LspInitializationException(
+                    message = "Kotlin LSP server on port ${endpoint.server.port} refused the connection: ${e.message}",
+                    cause = e,
+                )
             }
-            val process = builder.start()
-            Thread.ofVirtual().name("kotlin-lsp-stderr").start { drainStderr(process = process) }
-            process.onExit().thenAccept { exited ->
-                if (exited.exitValue() == 0) {
-                    logger.info { "[intellij-server] pid=${exited.pid()} exited normally" }
-                } else {
-                    logger.warn { "[intellij-server] pid=${exited.pid()} exited with code ${exited.exitValue()}" }
-                }
-            }
-            return process
-        }
-
-        private fun drainStderr(process: Process) {
-            runCatching {
-                process.errorStream.bufferedReader().useLines { lines -> lines.forEach { logServerStderr(line = it) } }
-            }
-        }
-
-        private fun logServerStderr(line: String) {
-            when {
-                line.contains("error", ignoreCase = true) ||
-                    line.contains("exception", ignoreCase = true) ||
-                    line.contains("warn", ignoreCase = true) -> logger.warn { "[intellij-server] $line" }
-
-                else -> logger.debug { "[intellij-server] $line" }
-            }
-        }
     }
 }

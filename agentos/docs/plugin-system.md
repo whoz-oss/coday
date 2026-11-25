@@ -116,13 +116,25 @@ name: KOTLIN
 integrationType: KOTLIN
 parameters:
   projectDirectory: "{{NAMESPACE_CONFIG_PATH}}"   # absolute; {{CASE_EXCHANGE}} also accepted
+  # serverBinary: /opt/kotlin-lsp/server/bin/intellij-server   # optional, see below
 ```
 
-The server binary weighs over 1 GB and is not shipped: whoever operates the service installs it, in
-`~/kotlin-lsp/server/bin/intellij-server` or at the path of the environment variable `AGENTOS_KOTLIN_LSP_BINARY`.
-It is deliberately not an integration parameter, and never looked for inside the project: the service executes it.
-The server runs with a minimal environment (no secret of the service) and keeps its index outside the project, under
-`~/.coday/agentos/kotlin-lsp/`. It is started by the first tool call on a project, never when the tools are built.
+The platform and a namespace can each define a `KOTLIN` integration of the same name; they are merged by name at run time
+(4-tier overlay), so the platform one can carry `serverBinary` alone while the namespace one carries its
+`projectDirectory`. The schema requires no parameter for that reason: a merged configuration without `projectDirectory`
+registers no tool and logs an error.
+
+The server binary weighs over 1 GB and is not shipped: whoever operates the service installs it. It is looked for,
+first match wins, in the `serverBinary` parameter of the integration, in the environment variable
+`AGENTOS_KOTLIN_LSP_BINARY` of the AgentOS process, then in `~/kotlin-lsp/server/bin/intellij-server`. The service runs it
+with its own rights, like a `BASH` command: only an administrator can set the parameter, and a path inside
+`projectDirectory` is refused (an agent can write there).
+The server runs with a minimal environment (no secret of the service). It is shared: there is one per (binary, project),
+found through the port file it publishes under `~/.coday/agentos/kotlin-lsp/<hash>/` and joined over loopback TCP, or
+started with `--multi-client --idle-timeout=1h` when none runs. A second AgentOS on the same project therefore joins the
+running server instead of being refused by its lock. The service never stops a server: it stops by itself after an hour
+without client, and the service hangs up from one it has not used for an hour. The port is not authenticated: any process
+of the machine can reach it. It is started by the first tool call on a project, never when the tools are built.
 
 Every path stays under `projectDirectory` (symbolic links resolved), and a sensitive file or `.git` is refused,
 including in the edits the server sends back for a rename. `timeoutSeconds` (1 to 270) is mandatory and bounds the
@@ -290,7 +302,7 @@ to their own commands, nor widen the `projectDirectory` of a shared build, style
 A user-scoped `IntegrationConfig` with the same name as a platform or namespace-shared one is
 deep-merged over it and inherits its `authSettingName`. For types whose parameters name a network
 endpoint or a command, that overlay would let any authenticated user point a shared credential at a
-host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`; for `KTLINT`, point `projectDirectory` at `/` so that `ktlint_format` rewrites any Kotlin file the service can write; for `KOTLIN`, the same with the rename tools), so those types are refused in both user scopes at the API edge (`POST` -> 403,
+host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`; for `KTLINT`, point `projectDirectory` at `/` so that `ktlint_format` rewrites any Kotlin file the service can write; for `KOTLIN`, the same with the rename tools, and a `serverBinary` the service would execute), so those types are refused in both user scopes at the API edge (`POST` -> 403,
 `PUT` -> 404 because the endpoint hides existence). Shared scopes are unaffected.
 
 | Property | Env var | Default | Purpose |
