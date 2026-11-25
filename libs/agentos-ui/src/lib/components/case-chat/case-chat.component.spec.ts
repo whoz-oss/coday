@@ -65,7 +65,9 @@ import { CaseChatComponent } from './case-chat.component'
  * pieces. They declare the inputs and outputs the chat binds, nothing else. The timeline and the actions bar under
  * each bubble stay real: they are what those tests are about.
  */
+// The stubs below replace design-system components, so they keep the `ds-` selector the chat template uses.
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'ds-drawer',
   template: '<ng-content select="[dsDrawerSide]" /><ng-content select="[dsDrawerContent]" />',
 })
@@ -94,12 +96,14 @@ class StubCaseUsageComponent {
   readonly running = input(false)
 }
 
+// eslint-disable-next-line @angular-eslint/component-selector
 @Component({ selector: 'ds-kebab-menu', template: '' })
 class StubKebabMenuComponent {
   readonly items = input<unknown[]>([])
   readonly itemSelected = output<string>()
 }
 
+// eslint-disable-next-line @angular-eslint/component-selector
 @Component({ selector: 'ds-confirm-dialog', template: '' })
 class StubConfirmDialogComponent {
   readonly open = input(false)
