@@ -454,8 +454,7 @@
     min-width: 0;
     max-width: 100%;
 
-    &:hover .case-chat__bubble-copy,
-    &:hover .case-chat__bubble-rewind {
+    &:hover .case-chat__bubble-copy {
       opacity: 1;
     }
   }
@@ -471,20 +470,6 @@
     color: var(--color-error);
     font-size: 12px;
     line-height: 1.3;
-  }
-
-  // Sits to the left of the copy button, shown on hover and whenever it holds the keyboard focus.
-  &__bubble-rewind {
-    position: absolute;
-    top: 6px;
-    right: 46px;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-    z-index: 1;
-
-    &:focus-within {
-      opacity: 1;
-    }
   }
 
   &__message-time {
@@ -1252,6 +1237,14 @@
 
     &:focus-within {
       border-color: var(--color-accent);
+    }
+
+    // A run waiting for its cost decision: the card replaces the composer, which carries the warning on its own
+    // rounded frame (focus included: the focused button shows its own outline).
+    &--paused,
+    &--paused:focus-within {
+      border-color: color-mix(in srgb, var(--color-warning) 60%, var(--color-divider));
+      background: color-mix(in srgb, var(--color-warning) 8%, var(--color-bg));
     }
   }
 

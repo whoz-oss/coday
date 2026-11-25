@@ -259,14 +259,17 @@
                       }
                     }
                   </div>
-                  <!-- Under the bubble, always visible: copy for every message, reload and the pencil for the user's own. -->
+                  <!-- Under the bubble, always visible: copy for every message, reload and the pencil for the user's own,
+                       rewind for any user message while the case can be rewound. -->
                   @if (!isEditingMessage(item.event)) {
                     <agentos-message-actions
                       class="case-chat__message-actions"
                       [text]="messageText(item)"
                       [editable]="canEditMessage(item.event)"
+                      [rewindable]="canRewindMessage(item.event)"
                       (reloadRequested)="reloadMessage(item.event)"
                       (editRequested)="startMessageEdit(item.event)"
+                      (rewindRequested)="askRewind(item.event)"
                     />
                   }
                   @if (rerunErrorOf(item.event); as rerunFailure) {
@@ -514,112 +517,116 @@
         </section>
       }
 
-      <div class="case-chat__composer" dsBlueprint>
-        <!-- A run stopped at its cost threshold asks its decision here, like a question to the user. -->
-        <agentos-cost-pause-card />
-        @if (autocomplete.atSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-agent-autocomplete
-              [agents]="autocomplete.atSuggestions()"
-              (selected)="onAgentSelected($event)"
-              (dismissed)="closeAtAutocomplete()"
-            />
-          </div>
-        }
-        @if (autocomplete.fileSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-file-autocomplete
-              [files]="autocomplete.fileSuggestions()"
-              (selected)="onFileSelected($event)"
-              (dismissed)="closeFileAutocomplete()"
-            />
-          </div>
-        }
-        @if (autocomplete.slashSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-prompt-autocomplete
-              [prompts]="autocomplete.slashSuggestions()"
-              (selected)="onPromptSelected($event)"
-              (dismissed)="closeSlashAutocomplete()"
-            />
-          </div>
-        }
-        <agentos-composer-attachments
-          #attachmentsUi
-          [attachments]="attachments.attachments()"
-          [namespaceBadge]="namespaceTargeted()"
-          [limitError]="attachments.limitError()"
-          [disabled]="attachments.isUploading()"
-          [references]="referencedFiles()"
-          (removed)="attachments.remove($event)"
-          (referenceRemoved)="removeReference($event)"
-          (filesSelected)="attachments.addFiles($event)"
-        />
-        <textarea
-          #composerInput
-          class="case-chat__input"
-          [placeholder]="isRunning() ? 'Agent is working — use /btw to ask a side question' : 'Reply…'"
-          rows="3"
-          [value]="inputValue()"
-          [hidden]="voice.isActive()"
-          [disabled]="composerClosed() || attachments.isUploading()"
-          (input)="onInput($event)"
-          (keydown)="onKeydown($event)"
-          (paste)="canStageFiles() && attachments.onPaste($event)"
-        ></textarea>
-        <agentos-voice-recorder
-          [state]="voice.state()"
-          [elapsedMs]="voice.elapsedMs()"
-          [error]="voice.error()"
-          [sendKey]="sendKeyLabel"
-          (keyPressed)="onRecordingKeydown($event)"
-        />
-        <div class="case-chat__actions">
-          @if (canAttach()) {
-            <ds-icon-button
-              icon="attach_file"
-              variant="default"
-              title="Attach files"
-              [disabled]="!canStageFiles()"
-              (action)="attachmentsUi.openPicker()"
-            />
+      <div class="case-chat__composer" dsBlueprint [class.case-chat__composer--paused]="runCostPaused()">
+        @if (runCostPaused()) {
+          <!-- A run stopped at its cost threshold asks its decision in place of the composer, like a question to the
+               user: nothing else can be posted until it is taken. The draft and the staged files are kept. -->
+          <agentos-cost-pause-card />
+        } @else {
+          @if (autocomplete.atSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-agent-autocomplete
+                [agents]="autocomplete.atSuggestions()"
+                (selected)="onAgentSelected($event)"
+                (dismissed)="closeAtAutocomplete()"
+              />
+            </div>
           }
-          @if (activeCase()) {
-            <agentos-case-settings
-              [model]="activeCase()?.modelName ?? null"
-              [effort]="activeCase()?.reasoningEffort ?? null"
-              [disabled]="isTerminal()"
-              (modelSelected)="onModelSelected($event)"
-              (effortSelected)="onEffortSelected($event)"
-            />
+          @if (autocomplete.fileSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-file-autocomplete
+                [files]="autocomplete.fileSuggestions()"
+                (selected)="onFileSelected($event)"
+                (dismissed)="closeFileAutocomplete()"
+              />
+            </div>
           }
-          <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
+          @if (autocomplete.slashSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-prompt-autocomplete
+                [prompts]="autocomplete.slashSuggestions()"
+                (selected)="onPromptSelected($event)"
+                (dismissed)="closeSlashAutocomplete()"
+              />
+            </div>
+          }
+          <agentos-composer-attachments
+            #attachmentsUi
+            [attachments]="attachments.attachments()"
+            [namespaceBadge]="namespaceTargeted()"
+            [limitError]="attachments.limitError()"
+            [disabled]="attachments.isUploading()"
+            [references]="referencedFiles()"
+            (removed)="attachments.remove($event)"
+            (referenceRemoved)="removeReference($event)"
+            (filesSelected)="attachments.addFiles($event)"
+          />
+          <textarea
+            #composerInput
+            class="case-chat__input"
+            [placeholder]="isRunning() ? 'Agent is working — use /btw to ask a side question' : 'Reply…'"
+            rows="3"
+            [value]="inputValue()"
+            [hidden]="voice.isActive()"
+            [disabled]="composerClosed() || attachments.isUploading()"
+            (input)="onInput($event)"
+            (keydown)="onKeydown($event)"
+            (paste)="canStageFiles() && attachments.onPaste($event)"
+          ></textarea>
+          <agentos-voice-recorder
+            [state]="voice.state()"
+            [elapsedMs]="voice.elapsedMs()"
+            [error]="voice.error()"
+            [sendKey]="sendKeyLabel"
+            (keyPressed)="onRecordingKeydown($event)"
+          />
+          <div class="case-chat__actions">
+            @if (canAttach()) {
+              <ds-icon-button
+                icon="attach_file"
+                variant="default"
+                title="Attach files"
+                [disabled]="!canStageFiles()"
+                (action)="attachmentsUi.openPicker()"
+              />
+            }
+            @if (activeCase()) {
+              <agentos-case-settings
+                [model]="activeCase()?.modelName ?? null"
+                [effort]="activeCase()?.reasoningEffort ?? null"
+                [disabled]="isTerminal()"
+                (modelSelected)="onModelSelected($event)"
+                (effortSelected)="onEffortSelected($event)"
+              />
+            }
+            <span class="case-chat__actions-hint">{{ preferences.composerHint() }}</span>
 
-          <!-- Right next to the send button, on its left -->
-          @if (voice.isRecording()) {
-            <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
-          } @else if (voiceCapability.available()) {
-            <ds-icon-button
-              icon="mic"
-              variant="default"
-              title="Record a voice message"
-              [disabled]="!canRecord"
-              (action)="startRecording()"
-            />
-          }
+            <!-- Right next to the send button, on its left -->
+            @if (voice.isRecording()) {
+              <ds-icon-button icon="close" variant="default" title="Cancel recording" (action)="cancelRecording()" />
+            } @else if (voiceCapability.available()) {
+              <ds-icon-button
+                icon="mic"
+                variant="default"
+                title="Record a voice message"
+                [disabled]="!canRecord"
+                (action)="startRecording()"
+              />
+            }
 
-          @if (isRunning()) {
-            <ds-icon-button icon="stop" variant="default" title="Interrupt" (action)="interrupt()" />
-          } @else {
-            <ds-icon-button
-              icon="send"
-              variant="primary"
-              [title]="voice.isRecording() ? 'Send voice message' : preferences.composerHint()"
-              [disabled]="!canSendNow"
-              (action)="onSendClick()"
-            />
-          }
-        </div>
+            @if (isRunning()) {
+              <ds-icon-button icon="stop" variant="default" title="Interrupt" (action)="interrupt()" />
+            } @else {
+              <ds-icon-button
+                icon="send"
+                variant="primary"
+                [title]="voice.isRecording() ? 'Send voice message' : preferences.composerHint()"
+                [disabled]="!canSendNow"
+                (action)="onSendClick()"
+              />
+            }
+          </div>
+        }
 
         @if (isTerminal()) {
           <div class="case-chat__notice-bar">

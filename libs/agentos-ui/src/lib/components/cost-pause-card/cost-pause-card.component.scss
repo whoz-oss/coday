@@ -2,17 +2,27 @@
   display: block;
 }
 
-// Same card language as an inline question: accent frame, soft surface, entry animation.
+// The card takes the place of the composer: the frame, its rounded corners and the warning tint belong to the
+// composer (`case-chat__composer--paused`), so nothing here paints an edge that could leak out of the corners.
 .cost-pause {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.85rem 1rem;
-  border-bottom: 1px solid var(--color-divider, rgba(0, 0, 0, 0.15));
-  border-left: 3px solid var(--status-pending-text, var(--color-warning, #b06f1e));
-  background: color-mix(in srgb, var(--color-warning, #c68a24) 8%, transparent);
+  padding: 14px 16px;
   color: var(--color-text, #1d1d1f);
   animation: cost-pause-in 0.2s ease;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  &__icon {
+    flex: none;
+    font-size: 20px;
+    color: var(--status-pending-text, var(--color-warning, #b06f1e));
+  }
 
   &__lead {
     margin: 0;

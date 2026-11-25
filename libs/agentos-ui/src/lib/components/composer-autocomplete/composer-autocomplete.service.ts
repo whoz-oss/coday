@@ -63,6 +63,9 @@ export interface FileMentionScopes {
  * A host that can change the reasoning effort (an open case) also calls `enableEffortCommand`:
  * "/effort" then lists the levels in `effortSuggestions` instead of the matching prompts.
  *
+ * The same host also calls `enableModelCommand`: "/model" then lists in `modelSuggestions` the models the case
+ * can use (and the way back to each agent's own model), instead of the matching prompts.
+ *
  * A host that offers `/btw` (a side question) calls `enableBtwCommand`: it then heads the slash suggestions, and
  * while the host says a run is in progress it is the only command listed, since nothing else can be sent then.
  *
@@ -117,6 +120,9 @@ export class ComposerAutocompleteService {
 
   /** Null until the host enables /effort; then tells whether the effort can be changed right now. */
   private effortCommandAvailable: (() => boolean) | null = null
+
+  /** Null until the host enables /model; then tells whether the model can be changed now, and what it can be. */
+  private modelCommand: { available: () => boolean; choices: () => ModelChoice[] } | null = null
 
   /** Null until the host enables /btw; then tells whether it is the only command offered right now. */
   private btwOnly: (() => boolean) | null = null
@@ -216,6 +222,14 @@ export class ComposerAutocompleteService {
    */
   enableEffortCommand(available: () => boolean): void {
     this.effortCommandAvailable = available
+  }
+
+  /**
+   * Offer the /model command in this composer. [available] is checked on each keystroke, like the /effort one;
+   * [choices] is read when the picker opens, so a host whose models load late always lists the current ones.
+   */
+  enableModelCommand(available: () => boolean, choices: () => ModelChoice[]): void {
+    this.modelCommand = { available, choices }
   }
 
   /**

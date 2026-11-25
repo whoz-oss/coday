@@ -1,0 +1,41 @@
+<form [class]="'action-card ' + cardClass()" (submit)="$event.preventDefault(); submit()">
+  <div class="action-title">
+    <mat-icon aria-hidden="true">{{ icon() }}</mat-icon>
+    <span>{{ title() }}</span>
+  </div>
+  @if (help()) {
+    <p class="action-prompt sf-muted">{{ help() }}</p>
+  }
+  <label class="context-label" [for]="fieldId()">{{ fieldLabel() }}</label>
+  <textarea
+    class="context-field"
+    [id]="fieldId()"
+    [rows]="rows()"
+    maxlength="4000"
+    [required]="required()"
+    [attr.aria-describedby]="helpId()"
+    [disabled]="disabled()"
+    [value]="draft()"
+    (input)="setDraft($any($event.target).value)"
+    (blur)="markTouched()"
+  ></textarea>
+  <span class="context-help" [id]="helpId()">{{ draft().length }} / {{ maxLength }} characters</span>
+  @if (showInvalid()) {
+    <p class="action-feedback action-feedback--error" role="alert">{{ invalidMessage() }}</p>
+  }
+  @if (stepFeedback(); as feedback) {
+    <p
+      class="action-feedback"
+      [class.action-feedback--conflict]="feedback.kind === 'conflict'"
+      [class.action-feedback--error]="feedback.kind !== 'conflict'"
+      role="alert"
+    >
+      {{ feedback.message }}
+    </p>
+  }
+  <div class="action-row">
+    <button mat-flat-button class="sf-primary" type="submit" [disabled]="disabled() || !valid()">
+      {{ busy() ? busyLabel() : submitLabel() }}
+    </button>
+  </div>
+</form>

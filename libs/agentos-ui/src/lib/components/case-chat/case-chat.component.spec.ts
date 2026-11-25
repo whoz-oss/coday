@@ -1,9 +1,13 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import {
+  ApplicationRef,
+  Component,
   ComponentRef,
   createComponent,
   EnvironmentInjector,
-  SecurityContext,
+  input,
+  model,
+  output,
   signal,
   WritableSignal,
 } from '@angular/core'
@@ -33,8 +37,6 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { of, Observable, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
-import { AiModelStateService } from '../../services/ai-model-state.service'
-import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
@@ -48,9 +50,91 @@ import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
-import { SideQuestionApiService } from '../../services/side-question-api.service'
 import { AGENT_MODEL_CHOICE } from '../composer-autocomplete/model-command'
+import { SideQuestionApiService } from '../../services/side-question-api.service'
+import { ConfirmDialogComponent, DrawerComponent, KebabMenuComponent } from '@whoz-oss/design-system'
+import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
+import { CaseUsageComponent } from '../case-usage/case-usage.component'
+import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
+import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
+import { REWIND_TOOLTIP } from '../message-actions/message-actions.component'
 import { CaseChatComponent } from './case-chat.component'
+
+/*
+ * Stand-ins for the parts of the chat around the timeline, used by the few tests that render the template: the
+ * drawer (Material sidenav and breakpoints), the panels that call their own APIs (files, usage), and the composer
+ * pieces. They declare the inputs and outputs the chat binds, nothing else. The timeline and the actions bar under
+ * each bubble stay real: they are what those tests are about.
+ */
+@Component({
+  selector: 'ds-drawer',
+  template: '<ng-content select="[dsDrawerSide]" /><ng-content select="[dsDrawerContent]" />',
+})
+class StubDrawerComponent {
+  readonly open = model(false)
+  readonly position = input('start')
+  readonly drawerWidth = input('')
+  readonly mobileFullWidth = input(false)
+  readonly resizable = input(false)
+  readonly widthChange = output<number>()
+}
+
+@Component({ selector: 'agentos-exchange-shell', template: '' })
+class StubExchangeShellComponent {
+  readonly active = input(false)
+  readonly selectable = input(false)
+  readonly referenced = input<unknown[]>([])
+  readonly referenceToggled = output<unknown>()
+  readonly closeRequested = output<void>()
+}
+
+@Component({ selector: 'agentos-case-usage', template: '' })
+class StubCaseUsageComponent {
+  readonly caseId = input('')
+  readonly canWrite = input(false)
+  readonly running = input(false)
+}
+
+@Component({ selector: 'ds-kebab-menu', template: '' })
+class StubKebabMenuComponent {
+  readonly items = input<unknown[]>([])
+  readonly itemSelected = output<string>()
+}
+
+@Component({ selector: 'ds-confirm-dialog', template: '' })
+class StubConfirmDialogComponent {
+  readonly open = input(false)
+  readonly title = input('')
+  readonly message = input('')
+  readonly confirmLabel = input('')
+  readonly cancelLabel = input('')
+  readonly confirmed = output<void>()
+  readonly cancelled = output<void>()
+}
+
+@Component({ selector: 'agentos-composer-attachments', template: '' })
+class StubComposerAttachmentsComponent {
+  readonly attachments = input<unknown[]>([])
+  readonly references = input<unknown[]>([])
+  readonly namespaceBadge = input(false)
+  readonly limitError = input<string | null>(null)
+  readonly disabled = input(false)
+  readonly removed = output<string>()
+  readonly referenceRemoved = output<unknown>()
+  readonly filesSelected = output<File[]>()
+  openPicker(): void {
+    // Nothing to open in a test.
+  }
+}
+
+@Component({ selector: 'agentos-voice-recorder', template: '' })
+class StubVoiceRecorderComponent {
+  readonly state = input<unknown>(null)
+  readonly elapsedMs = input(0)
+  readonly error = input<string | null>(null)
+  readonly sendKey = input('')
+  readonly keyPressed = output<KeyboardEvent>()
+}
 
 /**
  * The component is created WITHOUT rendering (no attachView / detectChanges): ngOnInit never
@@ -1249,6 +1333,162 @@ describe('CaseChatComponent — submit with attachments', () => {
     })
   })
 
+  describe('/model command', () => {
+    const MODELS = [null, 'BIG', 'SMALL', 'claude-haiku', 'claude-opus']
+    const loadCase = (extra: Partial<Case> = {}): void => {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'IDLE', ...extra } as Case])
+    }
+    const open = (): ComponentRef<CaseChatComponent> => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      globalThis.EventSource = original
+      log.mockRestore()
+      return ref
+    }
+
+    it('loads the chat models of the namespace once the chat opens, transcription model left out', () => {
+      const ref = open()
+
+      expect(aiModels.listAvailable).toHaveBeenCalledWith('ns-1')
+      expect(ref.instance['modelChoiceList']().map((c) => c.model)).toEqual(MODELS)
+      ref.destroy()
+    })
+
+    it('sets the case model and sends nothing to the agent', async () => {
+      loadCase()
+      const ref = open()
+      ref.instance['inputValue'].set('/model big')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', 'BIG')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('')
+      ref.destroy()
+    })
+
+    it('goes back to each agents own model with /model agent', async () => {
+      loadCase({ modelName: 'BIG' })
+      const ref = open()
+      ref.instance['inputValue'].set('/model agent')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', null)
+      expect(http.post).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
+    it('picking the way back in the picker clears the override', () => {
+      loadCase({ modelName: 'BIG' })
+      const ref = makeComponent()
+
+      ref.instance['onModelSelected'](AGENT_MODEL_CHOICE)
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', null)
+    })
+
+    it('picking from the chip keeps the text of the composer: nothing typed is lost', () => {
+      loadCase()
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello world')
+
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', 'BIG')
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('hello world')
+    })
+
+    it('picking after typing the command removes the command', () => {
+      loadCase()
+      const ref = makeComponent()
+
+      ref.instance['inputValue'].set('/model')
+      ref.instance['onModelSelected']({ model: 'BIG', label: 'BIG', description: '' })
+      expect(ref.instance['inputValue']()).toBe('')
+
+      ref.instance['inputValue'].set('/effort h')
+      ref.instance['onEffortSelected'](EFFORT_OPTIONS[4]!)
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('keeps the text and sends nothing when the case is not in the loaded list', async () => {
+      const ref = open()
+      ref.instance['inputValue'].set('/model BIG')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/model BIG')
+      ref.destroy()
+    })
+
+    it('opens the model picker on an unknown or missing name instead of doing nothing', async () => {
+      loadCase()
+      const ref = open()
+      const autocomplete = ref.injector.get(ComposerAutocompleteService)
+
+      for (const text of ['/model nope', '/model']) {
+        autocomplete.modelSuggestions.set([])
+        ref.instance['inputValue'].set(text)
+        await ref.instance['submit']()
+        expect(autocomplete.modelSuggestions().map((c) => c.model)).toEqual(MODELS)
+      }
+      expect(TestBed.inject(CaseStateService).setModel).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      ref.destroy()
+    })
+
+    it('is not a command when the text only mentions it: the message still goes to the agent', async () => {
+      loadCase()
+      const ref = open()
+      ref.instance['inputValue'].set('which /model should I use?')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).not.toHaveBeenCalled()
+      expect(http.post).toHaveBeenCalledTimes(1)
+      ref.destroy()
+    })
+
+    it('is not offered on an ended case', () => {
+      loadCase({ status: CaseStatusEnum.KILLED })
+      const ref = open()
+      ref.instance['_sseStatus'].set('KILLED')
+      const autocomplete = ref.injector.get(ComposerAutocompleteService)
+
+      autocomplete.onInput('/model', ref.instance['inputValue'])
+
+      expect(autocomplete.modelSuggestions()).toEqual([])
+      ref.destroy()
+    })
+
+    it('lets the user choose a model, then address an agent: the case model applies to the next message', async () => {
+      loadCase()
+      const ref = open()
+      ref.instance['inputValue'].set('/model BIG')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('@reviewer check this')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setModel).toHaveBeenCalledWith('c-1', 'BIG')
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: '@reviewer check this',
+        userId: 'default-user',
+      })
+      ref.destroy()
+    })
+  })
+
   it('a failed message send keeps the text and the uploaded chips for a retry', async () => {
     const ref = makeComponent()
     ref.instance['inputValue'].set('analyse this file')
@@ -1669,6 +1909,128 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.instance['askRewind'](message('m-2', 'AGENT', 'an answer'))
 
       expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    /**
+     * What the actions bar under a bubble offers: the template binds its rewind button to canRewindMessage, like the
+     * pencil to canEditMessage. The rendering of the button itself is covered by message-actions.component.spec.
+     */
+    describe('the rewind button under a bubble', () => {
+      it('is offered under a user message, and never under an agent message', () => {
+        const ref = makeComponent()
+
+        expect(ref.instance['canRewindMessage'](userMessage())).toBe(true)
+        expect(ref.instance['canRewindMessage'](message('m-2', 'AGENT', 'an answer'))).toBe(false)
+      })
+
+      it('is offered under the message of a collaborator too, unlike the pencil', () => {
+        const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+        userState.currentUser.set({ id: 'u-1' } as User)
+        const ref = makeComponent()
+        const bob = {
+          ...userMessage('m-3', 'from Bob'),
+          actor: { id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' },
+        } as CaseMessageEvent
+
+        expect(ref.instance['canRewindMessage'](bob)).toBe(true)
+        expect(ref.instance['canEditMessage'](bob)).toBe(false)
+      })
+
+      describe('as rendered', () => {
+        /** Renders the chat with [events] in its timeline. Must run before anything else injects from the TestBed. */
+        function renderChat(events: CaseMessageEvent[]): { ref: ComponentRef<CaseChatComponent>; host: HTMLElement } {
+          TestBed.overrideComponent(CaseChatComponent, {
+            remove: {
+              imports: [
+                DrawerComponent,
+                ExchangeShellComponent,
+                CaseUsageComponent,
+                KebabMenuComponent,
+                ConfirmDialogComponent,
+                ComposerAttachmentsComponent,
+                VoiceRecorderComponent,
+              ],
+            },
+            add: {
+              imports: [
+                StubDrawerComponent,
+                StubExchangeShellComponent,
+                StubCaseUsageComponent,
+                StubKebabMenuComponent,
+                StubConfirmDialogComponent,
+                StubComposerAttachmentsComponent,
+                StubVoiceRecorderComponent,
+              ],
+            },
+          })
+          const ref = makeComponent()
+          ref.instance['events'].set(events)
+          TestBed.inject(ApplicationRef).attachView(ref.hostView)
+          ref.changeDetectorRef.detectChanges()
+          return { ref, host: ref.location.nativeElement as HTMLElement }
+        }
+
+        /** The rewind buttons of the actions bar of each bubble, in timeline order. */
+        const rewindButtons = (host: HTMLElement): HTMLButtonElement[][] =>
+          Array.from(host.querySelectorAll('agentos-message-actions')).map((bar) =>
+            Array.from(bar.querySelectorAll('button')).filter((button) => button.title === REWIND_TOOLTIP)
+          )
+
+        it('shows the button in the actions bar of a user message, and not in the one of an agent message', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            expect(rewindButtons(host).map((buttons) => buttons.length)).toEqual([1, 0])
+            // The old floating button over the bubble is gone.
+            expect(host.querySelector('.case-chat__bubble-rewind')).toBeNull()
+          } finally {
+            ref.destroy()
+          }
+        })
+
+        it('opens the confirmation for that message when clicked, and sends nothing', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            rewindButtons(host)[0]![0]!.click()
+
+            expect(ref.instance['rewindTarget']()?.id).toBe('m-1')
+            expect(http.post).not.toHaveBeenCalled()
+          } finally {
+            ref.destroy()
+          }
+        })
+
+        it('removes the button once the case can no longer be rewound', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            exchangeState.canWriteCase.set(false)
+            ref.changeDetectorRef.detectChanges()
+
+            expect(rewindButtons(host).map((buttons) => buttons.length)).toEqual([0, 0])
+          } finally {
+            ref.destroy()
+          }
+        })
+      })
+
+      it('is hidden on every bubble whenever the case cannot be rewound', () => {
+        const ref = makeComponent()
+        const blockers: Array<() => void> = [
+          () => ref.instance['isRunning'].set(true),
+          () => ref.instance['_sseStatus'].set('KILLED'),
+          () => exchangeState.canWriteCase.set(false),
+        ]
+
+        for (const block of blockers) {
+          ref.instance['isRunning'].set(false)
+          ref.instance['_sseStatus'].set('')
+          exchangeState.canWriteCase.set(true)
+          expect(ref.instance['canRewindMessage'](userMessage())).toBe(true)
+
+          block()
+
+          expect(ref.instance['canRewindMessage'](userMessage())).toBe(false)
+        }
+      })
     })
 
     it('is not offered while a message is being sent', () => {

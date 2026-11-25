@@ -74,6 +74,12 @@ import { buildDelegations, isCorrelatedDelegateTool } from '../delegation/models
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EffortOption, messageEffortLabel, parseEffortCommand } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { CaseSettingsComponent } from '../case-settings/case-settings.component'
+import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
+import { stripSettingsCommand } from '../composer-autocomplete/settings-command'
+import { AiModelStateService } from '../../services/ai-model-state.service'
+import { chatModelOptions } from '../../services/chat-model.utils'
+import { ModelOption } from '../agent-config-form/model-options'
 import { parseBtwCommand } from '../composer-autocomplete/btw-command'
 import { SideQuestionStateService } from '../../services/side-question-state.service'
 import { CaseSettingsComponent } from '../case-settings/case-settings.component'
@@ -270,6 +276,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly canAttach = this.exchangeState.canWriteCase
   /** Run cost of this case, polled once for the usage strip and the cost pause card (component-scoped, see providers). */
   private readonly runCost = inject(CaseRunCostStateService)
+  /** The run waits for its cost decision: the cost pause card then takes the place of the composer. */
+  protected readonly runCostPaused = this.runCost.paused
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   /**
    * Files can be staged (picker + drop) only when the composer itself is usable: staging on
@@ -623,6 +631,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   constructor() {
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
+    this.autocomplete.enableModelCommand(
+      () => this.canChangeEffort(),
+      () => this.modelChoiceList()
+    )
     // While the agent runs, /btw is the only thing the composer accepts, and the only command it suggests.
     this.autocomplete.enableBtwCommand(() => this.isRunning())
     this.autocomplete.enableModelCommand(
@@ -670,8 +682,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     effect(() => {
       const paused = this.runCost.paused()
       const appeared = paused && !wasPaused
+      const resolved = !paused && wasPaused
       wasPaused = paused
       if (appeared) afterNextRender(() => this.focusCostPauseControls(), { injector: this.injector })
+      // The textarea comes back with the draft it had: size it to that draft again.
+      if (resolved) afterNextRender(() => this.resizeComposer(), { injector: this.injector })
     })
 
     // Keep the composer sized to its current content, including after a message is sent
@@ -1780,6 +1795,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
       return
     }
+    // Same for "/model <name>": a command for the case, never a message for the agent. The name must be one of
+    // the models the picker lists; anything else reopens the picker.
+    const modelName = parseModelCommand(content)
+    if (modelName !== undefined) {
+      const choice = modelName === null ? undefined : findModelChoice(this.modelChoiceList(), modelName)
+      if (choice) {
+        this.onModelSelected(choice)
+      } else {
+        this.autocomplete.showModelChoices()
+      }
+      return
+    }
     // Referenced files are sent like uploaded ones (awaited, kept on a failed send), but have nothing to upload.
     const references = this.referencedFiles()
     if (this.attachments.hasAttachments() || references.length > 0) {
@@ -2071,9 +2098,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     )
   }
 
+  /**
+   * Whether the rewind button is offered under [message], in its actions bar: any user message (the current user's
+   * or a collaborator's), never an agent message, while the case can be rewound (see [canRewind]).
+   */
+  protected canRewindMessage(message: CaseMessageEvent): boolean {
+    return message.actor.role === 'USER' && this.canRewind()
+  }
+
   /** Opens the confirmation for a user message; rewinding is destructive, so it never acts directly. */
   protected askRewind(event: CaseMessageEvent): void {
-    if (event.actor.role !== 'USER' || !this.canRewind()) return
+    if (!this.canRewindMessage(event)) return
     this.rewindTarget.set(event)
   }
 
