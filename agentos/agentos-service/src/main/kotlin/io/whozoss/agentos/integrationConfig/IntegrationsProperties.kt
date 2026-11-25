@@ -28,12 +28,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Override with environment variable (Spring Boot relaxed binding):
  * - `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` (comma-separated, replaces the default list)
  *
- * Example (application.yml):
- * ```yaml
- * agentos:
- *   integrations:
- *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH
- * ```
+ * The default list and its rationale are documented in `application.yml` (`agentos.integrations`).
  */
 @ConfigurationProperties(prefix = "agentos.integrations")
 data class IntegrationsProperties(
@@ -42,7 +37,7 @@ data class IntegrationsProperties(
      * may create or update in a user scope. Setting the list replaces the default entirely: an
      * instance that wants to allow one of the defaults must list the others explicitly.
      */
-    val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH"),
+    val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH", "GRADLE"),
     /**
      * Integration types that may set [IntegrationConfig.autoGrant], i.e. be handed to every agent
      * in the config's scope without the agent naming it. Setting the list replaces the default

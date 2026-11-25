@@ -276,7 +276,7 @@ class IntegrationConfigControllerMvcIntegrationSpec : StringSpec() {
 
         // -------------------------------------------------------------------------
         // POST / PUT — user scope denied for network-reaching integration types
-        // (agentos.integrations.user-scope-denied-types, default HTTP_API, MCP_STDIO, MCP_HTTP, GIT, BASH)
+        // (agentos.integrations.user-scope-denied-types, see application.yml)
         // -------------------------------------------------------------------------
 
         "POST user-global config of a denied type (MCP_HTTP) returns 403" {
