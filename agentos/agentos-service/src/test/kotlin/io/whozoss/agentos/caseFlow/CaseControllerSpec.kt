@@ -19,6 +19,7 @@ import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.RewindCaseRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -1097,6 +1098,28 @@ class CaseControllerSpec :
 
             result.favorite shouldBe true
             result.role shouldBe "MEMBER"
+        }
+
+        // -------------------------------------------------------------------------
+        // rewindCase — POST /api/cases/{caseId}/rewind
+        // -------------------------------------------------------------------------
+
+        "rewindCase delegates to the service and maps the result with the caller's meta" {
+            val entity = caseEntity().copy(status = CaseStatus.IDLE)
+            val eventId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.rewindCase(entity.id, eventId) } returns entity
+            every {
+                favoriteService.listDirectRelations(callerId.toString(), EntityType.CASE)
+            } returns mapOf(entity.metadata.id.toString() to DirectRelation(PermissionRelation.ADMIN, favorite = true))
+
+            val result = controller.rewindCase(entity.id, RewindCaseRequest(eventId))
+
+            result.id shouldBe entity.id
+            result.status shouldBe CaseStatus.IDLE
+            result.role shouldBe "ADMIN"
+            result.favorite shouldBe true
+            verify(exactly = 1) { caseService.rewindCase(entity.id, eventId) }
         }
 
         // -------------------------------------------------------------------------

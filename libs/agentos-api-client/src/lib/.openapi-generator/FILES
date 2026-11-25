@@ -141,6 +141,7 @@ model/prompt.ts
 model/question-event.ts
 model/reasoning-effort.ts
 model/recurrence.ts
+model/rewind-case-request.ts
 model/run-cost-dto.ts
 model/scheduled-prompt-effective-request.ts
 model/scheduled-prompt-search-request.ts

@@ -1587,6 +1587,39 @@ paths:
       summary: Reopen a case
       tags:
       - case-controller
+  /api/cases/{caseId}/rewind:
+    post:
+      description: "POST /api/cases/{caseId}/rewind — soft-delete the user message\
+        \ identified by eventId and every event after it, and put the case back to\
+        \ IDLE. The case must be IDLE (or CREATED): it is refused with 409 while the\
+        \ case is RUNNING or PENDING, or terminated (KILLED or ERROR). 404 when the\
+        \ event is unknown, already removed or belongs to another case; 400 when it\
+        \ is not a user message. Sub-cases, exchange files and usage records are left\
+        \ as they are. Returns the updated Case DTO."
+      operationId: rewindCase
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RewindCaseRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Case"
+          description: OK
+      summary: Rewind a case to a user message
+      tags:
+      - case-controller
   /api/cases/{caseId}/run-cost:
     get:
       operationId: getRunCost
@@ -6787,6 +6820,14 @@ components:
       - days
       - timeUtc
       - unit
+    RewindCaseRequest:
+      type: object
+      properties:
+        eventId:
+          type: string
+          format: uuid
+      required:
+      - eventId
     RunCostDto:
       type: object
       properties:

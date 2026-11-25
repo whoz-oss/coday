@@ -21,4 +21,14 @@ interface CaseEventService : EntityService<CaseEvent, UUID> {
      * Cases with no messages are absent from the result.
      */
     fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant>
+
+    /**
+     * Soft-delete the event [eventId] of [caseId] and every event after it (rewind).
+     *
+     * @return the number of events removed, 0 when [eventId] is not an active event of [caseId]
+     */
+    fun deleteFrom(
+        caseId: UUID,
+        eventId: UUID,
+    ): Int
 }

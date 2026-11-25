@@ -413,6 +413,11 @@
     width: 100%;
     min-width: 0;
     max-width: 100%;
+
+    &:hover .case-chat__bubble-copy,
+    &:hover .case-chat__bubble-rewind {
+      opacity: 1;
+    }
   }
 
   // The actions under a bubble: always visible, on the side the bubble speaks from (the turn aligns them).
@@ -426,6 +431,20 @@
     color: var(--color-error);
     font-size: 12px;
     line-height: 1.3;
+  }
+
+  // Sits to the left of the copy button, shown on hover and whenever it holds the keyboard focus.
+  &__bubble-rewind {
+    position: absolute;
+    top: 6px;
+    right: 46px;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 1;
+
+    &:focus-within {
+      opacity: 1;
+    }
   }
 
   &__message-time {

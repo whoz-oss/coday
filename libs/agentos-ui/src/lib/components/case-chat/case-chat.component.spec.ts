@@ -1179,6 +1179,170 @@ describe('CaseChatComponent — submit with attachments', () => {
     })
   })
 
+  describe('rewind', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const message = (id: string, role: 'USER' | 'AGENT', text: string): CaseMessageEvent =>
+      ({
+        id,
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T10:00:00Z',
+        metadata,
+        actor: { id: role === 'USER' ? 'u-1' : 'a-1', role, displayName: role },
+        content: [{ type: 'Text', content: text }],
+      }) as unknown as CaseMessageEvent
+    const userMessage = (id = 'm-1', text = 'first question') => message(id, 'USER', text)
+
+    let original: typeof EventSource
+    let eventSourceCtor: jest.Mock
+
+    beforeEach(() => {
+      original = globalThis.EventSource
+      eventSourceCtor = jest.fn(() => Object.assign(new EventTarget(), { close: jest.fn() }))
+      globalThis.EventSource = eventSourceCtor as unknown as typeof EventSource
+    })
+
+    afterEach(() => {
+      globalThis.EventSource = original
+    })
+
+    it('POSTs the event id, reinitialises the chat and puts the message text back in the composer', () => {
+      const ref = makeComponent()
+      try {
+        ref.instance['events'].set([userMessage('m-1', 'first question'), message('m-2', 'AGENT', 'an answer')])
+        const caseState = TestBed.inject(CaseStateService)
+
+        ref.instance['askRewind'](userMessage('m-1', 'first question'))
+        // Asking never acts: the confirmation comes first.
+        expect(http.post).not.toHaveBeenCalled()
+        ref.instance['rewind']()
+
+        expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/rewind', { eventId: 'm-1' })
+        expect(caseState.updateCaseStatus).toHaveBeenCalledWith('c-1', 'IDLE')
+        // reinitialise(): the history is cleared and the stream reopened, to replay the shortened one.
+        expect(ref.instance['events']()).toEqual([])
+        expect(eventSourceCtor).toHaveBeenCalledTimes(1)
+        expect(ref.instance['inputValue']()).toBe('first question')
+        expect(ref.instance['rewindTarget']()).toBeNull()
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('leaves the chat and the composer unchanged when the server refuses', () => {
+      const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        const events = [userMessage('m-1'), message('m-2', 'AGENT', 'an answer')]
+        ref.instance['events'].set(events)
+        ref.instance['inputValue'].set('a draft')
+        http.post.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })))
+
+        ref.instance['askRewind'](userMessage('m-1'))
+        ref.instance['rewind']()
+
+        expect(ref.instance['events']()).toEqual(events)
+        expect(ref.instance['inputValue']()).toBe('a draft')
+        expect(eventSourceCtor).not.toHaveBeenCalled()
+        expect(TestBed.inject(CaseStateService).updateCaseStatus).not.toHaveBeenCalled()
+        // The request is over: rewinding is possible again.
+        expect(ref.instance['canRewind']()).toBe(true)
+      } finally {
+        ref.destroy()
+        error.mockRestore()
+      }
+    })
+
+    it('does nothing when the confirmation is cancelled', () => {
+      const ref = makeComponent()
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).not.toBeNull()
+
+      ref.instance['rewindTarget'].set(null)
+      ref.instance['rewind']()
+
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('is not offered while the agent runs', () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+
+      expect(ref.instance['canRewind']()).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    it('is not offered on a terminal case', () => {
+      const ref = makeComponent()
+      ref.instance['_sseStatus'].set('KILLED')
+
+      expect(ref.instance['canRewind']()).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    it('is not offered without write access to the case', () => {
+      const ref = makeComponent()
+      exchangeState.canWriteCase.set(false)
+
+      expect(ref.instance['canRewind']()).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    it('is not offered for an agent message', () => {
+      const ref = makeComponent()
+
+      ref.instance['askRewind'](message('m-2', 'AGENT', 'an answer'))
+
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+
+    it('is not offered while a message is being sent', () => {
+      const ref = makeComponent()
+      ref.instance['submitting'] = true
+
+      expect(ref.instance['canRewind']()).toBe(false)
+    })
+
+    it('does not refill the composer of another case when the user switched during the request', () => {
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        const response = new Subject<unknown>()
+        http.post.mockReturnValueOnce(response)
+        ref.instance['askRewind'](userMessage('m-1', 'text of the old case'))
+        ref.instance['rewind']()
+
+        ref.instance['caseId'] = 'c-2'
+        ref.instance['reinitialise']()
+        eventSourceCtor.mockClear()
+        response.next({})
+        response.complete()
+
+        expect(ref.instance['inputValue']()).toBe('')
+        expect(eventSourceCtor).not.toHaveBeenCalled()
+        expect(TestBed.inject(CaseStateService).updateCaseStatus).not.toHaveBeenCalled()
+      } finally {
+        ref.destroy()
+        log.mockRestore()
+      }
+    })
+
+    it('blocks a second rewind while the first is in flight', () => {
+      const ref = makeComponent()
+      http.post.mockReturnValueOnce(new Subject<unknown>())
+      ref.instance['askRewind'](userMessage())
+      ref.instance['rewind']()
+
+      expect(ref.instance['canRewind']()).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
+    })
+  })
+
   describe('reopen', () => {
     let caseState: { addCase: jest.Mock; updateCaseTitle: jest.Mock; updateCaseStatus: jest.Mock }
 

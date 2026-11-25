@@ -17,6 +17,7 @@ import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.CaseModelRequest
 import io.whozoss.agentos.sdk.api.case.CaseReasoningEffortRequest
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.RewindCaseRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -401,6 +402,20 @@ class CaseController(
         val reopened = caseService.reopenCase(caseId)
         logger.info { "Case reopened: $caseId" }
         return reopened.withCallerMeta(userId)
+    }
+
+    /** POST /api/cases/{caseId}/rewind — rewind an idle case to one of its user messages. */
+    @PostMapping("/{caseId}/rewind", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    override fun rewindCase(
+        @PathVariable caseId: UUID,
+        @RequestBody request: RewindCaseRequest,
+    ): CaseDto {
+        logger.info { "Rewinding case: $caseId to event ${request.eventId}" }
+        val userId = userService.getCurrentUser().id.toString()
+        val rewound = caseService.rewindCase(caseId, request.eventId)
+        return rewound.withCallerMeta(userId)
     }
 
     /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */

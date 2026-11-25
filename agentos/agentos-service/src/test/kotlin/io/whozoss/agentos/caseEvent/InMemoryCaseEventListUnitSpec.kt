@@ -182,6 +182,56 @@ class InMemoryCaseEventListUnitSpec :
             eventList.getById(event2.id) shouldBe event2
         }
 
+        "removeFrom drops the target and every later event and keeps the earlier ones" {
+            val event1 = createMessageEvent(timestamp = Instant.ofEpochMilli(1000))
+            val event2 = createMessageEvent(timestamp = Instant.ofEpochMilli(2000))
+            val event3 = createMessageEvent(timestamp = Instant.ofEpochMilli(3000))
+            val eventList = InMemoryCaseEventList(listOf(event1, event2, event3))
+
+            eventList.removeFrom(event2.id) shouldBe 2
+
+            eventList.getAll() shouldBe listOf(event1)
+            eventList.getById(event1.id) shouldBe event1
+            eventList.getById(event2.id) shouldBe null
+            eventList.getById(event3.id) shouldBe null
+        }
+
+        "removeFrom keeps the events inserted before the target at an equal timestamp" {
+            val timestamp = Instant.ofEpochMilli(1000)
+            val eventList = InMemoryCaseEventList()
+            val before1 = createMessageEvent(timestamp = timestamp)
+            val before2 = createMessageEvent(timestamp = timestamp)
+            val target = createMessageEvent(timestamp = timestamp)
+            val after = createMessageEvent(timestamp = timestamp)
+            listOf(before1, before2, target, after).forEach { eventList.add(it) }
+
+            eventList.removeFrom(target.id) shouldBe 2
+
+            eventList.getAll() shouldBe listOf(before1, before2)
+        }
+
+        "removeFrom returns 0 and changes nothing for an unknown event" {
+            val event1 = createMessageEvent(timestamp = Instant.ofEpochMilli(1000))
+            val eventList = InMemoryCaseEventList(listOf(event1))
+
+            eventList.removeFrom(UUID.randomUUID()) shouldBe 0
+
+            eventList.getAll() shouldBe listOf(event1)
+            eventList.getById(event1.id) shouldBe event1
+        }
+
+        "an event added after removeFrom is appended after the kept ones" {
+            val event1 = createMessageEvent(timestamp = Instant.ofEpochMilli(1000))
+            val event2 = createMessageEvent(timestamp = Instant.ofEpochMilli(2000))
+            val event3 = createMessageEvent(timestamp = Instant.ofEpochMilli(3000))
+            val eventList = InMemoryCaseEventList(listOf(event1, event2))
+            eventList.removeFrom(event2.id)
+
+            eventList.add(event3)
+
+            eventList.getAll() shouldBe listOf(event1, event3)
+        }
+
         "getById should be O(1) efficient" {
             val eventList = InMemoryCaseEventList()
 
