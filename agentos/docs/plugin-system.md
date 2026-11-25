@@ -37,6 +37,7 @@ The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlug
 | `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
 | `agentos-gradle-plugin` | `GRADLE` | Structured Gradle tools (`gradle_compile`, `gradle_tests`, `gradle_dependency_insight`) run through the `gradlew` of a configured directory (see [GRADLE integration](#gradle-integration)) |
 | `agentos-ktlint-plugin` | `KTLINT` | `ktlint_check` / `ktlint_format` on Kotlin files under `projectDirectory` (see below) |
+| `agentos-kotlin-plugin` | `KOTLIN` | Kotlin language server (LSP) tools on the code under `projectDirectory`: navigation, diagnostics, refactoring (see [Kotlin Plugin](#kotlin-plugin)) |
 
 `./gradlew deployPlugins` must be re-run after changing any plugin (it cleans, rebuilds and
 copies every plugin JAR into `plugins/`). For a one-shot local run, `./gradlew bootRunWithPlugins`
@@ -101,6 +102,32 @@ Both tools take files only (directories are refused), every path must stay under
 (`... N more violation(s) not shown (X total)`), the counts of its header staying the real totals. A run that leaves violations is answered as a `KTLINT_FAILURE` whose text
 is the report; `KTLINT_ERROR` means the tool itself could not run (bad path, timeout, interruption). The `.editorconfig`
 of the target project applies. A missing,
+relative or nonexistent `projectDirectory` registers no tool and logs an error.
+
+## Kotlin Plugin
+
+`agentos-kotlin-plugin` exposes a Kotlin language server (JetBrains `intellij-server`, over LSP) as 18 tools named
+`kotlin_lsp_*`: navigation by symbol name (hover, definition, references, implementations, call and type hierarchy),
+symbol search, diagnostics, completion, signature help, code actions, formatting edits, inlay hints, and two
+refactorings that write on disk (`kotlin_lsp_rename`, `kotlin_lsp_rename_file`). lsp4j is bundled into the plugin JAR.
+
+```yaml
+name: KOTLIN
+integrationType: KOTLIN
+parameters:
+  projectDirectory: "{{NAMESPACE_CONFIG_PATH}}"   # absolute; {{CASE_EXCHANGE}} also accepted
+```
+
+The server binary weighs over 1 GB and is not shipped: whoever operates the service installs it, in
+`~/kotlin-lsp/server/bin/intellij-server` or at the path of the environment variable `AGENTOS_KOTLIN_LSP_BINARY`.
+It is deliberately not an integration parameter, and never looked for inside the project: the service executes it.
+The server runs with a minimal environment (no secret of the service) and keeps its index outside the project, under
+`~/.coday/agentos/kotlin-lsp/`. It is started by the first tool call on a project, never when the tools are built.
+
+Every path stays under `projectDirectory` (symbolic links resolved), and a sensitive file or `.git` is refused,
+including in the edits the server sends back for a rename. `timeoutSeconds` (1 to 270) is mandatory and bounds the
+whole call, server start included; a server that does not finish its handshake is stopped. A file with compile errors
+is answered by `kotlin_lsp_diagnostics` as a `KOTLIN_FAILURE`; `KOTLIN_ERROR` means the tool could not run. A missing,
 relative or nonexistent `projectDirectory` registers no tool and logs an error.
 
 ## Filesystem Plugin
@@ -254,21 +281,21 @@ can still encode the value, so do not bind a secret to a BASH integration whose 
 to read it. Like the other plugins, this works per user only for settings where each user holds their own
 credential.
 
-BASH, GRADLE and KTLINT integrations can only be created at platform or namespace-shared scope (`BASH`, `GRADLE` and
-`KTLINT` are in `agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
-to their own commands, nor widen the `projectDirectory` of a shared build or style tool.
+BASH, GRADLE, KTLINT and KOTLIN integrations can only be created at platform or namespace-shared scope (`BASH`, `GRADLE`,
+`KTLINT` and `KOTLIN` are in `agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
+to their own commands, nor widen the `projectDirectory` of a shared build, style or language tool.
 
 ### User-scope denial for network-reaching types
 
 A user-scoped `IntegrationConfig` with the same name as a platform or namespace-shared one is
 deep-merged over it and inherits its `authSettingName`. For types whose parameters name a network
 endpoint or a command, that overlay would let any authenticated user point a shared credential at a
-host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`; for `KTLINT`, point `projectDirectory` at `/` so that `ktlint_format` rewrites any Kotlin file the service can write), so those types are refused in both user scopes at the API edge (`POST` -> 403,
+host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`; for `KTLINT`, point `projectDirectory` at `/` so that `ktlint_format` rewrites any Kotlin file the service can write; for `KOTLIN`, the same with the rename tools), so those types are refused in both user scopes at the API edge (`POST` -> 403,
 `PUT` -> 404 because the endpoint hides existence). Shared scopes are unaffected.
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
-| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
+| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT,KOTLIN` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
 
 ## Tool Registration
 

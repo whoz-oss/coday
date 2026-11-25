@@ -1,0 +1,11 @@
+{
+  "name": "agentos-kotlin-plugin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "agentos/agentos-kotlin-plugin/src",
+  "tags": [
+    "type:lib",
+    "platform:jvm-agentos",
+    "scope:plugin"
+  ]
+}

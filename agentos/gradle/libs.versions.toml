@@ -72,6 +72,10 @@ poi = "5.5.1"
 # Bundled fat-jar style in agentos-ktlint-plugin (not on the service classpath).
 ktlint = "1.8.0"
 
+# Eclipse LSP4J - Language Server Protocol client for the Kotlin plugin.
+# Bundled fat-jar style in agentos-kotlin-plugin (not on the service classpath).
+lsp4j = "1.0.0"
+
 # AgentOS modules versions
 agentosSdk = "3.40.1"
 agentosService = "3.40.1"
@@ -194,6 +198,9 @@ poi-ooxml = { module = "org.apache.poi:poi-ooxml", version.ref = "poi" }
 # ktlint — embedded engine and standard ruleset (agentos-ktlint-plugin). Bundled in the plugin jar, not provided by the service.
 ktlint-rule-engine = { module = "com.pinterest.ktlint:ktlint-rule-engine", version.ref = "ktlint" }
 ktlint-ruleset-standard = { module = "com.pinterest.ktlint:ktlint-ruleset-standard", version.ref = "ktlint" }
+
+# Eclipse LSP4J - Language Server Protocol client (agentos-kotlin-plugin). Bundled in the plugin jar, not provided by the service.
+lsp4j = { module = "org.eclipse.lsp4j:org.eclipse.lsp4j", version.ref = "lsp4j" }
 
 # Testing
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
