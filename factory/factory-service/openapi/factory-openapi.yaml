@@ -502,22 +502,46 @@ paths:
           type: string
       - name: Idempotency-Key
         in: header
-        required: false
+        description: Client-chosen key making the command replay-safe (1 to 128 characters).
+        required: true
         schema:
           type: string
       requestBody:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: {}
+              $ref: "#/components/schemas/FailedStepRetryRequestDto"
+        required: true
       responses:
-        "200":
-          description: OK
+        "201":
+          description: "Retry created: the step re-runs as the returned attempt."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+        "200":
+          description: "Idempotent replay of an identical retry (`idempotent: true`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+        "400":
+          description: "INVALID_REQUEST (unknown field, context over 4000 characters,\
+            \ missing Idempotency-Key, repository root not resolvable)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "REVISION_CONFLICT, IDEMPOTENCY_KEY_COLLISION, INTERACTION_STALE\
+            \ (run still active, step not failed, attempt not finished or without\
+            \ frozen context), ACTION_NOT_ALLOWED (not an agent step, outcome-managed\
+            \ run or parent Run fragment) or WORKFLOW_SEALED (completed or cancelled\
+            \ run)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/factory/workflows/{workflowId}/start:
     post:
       tags:
@@ -2634,6 +2658,44 @@ components:
       - status
       - stepId
       - workflowId
+    FailedStepRetryRequestDto:
+      type: object
+      description: Retry of a failed agent step. No other field is accepted.
+      properties:
+        namespaceId:
+          type: string
+          description: Namespace of the workflow.
+        expectedRevision:
+          type: integer
+          format: int32
+          description: "Instance revision the retry is fenced on, as advertised by\
+            \ the `retry` allowed action."
+        additionalContext:
+          type: string
+          description: "Optional information for the agent. Absent, null and blank\
+            \ all mean none. At most 4000 characters after trimming."
+          maxLength: 4000
+      required:
+      - expectedRevision
+      - namespaceId
+    ErrorDetail:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
+      required:
+      - code
+      - message
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+      required:
+      - error
     ReleaseEnvironmentRequest:
       type: object
       properties:
@@ -2970,24 +3032,6 @@ components:
           type: string
         agentName:
           type: string
-    ErrorDetail:
-      type: object
-      properties:
-        code:
-          type: string
-        message:
-          type: string
-        details: {}
-      required:
-      - code
-      - message
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          $ref: "#/components/schemas/ErrorDetail"
-      required:
-      - error
     AgentStepResultData:
       type: object
       properties:

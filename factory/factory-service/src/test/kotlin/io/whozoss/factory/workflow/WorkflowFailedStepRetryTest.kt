@@ -359,6 +359,22 @@ class WorkflowFailedStepRetryTest {
     }
 
     @Test
+    fun `a run that is still active is never reopened, even when one of its agent steps failed`() {
+        // D is independent and still running while A has failed: the sequencer has not marked the run failed yet.
+        listOf(WorkflowStatuses.RUNNING, WorkflowStatuses.PENDING, WorkflowStatuses.READY, WorkflowStatuses.WAITING_HUMAN)
+            .forEachIndexed { index, status ->
+                stubHappyPath(instance(runStatus = status))
+
+                assertThat(errorCodeOf { retry(key = "key-active-$index") }).isEqualTo(WorkflowErrorCodes.INTERACTION_STALE)
+            }
+        assertThat(routerCalls).isEqualTo(0)
+        assertThat(updatedInstance).isEmpty()
+        assertThat(upserts).isEmpty()
+        assertThat(idempotency.store).isEmpty()
+        verify(exactly = 0) { submissions.submit(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `a code step a human step and a step that did not fail are refused`() {
         stubHappyPath(instance(statuses = defaultStatuses + ("C" to WorkflowStatuses.FAILED) + ("H" to WorkflowStatuses.FAILED)))
 
@@ -411,12 +427,16 @@ class WorkflowFailedStepRetryTest {
     }
 
     @Test
-    fun `an unresolvable repository root refuses the whole retry instead of guessing a directory`() {
+    fun `an unresolvable repository root refuses the whole retry before any write instead of guessing a directory`() {
         stubHappyPath()
         every { proxy.resolveRepoRoot(namespace, "alice") } returns null
 
         assertThat(errorCodeOf { retry() }).isEqualTo(WorkflowErrorCodes.INVALID_REQUEST)
 
+        // The root is a pure read resolved first: no successor, no audit, no occupation transfer, no CAS.
+        assertThat(routerCalls).isEqualTo(0)
+        assertThat(updatedInstance).isEmpty()
+        assertThat(upserts).isEmpty()
         assertThat(idempotency.store).isEmpty()
         verify(exactly = 0) { submissions.submit(any(), any(), any(), any(), any(), any()) }
     }
@@ -516,6 +536,13 @@ class WorkflowFailedStepRetryTest {
         assertThat(actionsFor(instance(runStatus = WorkflowStatuses.COMPLETED))).isEmpty()
         assertThat(actionsFor(instance(extraProjection = mapOf("stepExecutions" to emptyList<Any>())))).isEmpty()
         assertThat(actionsFor(instance(extraInstance = mapOf("runId" to "run-1")))).isEmpty()
+    }
+
+    @Test
+    fun `retry is not offered on a run that is still active even when an agent step failed`() {
+        listOf(WorkflowStatuses.RUNNING, WorkflowStatuses.PENDING, WorkflowStatuses.WAITING_HUMAN).forEach { status ->
+            assertThat(actionsFor(instance(runStatus = status))).describedAs("run status $status").isEmpty()
+        }
     }
 
     @Test

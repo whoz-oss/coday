@@ -1371,7 +1371,8 @@ class WorkflowService(
         val successorId = (needsResearchRouter ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Research resumption is unavailable."))
             .resume(scope, namespaceId, workflowId, step, outcome, normalized, actorId)
         val rearmed = rearmStepAndSubmit(
-            scope, namespaceId, workflowId, instance, definition, stepId, expectedRevision, actorId,
+            scope, namespaceId, workflowId, instance, definition, stepId, expectedRevision,
+            repoRoot = requireRepoRoot(namespaceId, actorId, "The namespace repository root could not be resolved; the resumption was not queued."),
             operation = "resume-research:$successorId",
             missingStateMessage = "The NEEDS_RESEARCH step state is missing.",
         )
@@ -1393,7 +1394,7 @@ class WorkflowService(
      * Shared tail of the two governed commands that re-arm a step as a new attempt ([resumeResearch] and
      * [retryFailedStep]): the step goes back to `ready`, the dependants that were blocked ONLY because of it go
      * back to `pending`, the run becomes `pending`, the instance is compare-and-set at [expectedRevision], the
-     * per-step states and the read model are published and a durable run is queued under [operation].
+     * per-step states and the read model are published and a durable run is queued under [operation] for [repoRoot].
      *
      * The successor attempt must already be registered by the caller. Nothing else of the run is touched: a
      * dependant blocked by another real failure keeps its state.
@@ -1406,7 +1407,7 @@ class WorkflowService(
         definition: WorkflowPolicyDefinition,
         stepId: String,
         expectedRevision: Int,
-        actorId: String,
+        repoRoot: String,
         operation: String,
         missingStateMessage: String,
     ): RearmedStep {
@@ -1453,25 +1454,35 @@ class WorkflowService(
             nextInstanceMap, previousProjection?.governanceMode ?: "governed", previousProjection?.definitionVersion,
             previousProjection?.definitionHash, previousProjection?.relations, previousProjection?.controllerExecution, "active",
         ), null)
-        // Same resolution as the other runner submissions; no repository root means the run cannot be
-        // queued faithfully, so the whole (transactional) resumption is refused rather than guessed.
-        val repoRoot = agentOsProxyClient?.let { runCatching { it.resolveRepoRoot(namespaceId, actorId) }.getOrNull() }?.takeIf { it.isNotBlank() }
-            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The namespace repository root could not be resolved; the resumption was not queued.")
         val submission = sessionRunSubmissionService?.submit(scope, namespaceId, workflowId, repoRoot, operation, null)
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The durable workflow runner is unavailable.")
         return RearmedStep(next, submission)
     }
 
     /**
+     * The repository root a re-armed run is queued for. Same resolution as the other runner submissions; no
+     * root means the run cannot be queued faithfully, so the whole (transactional) command is refused rather
+     * than guessed. Callers resolve it BEFORE any write when they can, so a refusal leaves nothing behind.
+     */
+    private fun requireRepoRoot(namespaceId: String, actorId: String, message: String): String =
+        agentOsProxyClient?.let { runCatching { it.resolveRepoRoot(namespaceId, actorId) }.getOrNull() }?.takeIf { it.isNotBlank() }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, message)
+
+    /**
      * Governed human retry of a FAILED agent step: the same step reruns in the same run and the same case as a
      * new attempt `N+1` that carries the original brief, the previous attempt's result and the optional
      * [additionalContext] (0 to [MAX_RETRY_CONTEXT_LENGTH] characters). The rest of the run then continues normally.
      *
-     * This is the ONE governed exception to the terminal seal (see [assertNotSealed]): only a run in `failed` can be
-     * reopened, never `completed` or `cancelled`. It is fenced on the instance revision, idempotent on
-     * [idempotencyKey], audited by the router's `failed-step-retry` evidence, and refused for non-agent steps,
-     * outcome-managed runs (`stepExecutions`) and parent-Run fragments. The predecessor attempt and its evidence
-     * are never rewritten.
+     * This is the ONE governed exception to the terminal seal (see [assertNotSealed]): only a run whose status is
+     * `failed` can be reopened (the sequencer only marks a run `failed` once nothing else can progress), never a
+     * `completed` or `cancelled` one, and never a run that is still active. It is fenced on the instance revision,
+     * idempotent on [idempotencyKey], audited by the router's `failed-step-retry` evidence, and refused for
+     * non-agent steps, outcome-managed runs (`stepExecutions`) and parent-Run fragments. The predecessor attempt
+     * and its evidence are never rewritten.
+     *
+     * Every validation and the repository root resolution happen BEFORE the first write; the writes then run in
+     * this single transaction (evidence, successor, occupation transfer, instance CAS), so any refusal rolls all of
+     * them back.
      */
     @Transactional
     fun retryFailedStep(
@@ -1510,9 +1521,15 @@ class WorkflowService(
             throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "additionalContext must not exceed $MAX_RETRY_CONTEXT_LENGTH characters.")
         }
         val instance = activeInstance(scope, namespaceId, workflowId)
-        // The governed exception: a `failed` run is reopened by this command only. Every other terminal run
-        // (`completed`, `cancelled`) is rejected with WORKFLOW_SEALED exactly as before.
-        if (instance.instance["status"] != WorkflowStatuses.FAILED) assertNotSealed(instance)
+        // The governed exception: ONLY a `failed` run is reopened by this command. `completed` and `cancelled`
+        // stay sealed (WORKFLOW_SEALED); a run that is still active is refused, because re-arming a step in the
+        // middle of a live run would overwrite its status and queue a second concurrent execution.
+        val runStatus = instance.instance["status"] as? String
+        when {
+            runStatus == WorkflowStatuses.FAILED -> Unit
+            WorkflowStatuses.isTerminal(runStatus) -> assertNotSealed(instance)
+            else -> throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "Only a failed run can have a step retried.")
+        }
         if (instance.revision != expectedRevision) throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
         val definition = resolveDefinition(scope, instance)
         val step = definition.steps.firstOrNull { it.id == stepId }
@@ -1540,10 +1557,12 @@ class WorkflowService(
             throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The predecessor attempt has no frozen context and cannot be retried.")
         }
         val previousResult = previousResultOf(scope, namespaceId, workflowId, stepId, predecessor)
+        // A pure read, resolved before any write: an unresolvable root refuses the retry with nothing to undo.
+        val repoRoot = requireRepoRoot(namespaceId, actorId, "The namespace repository root could not be resolved; the retry was not queued.")
         val successorId = (needsResearchRouter ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Failed-step retry is unavailable."))
             .retryFailed(scope, namespaceId, workflowId, step, predecessor, previousResult, normalized, actorId)
         val rearmed = rearmStepAndSubmit(
-            scope, namespaceId, workflowId, instance, definition, stepId, expectedRevision, actorId,
+            scope, namespaceId, workflowId, instance, definition, stepId, expectedRevision, repoRoot,
             operation = "retry-failed-step:$successorId",
             missingStateMessage = "The failed step state is missing.",
         )
@@ -1894,9 +1913,10 @@ class WorkflowService(
         val runStatus = governedInstance?.instance?.get("status") as? String
         val runSealed = WorkflowStatuses.isTerminal(runStatus)
         // A failed agent step can be retried by the one governed exception to the seal: only a `failed` run
-        // (never `completed` / `cancelled`) of a standalone, non-outcome-managed workflow.
+        // (never `completed` / `cancelled`, never one that is still active) of a standalone, non-outcome-managed
+        // workflow.
         val retryRunEligible = governedInstance != null &&
-            runStatus != WorkflowStatuses.COMPLETED && runStatus != WorkflowStatuses.CANCELLED &&
+            runStatus == WorkflowStatuses.FAILED &&
             !governedInstance.projection.containsKey("stepExecutions") &&
             parentRunIdOf(governedInstance) == null
         val agentStepIds: Set<String>? = governedInstance?.let { current ->
@@ -2227,7 +2247,7 @@ class WorkflowService(
      * keeps rejecting transitions after any lifecycle recovery.
      *
      * Governed exception (the only one): [retryFailedStep] reopens a run whose status is
-     * `failed`, and never one that is `completed` or `cancelled`. It does not call this guard
+     * `failed`, and never one that is `completed`, `cancelled` or still active. It does not call this guard
      * for a `failed` run, because it is a human-triggered command that requires an authenticated
      * actor, is fenced on the instance revision, is idempotent, is audited by a dedicated
      * `failed-step-retry` evidence item and is limited to agent steps. Every other mutation of a

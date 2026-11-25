@@ -12,6 +12,7 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.IssuedCapability
+import io.whozoss.factory.agentattempt.domain.StepQuestionLimits
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
@@ -22,14 +23,14 @@ import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
 import io.whozoss.factory.workflow.persistence.EvidenceAppendResult
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
-import io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle
-import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
  * Unit tests of the governed HUMAN retry of a FAILED agent step ([NeedsResearchRouter.retryFailed]) and of the
- * successor identity it creates.
+ * successor identity it creates. The worktree hand-over itself is DurableAgentAttemptService's job and is proven
+ * against a real Neo4j in `FailedStepRetryIntegrationTest`; here the router is only checked to delegate
+ * to the transactional hand-over and never to release anything.
  */
 class NeedsResearchRouterRetryFailedTest {
 
@@ -40,8 +41,7 @@ class NeedsResearchRouterRetryFailedTest {
     private val evidence = mockk<WorkflowEvidenceRepository>()
     private val resultService = mockk<AgentStepResultService>()
     private val stepAttempts = mockk<AgentStepAttemptRepository>()
-    private val occupancy = mockk<WorktreeExecutionOccupancyService>()
-    private val router = NeedsResearchRouter(attempts, evidence, resultService, stepAttempts, occupancy)
+    private val router = NeedsResearchRouter(attempts, evidence, resultService, stepAttempts)
     private val mapper = ObjectMapper()
 
     private val step = WorkflowStepDefinition(
@@ -71,13 +71,6 @@ class NeedsResearchRouterRetryFailedTest {
         failureCode = "FACTORY_STEP_RESULT_FAILED",
     )
 
-    private val occupiedPredecessor = predecessor.copy(
-        occupancyResourceIdentity = "resource-1",
-        occupancyOwnerKind = "agent",
-        occupancyOwnerId = "agent-attempt:ns#wf#A#att-1",
-        occupancyGeneration = 3L,
-    )
-
     private val previous = FailedAttemptSummary(
         resultId = "result-1",
         failureCode = "FACTORY_STEP_RESULT_FAILED",
@@ -86,6 +79,7 @@ class NeedsResearchRouterRetryFailedTest {
 
     private val persistedEvidence = mutableListOf<WorkflowEvidenceItem>()
     private val registered = slot<DurableAgentAttempt>()
+    private val handedOverFrom = slot<DurableAgentAttempt>()
     private val identity = slot<AgentStepResultCapabilityIdentity>()
 
     private fun stubAll() {
@@ -98,7 +92,9 @@ class NeedsResearchRouterRetryFailedTest {
         every { stepAttempts.exists(scope, namespace, workflowId, "A", any()) } returns false
         every { stepAttempts.insert(scope, any()) } just Runs
         every { resultService.issue(scope, capture(identity), any(), any()) } returns IssuedCapability("new-token", "2026-01-01T00:15:00Z")
-        every { attempts.registerRetry(scope, capture(registered), any()) } answers { registered.captured }
+        every {
+            attempts.registerRetryTransferringOccupancy(scope, capture(handedOverFrom), capture(registered), any(), any())
+        } answers { registered.captured }
     }
 
     private fun retry(
@@ -177,19 +173,39 @@ class NeedsResearchRouterRetryFailedTest {
     }
 
     @Test
-    fun `the resumption context is valid JSON that round-trips the awkward text and links the audit`() {
+    fun `the resumption context holds identifiers only and links the audit item`() {
         stubAll()
-        val awkward = "Use \"main\" and C:\\repo \u00e9\u00e8\nline two"
 
-        retry(context = awkward)
+        retry(context = "Use \"main\" and C:\\repo")
 
         val context = mapper.readTree(registered.captured.resumptionContext)
         assertThat(context.path("reason").asText()).isEqualTo("FAILED_STEP_RETRY")
         assertThat(context.path("previousAttemptId").asText()).isEqualTo("att-1")
         assertThat(context.path("previousResultId").asText()).isEqualTo("result-1")
         assertThat(context.path("failureCode").asText()).isEqualTo("FACTORY_STEP_RESULT_FAILED")
-        assertThat(context.path("additionalContext").asText()).isEqualTo(awkward)
         assertThat(context.path("retryEvidenceId").asText()).isEqualTo(persistedEvidence.single().evidenceId)
+        // The engineer text and the previous summary live in the audit item and the brief, never in this JSON.
+        assertThat(context.has("additionalContext")).isFalse()
+        assertThat(context.has("summary")).isFalse()
+    }
+
+    @Test
+    fun `a 4000 character multibyte text and a huge previous summary can never exceed the byte bound`() {
+        stubAll()
+        // 4000 characters of 3 bytes each = 12 000 bytes, above RESUMPTION_CONTEXT_BYTES (8192).
+        val multibyte = "\u20ac".repeat(4_000)
+        assertThat(multibyte.toByteArray(Charsets.UTF_8).size).isGreaterThan(StepQuestionLimits.RESUMPTION_CONTEXT_BYTES)
+
+        retry(
+            result = FailedAttemptSummary("result-1", "FACTORY_STEP_RESULT_FAILED", "\u20ac".repeat(50_000)),
+            context = multibyte,
+        )
+
+        val context = registered.captured.resumptionContext!!
+        assertThat(context.toByteArray(Charsets.UTF_8).size).isLessThanOrEqualTo(StepQuestionLimits.RESUMPTION_CONTEXT_BYTES)
+        // The full text is still durably audited and handed to the agent.
+        assertThat(persistedEvidence.single().facts["additionalContext"]).isEqualTo(multibyte)
+        assertThat(registered.captured.brief).contains(multibyte)
     }
 
     @Test
@@ -212,55 +228,17 @@ class NeedsResearchRouterRetryFailedTest {
     }
 
     @Test
-    fun `the predecessor attempt is strictly untouched`() {
+    fun `the successor is registered through the transactional hand-over of the failed predecessor and nothing else`() {
         stubAll()
 
         retry()
 
-        verify(exactly = 1) { attempts.registerRetry(scope, any(), any()) }
+        // The predecessor reaches the hand-over untouched, so that it can fence the transfer on its exact handle.
+        assertThat(handedOverFrom.captured).isEqualTo(predecessor)
+        verify(exactly = 1) { attempts.registerRetryTransferringOccupancy(scope, any(), any(), any(), any()) }
+        // A plain registerRetry, finalize or supersede would bypass or rewrite the hand-over: none must happen.
+        verify(exactly = 0) { attempts.registerRetry(any(), any(), any()) }
         verify(exactly = 0) { attempts.finalize(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
         verify(exactly = 0) { attempts.supersede(any(), any(), any(), any(), any(), any(), any()) }
-    }
-
-    @Test
-    fun `a complete occupancy handle is released owner-fenced before the successor is registered`() {
-        stubAll()
-        val handle = slot<WorktreeExecutionOccupancyHandle>()
-        every { occupancy.releaseOwned(capture(handle)) } returns true
-
-        retry(from = occupiedPredecessor)
-
-        assertThat(handle.captured.resourceIdentity).isEqualTo("resource-1")
-        assertThat(handle.captured.ownerKind).isEqualTo("agent")
-        assertThat(handle.captured.ownerId).isEqualTo("agent-attempt:ns#wf#A#att-1")
-        assertThat(handle.captured.generation).isEqualTo(3L)
-        assertThat(handle.captured.ownerScope).isEqualTo(scope)
-        assertThat(persistedEvidence.single().facts["releasedOccupancy"]).isEqualTo(true)
-        io.mockk.verifyOrder {
-            occupancy.releaseOwned(any())
-            attempts.registerRetry(scope, any(), any())
-        }
-    }
-
-    @Test
-    fun `nothing is released when the predecessor carries no or only a partial handle`() {
-        stubAll()
-
-        retry(from = predecessor)
-        retry(from = occupiedPredecessor.copy(occupancyGeneration = null))
-
-        verify(exactly = 0) { occupancy.releaseOwned(any()) }
-        assertThat(persistedEvidence.map { it.facts["releasedOccupancy"] }).containsOnly(false)
-    }
-
-    @Test
-    fun `a stale handle is reported as not released and the retry still proceeds`() {
-        stubAll()
-        every { occupancy.releaseOwned(any()) } returns false
-
-        val successorId = retry(from = occupiedPredecessor)
-
-        assertThat(registered.captured.attemptId).isEqualTo(successorId)
-        assertThat(persistedEvidence.single().facts["releasedOccupancy"]).isEqualTo(false)
     }
 }
