@@ -430,12 +430,6 @@
       }
     }
 
-    // An agent's turn takes the whole width, with no bubble (see the bubble below): its text is the page.
-    &--ai {
-      width: 100%;
-      max-width: 100%;
-    }
-
     &--streaming {
       opacity: 0.95;
     }
@@ -580,13 +574,6 @@
     .case-chat__turn--user & {
       color: var(--color-accent-700);
     }
-
-    // With no bubble to sit in, the time goes under the text of an agent's reply.
-    .case-chat__turn--ai & {
-      position: static;
-      display: block;
-      margin-top: 2px;
-    }
   }
 
   // An instrument strip under the bubble, not inside it: the figures are about the answer, not
@@ -700,14 +687,6 @@
       padding: 8px 12px 20px;
       font-size: 14px;
       line-height: 1.5;
-    }
-
-    // An agent's reply has no bubble, like in ChatGPT or LibreChat: bubbles are for the messages between people.
-    .case-chat__turn--ai & {
-      padding: 0;
-      background: none;
-      border-left: none;
-      border-radius: 0;
     }
 
     // Plain-text content (question / answer): keep the author's line breaks
