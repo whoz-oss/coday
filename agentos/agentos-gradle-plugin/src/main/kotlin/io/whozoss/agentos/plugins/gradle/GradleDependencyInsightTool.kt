@@ -3,6 +3,9 @@ package io.whozoss.agentos.plugins.gradle
 import io.whozoss.agentos.sdk.tool.BlockingTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.sdk.tool.ToolSchema
+import io.whozoss.agentos.sdk.tool.ToolTimeout
+import io.whozoss.agentos.sdk.tool.prefixedToolName
 import mu.KLogging
 import kotlin.time.Duration.Companion.seconds
 
@@ -66,7 +69,7 @@ Returns: the condensed report (at most $MAX_LINES lines), or FAILURE (exit N) fo
                         ),
                     "timeoutSeconds" to
                         ToolSchema.integer(
-                            ToolTimeout.PARAM_DESCRIPTION +
+                            TIMEOUT_PARAM_DESCRIPTION +
                                 "Size it to the scope: about 60 for one module.",
                         ),
                 ),

@@ -3,6 +3,9 @@ package io.whozoss.agentos.plugins.gradle
 import io.whozoss.agentos.sdk.tool.BlockingTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.sdk.tool.ToolSchema
+import io.whozoss.agentos.sdk.tool.ToolTimeout
+import io.whozoss.agentos.sdk.tool.prefixedToolName
 import mu.KLogging
 import java.io.File
 import java.io.IOException
@@ -78,7 +81,7 @@ Returns: SUCCESS or FAILURE, error/warning counts, and structured diagnostics (f
                         ),
                     "timeoutSeconds" to
                         ToolSchema.integer(
-                            ToolTimeout.PARAM_DESCRIPTION +
+                            TIMEOUT_PARAM_DESCRIPTION +
                                 "Size it to the scope: about 60 for one module, ${ToolTimeout.MAX_SECONDS} for the whole project.",
                         ),
                 ),
