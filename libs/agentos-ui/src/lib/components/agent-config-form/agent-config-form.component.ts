@@ -228,7 +228,8 @@ export class AgentConfigFormComponent implements OnInit {
     delegationTimeoutSeconds: new FormControl<number | null>(null, {
       validators: [Validators.min(1), Validators.max(2147483647), Validators.pattern(/^\d+$/)],
     }),
-    enabled: new FormControl<boolean>(false, { nonNullable: true }),
+    // A new agent is enabled unless the user unticks it; edit mode overwrites it with the stored value.
+    enabled: new FormControl<boolean>(true, { nonNullable: true }),
     loopConfig: new FormControl<string | null>(null, { validators: [AgentConfigFormComponent.jsonValidator] }),
   })
 
