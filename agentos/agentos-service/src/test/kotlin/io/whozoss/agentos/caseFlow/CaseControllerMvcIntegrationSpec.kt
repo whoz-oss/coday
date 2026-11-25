@@ -1,8 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
 import io.kotest.matchers.shouldBe
-
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.namespace.Namespace
@@ -65,8 +63,6 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
     @Autowired lateinit var caseService: CaseService
     @Autowired lateinit var caseEventService: CaseEventService
     @Autowired lateinit var userRepository: UserRepository
-    @Autowired lateinit var caseEventService: io.whozoss.agentos.caseEvent.CaseEventService
-    @Autowired lateinit var caseService: CaseService
     @Autowired lateinit var permissionNodeRepository: PermissionNodeNeo4jRepository
     @Autowired lateinit var aiProviderService: AiProviderService
     @Autowired lateinit var aiModelService: AiModelService

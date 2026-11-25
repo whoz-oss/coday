@@ -64,6 +64,8 @@ import { REWIND_TOOLTIP } from '../message-actions/message-actions.component'
 import { hueOf } from './case-presence'
 import { CaseChatComponent } from './case-chat.component'
 
+/* eslint-disable @angular-eslint/component-selector -- the stubs keep the selector of the element they stand in for */
+
 /*
  * Stand-ins for the parts of the chat around the timeline, used by the few tests that render the template: the
  * drawer (Material sidenav and breakpoints), the panels that call their own APIs (files, usage), and the composer
@@ -139,6 +141,8 @@ class StubVoiceRecorderComponent {
   readonly sendKey = input('')
   readonly keyPressed = output<KeyboardEvent>()
 }
+
+/* eslint-enable @angular-eslint/component-selector */
 
 /**
  * The component is created WITHOUT rendering (no attachView / detectChanges): ngOnInit never
@@ -1865,7 +1869,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       const ref = makeComponent()
       ref.instance['_sseStatus'].set('KILLED')
       const stop = ref.instance['caseMenuItems']().find((i: { key: string }) => i.key === 'stop')
-      expect(stop.disabled).toBe(true)
+      expect(stop?.disabled).toBe(true)
       ref.instance['onCaseMenuAction']('stop')
       expect(ref.instance['confirmingKill']()).toBe(false)
     })
@@ -2380,7 +2384,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     let caseState: { addCase: jest.Mock; updateCaseTitle: jest.Mock; updateCaseStatus: jest.Mock }
 
     beforeEach(() => {
-      caseState = TestBed.inject(CaseStateService) as typeof caseState
+      caseState = TestBed.inject(CaseStateService) as unknown as typeof caseState
     })
 
     it('POSTs to the reopen endpoint, clears terminal state, and notifies CaseStateService', () => {
@@ -2472,9 +2476,6 @@ describe('CaseChatComponent — submit with attachments', () => {
       it('superseded KILLED produces no terminal notice; only the latest CaseStatusEvent does', () => {
         const ref = makeComponent()
         try {
-          const emit = (type: string, id: string, fields: object = {}) =>
-            source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
-
           const original = globalThis.EventSource
           const source = Object.assign(new EventTarget(), { close: jest.fn() })
           globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
@@ -2583,7 +2584,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     const extractedOutput = ref.instance['extractToolOutput']({
       requestId: toolRequestId,
       toolName: request.toolName,
-      args: request.args,
+      args: request.args ?? null,
       response,
     })
     expect(extractedOutput).not.toBeNull()
@@ -2937,6 +2938,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       metadata,
       actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'You' },
       content: [],
+      startsAgentTurn: true,
     })
     const notices = (ref: ComponentRef<CaseChatComponent>): string[] =>
       ref.instance['timeline']()
@@ -3015,6 +3017,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       metadata,
       actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'You' },
       content: [],
+      startsAgentTurn: true,
     })
 
     it('shows a run stopped at its limit outside technical mode, unlike a run that completed', () => {
@@ -4025,15 +4028,6 @@ describe('CaseChatComponent — submit with attachments', () => {
     const metadata = { id: '', created: '', modified: '', removed: false }
     const track = { stop: jest.fn() }
     let voiceApi: { postVoiceMessage: jest.Mock; capabilityVoiceMessage: jest.Mock }
-    let recorder: {
-      state: string
-      ondataavailable: ((event: { data: Blob }) => void) | null
-      onstop: (() => void) | null
-      onerror: (() => void) | null
-      start: jest.Mock
-      stop: jest.Mock
-    }
-
     const flush = async () => {
       for (let i = 0; i < 20; i++) await Promise.resolve()
     }
@@ -4062,7 +4056,6 @@ describe('CaseChatComponent — submit with attachments', () => {
               r.onstop?.()
             }),
           }
-          recorder = r
           return r as unknown as MediaRecorder
         },
       }
