@@ -47,5 +47,9 @@ export const routes: Routes = [
       import('./features/workflows/workflow-detail-page.component').then((m) => m.WorkflowDetailPageComponent),
   },
   { path: 'reglages', pathMatch: 'full', redirectTo: 'workflows' },
+  {
+    path: 'admin',
+    loadComponent: () => import('./features/admin/admin-page.component').then((m) => m.AdminPageComponent),
+  },
   { path: '**', redirectTo: 'workstreams' },
 ]
