@@ -541,19 +541,6 @@ export class FactoryApiService {
     )
   }
 
-  /** POST `/api/factory/workflows/:id/retries` (opens a retry for a blocked step). */
-  openRetry(
-    workflowId: string,
-    payload: { stepId: string; expectedRevision?: number; reasonCode?: string },
-    namespaceId?: string
-  ): Observable<unknown> {
-    return this.post<unknown>(
-      `/api/factory/workflows/${encodeURIComponent(workflowId)}/retries`,
-      { ...payload, namespaceId: requireNamespaceId(namespaceId ?? '') },
-      namespaceId
-    )
-  }
-
   /** POST `/api/factory/workflows/:id/attempts/:attemptId/cancel`. */
   cancelAttempt(
     workflowId: string,

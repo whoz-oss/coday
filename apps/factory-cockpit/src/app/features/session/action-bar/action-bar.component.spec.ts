@@ -223,7 +223,11 @@ describe('ActionBarComponent', () => {
   })
 
   it('shows the retry feedback only on the matching step', () => {
-    fixture.componentRef.setInput('retryFeedback', { stepId: 'build', kind: 'conflict', message: 'The workflow has changed.' })
+    fixture.componentRef.setInput('retryFeedback', {
+      stepId: 'build',
+      kind: 'conflict',
+      message: 'The workflow has changed.',
+    })
     const host = render([
       { type: 'retry', stepId: 'build', expectedRevision: 7 },
       { type: 'retry', stepId: 'deploy', expectedRevision: 7 },

@@ -4,6 +4,8 @@ import { MatIconModule } from '@angular/material/icon'
 
 import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../../core/models'
 import { buildAgentOsCaseUrl } from '../../../core/factory.store'
+import { StepFeedback } from '../../../core/step-command-feedback'
+import { StepContextFormComponent } from '../step-context-form/step-context-form.component'
 
 export interface ReplyIntent {
   interactionId: string
@@ -29,14 +31,6 @@ export interface ResearchResumptionIntent {
   additionalContext: string
 }
 
-/** Maximum length of the optional operator text of a failed-step retry. */
-const RETRY_CONTEXT_MAX = 4000
-
-/** Draft key of a retry textarea, kept apart from the research-resumption draft of the same step. */
-function retryDraftKey(stepId: string): string {
-  return `retry:${stepId}`
-}
-
 export interface CancelIntent {
   attemptId: string
   expectedRevision?: number
@@ -58,7 +52,7 @@ export interface ContinueCostIntent {
  */
 @Component({
   selector: 'sf-action-bar',
-  imports: [MatButtonModule, MatIconModule],
+  imports: [MatButtonModule, MatIconModule, StepContextFormComponent],
   templateUrl: './action-bar.component.html',
   styleUrl: './action-bar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -82,16 +76,8 @@ export class ActionBarComponent {
   readonly questionFeedback = input<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(null)
   readonly resumingResearchStepId = input<string | null>(null)
   readonly retryingStepId = input<string | null>(null)
-  readonly retryFeedback = input<{
-    stepId: string
-    kind: 'conflict' | 'collision' | 'error'
-    message: string
-  } | null>(null)
-  readonly researchResumptionFeedback = input<{
-    stepId: string
-    kind: 'conflict' | 'collision' | 'error'
-    message: string
-  } | null>(null)
+  readonly retryFeedback = input<StepFeedback | null>(null)
+  readonly researchResumptionFeedback = input<StepFeedback | null>(null)
 
   readonly reply = output<ReplyIntent>()
   readonly agentQuestionAnswered = output<AgentQuestionAnswerIntent>()
@@ -128,9 +114,8 @@ export class ActionBarComponent {
   )
   protected readonly hasBlockers = computed(() => this.blockers().length > 0)
 
-  /** Draft texts, keyed by interaction or step id. */
+  /** Draft texts of the replies and agent questions, keyed by interaction or question id. */
   private readonly drafts = signal<Record<string, string>>({})
-  protected readonly researchTouched = signal<Record<string, boolean>>({})
 
   protected draftFor(interactionId: string): string {
     return this.drafts()[interactionId] ?? ''
@@ -268,44 +253,13 @@ export class ActionBarComponent {
     this.reply.emit(intent)
   }
 
-  protected requestRetry(action: AllowedAction): void {
+  protected requestRetry(action: AllowedAction, additionalContext: string): void {
     if (!action.stepId || action.expectedRevision === undefined || this.retryingStepId()) return
-    // The operator text is optional: an empty draft is a valid retry. Only the length bound is enforced.
-    const additionalContext = this.draftFor(retryDraftKey(action.stepId)).trim()
-    if (additionalContext.length > RETRY_CONTEXT_MAX) return
-    this.retryRequested.emit({
-      stepId: action.stepId,
-      expectedRevision: action.expectedRevision,
-      additionalContext,
-    })
+    this.retryRequested.emit({ stepId: action.stepId, expectedRevision: action.expectedRevision, additionalContext })
   }
 
-  protected retryDraftKey(stepId: string): string {
-    return retryDraftKey(stepId)
-  }
-
-  protected retryContextLength(stepId: string): number {
-    return this.draftFor(retryDraftKey(stepId)).length
-  }
-
-  protected retryContextTooLong(stepId: string): boolean {
-    return this.draftFor(retryDraftKey(stepId)).trim().length > RETRY_CONTEXT_MAX
-  }
-
-  protected markResearchTouched(stepId: string): void {
-    this.researchTouched.update((current) => ({ ...current, [stepId]: true }))
-  }
-
-  protected researchContextValid(stepId: string): boolean {
-    const length = this.draftFor(stepId).trim().length
-    return length >= 1 && length <= 4000
-  }
-
-  protected submitResearchResumption(action: AllowedAction): void {
+  protected submitResearchResumption(action: AllowedAction, additionalContext: string): void {
     if (!action.stepId || action.expectedRevision === undefined || this.resumingResearchStepId()) return
-    this.researchTouched.update((current) => ({ ...current, [action.stepId!]: true }))
-    const additionalContext = this.draftFor(action.stepId).trim()
-    if (!additionalContext || additionalContext.length > 4000) return
     this.researchResumptionRequested.emit({
       stepId: action.stepId,
       expectedRevision: action.expectedRevision,

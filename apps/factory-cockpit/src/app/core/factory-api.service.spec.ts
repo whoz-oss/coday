@@ -484,26 +484,6 @@ describe('FactoryApiService', () => {
       http.expectNone(() => true)
     })
 
-    it('openRetry posts to /retries', () => {
-      let result: unknown
-      service
-        .openRetry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' }, 'ns-1')
-        .subscribe((r) => (result = r))
-
-      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/retries')
-      expect(request.request.method).toBe('POST')
-      expect(request.request.body).toEqual({
-        stepId: 'build',
-        expectedRevision: 7,
-        reasonCode: 'human_retry',
-        namespaceId: 'ns-1',
-      })
-      expect(request.request.params.get('namespaceId')).toBe('ns-1')
-      request.flush({ data: { ok: true } })
-
-      expect(result).toEqual({ ok: true })
-    })
-
     it('cancelAttempt posts to /attempts/:id/cancel and encodes ids', () => {
       service.cancelAttempt('wf/1', 'a/2', { expectedRevision: 4, reason: 'operator' }, 'ns-1').subscribe()
 

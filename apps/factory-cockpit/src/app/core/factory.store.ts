@@ -47,6 +47,7 @@ import {
 } from './models'
 import { SESSION_872641A8 } from './mock-data'
 import { SseService } from './sse.service'
+import { StepFeedback, stepCommandFeedback } from './step-command-feedback'
 
 /**
  * Build a relative AgentOS deep-link URL (`/agentos/home?ns=…&case=…`) for a case.
@@ -120,18 +121,10 @@ export class FactoryStore implements OnDestroy {
     null
   )
   readonly resumingResearchStepId = signal<string | null>(null)
-  readonly researchResumptionFeedback = signal<{
-    stepId: string
-    kind: 'conflict' | 'collision' | 'error'
-    message: string
-  } | null>(null)
+  readonly researchResumptionFeedback = signal<StepFeedback | null>(null)
   private readonly researchResumptionKeys = new Map<string, { payload: string; key: string }>()
   readonly retryingStepId = signal<string | null>(null)
-  readonly retryFeedback = signal<{
-    stepId: string
-    kind: 'conflict' | 'collision' | 'error'
-    message: string
-  } | null>(null)
+  readonly retryFeedback = signal<StepFeedback | null>(null)
   private readonly retryKeys = new Map<string, { payload: string; key: string }>()
 
   /** @deprecated Use {@link runs}. Kept as an alias for compatibility. */
@@ -1087,18 +1080,8 @@ export class FactoryStore implements OnDestroy {
         },
         error: (error: FactoryApiError) => {
           this.retryingStepId.set(null)
-          const conflict = error.status === 409
-          const collision = conflict && /idempot/i.test(`${error.code} ${error.message}`)
-          this.retryFeedback.set({
-            stepId: payload.stepId,
-            kind: collision ? 'collision' : conflict ? 'conflict' : 'error',
-            message: collision
-              ? 'The submission key already exists with different content. The retry was not resent.'
-              : conflict
-                ? 'The workflow has changed. Allowed actions have been refreshed; review the new state.'
-                : error.message,
-          })
-          if (conflict) this.refreshAfterAction(workflowId)
+          this.retryFeedback.set(stepCommandFeedback(payload.stepId, error, 'retry'))
+          if (error.status === 409) this.refreshAfterAction(workflowId)
         },
       })
   }
@@ -1146,18 +1129,8 @@ export class FactoryStore implements OnDestroy {
         },
         error: (error: FactoryApiError) => {
           this.resumingResearchStepId.set(null)
-          const conflict = error.status === 409
-          const collision = conflict && /idempot/i.test(`${error.code} ${error.message}`)
-          this.researchResumptionFeedback.set({
-            stepId: payload.stepId,
-            kind: collision ? 'collision' : conflict ? 'conflict' : 'error',
-            message: collision
-              ? 'The submission key already exists with different content. The resumption was not resent.'
-              : conflict
-                ? 'The workflow has changed. Allowed actions have been refreshed; review the new state.'
-                : error.message,
-          })
-          if (conflict) this.refreshAfterAction(workflowId)
+          this.researchResumptionFeedback.set(stepCommandFeedback(payload.stepId, error, 'resumption'))
+          if (error.status === 409) this.refreshAfterAction(workflowId)
         },
       })
   }

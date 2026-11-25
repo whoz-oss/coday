@@ -236,114 +236,39 @@
 
       @for (action of retryActions(); track action.stepId ?? $index) {
         @if (action.stepId && action.expectedRevision !== undefined) {
-          <form class="action-card failed-step-retry" (submit)="$event.preventDefault(); requestRetry(action)">
-            <div class="action-title">
-              <mat-icon aria-hidden="true">refresh</mat-icon>
-              <span>{{ action.label ?? 'Retry failed step' }}</span>
-            </div>
-            <p class="action-prompt sf-muted">
-              Starts a new attempt of the same step in the same case. Add optional information for the agent.
-            </p>
-            <label class="research-label" [for]="'retry-context-' + action.stepId">Additional information (optional)</label>
-            <textarea
-              class="research-context"
-              [id]="'retry-context-' + action.stepId"
-              rows="4"
-              maxlength="4000"
-              [attr.aria-describedby]="'retry-help-' + action.stepId"
-              [disabled]="retryingStepId() !== null"
-              [value]="draftFor(retryDraftKey(action.stepId))"
-              (input)="setDraft(retryDraftKey(action.stepId!), $any($event.target).value)"
-            ></textarea>
-            <span class="research-help" [id]="'retry-help-' + action.stepId">
-              {{ retryContextLength(action.stepId) }} / 4000 characters
-            </span>
-            @if (retryContextTooLong(action.stepId)) {
-              <p class="action-feedback action-feedback--error" role="alert">Enter at most 4000 characters.</p>
-            }
-            @if (retryFeedback(); as feedback) {
-              @if (feedback.stepId === action.stepId) {
-                <p
-                  class="action-feedback"
-                  [class.action-feedback--conflict]="feedback.kind === 'conflict'"
-                  [class.action-feedback--error]="feedback.kind !== 'conflict'"
-                  role="alert"
-                >
-                  {{ feedback.message }}
-                </p>
-              }
-            }
-            <div class="action-row">
-              <button
-                mat-flat-button
-                class="sf-primary"
-                type="submit"
-                [disabled]="retryingStepId() !== null || retryContextTooLong(action.stepId)"
-              >
-                {{ retryingStepId() === action.stepId ? 'Retrying…' : 'Retry step' }}
-              </button>
-            </div>
-          </form>
+          <sf-step-context-form
+            cardClass="failed-step-retry"
+            icon="refresh"
+            [stepId]="action.stepId"
+            [title]="action.label ?? 'Retry failed step'"
+            help="Starts a new attempt of the same step in the same case. Add optional information for the agent."
+            fieldLabel="Additional information (optional)"
+            submitLabel="Retry step"
+            busyLabel="Retrying…"
+            [inFlightStepId]="retryingStepId()"
+            [feedback]="retryFeedback()"
+            (contextSubmitted)="requestRetry(action, $event)"
+          />
         }
       }
 
       @for (action of researchResumptionActions(); track action.stepId ?? $index) {
         @if (action.stepId && action.expectedRevision !== undefined) {
-          <form
-            class="action-card research-resumption"
-            (submit)="$event.preventDefault(); submitResearchResumption(action)"
-          >
-            <div class="action-title">
-              <mat-icon aria-hidden="true">manage_search</mat-icon>
-              <span>{{ action.label ?? 'Complete and resume' }}</span>
-            </div>
-            <p class="action-prompt sf-muted">
-              Describe the information or access you corrected out of band. This action starts a new attempt of the
-              same step; it does not repair tools automatically.
-            </p>
-            <label class="research-label" [for]="'research-context-' + action.stepId">Additional context</label>
-            <textarea
-              class="research-context"
-              [id]="'research-context-' + action.stepId"
-              rows="5"
-              minlength="1"
-              maxlength="4000"
-              required
-              [attr.aria-describedby]="'research-help-' + action.stepId"
-              [disabled]="resumingResearchStepId() !== null"
-              [value]="draftFor(action.stepId)"
-              (input)="setDraft(action.stepId!, $any($event.target).value)"
-              (blur)="markResearchTouched(action.stepId!)"
-            ></textarea>
-            <span class="research-help" [id]="'research-help-' + action.stepId">
-              {{ draftFor(action.stepId).length }} / 4000 characters
-            </span>
-            @if (researchTouched()[action.stepId] && !researchContextValid(action.stepId)) {
-              <p class="action-feedback action-feedback--error" role="alert">Enter between 1 and 4000 characters.</p>
-            }
-            @if (researchResumptionFeedback(); as feedback) {
-              @if (feedback.stepId === action.stepId) {
-                <p
-                  class="action-feedback"
-                  [class.action-feedback--conflict]="feedback.kind === 'conflict'"
-                  [class.action-feedback--error]="feedback.kind !== 'conflict'"
-                  role="alert"
-                >
-                  {{ feedback.message }}
-                </p>
-              }
-            }
-            <div class="action-row">
-              <button
-                mat-flat-button
-                class="sf-primary"
-                type="submit"
-                [disabled]="resumingResearchStepId() !== null || !researchContextValid(action.stepId)"
-              >
-                {{ resumingResearchStepId() === action.stepId ? 'Sending…' : 'Complete and resume' }}
-              </button>
-            </div>
-          </form>
+          <sf-step-context-form
+            cardClass="research-resumption"
+            icon="manage_search"
+            [stepId]="action.stepId"
+            [title]="action.label ?? 'Complete and resume'"
+            help="Describe the information or access you corrected out of band. This action starts a new attempt of the same step; it does not repair tools automatically."
+            fieldLabel="Additional context"
+            submitLabel="Complete and resume"
+            busyLabel="Sending…"
+            [required]="true"
+            [rows]="5"
+            [inFlightStepId]="resumingResearchStepId()"
+            [feedback]="researchResumptionFeedback()"
+            (contextSubmitted)="submitResearchResumption(action, $event)"
+          />
         }
       }
 
