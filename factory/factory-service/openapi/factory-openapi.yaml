@@ -483,6 +483,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataEnvelopeOracleRunResponse"
+  /api/factory/workflows/{workflowId}/steps/{stepId}/failed-step-retries:
+    post:
+      tags:
+      - workflows
+      summary: Retry a failed agent step as a new attempt of the same run and case.
+      operationId: retryFailedStepWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: stepId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
   /api/factory/workflows/{workflowId}/start:
     post:
       tags:

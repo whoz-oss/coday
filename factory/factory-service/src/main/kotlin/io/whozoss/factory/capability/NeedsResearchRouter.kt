@@ -17,7 +17,10 @@ import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
 import io.whozoss.factory.workflow.persistence.EvidenceAppendResult
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
+import io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle
+import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
 import mu.KotlinLogging
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.stereotype.Service
 import java.nio.charset.StandardCharsets
 import java.util.UUID
@@ -41,7 +44,27 @@ data class NeedsResearchRoutingOutcome(
 )
 
 /**
- * Automatic NEEDS_RESEARCH → Searcher routing (Lot E) and governed human resumption.
+ * Bounded view of the result of a failed attempt, handed to [NeedsResearchRouter.retryFailed].
+ *
+ *  - [resultId] is the accepted structured result, when one exists;
+ *  - [failureCode] is the durable failure code of the attempt, when it has one;
+ *  - [summary] is the business summary (or the failure code and message read from the
+ *    `agent-result` evidence). A blank or `null` summary means the previous result could not be retrieved;
+ *  - [findings] are the structured findings of the accepted result.
+ */
+data class FailedAttemptSummary(
+    val resultId: String?,
+    val failureCode: String?,
+    val summary: String?,
+    val findings: List<*> = emptyList<Any?>(),
+) {
+    /** Whether anything about the previous result could be retrieved. */
+    val available: Boolean get() = !summary.isNullOrBlank()
+}
+
+/**
+ * Governed successor attempts: automatic NEEDS_RESEARCH → Searcher routing (Lot E), governed human
+ * resumption and governed human retry of a failed agent step.
  *
  * When an agent step's authoritative result is `NEEDS_RESEARCH`, the engine must
  * NOT wait for a human and must NEVER seal the run as a terminal `FAIL`. Instead
@@ -67,6 +90,11 @@ data class NeedsResearchRoutingOutcome(
  *    those of the successor, enriched with the supplemental context;
  *  - the predecessor's case family, environment link and amendment pin.
  *
+ * [retryFailed] is the human retry of a FAILED agent step. It registers the same kind of successor
+ * (same case family, own capability, brief rewritten with the successor ids) and enriches the brief with
+ * the previous attempt's result and the engineer's optional text. Renaming this class to a neutral
+ * successor-attempt name is out of scope.
+ *
  * The Searcher turn itself is injected as a [runSearcher] callback so the router
  * stays free of the AgentOS transport and is trivially testable.
  */
@@ -81,6 +109,13 @@ class NeedsResearchRouter(
      * Optional so narrow unit compositions can omit it.
      */
     private val stepAttempts: AgentStepAttemptRepository? = null,
+    /**
+     * Releases the physical-worktree occupation a failed attempt kept (fail-closed, see
+     * `releaseAgentWorktreeIfResultAccepted`) so the successor is not deferred with `AGENT_WORKTREE_OCCUPIED`.
+     * Optional so narrow unit compositions can omit it.
+     */
+    @param:Autowired(required = false)
+    private val occupancyService: WorktreeExecutionOccupancyService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -333,6 +368,150 @@ class NeedsResearchRouter(
     }
 
     /**
+     * Human, governed retry of a FAILED agent step as attempt `N+1`, in the same case family.
+     *
+     * The explicit human decision stands in for the accepted result that would normally release the
+     * worktree: when the predecessor carries a complete occupancy handle it is released first (owner- and
+     * generation-fenced), and the retry evidence records `releasedOccupancy`. The predecessor attempt and its
+     * evidence are never rewritten. Returns the successor attempt id.
+     */
+    fun retryFailed(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        predecessor: DurableAgentAttempt,
+        previousResult: FailedAttemptSummary,
+        additionalContext: String,
+        actorId: String,
+    ): String {
+        val nextNumber = attempts.nextAttemptNumber(scope, namespaceId, workflowId, step.id)
+        val successorId = CapabilityExecutionService.retryAttemptId(workflowId, step.id, nextNumber)
+        val releasedOccupancy = releasePredecessorOccupancy(scope, predecessor)
+
+        val evidenceId = persistedEvidenceId(
+            evidence.append(
+                scope, namespaceId, workflowId,
+                WorkflowEvidenceItem(
+                    evidenceId = UUID.randomUUID().toString(),
+                    namespaceId = namespaceId,
+                    workflowId = workflowId,
+                    stepId = step.id,
+                    kind = FAILED_STEP_RETRY_EVIDENCE_KIND,
+                    outcome = "accepted",
+                    source = mapOf("kind" to "factory-failed-step-retry", "actorId" to actorId),
+                    facts = mapOf(
+                        "attemptId" to predecessor.attemptId,
+                        "successorAttemptId" to successorId,
+                        "previousFailureCode" to previousResult.failureCode,
+                        "previousResultId" to previousResult.resultId,
+                        "additionalContext" to additionalContext,
+                        "releasedOccupancy" to releasedOccupancy,
+                    ),
+                    idempotencyKey = "failed-step-retry:$successorId",
+                    createdAt = null,
+                ),
+            ),
+        )
+        val context = retryContextJson(predecessor, previousResult, additionalContext, evidenceId)
+        val brief = successorBrief(predecessor, successorId, supplement = retrySupplement(previousResult, additionalContext))
+        attempts.registerRetry(
+            scope,
+            DurableAgentAttempt(
+                attemptId = successorId,
+                caseId = predecessor.caseId,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = step.id,
+                attemptNumber = nextNumber,
+                agentName = predecessor.agentName,
+                capabilityToken = issueSuccessorCapability(scope, predecessor, successorId, brief, namespaceId, workflowId, step.id),
+                brief = brief,
+                environmentRef = predecessor.environmentRef,
+                expectedEnvironmentRevision = predecessor.expectedEnvironmentRevision,
+                resumptionContext = context,
+                contextEnvelope = successorEnvelope(predecessor, brief, nextNumber),
+                expectedAmendmentSeq = predecessor.expectedAmendmentSeq,
+                rootCaseId = predecessor.rootCaseId,
+                parentCaseId = predecessor.parentCaseId,
+            ),
+        )
+        return successorId
+    }
+
+    /**
+     * Releases the occupation held by a failed predecessor, only when it carries a complete handle.
+     * Returns whether a release was actually performed (a stale handle is not an error: the retry proceeds).
+     */
+    private fun releasePredecessorOccupancy(scope: TenantScope, predecessor: DurableAgentAttempt): Boolean {
+        val service = occupancyService ?: return false
+        val resourceIdentity = predecessor.occupancyResourceIdentity ?: return false
+        val ownerKind = predecessor.occupancyOwnerKind ?: return false
+        val ownerId = predecessor.occupancyOwnerId ?: return false
+        val generation = predecessor.occupancyGeneration ?: return false
+        return service.releaseOwned(
+            WorktreeExecutionOccupancyHandle(
+                environmentId = predecessor.environmentRef ?: "",
+                resourceIdentity = resourceIdentity,
+                ownerScope = scope,
+                ownerKind = ownerKind,
+                ownerId = ownerId,
+                generation = generation,
+            ),
+        )
+    }
+
+    /** Brief section handed to the retried turn. The engineer text is fenced, never interpreted as tool instructions. */
+    private fun retrySupplement(previousResult: FailedAttemptSummary, additionalContext: String): String =
+        buildString {
+            appendLine("## Retry of a failed attempt")
+            appendLine("A previous attempt of this step failed and an engineer asked to retry it in the same case.")
+            if (previousResult.available) {
+                appendLine("Previous result: ${previousResult.summary!!.take(SUMMARY_IN_BRIEF)}")
+            } else {
+                appendLine(RESULT_UNAVAILABLE_SENTENCE)
+            }
+            if (additionalContext.isNotBlank()) {
+                appendLine("Information supplied by the engineer:")
+                appendLine("<<<")
+                appendLine(additionalContext)
+                appendLine(">>>")
+            }
+            append("Fix the cause of the failure and complete the same step. Submit your result with the identifiers above; ")
+            append("do not reuse identifiers of the previous attempt.")
+        }
+
+    /**
+     * Bounded resumption context of a failed-step retry, serialized with Jackson. The previous summary is
+     * shrunk first when the byte bound would be exceeded; the engineer text is never silently truncated.
+     */
+    private fun retryContextJson(
+        predecessor: DurableAgentAttempt,
+        previousResult: FailedAttemptSummary,
+        additionalContext: String,
+        retryEvidenceId: String,
+    ): String {
+        fun build(summaryLimit: Int): String = mapper.writeValueAsString(
+            linkedMapOf(
+                "reason" to "FAILED_STEP_RETRY",
+                "previousAttemptId" to predecessor.attemptId,
+                "previousResultId" to previousResult.resultId,
+                "failureCode" to previousResult.failureCode,
+                "summary" to previousResult.summary?.take(summaryLimit),
+                "additionalContext" to additionalContext,
+                "retryEvidenceId" to retryEvidenceId,
+            ),
+        )
+        for (limit in intArrayOf(SUMMARY_LIMIT, 500, 0)) {
+            val json = build(limit)
+            if (json.toByteArray(StandardCharsets.UTF_8).size <= StepQuestionLimits.RESUMPTION_CONTEXT_BYTES) return json
+        }
+        throw IllegalArgumentException(
+            "The failed-step retry context exceeds ${StepQuestionLimits.RESUMPTION_CONTEXT_BYTES} bytes",
+        )
+    }
+
+    /**
      * The successor brief: the predecessor's frozen brief with its submission
      * identifiers rewritten to the successor's, plus an optional supplement. The
      * predecessor's attempt id is a UUID, so a plain textual replacement is exact.
@@ -417,6 +596,12 @@ class NeedsResearchRouter(
 
         /** Durable evidence kind of an audited human resumption. */
         const val RESUMPTION_EVIDENCE_KIND = "needs-research-resumption"
+
+        /** Durable evidence kind of an audited human retry of a failed agent step. */
+        const val FAILED_STEP_RETRY_EVIDENCE_KIND = "failed-step-retry"
+
+        /** Sentence of the retry brief when nothing could be retrieved about the previous result. */
+        const val RESULT_UNAVAILABLE_SENTENCE = "The previous result could not be retrieved."
         const val SEARCHER_AGENT_NAME = "Searcher"
         const val SEARCHER_STEP_NAME = "Searcher research"
 

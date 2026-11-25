@@ -644,6 +644,38 @@ class WorkflowController(
 
     // ----- lifecycle -----------------------------------------------------
 
+    @PostMapping(path = ["/{workflowId}/steps/{stepId}/failed-step-retries"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Retry a failed agent step as a new attempt of the same run and case.")
+    fun retryFailedStep(
+        @PathVariable workflowId: String,
+        @PathVariable stepId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("namespaceId", "expectedRevision", "additionalContext") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only namespaceId, expectedRevision and additionalContext are accepted.")
+        }
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
+        // additionalContext is optional: absent, null and blank all mean "no extra information".
+        val rawContext = request["additionalContext"]
+        if (rawContext != null && rawContext !is String) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "additionalContext must be a string.")
+        }
+        val key = idempotencyKey?.trim()?.takeIf { it.isNotEmpty() && it.length <= 128 }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Idempotency-Key is required and must not exceed 128 characters.")
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
+        return respond(
+            service.retryFailedStep(
+                caller.scope, caller.namespaceId, workflowId, stepId, expectedRevision, rawContext, caller.actorId, key,
+            ),
+        )
+    }
+
+    // ----- lifecycle -----------------------------------------------------
+
     @PostMapping(path = ["/{workflowId}/restore"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Restore a removed workflow projection.")
     @Suppress("UNCHECKED_CAST")
