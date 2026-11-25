@@ -14,6 +14,8 @@ data class OutboxEvent(
     val payload: String,
     val attempts: Int,
     val workstreamId: String,
+    val retryDeadline: Instant? = null,
+    val claimToken: String? = null,
 )
 
 /** Outcome of one drain pass. */
@@ -29,18 +31,15 @@ data class DrainReport(
  * [io.whozoss.factory.agentattempt.persistence.Neo4jAgentStepResultRepository] and
  * drained oldest-first. There is deliberately no `LISTEN`/`NOTIFY`.
  *
- * ## Mono-writer claim
- * The former SQL claim used `FOR UPDATE SKIP LOCKED` so two concurrent drain
- * passes never selected the same row. The embedded Neo4j engine is a
- * single-writer store, so no row lock can (or need) be taken: [selectPending]
- * simply reads the oldest pending events and [drainPending] flips each one
- * `dispatched` (handler returned) or `failed` (handler threw, incrementing
- * `attempts`) inside one transaction. A later pass can therefore retry or
- * dead-letter the failed events.
+ * Source handoff stays inside [drainPending]'s short transaction. Continuations
+ * use a graph write-lock/CAS claim with a lease; acknowledgement and deferral
+ * require the current token. Expired claims are selectable after restart.
+ * No external provisioning probe or agent turn holds this transaction open.
  */
 @Service
 class OutboxDrainService(
     private val outbox: SpringDataNeo4jOutboxRepository,
+    private val objectMapper: com.fasterxml.jackson.databind.ObjectMapper = com.fasterxml.jackson.databind.ObjectMapper(),
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -82,6 +81,90 @@ class OutboxDrainService(
             }
         }
         return DrainReport(dispatched = dispatched, failed = failed)
+    }
+
+    /**
+     * Called inside drainPending's short transaction: handoff and acknowledgement commit together.
+     * A new source ID is a new wake; re-delivery of the current ID is not a new retry budget.
+     * Collapsed wakes are harmless: the sequencer observes all authoritative durable DAG states.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    fun enqueueContinuation(organizationId: String, source: OutboxEvent, payload: String, now: Instant = Instant.now()) {
+        val coordinates = objectMapper.readTree(payload)
+        enqueue(io.whozoss.factory.persistence.TenantScope(organizationId, source.workstreamId),
+            coordinates.path("namespaceId").asText(), coordinates.path("workflowId").asText(), payload, now, false, source.id)
+    }
+
+    /** Common runSession boundary: caller identity stays on the workflow, never supplied by the wake-up. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    fun adoptionDeferred(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String, workflowId: String,
+        repoRoot: java.nio.file.Path, ticket: String?) {
+        val payload = objectMapper.writeValueAsString(mapOf("namespaceId" to namespaceId, "workflowId" to workflowId,
+            "repoRoot" to repoRoot.toString(), "ticket" to ticket))
+        enqueue(scope, namespaceId, workflowId, payload, Instant.now(), true)
+    }
+
+    private fun enqueue(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String, workflowId: String,
+        payload: String, now: Instant, deferred: Boolean, sourceId: String? = null) {
+        val eventId = continuationId(scope.workstreamId, namespaceId, workflowId)
+        outbox.enqueueContinuation(OutboxEventNode.compositeId(scope.organizationId, eventId), scope.organizationId,
+            eventId, scope.workstreamId, payload, now, if (deferred) now.plusSeconds(RETRY_SECONDS) else null,
+            if (deferred) now.plusSeconds(5) else null, !deferred, sourceId)
+        if (deferred) outbox.beginAdoptionWait(OutboxEventNode.compositeId(scope.organizationId, eventId),
+            now.plusSeconds(RETRY_SECONDS), now.plusSeconds(5))
+    }
+
+    /** Database-only lookup; result handoff must never perform HTTP inside its transaction. */
+    @Transactional(readOnly = true)
+    fun submissionContext(organizationId: String, workstreamId: String, namespaceId: String, workflowId: String): String? =
+        outbox.findSubmissionContexts(organizationId, workstreamId).firstNotNullOfOrNull {
+            val json = objectMapper.readTree(it.payload)
+            it.payload.takeIf { json.path("namespaceId").asText() == namespaceId &&
+                json.path("workflowId").asText() == workflowId && json.path("repoRoot").isTextual &&
+                json.path("repoRoot").asText().isNotBlank() }
+        }
+
+    @Transactional
+    fun releaseContinuation(organizationId: String, eventId: String, token: String) {
+        outbox.releaseContinuation(OutboxEventNode.compositeId(organizationId, eventId), token)
+    }
+
+    @Transactional(readOnly = true)
+    fun dueContinuations(organizationId: String, now: Instant, limit: Int = 50): List<OutboxEvent> =
+        outbox.findDueContinuations(organizationId, now, limit).map {
+            OutboxEvent(it.eventId, it.eventType, it.payload, it.attempts, it.workstreamId, it.retryDeadline, it.claimToken)
+        }
+
+    @Transactional
+    fun claimContinuation(organizationId: String, eventId: String, now: Instant): OutboxEvent? {
+        val node = outbox.claimContinuation(OutboxEventNode.compositeId(organizationId, eventId),
+            java.util.UUID.randomUUID().toString(), now, now.plusSeconds(LEASE_SECONDS)) ?: return null
+        return OutboxEvent(node.eventId, node.eventType, node.payload, node.attempts, node.workstreamId, node.retryDeadline, node.claimToken)
+    }
+
+    @Transactional
+    fun completeContinuation(organizationId: String, eventId: String, now: Instant, token: String) {
+        outbox.acknowledgeContinuation(OutboxEventNode.compositeId(organizationId, eventId), token, now)
+    }
+
+    /** Only the adoption transient path is deferred. Other failures are dead letters, never agent retries. */
+    @Transactional
+    fun deferContinuation(organizationId: String, eventId: String, now: Instant, transient: Boolean, token: String) {
+        val id = OutboxEventNode.compositeId(organizationId, eventId)
+        val current = outbox.findById(id).orElseThrow()
+        val delaySeconds = minOf(300L, 5L shl minOf(current.attempts, 6))
+        outbox.deferClaimedContinuation(id, token, now, now.plusSeconds(delaySeconds), now.plusSeconds(RETRY_SECONDS), transient)
+    }
+
+    companion object {
+        const val RETRY_SECONDS = 90L * 60
+        // Full sequencer turns still run on the existing scheduler. After an ungraceful crash,
+        // recovery may wait up to two hours; intentional interruption releases the claim.
+        // No heartbeat/executor framework or automatic agent retry is introduced.
+        const val LEASE_SECONDS = 2L * 60 * 60
+        fun continuationId(workstreamId: String, namespaceId: String, workflowId: String): String =
+            "continuation:" + java.util.UUID.nameUUIDFromBytes(
+                "$workstreamId|$namespaceId|$workflowId".toByteArray(Charsets.UTF_8))
     }
 
     private fun selectPending(organizationId: String, limit: Int): List<OutboxEvent> =

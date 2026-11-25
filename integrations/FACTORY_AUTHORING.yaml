@@ -1,0 +1,20 @@
+# FACTORY_AUTHORING integration (copy of the AgentOS config, namespace scope coday-agentos)
+# To check: values masked (****) by the read tool were inferred or left as TODO.
+name: FACTORY_AUTHORING
+integrationType: HTTP_API
+description: "Factory workflow definition authoring: validate_definition, register_definition, list_definitions, get_definition. Never launches a run."
+autoGrant: false
+authSettingName: null
+parameters:
+  baseUrl: http://localhost:3000
+  spec:
+    url: http://localhost:3000/api/factory/openapi/factory-authoring.yaml
+    refreshMinutes: 60
+  allowMutations: true
+  maxConcurrentCalls: 4
+  timeoutSeconds: 30
+  includeOperations:
+    - validate_definition
+    - register_definition
+    - list_definitions
+    - get_definition

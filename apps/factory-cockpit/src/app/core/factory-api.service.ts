@@ -70,6 +70,11 @@ export interface LegacyContract {
 }
 
 /** One step of a full workflow definition (`GET /api/factory/workflow-definitions/:type/:version`). */
+export interface OutcomeTransitions {
+  pass?: { action: 'continue' | 'activate'; target?: string }
+  fail?: { action: 'block' | 'return'; target?: string; maxCycles?: number }
+}
+
 export interface FullWorkflowStep {
   id: string
   name: string
@@ -77,6 +82,8 @@ export interface FullWorkflowStep {
   dependsOn?: string[]
   decision?: { mode: 'single' | 'multiple'; routes: { name: string; target: string }[] }
   join?: string
+  /** Declarative outcome routing. Legacy definitions omit this field. */
+  outcomeTransitions?: OutcomeTransitions
   status?: string
   activation?: string
   routeDecision?: { selectedRoutes: string[] }
@@ -129,6 +136,25 @@ export function extractNamespaceOptions(payload: unknown): NamespaceOption[] {
   }
   return Array.from(options.values()).sort((left, right) => left.name.localeCompare(right.name))
 }
+
+/**
+ * Lifetime usage of the UNION of AgentOS case trees (AgentOS
+ * `GET /api/usage-records/aggregate/case-trees`). The cost is a USD lower bound
+ * when `unknownCostCount > 0`.
+ */
+export interface CumulativeUsage {
+  cost: number
+  unknownCostCount: number
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  liveTokens: number
+}
+
+/** Max case ids AgentOS accepts in one cumulative-usage read. */
+export const MAX_CUMULATIVE_USAGE_CASE_IDS = 200
 
 /** Bounded caller-owned input of the canonical create-run use case. */
 export interface CreateWorkflowRunRequest {
@@ -291,6 +317,18 @@ export class FactoryApiService {
   /** GET `/api/factory/workflows/:id/metrics[?namespaceId=…]`. */
   getMetrics(workflowId: string, namespaceId?: string): Observable<unknown> {
     return this.request<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/metrics`, {}, namespaceId)
+  }
+
+  /**
+   * GET AgentOS `usage-records/aggregate/case-trees` through the same-origin gateway: the lifetime
+   * usage of the union of the given case trees (retries, failed turns and live work included).
+   * Used for REMOVED runs, whose Factory `/metrics` read is refused. At most
+   * {@link MAX_CUMULATIVE_USAGE_CASE_IDS} ids are accepted.
+   */
+  getCumulativeUsage(caseIds: string[]): Observable<CumulativeUsage> {
+    return this.request<CumulativeUsage>('/api/agentos/api/usage-records/aggregate/case-trees', {
+      caseIds: caseIds.join(','),
+    })
   }
 
   /**

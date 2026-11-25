@@ -3,7 +3,9 @@ import { WorkspaceView } from '../../../services/case-workspace.service'
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
 import { Case } from '@whoz-oss/agentos-api-client'
 import { CaseStatusGlyphComponent } from '../../case-status-glyph/case-status-glyph.component'
-import { AvatarComponent } from '@whoz-oss/design-system'
+import { AvatarComponent, SegmentedComponent, SegmentedOption } from '@whoz-oss/design-system'
+import { CaseListMode } from '../../../services/case-state.service'
+import { LIST_MODE_HINT, LIST_MODE_OPTIONS } from '../list-mode-options'
 
 interface CaseGroup {
   label: string
@@ -16,7 +18,7 @@ interface CaseGroup {
  */
 @Component({
   selector: 'agentos-shell-case-switcher-mobile',
-  imports: [CaseStatusGlyphComponent, CaseGitBadgeComponent, AvatarComponent],
+  imports: [CaseStatusGlyphComponent, CaseGitBadgeComponent, AvatarComponent, SegmentedComponent],
   templateUrl: './shell-case-switcher-mobile.component.html',
   styleUrl: './shell-case-switcher-mobile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -37,6 +39,12 @@ export class ShellCaseSwitcherMobileComponent {
   /** False for a light-only variant: the light/dark entry is then hidden. */
   readonly canToggleMode = input(true)
   readonly showToolCalls = input.required<boolean>()
+  /** Whether the compact Mine / All switch is offered (an administrator of a namespace set to SWITCH). */
+  readonly canSwitchListMode = input(false)
+  readonly listMode = input<CaseListMode>('mine')
+
+  protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = LIST_MODE_OPTIONS
+  protected readonly listModeHint = LIST_MODE_HINT
 
   // ── Internal state ────────────────────────────────────────
   protected readonly filterQuery = signal('')
@@ -69,6 +77,7 @@ export class ShellCaseSwitcherMobileComponent {
 
   // ── Outputs ────────────────────────────────────────────
   readonly closed = output<void>()
+  readonly listModeChanged = output<CaseListMode>()
   readonly caseSelected = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()

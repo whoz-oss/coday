@@ -73,6 +73,33 @@ class GitProcessExecutionSpec :
             result.truncated shouldBe true
         }
 
+        "tail retention keeps the last characters of each stream and reports truncation" {
+            val process = ProcessBuilder("/bin/sh", "-c", "seq 1 5000; seq 1 3000 >&2; printf 'END_OUT'; printf 'END_ERR' >&2").start()
+            val result = BoundedProcessOutput.await(process, Duration.ofSeconds(5), 128, BoundedProcessOutput.Retain.TAIL)
+            result.stdout.length shouldBe 128
+            result.stderr.length shouldBe 128
+            result.stdout.endsWith("5000\nEND_OUT") shouldBe true
+            result.stderr.endsWith("3000\nEND_ERR") shouldBe true
+            result.truncated shouldBe true
+        }
+
+        "tail retention returns a short output whole and untruncated" {
+            val process = ProcessBuilder("/bin/sh", "-c", "printf small; printf oops >&2; exit 3").start()
+            val result = BoundedProcessOutput.await(process, Duration.ofSeconds(5), 128, BoundedProcessOutput.Retain.TAIL)
+            result.exitCode shouldBe 3
+            result.stdout shouldBe "small"
+            result.stderr shouldBe "oops"
+            result.truncated shouldBe false
+        }
+
+        "head retention remains the default and keeps the first characters" {
+            val process = ProcessBuilder("/bin/sh", "-c", "seq 1 5000").start()
+            val result = BoundedProcessOutput.await(process, Duration.ofSeconds(5), 128)
+            result.stdout.length shouldBe 128
+            result.stdout.startsWith("1\n2\n3\n") shouldBe true
+            result.truncated shouldBe true
+        }
+
         "git timeout terminates the process child as well as its parent" {
             val (directory, runner) = fixture("sleep 30 &\necho ${'$'}! > child.pid\nwait")
             val result = runner.run(GitInvocation(emptyList(), workingDirectory = directory))

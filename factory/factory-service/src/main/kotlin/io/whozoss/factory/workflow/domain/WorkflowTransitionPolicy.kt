@@ -178,6 +178,10 @@ object WorkflowTransitionPolicy {
         ) {
             return deny("REVISION_CONFLICT", "revision_mismatch")
         }
+        if ((declared.outcomeTransitions != null || snapshot.projection.containsKey("stepExecutions")) &&
+            execution.kind !in setOf("factory-human", "factory-human-resolution")) {
+            return deny("OUTCOME_SEQUENCER_REQUIRED", "outcome_execution_requires_validated_sequencer")
+        }
         if (declared.decision != null) {
             // Only the sequencer can atomically accept a decision and activate its branches.
             return deny("ROUTING_SEQUENCER_REQUIRED", "decision_transitions_require_validated_sequencer")

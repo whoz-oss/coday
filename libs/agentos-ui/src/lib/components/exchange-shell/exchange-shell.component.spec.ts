@@ -14,7 +14,13 @@ import { ExchangeShellComponent, FILTER_REFRESH_INTERVAL_MS as POLL_MS } from '.
 
 const CASE = ExchangeFileEntryScopeEnum.CASE
 const NAMESPACE = ExchangeFileEntryScopeEnum.NAMESPACE
-const file = (path: string, size = 10) => ({ path, filename: path.split('/').pop()!, size, scope: CASE, lastModified: '' })
+const file = (path: string, size = 10) => ({
+  path,
+  filename: path.split('/').pop()!,
+  size,
+  scope: CASE,
+  lastModified: '',
+})
 const listing = { path: '', entries: [], totalEntries: 0, page: 0, pageSize: 100, hasMore: false, capability: 'READ' }
 
 describe('ExchangeShellComponent filters', () => {
@@ -66,7 +72,9 @@ describe('ExchangeShellComponent filters', () => {
     const host = fixture.nativeElement as HTMLElement
     const namespaceInput = () => host.querySelector('[data-track="ExchangeDrawer-namespaceFilterInput"]')
     expect(namespaceInput()).toBeNull()
-    api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, totalEntries: 1, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }] }))
+    api.browseNamespaceFilesExchange.mockReturnValue(
+      of({ ...listing, totalEntries: 1, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }] })
+    )
     state.refreshNamespace()
     fixture.detectChanges()
     expect(namespaceInput()).not.toBeNull()
@@ -97,7 +105,13 @@ describe('ExchangeShellComponent filters', () => {
   it('relays normal namespace row selection in home mode, including unchecking', () => {
     const { fixture, state, api, route } = setup()
     route.next({ ns: 'ns-1' })
-    api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, totalEntries: 1, entries: [{ path: 'docs/readme.md', name: 'readme.md', directory: false, size: 1 }] }))
+    api.browseNamespaceFilesExchange.mockReturnValue(
+      of({
+        ...listing,
+        totalEntries: 1,
+        entries: [{ path: 'docs/readme.md', name: 'readme.md', directory: false, size: 1 }],
+      })
+    )
     state.initializeForNamespace('ns-1')
     fixture.componentRef.setInput('selectable', true)
     fixture.detectChanges()
@@ -121,7 +135,9 @@ describe('ExchangeShellComponent filters', () => {
   it('keeps namespace-only state and relays checked filtered files in the home composer', fakeAsync(() => {
     const { fixture, state, api, route } = setup()
     route.next({ ns: 'ns-1' })
-    api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, totalEntries: 1, entries: [{ path: 'docs', name: 'docs', directory: true }] }))
+    api.browseNamespaceFilesExchange.mockReturnValue(
+      of({ ...listing, totalEntries: 1, entries: [{ path: 'docs', name: 'docs', directory: true }] })
+    )
     state.initializeForNamespace('ns-1')
     api.getNamespaceFilesManifestExchange.mockReturnValue(of({ files: [file('docs/guide.md')] }))
     fixture.componentRef.setInput('active', true)
@@ -146,95 +162,123 @@ describe('ExchangeShellComponent filters', () => {
     expect(state.namespaceStatus()).toBe('ready')
   }))
 
-  it.each([CASE, NAMESPACE])('allows a slow %s access revalidation to complete across successive polls', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const oldListing = { ...listing, capability: 'READ_WRITE', totalEntries: 1, entries: [{ path: 'old.txt', name: 'old.txt', directory: false }] }
-    browse.mockReturnValue(of(oldListing))
-    if (scope === CASE) state.refreshCase()
-    else state.refreshNamespace()
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] }))
-      .mockReturnValueOnce(throwError(() => ({ status: 404 })))
-      .mockReturnValue(of({ files: [file('new.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    const count = scope === CASE ? state.caseFileCount : state.namespaceFileCount
-    const write = scope === CASE ? state.canWriteCase : state.canWriteNamespace
-    const otherCount = scope === CASE ? state.namespaceFileCount : state.caseFileCount
-    expect(count()).toBe(1)
-    expect(write()).toBe(true)
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(count()).toBe(0)
-    expect(write()).toBe(false)
-    expect(state.fileCount()).toBe(otherCount())
-    const pending = new Subject<typeof oldListing>()
-    browse.mockReturnValue(pending)
-    tick(POLL_MS)
-    fixture.detectChanges()
-    const calls = browse.mock.calls.length
-    expect(pending.observed).toBe(true)
-    for (let i = 0; i < 3; i++) { tick(POLL_MS); fixture.detectChanges() }
-    expect(browse).toHaveBeenCalledTimes(calls)
-    expect(pending.observed).toBe(true)
-    expect(count()).toBe(0)
-    pending.next({ ...oldListing, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }] })
-    pending.complete()
-    fixture.detectChanges()
-    expect(count()).toBe(1)
-    expect(write()).toBe(true)
-    expect(state.fileCount()).toBe(1 + otherCount())
-    expect((scope === CASE ? state.caseFiles() : state.namespaceFiles())[0]?.name).toBe('new.txt')
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'allows a slow %s access revalidation to complete across successive polls',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const oldListing = {
+        ...listing,
+        capability: 'READ_WRITE',
+        totalEntries: 1,
+        entries: [{ path: 'old.txt', name: 'old.txt', directory: false }],
+      }
+      browse.mockReturnValue(of(oldListing))
+      if (scope === CASE) state.refreshCase()
+      else state.refreshNamespace()
+      get
+        .mockReturnValueOnce(of({ files: [file('old.txt')] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 404 })))
+        .mockReturnValue(of({ files: [file('new.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      const count = scope === CASE ? state.caseFileCount : state.namespaceFileCount
+      const write = scope === CASE ? state.canWriteCase : state.canWriteNamespace
+      const otherCount = scope === CASE ? state.namespaceFileCount : state.caseFileCount
+      expect(count()).toBe(1)
+      expect(write()).toBe(true)
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(count()).toBe(0)
+      expect(write()).toBe(false)
+      expect(state.fileCount()).toBe(otherCount())
+      const pending = new Subject<typeof oldListing>()
+      browse.mockReturnValue(pending)
+      tick(POLL_MS)
+      fixture.detectChanges()
+      const calls = browse.mock.calls.length
+      expect(pending.observed).toBe(true)
+      for (let i = 0; i < 3; i++) {
+        tick(POLL_MS)
+        fixture.detectChanges()
+      }
+      expect(browse).toHaveBeenCalledTimes(calls)
+      expect(pending.observed).toBe(true)
+      expect(count()).toBe(0)
+      pending.next({ ...oldListing, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }] })
+      pending.complete()
+      fixture.detectChanges()
+      expect(count()).toBe(1)
+      expect(write()).toBe(true)
+      expect(state.fileCount()).toBe(1 + otherCount())
+      expect((scope === CASE ? state.caseFiles() : state.namespaceFiles())[0]?.name).toBe('new.txt')
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('does not unmask %s on an obsolete successful browse after a renewed manifest denial', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const pending = new Subject<typeof listing>()
-    get.mockReturnValueOnce(of({ files: [] })).mockReturnValueOnce(throwError(() => ({ status: 404 })))
-      .mockReturnValueOnce(of({ files: [] })).mockReturnValueOnce(throwError(() => ({ status: 403 })))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'x' })
-    fixture.detectChanges()
-    tick(POLL_MS); fixture.detectChanges()
-    browse.mockReturnValue(pending)
-    tick(POLL_MS); fixture.detectChanges()
-    tick(POLL_MS); fixture.detectChanges()
-    pending.next({ ...listing, capability: 'READ_WRITE', totalEntries: 1 })
-    pending.complete()
-    fixture.detectChanges()
-    expect(scope === CASE ? state.caseBrowseUnavailable() : state.namespaceBrowseUnavailable()).toBe(true)
-    expect(scope === CASE ? state.caseFileCount() : state.namespaceFileCount()).toBe(0)
-    expect(scope === CASE ? state.canWriteCase() : state.canWriteNamespace()).toBe(false)
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'does not unmask %s on an obsolete successful browse after a renewed manifest denial',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const pending = new Subject<typeof listing>()
+      get
+        .mockReturnValueOnce(of({ files: [] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 404 })))
+        .mockReturnValueOnce(of({ files: [] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 403 })))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'x' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      browse.mockReturnValue(pending)
+      tick(POLL_MS)
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      pending.next({ ...listing, capability: 'READ_WRITE', totalEntries: 1 })
+      pending.complete()
+      fixture.detectChanges()
+      expect(scope === CASE ? state.caseBrowseUnavailable() : state.namespaceBrowseUnavailable()).toBe(true)
+      expect(scope === CASE ? state.caseFileCount() : state.namespaceFileCount()).toBe(0)
+      expect(scope === CASE ? state.canWriteCase() : state.canWriteNamespace()).toBe(false)
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('does not expose a stale %s recovery after changing context', fakeAsync((scope) => {
-    const { fixture, shell, state, api, route } = setup()
-    const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const pending = new Subject<typeof listing>()
-    get.mockReturnValueOnce(of({ files: [] })).mockReturnValueOnce(throwError(() => ({ status: 404 })))
-      .mockReturnValue(of({ files: [] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'x' })
-    fixture.detectChanges()
-    tick(POLL_MS); fixture.detectChanges()
-    browse.mockReturnValueOnce(pending).mockReturnValue(of({ ...listing, totalEntries: 2 }))
-    tick(POLL_MS); fixture.detectChanges()
-    route.next({ ns: 'ns-2', case: 'c-2' })
-    fixture.detectChanges()
-    pending.next({ ...listing, capability: 'READ_WRITE', totalEntries: 99 })
-    pending.complete()
-    fixture.detectChanges()
-    expect(scope === CASE ? state.caseFileCount() : state.namespaceFileCount()).toBe(2)
-    expect(scope === CASE ? state.canWriteCase() : state.canWriteNamespace()).toBe(false)
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'does not expose a stale %s recovery after changing context',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api, route } = setup()
+      const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const pending = new Subject<typeof listing>()
+      get
+        .mockReturnValueOnce(of({ files: [] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 404 })))
+        .mockReturnValue(of({ files: [] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'x' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      browse.mockReturnValueOnce(pending).mockReturnValue(of({ ...listing, totalEntries: 2 }))
+      tick(POLL_MS)
+      fixture.detectChanges()
+      route.next({ ns: 'ns-2', case: 'c-2' })
+      fixture.detectChanges()
+      pending.next({ ...listing, capability: 'READ_WRITE', totalEntries: 99 })
+      pending.complete()
+      fixture.detectChanges()
+      expect(scope === CASE ? state.caseFileCount() : state.namespaceFileCount()).toBe(2)
+      expect(scope === CASE ? state.canWriteCase() : state.canWriteNamespace()).toBe(false)
+      fixture.destroy()
+    })
+  )
 
   it('does not expose the old case listing when namespace changes with the same case id', fakeAsync(() => {
     const { fixture, state, api, route } = setup()
@@ -253,166 +297,213 @@ describe('ExchangeShellComponent filters', () => {
     fixture.destroy()
   }))
 
-  it.each([CASE, NAMESPACE])('does not clear shared %s counts or rights for a manifest network error', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    browse.mockReturnValue(of({ ...listing, capability: 'READ_WRITE', totalEntries: 4 }))
-    if (scope === CASE) state.refreshCase()
-    else state.refreshNamespace()
-    get.mockReturnValueOnce(of({ files: [] })).mockReturnValueOnce(throwError(() => ({ status: 500 })))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'x' })
-    fixture.detectChanges()
-    tick(POLL_MS); fixture.detectChanges()
-    expect(scope === CASE ? state.caseBrowseUnavailable() : state.namespaceBrowseUnavailable()).toBe(false)
-    expect(scope === CASE ? state.caseFileCount() : state.namespaceFileCount()).toBe(4)
-    expect(scope === CASE ? state.canWriteCase() : state.canWriteNamespace()).toBe(true)
-    fixture.destroy()
-  }))
-
-  it.each([CASE, NAMESPACE])('times out blocked %s scans, throttles repeated invalidations, and recovers in a new context', fakeAsync((scope) => {
-    const { fixture, shell, state, api, route } = setup()
-    const stuck = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(stuck).mockReturnValue(of({ files: [file('fresh.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    for (let i = 0; i < 5; i++) {
-      state.invalidateSearchManifest(scope)
+  it.each([CASE, NAMESPACE])(
+    'does not clear shared %s counts or rights for a manifest network error',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      browse.mockReturnValue(of({ ...listing, capability: 'READ_WRITE', totalEntries: 4 }))
+      if (scope === CASE) state.refreshCase()
+      else state.refreshNamespace()
+      get.mockReturnValueOnce(of({ files: [] })).mockReturnValueOnce(throwError(() => ({ status: 500 })))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'x' })
       fixture.detectChanges()
-      tick(2000)
-    }
-    route.next({ ns: 'ns-2', case: 'c-2' })
-    fixture.detectChanges()
-    tick(MANIFEST_TIMEOUT_MS - 5 * 2000)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(1)
-    expect(stuck.observed).toBe(false)
-    stuck.next({ files: [file('stale.txt')] })
-    tick(MANIFEST_TIMEOUT_COOLDOWN_MS - 1)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(1)
-    tick(1)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(2)
-    expect(get).toHaveBeenLastCalledWith(scope === CASE ? 'c-2' : 'ns-2')
-    const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
-    expect(result()?.[0]?.path).toBe('fresh.txt')
-    stuck.next({ files: [file('stale.txt')] })
-    expect(result()?.[0]?.path).toBe('fresh.txt')
-    fixture.destroy()
-  }))
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(scope === CASE ? state.caseBrowseUnavailable() : state.namespaceBrowseUnavailable()).toBe(false)
+      expect(scope === CASE ? state.caseFileCount() : state.namespaceFileCount()).toBe(4)
+      expect(scope === CASE ? state.canWriteCase() : state.canWriteNamespace()).toBe(true)
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('recovers an active %s search after a timeout without an invalidation', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const stuck = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(stuck).mockReturnValue(of({ files: [file('recovered.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    tick(MANIFEST_TIMEOUT_MS)
-    fixture.detectChanges()
-    const status = scope === CASE ? shell['caseManifestStatus'] : shell['namespaceManifestStatus']
-    // A poll at the timeout boundary may already queue the throttled retry; the error stays on screen meanwhile.
-    expect(status()).toBe('error')
-    tick(MANIFEST_TIMEOUT_COOLDOWN_MS - 1)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(1)
-    tick(1)
-    fixture.detectChanges()
-    expect(get.mock.calls.length).toBeGreaterThanOrEqual(2)
-    expect(get.mock.calls.length).toBeLessThanOrEqual(3)
-    expect(status()).toBe('ready')
-    stuck.next({ files: [file('late.txt')] })
-    const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
-    expect(result()?.[0]?.path).toBe('recovered.txt')
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'times out blocked %s scans, throttles repeated invalidations, and recovers in a new context',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api, route } = setup()
+      const stuck = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(stuck).mockReturnValue(of({ files: [file('fresh.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      for (let i = 0; i < 5; i++) {
+        state.invalidateSearchManifest(scope)
+        fixture.detectChanges()
+        tick(2000)
+      }
+      route.next({ ns: 'ns-2', case: 'c-2' })
+      fixture.detectChanges()
+      tick(MANIFEST_TIMEOUT_MS - 5 * 2000)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(1)
+      expect(stuck.observed).toBe(false)
+      stuck.next({ files: [file('stale.txt')] })
+      tick(MANIFEST_TIMEOUT_COOLDOWN_MS - 1)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(1)
+      tick(1)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(2)
+      expect(get).toHaveBeenLastCalledWith(scope === CASE ? 'c-2' : 'ns-2')
+      const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
+      expect(result()?.[0]?.path).toBe('fresh.txt')
+      stuck.next({ files: [file('stale.txt')] })
+      expect(result()?.[0]?.path).toBe('fresh.txt')
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('hides old %s listing and actions on 404 and reloads it after access returns', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
-    browse.mockReturnValue(of({ ...listing, capability: 'READ_WRITE', entries: [{ path: 'old.txt', name: 'old.txt', directory: false }], totalEntries: 1 }))
-    if (scope === CASE) TestBed.inject(ExchangeStateService).refreshCase()
-    else TestBed.inject(ExchangeStateService).refreshNamespace()
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValueOnce(throwError(() => ({ status: 404 })))
-      .mockReturnValue(of({ files: [file('new.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    const host = fixture.nativeElement as HTMLElement
-    const section = host.querySelector(`[data-track="ExchangeDrawer-${scope === CASE ? 'case' : 'namespace'}Section"]`)!
-    expect(section.textContent).not.toContain('old.txt')
-    expect(section.querySelector('agentos-exchange-file-list')).toBeNull()
-    expect(section.querySelector('ds-icon-button[icon="upload_file"]')).toBeNull()
-    expect(section.querySelector('ds-icon-button[icon="download"]')).toBeNull()
-    browse.mockReturnValue(of({ ...listing, capability: 'READ', entries: [{ path: 'new.txt', name: 'new.txt', directory: false }], totalEntries: 1 }))
-    tick(POLL_MS)
-    fixture.detectChanges()
-    shell['onFilterChanged']({ scope, query: '' })
-    fixture.detectChanges()
-    expect(section.textContent).toContain('new.txt')
-    expect(section.textContent).not.toContain('old.txt')
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'recovers an active %s search after a timeout without an invalidation',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const stuck = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(stuck).mockReturnValue(of({ files: [file('recovered.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      tick(MANIFEST_TIMEOUT_MS)
+      fixture.detectChanges()
+      const status = scope === CASE ? shell['caseManifestStatus'] : shell['namespaceManifestStatus']
+      // A poll at the timeout boundary may already queue the throttled retry; the error stays on screen meanwhile.
+      expect(status()).toBe('error')
+      tick(MANIFEST_TIMEOUT_COOLDOWN_MS - 1)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(1)
+      tick(1)
+      fixture.detectChanges()
+      expect(get.mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(get.mock.calls.length).toBeLessThanOrEqual(3)
+      expect(status()).toBe('ready')
+      stuck.next({ files: [file('late.txt')] })
+      const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
+      expect(result()?.[0]?.path).toBe('recovered.txt')
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('keeps %s hidden if the manifest succeeds but browse revalidation fails', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValueOnce(throwError(() => ({ status: 403 })))
-      .mockReturnValue(of({ files: [file('new.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    browse.mockReturnValue(throwError(() => ({ status: 500 })))
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(scope === CASE ? shell['caseBrowseUnavailable']() : shell['namespaceBrowseUnavailable']()).toBe(true)
-    shell['onFilterChanged']({ scope, query: '' })
-    fixture.detectChanges()
-    shell['onFileSelected']({ scope, path: 'old.txt' })
-    expect(shell['selectedFile']()).toBeNull()
-    browse.mockReturnValue(of({ ...listing, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }], totalEntries: 1 }))
-    shell['onRetry']()
-    fixture.detectChanges()
-    expect(scope === CASE ? shell['caseBrowseUnavailable']() : shell['namespaceBrowseUnavailable']()).toBe(false)
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('new.txt')
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'hides old %s listing and actions on 404 and reloads it after access returns',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
+      browse.mockReturnValue(
+        of({
+          ...listing,
+          capability: 'READ_WRITE',
+          entries: [{ path: 'old.txt', name: 'old.txt', directory: false }],
+          totalEntries: 1,
+        })
+      )
+      if (scope === CASE) TestBed.inject(ExchangeStateService).refreshCase()
+      else TestBed.inject(ExchangeStateService).refreshNamespace()
+      get
+        .mockReturnValueOnce(of({ files: [file('old.txt')] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 404 })))
+        .mockReturnValue(of({ files: [file('new.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      const host = fixture.nativeElement as HTMLElement
+      const section = host.querySelector(
+        `[data-track="ExchangeDrawer-${scope === CASE ? 'case' : 'namespace'}Section"]`
+      )!
+      expect(section.textContent).not.toContain('old.txt')
+      expect(section.querySelector('agentos-exchange-file-list')).toBeNull()
+      expect(section.querySelector('ds-icon-button[icon="upload_file"]')).toBeNull()
+      expect(section.querySelector('ds-icon-button[icon="download"]')).toBeNull()
+      browse.mockReturnValue(
+        of({
+          ...listing,
+          capability: 'READ',
+          entries: [{ path: 'new.txt', name: 'new.txt', directory: false }],
+          totalEntries: 1,
+        })
+      )
+      tick(POLL_MS)
+      fixture.detectChanges()
+      shell['onFilterChanged']({ scope, query: '' })
+      fixture.detectChanges()
+      expect(section.textContent).toContain('new.txt')
+      expect(section.textContent).not.toContain('old.txt')
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('retains a recovery control after %s browse returns 404 and resumes polling', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValueOnce(throwError(() => ({ status: 404 })))
-      .mockReturnValue(of({ files: [file('new.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    browse.mockReturnValue(throwError(() => ({ status: 404 })))
-    tick(POLL_MS)
-    fixture.detectChanges()
-    const host = fixture.nativeElement as HTMLElement
-    const section = host.querySelector(`[data-track="ExchangeDrawer-${scope === CASE ? 'case' : 'namespace'}Section"]`)
-    expect(section?.querySelector('[role=alert] button')).not.toBeNull()
-    expect(section?.textContent).not.toContain('old.txt')
-    browse.mockReturnValue(of({ ...listing, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }], totalEntries: 1 }))
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(scope === CASE ? shell['caseBrowseUnavailable']() : shell['namespaceBrowseUnavailable']()).toBe(false)
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'keeps %s hidden if the manifest succeeds but browse revalidation fails',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
+      get
+        .mockReturnValueOnce(of({ files: [file('old.txt')] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 403 })))
+        .mockReturnValue(of({ files: [file('new.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      browse.mockReturnValue(throwError(() => ({ status: 500 })))
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(scope === CASE ? shell['caseBrowseUnavailable']() : shell['namespaceBrowseUnavailable']()).toBe(true)
+      shell['onFilterChanged']({ scope, query: '' })
+      fixture.detectChanges()
+      shell['onFileSelected']({ scope, path: 'old.txt' })
+      expect(shell['selectedFile']()).toBeNull()
+      browse.mockReturnValue(
+        of({ ...listing, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }], totalEntries: 1 })
+      )
+      shell['onRetry']()
+      fixture.detectChanges()
+      expect(scope === CASE ? shell['caseBrowseUnavailable']() : shell['namespaceBrowseUnavailable']()).toBe(false)
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('new.txt')
+      fixture.destroy()
+    })
+  )
+
+  it.each([CASE, NAMESPACE])(
+    'retains a recovery control after %s browse returns 404 and resumes polling',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
+      get
+        .mockReturnValueOnce(of({ files: [file('old.txt')] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 404 })))
+        .mockReturnValue(of({ files: [file('new.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      browse.mockReturnValue(throwError(() => ({ status: 404 })))
+      tick(POLL_MS)
+      fixture.detectChanges()
+      const host = fixture.nativeElement as HTMLElement
+      const section = host.querySelector(
+        `[data-track="ExchangeDrawer-${scope === CASE ? 'case' : 'namespace'}Section"]`
+      )
+      expect(section?.querySelector('[role=alert] button')).not.toBeNull()
+      expect(section?.textContent).not.toContain('old.txt')
+      browse.mockReturnValue(
+        of({ ...listing, entries: [{ path: 'new.txt', name: 'new.txt', directory: false }], totalEntries: 1 })
+      )
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(scope === CASE ? shell['caseBrowseUnavailable']() : shell['namespaceBrowseUnavailable']()).toBe(false)
+      fixture.destroy()
+    })
+  )
 
   it('polls both visible active filters for external additions and deletions without reloading browse pages', fakeAsync(() => {
     const { fixture, shell, api } = setup()
@@ -440,84 +531,100 @@ describe('ExchangeShellComponent filters', () => {
     fixture.destroy()
   }))
 
-  it.each([CASE, NAMESPACE])('does not overlap slow %s polls and retries after a network error', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValueOnce(pending)
-      .mockReturnValueOnce(throwError(() => new Error('network'))).mockReturnValue(of({ files: [file('new.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
-    expect(result()?.[0]?.path).toBe('old.txt')
-    // The next poll falls while the slow scan is still under its deadline: it must be skipped.
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(2)
-    pending.next({ files: [file('changed.txt')] })
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(2)
-    pending.complete()
-    fixture.detectChanges()
-    expect(result()?.[0]?.path).toBe('changed.txt')
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(3)
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(result()?.[0]?.path).toBe('new.txt')
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'does not overlap slow %s polls and retries after a network error',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get
+        .mockReturnValueOnce(of({ files: [file('old.txt')] }))
+        .mockReturnValueOnce(pending)
+        .mockReturnValueOnce(throwError(() => new Error('network')))
+        .mockReturnValue(of({ files: [file('new.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
+      expect(result()?.[0]?.path).toBe('old.txt')
+      // The next poll falls while the slow scan is still under its deadline: it must be skipped.
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(2)
+      pending.next({ files: [file('changed.txt')] })
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(2)
+      pending.complete()
+      fixture.detectChanges()
+      expect(result()?.[0]?.path).toBe('changed.txt')
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(3)
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(result()?.[0]?.path).toBe('new.txt')
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('rejects an obsolete %s scan after immediate invalidation', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValueOnce(pending)
-      .mockReturnValue(of({ files: [file('fresh.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(pending.observed).toBe(true)
-    if (scope === CASE) state.refreshCase()
-    else state.refreshNamespace()
-    pending.next({ files: [file('stale.txt')] })
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(2)
-    pending.complete()
-    fixture.detectChanges()
-    const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
-    expect(result()?.[0]?.path).toBe('fresh.txt')
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'rejects an obsolete %s scan after immediate invalidation',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get
+        .mockReturnValueOnce(of({ files: [file('old.txt')] }))
+        .mockReturnValueOnce(pending)
+        .mockReturnValue(of({ files: [file('fresh.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(pending.observed).toBe(true)
+      if (scope === CASE) state.refreshCase()
+      else state.refreshNamespace()
+      pending.next({ files: [file('stale.txt')] })
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(2)
+      pending.complete()
+      fixture.detectChanges()
+      const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
+      expect(result()?.[0]?.path).toBe('fresh.txt')
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('ignores an old %s poll after context changes before the effect runs', fakeAsync((scope) => {
-    const { fixture, shell, api, route } = setup()
-    const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValueOnce(pending)
-      .mockReturnValue(of({ files: [file('fresh.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    route.next({ ns: 'ns-2', case: 'c-2' })
-    pending.next({ files: [file('stale.txt')] })
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(2)
-    pending.complete()
-    fixture.detectChanges()
-    const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
-    expect(result()?.[0]?.path).toBe('fresh.txt')
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'ignores an old %s poll after context changes before the effect runs',
+    fakeAsync((scope) => {
+      const { fixture, shell, api, route } = setup()
+      const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get
+        .mockReturnValueOnce(of({ files: [file('old.txt')] }))
+        .mockReturnValueOnce(pending)
+        .mockReturnValue(of({ files: [file('fresh.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      route.next({ ns: 'ns-2', case: 'c-2' })
+      pending.next({ files: [file('stale.txt')] })
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(2)
+      pending.complete()
+      fixture.detectChanges()
+      const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
+      expect(result()?.[0]?.path).toBe('fresh.txt')
+      fixture.destroy()
+    })
+  )
 
   it('stops polling on clear, close, revoked access, context change and destruction', fakeAsync(() => {
     const { fixture, shell, api, route } = setup()
@@ -557,143 +664,170 @@ describe('ExchangeShellComponent filters', () => {
     expect(api.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(calls)
   }))
 
-  it.each([CASE, NAMESPACE])('coalesces repeated invalidations during a blocked %s scan', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(pending).mockReturnValue(of({ files: [file('fresh.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    for (let i = 0; i < 10; i++) {
+  it.each([CASE, NAMESPACE])(
+    'coalesces repeated invalidations during a blocked %s scan',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(pending).mockReturnValue(of({ files: [file('fresh.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      for (let i = 0; i < 10; i++) {
+        state.invalidateSearchManifest(scope)
+        fixture.detectChanges()
+        tick(1000)
+      }
+      expect(get).toHaveBeenCalledTimes(1)
+      pending.next({ files: [file('stale.txt')] })
+      pending.complete()
+      fixture.detectChanges()
+      const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
+      expect(get).toHaveBeenCalledTimes(2)
+      expect(result()?.[0]?.path).toBe('fresh.txt')
+      fixture.destroy()
+    })
+  )
+
+  it.each([CASE, NAMESPACE])(
+    'does not launch a queued %s scan after destruction',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(pending).mockReturnValue(of({ files: [] }))
+      shell['onFilterChanged']({ scope, query: 'x' })
+      fixture.detectChanges()
       state.invalidateSearchManifest(scope)
       fixture.detectChanges()
-      tick(1000)
-    }
-    expect(get).toHaveBeenCalledTimes(1)
-    pending.next({ files: [file('stale.txt')] })
-    pending.complete()
-    fixture.detectChanges()
-    const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
-    expect(get).toHaveBeenCalledTimes(2)
-    expect(result()?.[0]?.path).toBe('fresh.txt')
-    fixture.destroy()
-  }))
+      fixture.destroy()
+      pending.next({ files: [] })
+      pending.complete()
+      tick(6000)
+      expect(get).toHaveBeenCalledTimes(1)
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('does not launch a queued %s scan after destruction', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(pending).mockReturnValue(of({ files: [] }))
-    shell['onFilterChanged']({ scope, query: 'x' })
-    fixture.detectChanges()
-    state.invalidateSearchManifest(scope)
-    fixture.detectChanges()
-    fixture.destroy()
-    pending.next({ files: [] })
-    pending.complete()
-    tick(6000)
-    expect(get).toHaveBeenCalledTimes(1)
-  }))
+  it.each([CASE, NAMESPACE])(
+    'drops queued %s work when the search is cleared before the scan completes',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(pending).mockReturnValue(of({ files: [] }))
+      shell['onFilterChanged']({ scope, query: 'x' })
+      fixture.detectChanges()
+      state.invalidateSearchManifest(scope)
+      fixture.detectChanges()
+      shell['onFilterChanged']({ scope, query: '' })
+      fixture.detectChanges()
+      pending.next({ files: [] })
+      pending.complete()
+      expect(get).toHaveBeenCalledTimes(1)
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('drops queued %s work when the search is cleared before the scan completes', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(pending).mockReturnValue(of({ files: [] }))
-    shell['onFilterChanged']({ scope, query: 'x' })
-    fixture.detectChanges()
-    state.invalidateSearchManifest(scope)
-    fixture.detectChanges()
-    shell['onFilterChanged']({ scope, query: '' })
-    fixture.detectChanges()
-    pending.next({ files: [] })
-    pending.complete()
-    expect(get).toHaveBeenCalledTimes(1)
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'retains the other scope preview on a polled %s access failure',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const other = scope === CASE ? NAMESPACE : CASE
+      const otherGet = other === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(of({ files: [] })).mockReturnValueOnce(throwError(() => ({ status: 403 })))
+      otherGet.mockReturnValue(of({ files: [file('other.txt')] }))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'x' })
+      shell['onFilterChanged']({ scope: other, query: 'other' })
+      fixture.detectChanges()
+      shell['onFileSelected']({ scope: other, path: 'other.txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(shell['selectedContent']()).toBe('body')
+      expect(shell['selectedFile']()?.scope).toBe(other)
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('retains the other scope preview on a polled %s access failure', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const other = scope === CASE ? NAMESPACE : CASE
-    const otherGet = other === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(of({ files: [] })).mockReturnValueOnce(throwError(() => ({ status: 403 })))
-    otherGet.mockReturnValue(of({ files: [file('other.txt')] }))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'x' })
-    shell['onFilterChanged']({ scope: other, query: 'other' })
-    fixture.detectChanges()
-    shell['onFileSelected']({ scope: other, path: 'other.txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(shell['selectedContent']()).toBe('body')
-    expect(shell['selectedFile']()?.scope).toBe(other)
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'ignores a late content response after a polled %s access failure',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const getContent = scope === CASE ? api.getCaseFileContentExchange : api.getNamespaceFileContentExchange
+      const content = new Subject<{ content: string }>()
+      get
+        .mockReturnValueOnce(of({ files: [file('private.txt')] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 404 })))
+      getContent.mockReturnValue(content)
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'private' })
+      fixture.detectChanges()
+      shell['onFileSelected']({ scope, path: 'private.txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      content.next({ content: 'late private content' })
+      expect(shell['selectedContent']()).toBeNull()
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('ignores a late content response after a polled %s access failure', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const getContent = scope === CASE ? api.getCaseFileContentExchange : api.getNamespaceFileContentExchange
-    const content = new Subject<{ content: string }>()
-    get.mockReturnValueOnce(of({ files: [file('private.txt')] })).mockReturnValueOnce(throwError(() => ({ status: 404 })))
-    getContent.mockReturnValue(content)
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'private' })
-    fixture.detectChanges()
-    shell['onFileSelected']({ scope, path: 'private.txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    content.next({ content: 'late private content' })
-    expect(shell['selectedContent']()).toBeNull()
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'closes only the affected preview on a polled %s access failure',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      const other = scope === CASE ? NAMESPACE : CASE
+      get
+        .mockReturnValueOnce(of({ files: [file('private.txt')] }))
+        .mockReturnValueOnce(throwError(() => ({ status: 404 })))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope, query: 'private' })
+      fixture.detectChanges()
+      shell['onFileSelected']({ scope, path: 'private.txt' })
+      fixture.detectChanges()
+      expect(shell['selectedContent']()).toBe('body')
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(shell['selectedFile']()).toBeNull()
+      expect(shell['selectedContent']()).toBeNull()
+      shell['onFileSelected']({ scope, path: 'private.txt' })
+      expect(shell['selectedFile']()).toBeNull()
+      shell['onFileSelected']({ scope: other, path: 'other.txt' })
+      expect(shell['selectedFile']()?.scope).toBe(other)
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('closes only the affected preview on a polled %s access failure', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    const other = scope === CASE ? NAMESPACE : CASE
-    get.mockReturnValueOnce(of({ files: [file('private.txt')] })).mockReturnValueOnce(throwError(() => ({ status: 404 })))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope, query: 'private' })
-    fixture.detectChanges()
-    shell['onFileSelected']({ scope, path: 'private.txt' })
-    fixture.detectChanges()
-    expect(shell['selectedContent']()).toBe('body')
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(shell['selectedFile']()).toBeNull()
-    expect(shell['selectedContent']()).toBeNull()
-    shell['onFileSelected']({ scope, path: 'private.txt' })
-    expect(shell['selectedFile']()).toBeNull()
-    shell['onFileSelected']({ scope: other, path: 'other.txt' })
-    expect(shell['selectedFile']()?.scope).toBe(other)
-    fixture.destroy()
-  }))
-
-  it.each([403, 404, 500, 0])('handles polled manifest status %i without misclassifying network errors', fakeAsync((status) => {
-    const { fixture, shell, api } = setup()
-    api.getCaseFilesManifestExchange.mockReturnValueOnce(of({ files: [file('private.txt')] }))
-      .mockReturnValueOnce(throwError(() => ({ status })))
-    fixture.componentRef.setInput('active', true)
-    shell['onFilterChanged']({ scope: CASE, query: 'private' })
-    fixture.detectChanges()
-    shell['onFileSelected']({ scope: CASE, path: 'private.txt' })
-    fixture.detectChanges()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(shell['selectedContent']()).toBe(status === 403 || status === 404 ? null : 'body')
-    fixture.destroy()
-  }))
+  it.each([403, 404, 500, 0])(
+    'handles polled manifest status %i without misclassifying network errors',
+    fakeAsync((status) => {
+      const { fixture, shell, api } = setup()
+      api.getCaseFilesManifestExchange
+        .mockReturnValueOnce(of({ files: [file('private.txt')] }))
+        .mockReturnValueOnce(throwError(() => ({ status })))
+      fixture.componentRef.setInput('active', true)
+      shell['onFilterChanged']({ scope: CASE, query: 'private' })
+      fixture.detectChanges()
+      shell['onFileSelected']({ scope: CASE, path: 'private.txt' })
+      fixture.detectChanges()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(shell['selectedContent']()).toBe(status === 403 || status === 404 ? null : 'body')
+      fixture.destroy()
+    })
+  )
 
   it('loads only active scopes, caches independently and retries errors', fakeAsync(() => {
     const { fixture, shell, state, api } = setup()
     expect(api.getCaseFilesManifestExchange).not.toHaveBeenCalled()
     expect(api.getNamespaceFilesManifestExchange).not.toHaveBeenCalled()
-    api.getCaseFilesManifestExchange.mockReturnValueOnce(throwError(() => new Error('network')))
+    api.getCaseFilesManifestExchange
+      .mockReturnValueOnce(throwError(() => new Error('network')))
       .mockReturnValue(of({ files: [file('deep/a.md')] }))
     shell['onFilterChanged']({ scope: CASE, query: 'a' })
     fixture.detectChanges()
@@ -721,7 +855,7 @@ describe('ExchangeShellComponent filters', () => {
     const { fixture, shell, api, route } = setup()
     const old = new Subject<{ files: ReturnType<typeof file>[] }>()
     const current = new Subject<{ files: ReturnType<typeof file>[] }>()
-    api.getCaseFilesManifestExchange.mockImplementation((id: string) => id === 'c-1' ? old : current)
+    api.getCaseFilesManifestExchange.mockImplementation((id: string) => (id === 'c-1' ? old : current))
     api.getNamespaceFilesManifestExchange.mockReturnValue(of({ files: [file('shared.md')] }))
     shell['onFilterChanged']({ scope: CASE, query: 'md' })
     shell['onFilterChanged']({ scope: NAMESPACE, query: 'md' })
@@ -742,7 +876,7 @@ describe('ExchangeShellComponent filters', () => {
     const { fixture, shell, api, route } = setup()
     const old = new Subject<{ files: ReturnType<typeof file>[] }>()
     const current = new Subject<{ files: ReturnType<typeof file>[] }>()
-    api.getCaseFilesManifestExchange.mockImplementation((id: string) => id === 'c-1' ? old : current)
+    api.getCaseFilesManifestExchange.mockImplementation((id: string) => (id === 'c-1' ? old : current))
     shell['onFilterChanged']({ scope: CASE, query: 'private' })
     fixture.detectChanges()
     route.next({ ns: 'ns-1', case: 'c-2' })
@@ -758,97 +892,109 @@ describe('ExchangeShellComponent filters', () => {
     fixture.destroy()
   })
 
-  it.each([CASE, NAMESPACE])('keeps %s results while an event refresh is in flight', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValueOnce(pending)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    if (scope === CASE) state.refreshCase()
-    else state.refreshNamespace()
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(2)
-    const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
-    const status = scope === CASE ? shell['caseManifestStatus'] : shell['namespaceManifestStatus']
-    expect(status()).toBe('ready')
-    expect(result()?.[0]?.path).toBe('old.txt')
-    pending.next({ files: [file('new.txt')] })
-    pending.complete()
-    fixture.detectChanges()
-    expect(result()?.[0]?.path).toBe('new.txt')
-    fixture.destroy()
-  }))
-
-  it.each([CASE, NAMESPACE])('keeps the %s error and Retry in place while a poll retries', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    if (scope === NAMESPACE) {
-      const entries = [{ path: 'root.txt', name: 'root.txt', directory: false }]
-      api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, entries, totalEntries: 1 }))
-      state.refreshNamespace()
+  it.each([CASE, NAMESPACE])(
+    'keeps %s results while an event refresh is in flight',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const pending = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValueOnce(pending)
+      shell['onFilterChanged']({ scope, query: 'txt' })
       fixture.detectChanges()
-    }
-    const retry = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(throwError(() => ({ status: 500 }))).mockReturnValueOnce(retry)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    const host = fixture.nativeElement as HTMLElement
-    const section = `[data-track="ExchangeDrawer-${scope === CASE ? 'case' : 'namespace'}Section"]`
-    const alert = () => host.querySelector(`${section} [role=alert]`)
-    const shown = alert()
-    expect(shown?.querySelector('button')).not.toBeNull()
-    tick(POLL_MS)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(2)
-    expect(scope === CASE ? shell['caseManifestStatus']() : shell['namespaceManifestStatus']()).toBe('error')
-    expect(alert()).toBe(shown)
-    retry.next({ files: [file('found.txt')] })
-    retry.complete()
-    fixture.detectChanges()
-    expect(alert()).toBeNull()
-    expect((scope === CASE ? shell['caseManifest'] : shell['namespaceManifest'])()?.[0]?.path).toBe('found.txt')
-    fixture.destroy()
-  }))
-
-  it.each([CASE, NAMESPACE])('does not fetch the %s manifest while the drawer is closed', fakeAsync((scope) => {
-    const { fixture, shell, state, api } = setup()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValue(of({ files: [file('new.txt')] }))
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    fixture.componentRef.setInput('active', false)
-    fixture.detectChanges()
-    for (let i = 0; i < 3; i++) {
       if (scope === CASE) state.refreshCase()
       else state.refreshNamespace()
       fixture.detectChanges()
-    }
-    tick(2 * POLL_MS)
-    expect(get).toHaveBeenCalledTimes(1)
-    fixture.componentRef.setInput('active', true)
-    fixture.detectChanges()
-    expect(get).toHaveBeenCalledTimes(2)
-    expect((scope === CASE ? shell['caseManifest'] : shell['namespaceManifest'])()?.[0]?.path).toBe('new.txt')
-    fixture.destroy()
-  }))
+      expect(get).toHaveBeenCalledTimes(2)
+      const result = scope === CASE ? shell['caseManifest'] : shell['namespaceManifest']
+      const status = scope === CASE ? shell['caseManifestStatus'] : shell['namespaceManifestStatus']
+      expect(status()).toBe('ready')
+      expect(result()?.[0]?.path).toBe('old.txt')
+      pending.next({ files: [file('new.txt')] })
+      pending.complete()
+      fixture.detectChanges()
+      expect(result()?.[0]?.path).toBe('new.txt')
+      fixture.destroy()
+    })
+  )
 
-  it.each([CASE, NAMESPACE])('waits for a slow %s scan that answers before the deadline', fakeAsync((scope) => {
-    const { fixture, shell, api } = setup()
-    const slow = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(slow)
-    shell['onFilterChanged']({ scope, query: 'txt' })
-    fixture.detectChanges()
-    tick(20000)
-    slow.next({ files: [file('large.txt')] })
-    slow.complete()
-    fixture.detectChanges()
-    expect(scope === CASE ? shell['caseManifestStatus']() : shell['namespaceManifestStatus']()).toBe('ready')
-    expect((scope === CASE ? shell['caseManifest'] : shell['namespaceManifest'])()?.[0]?.path).toBe('large.txt')
-    expect(get).toHaveBeenCalledTimes(1)
-    fixture.destroy()
-  }))
+  it.each([CASE, NAMESPACE])(
+    'keeps the %s error and Retry in place while a poll retries',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      if (scope === NAMESPACE) {
+        const entries = [{ path: 'root.txt', name: 'root.txt', directory: false }]
+        api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, entries, totalEntries: 1 }))
+        state.refreshNamespace()
+        fixture.detectChanges()
+      }
+      const retry = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(throwError(() => ({ status: 500 }))).mockReturnValueOnce(retry)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      const host = fixture.nativeElement as HTMLElement
+      const section = `[data-track="ExchangeDrawer-${scope === CASE ? 'case' : 'namespace'}Section"]`
+      const alert = () => host.querySelector(`${section} [role=alert]`)
+      const shown = alert()
+      expect(shown?.querySelector('button')).not.toBeNull()
+      tick(POLL_MS)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(2)
+      expect(scope === CASE ? shell['caseManifestStatus']() : shell['namespaceManifestStatus']()).toBe('error')
+      expect(alert()).toBe(shown)
+      retry.next({ files: [file('found.txt')] })
+      retry.complete()
+      fixture.detectChanges()
+      expect(alert()).toBeNull()
+      expect((scope === CASE ? shell['caseManifest'] : shell['namespaceManifest'])()?.[0]?.path).toBe('found.txt')
+      fixture.destroy()
+    })
+  )
+
+  it.each([CASE, NAMESPACE])(
+    'does not fetch the %s manifest while the drawer is closed',
+    fakeAsync((scope) => {
+      const { fixture, shell, state, api } = setup()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(of({ files: [file('old.txt')] })).mockReturnValue(of({ files: [file('new.txt')] }))
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      fixture.componentRef.setInput('active', false)
+      fixture.detectChanges()
+      for (let i = 0; i < 3; i++) {
+        if (scope === CASE) state.refreshCase()
+        else state.refreshNamespace()
+        fixture.detectChanges()
+      }
+      tick(2 * POLL_MS)
+      expect(get).toHaveBeenCalledTimes(1)
+      fixture.componentRef.setInput('active', true)
+      fixture.detectChanges()
+      expect(get).toHaveBeenCalledTimes(2)
+      expect((scope === CASE ? shell['caseManifest'] : shell['namespaceManifest'])()?.[0]?.path).toBe('new.txt')
+      fixture.destroy()
+    })
+  )
+
+  it.each([CASE, NAMESPACE])(
+    'waits for a slow %s scan that answers before the deadline',
+    fakeAsync((scope) => {
+      const { fixture, shell, api } = setup()
+      const slow = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(slow)
+      shell['onFilterChanged']({ scope, query: 'txt' })
+      fixture.detectChanges()
+      tick(20000)
+      slow.next({ files: [file('large.txt')] })
+      slow.complete()
+      fixture.detectChanges()
+      expect(scope === CASE ? shell['caseManifestStatus']() : shell['namespaceManifestStatus']()).toBe('ready')
+      expect((scope === CASE ? shell['caseManifest'] : shell['namespaceManifest'])()?.[0]?.path).toBe('large.txt')
+      expect(get).toHaveBeenCalledTimes(1)
+      fixture.destroy()
+    })
+  )
 
   it('drops a pending delete confirmation when the case changes', async () => {
     const { fixture, shell, api, route } = setup()
@@ -864,37 +1010,42 @@ describe('ExchangeShellComponent filters', () => {
     fixture.destroy()
   })
 
-  it.each([CASE, NAMESPACE])('routes %s search failure and retry through the drawer', fakeAsync((scope) => {
-    const { fixture, api, state } = setup()
-    if (scope === NAMESPACE) {
-      api.browseNamespaceFilesExchange.mockReturnValue(of({ ...listing, entries: [{ path: 'root.txt', name: 'root.txt', directory: false }], totalEntries: 1 }))
-      state.refreshNamespace()
+  it.each([CASE, NAMESPACE])(
+    'routes %s search failure and retry through the drawer',
+    fakeAsync((scope) => {
+      const { fixture, api, state } = setup()
+      if (scope === NAMESPACE) {
+        api.browseNamespaceFilesExchange.mockReturnValue(
+          of({ ...listing, entries: [{ path: 'root.txt', name: 'root.txt', directory: false }], totalEntries: 1 })
+        )
+        state.refreshNamespace()
+        fixture.detectChanges()
+      }
+      const request = new Subject<{ files: ReturnType<typeof file>[] }>()
+      const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
+      get.mockReturnValueOnce(request).mockReturnValue(of({ files: [file('deep/result.txt')] }))
+      const el = fixture.nativeElement as HTMLElement
+      const label = scope === CASE ? 'Filter case files by name or path' : 'Filter namespace files by name or path'
+      const input = el.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
+      input.value = 'result'
+      input.dispatchEvent(new Event('input'))
+      tick(150)
       fixture.detectChanges()
-    }
-    const request = new Subject<{ files: ReturnType<typeof file>[] }>()
-    const get = scope === CASE ? api.getCaseFilesManifestExchange : api.getNamespaceFilesManifestExchange
-    get.mockReturnValueOnce(request).mockReturnValue(of({ files: [file('deep/result.txt')] }))
-    const el = fixture.nativeElement as HTMLElement
-    const label = scope === CASE ? 'Filter case files by name or path' : 'Filter namespace files by name or path'
-    const input = el.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!
-    input.value = 'result'
-    input.dispatchEvent(new Event('input'))
-    tick(150)
-    fixture.detectChanges()
-    expect(el.querySelector('ds-spinner')).not.toBeNull()
-    expect(el.textContent).not.toContain('No files match')
-    request.error({ status: 500 })
-    fixture.detectChanges()
-    expect(el.querySelector('[role=alert]')?.textContent).toContain("Couldn't search")
-    expect(el.textContent).not.toContain('No files match')
-    el.querySelector<HTMLButtonElement>('[role=alert] button')!.click()
-    fixture.detectChanges()
-    tick(MANIFEST_ERROR_COOLDOWN_MS)
-    fixture.detectChanges()
-    expect(el.textContent).toContain('result.txt')
-    expect(get).toHaveBeenCalledTimes(2)
-    fixture.destroy()
-  }))
+      expect(el.querySelector('ds-spinner')).not.toBeNull()
+      expect(el.textContent).not.toContain('No files match')
+      request.error({ status: 500 })
+      fixture.detectChanges()
+      expect(el.querySelector('[role=alert]')?.textContent).toContain("Couldn't search")
+      expect(el.textContent).not.toContain('No files match')
+      el.querySelector<HTMLButtonElement>('[role=alert] button')!.click()
+      fixture.detectChanges()
+      tick(MANIFEST_ERROR_COOLDOWN_MS)
+      fixture.detectChanges()
+      expect(el.textContent).toContain('result.txt')
+      expect(get).toHaveBeenCalledTimes(2)
+      fixture.destroy()
+    })
+  )
 
   it('refreshes active results after a case upload and delete without refetching namespace', fakeAsync(() => {
     const { fixture, state, shell, api } = setup()
@@ -909,9 +1060,11 @@ describe('ExchangeShellComponent filters', () => {
         return of({})
       }),
     })
-    api.getCaseFilesManifestExchange.mockImplementation(() => of({
-      files: present ? [file('deep/new.txt')] : [],
-    }))
+    api.getCaseFilesManifestExchange.mockImplementation(() =>
+      of({
+        files: present ? [file('deep/new.txt')] : [],
+      })
+    )
     api.getNamespaceFilesManifestExchange.mockReturnValue(of({ files: [file('shared.txt')] }))
     shell['onFilterChanged']({ scope: CASE, query: 'new' })
     shell['onFilterChanged']({ scope: NAMESPACE, query: 'shared' })
@@ -944,9 +1097,11 @@ describe('ExchangeShellComponent filters', () => {
       }),
     })
     api.getCaseFilesManifestExchange.mockReturnValue(of({ files: [file('case/kept.txt')] }))
-    api.getNamespaceFilesManifestExchange.mockImplementation(() => of({
-      files: present ? [file('shared/added.txt')] : [],
-    }))
+    api.getNamespaceFilesManifestExchange.mockImplementation(() =>
+      of({
+        files: present ? [file('shared/added.txt')] : [],
+      })
+    )
     shell['onFilterChanged']({ scope: CASE, query: 'kept' })
     shell['onFilterChanged']({ scope: NAMESPACE, query: 'added' })
     fixture.detectChanges()
@@ -983,7 +1138,9 @@ describe('ExchangeShellComponent filters', () => {
     expect(el.textContent).toContain('body')
     el.querySelector<HTMLButtonElement>('ds-icon-button[title="Back to files"] button')!.click()
     fixture.detectChanges()
-    expect(el.querySelector<HTMLInputElement>('input[aria-label="Filter case files by name or path"]')?.value).toBe('report')
+    expect(el.querySelector<HTMLInputElement>('input[aria-label="Filter case files by name or path"]')?.value).toBe(
+      'report'
+    )
     el.querySelector<HTMLButtonElement>('agentos-exchange-item ds-icon-button[icon=download] button')!.click()
     tick()
     expect(download).toHaveBeenCalledWith(CASE, 'deep/report.md')
@@ -1000,7 +1157,7 @@ describe('ExchangeShellComponent filters', () => {
     const { fixture, shell, api, route } = setup()
     const old = new Subject<{ files: ReturnType<typeof file>[] }>()
     const current = new Subject<{ files: ReturnType<typeof file>[] }>()
-    api.getNamespaceFilesManifestExchange.mockImplementation((id: string) => id === 'ns-1' ? old : current)
+    api.getNamespaceFilesManifestExchange.mockImplementation((id: string) => (id === 'ns-1' ? old : current))
     shell['onFilterChanged']({ scope: NAMESPACE, query: 'secret' })
     fixture.detectChanges()
     route.next({ ns: 'ns-2', case: 'c-1' })
@@ -1032,10 +1189,16 @@ describe('ExchangeShellComponent filters', () => {
 
   it('keeps two loaded browse pages and the current folder through actual filter and Escape events', fakeAsync(() => {
     const { fixture, state, api } = setup()
-    api.browseCaseFilesExchange.mockImplementation((_id: string, path: string, page: number) => of({
-      ...listing, path, page, hasMore: page === 0, totalEntries: 2,
-      entries: [{ path: `${path}/page-${page}.txt`, name: `page-${page}.txt`, directory: false, size: 1 }],
-    }))
+    api.browseCaseFilesExchange.mockImplementation((_id: string, path: string, page: number) =>
+      of({
+        ...listing,
+        path,
+        page,
+        hasMore: page === 0,
+        totalEntries: 2,
+        entries: [{ path: `${path}/page-${page}.txt`, name: `page-${page}.txt`, directory: false, size: 1 }],
+      })
+    )
     api.getCaseFilesManifestExchange.mockReturnValue(of({ files: [file('elsewhere/needle.txt')] }))
     state.browseCase('docs')
     state.loadMore(CASE)
@@ -1147,9 +1310,9 @@ describe('ExchangeShellComponent filters', () => {
 
   it('uses deep case manifest metadata for preview and enforces size and format limits', () => {
     const { fixture, shell, api } = setup()
-    api.getCaseFilesManifestExchange.mockReturnValue(of({ files: [
-      file('deep/readme.md'), file('deep/large.md', MAX_VIEWABLE_SIZE + 1), file('deep/image.png'),
-    ] }))
+    api.getCaseFilesManifestExchange.mockReturnValue(
+      of({ files: [file('deep/readme.md'), file('deep/large.md', MAX_VIEWABLE_SIZE + 1), file('deep/image.png')] })
+    )
     shell['onFilterChanged']({ scope: CASE, query: 'deep' })
     fixture.detectChanges()
     shell['onFileSelected']({ scope: CASE, path: 'deep/readme.md' })
@@ -1168,11 +1331,69 @@ describe('ExchangeShellComponent filters', () => {
     else shell['namespaceManifest'].set([{ ...file(ref.path), scope: NAMESPACE }])
     shell['onFileSelected'](ref)
     expect(state.getBlob).toHaveBeenCalledWith(scope, ref.path)
-    expect(shell['selectedImageUrl']()).toBe('blob:preview')
+    expect(shell['selectedBlobUrl']()).toBe('blob:preview')
     shell['onViewerClosed']()
     expect(revoke).toHaveBeenCalledWith('blob:preview')
     fixture.destroy()
     restoreObjectUrls()
+  })
+
+  it.each([CASE, NAMESPACE])('previews a PDF for %s from its bytes, typed application/pdf, never as text', (scope) => {
+    const { fixture, shell, state, api } = setup()
+    const { create, revoke } = mockObjectUrls()
+    // The server answers with a generic type: the browser would download the file instead of rendering it.
+    jest.spyOn(state, 'getBlob').mockReturnValue(of(new Blob(['%PDF-1.4'], { type: 'application/octet-stream' })))
+    const ref = { scope, path: 'deep/report.pdf' }
+    if (scope === CASE) shell['caseManifest'].set([file(ref.path)])
+    else shell['namespaceManifest'].set([{ ...file(ref.path), scope: NAMESPACE }])
+    shell['onFileSelected'](ref)
+    expect(shell['canViewSelected']()).toBe(true)
+    expect(state.getBlob).toHaveBeenCalledWith(scope, ref.path)
+    expect(api.getCaseFileContentExchange).not.toHaveBeenCalled()
+    expect(api.getNamespaceFileContentExchange).not.toHaveBeenCalled()
+    expect((create.mock.calls[0]![0] as Blob).type).toBe('application/pdf')
+    expect(shell['selectedBlob']()?.type).toBe('application/pdf')
+    expect(shell['selectedBlobUrl']()).toBe('blob:preview')
+    expect(shell['contentStatus']()).toBe('ready')
+    shell['onViewerClosed']()
+    expect(revoke).toHaveBeenCalledWith('blob:preview')
+    expect(shell['selectedBlobUrl']()).toBeNull()
+    expect(shell['selectedBlob']()).toBeNull()
+    fixture.destroy()
+    restoreObjectUrls()
+  })
+
+  it('judges a PDF reached without a manifest entry by its name, in the namespace only, and revokes it on a new selection', () => {
+    const { fixture, shell, state } = setup()
+    const { revoke } = mockObjectUrls()
+    jest.spyOn(state, 'getBlob').mockReturnValue(of(new Blob(['%PDF'], { type: 'application/pdf' })))
+    shell['onFileSelected']({ scope: NAMESPACE, path: 'unlisted.pdf' })
+    expect(shell['canViewSelected']()).toBe(true)
+    expect(shell['selectedBlobUrl']()).toBe('blob:preview')
+    shell['onFileSelected']({ scope: NAMESPACE, path: 'unlisted-too.pdf' })
+    expect(revoke).toHaveBeenCalledWith('blob:preview')
+    fixture.destroy()
+    restoreObjectUrls()
+  })
+
+  it('does not preview a PDF over the size limit', () => {
+    const { fixture, shell, state } = setup()
+    const getBlob = jest.spyOn(state, 'getBlob')
+    shell['caseManifest'].set([file('big.pdf', MAX_VIEWABLE_SIZE + 1)])
+    shell['onFileSelected']({ scope: CASE, path: 'big.pdf' })
+    expect(shell['canViewSelected']()).toBe(false)
+    expect(getBlob).not.toHaveBeenCalled()
+    fixture.destroy()
+  })
+
+  it('shows the error state when the PDF cannot be fetched', () => {
+    const { fixture, shell, state } = setup()
+    jest.spyOn(state, 'getBlob').mockReturnValue(throwError(() => ({ status: 500 })))
+    shell['caseManifest'].set([file('a.pdf')])
+    shell['onFileSelected']({ scope: CASE, path: 'a.pdf' })
+    expect(shell['contentStatus']()).toBe('error')
+    expect(shell['selectedBlobUrl']()).toBeNull()
+    fixture.destroy()
   })
 
   it.each([CASE, NAMESPACE])('ignores stale %s image responses after a newer selection of the same path', (scope) => {
@@ -1180,7 +1401,10 @@ describe('ExchangeShellComponent filters', () => {
     const old = new Subject<Blob>()
     const { create, revoke } = mockObjectUrls()
     create.mockReturnValue('blob:new')
-    jest.spyOn(state, 'getBlob').mockReturnValueOnce(old).mockReturnValue(of(new Blob(['new'], { type: 'image/png' })))
+    jest
+      .spyOn(state, 'getBlob')
+      .mockReturnValueOnce(old)
+      .mockReturnValue(of(new Blob(['new'], { type: 'image/png' })))
     const ref = { scope, path: 'image.png' }
     if (scope === CASE) shell['caseManifest'].set([file(ref.path)])
     else shell['namespaceManifest'].set([{ ...file(ref.path), scope: NAMESPACE }])
@@ -1188,7 +1412,7 @@ describe('ExchangeShellComponent filters', () => {
     shell['onFileSelected'](ref)
     old.next(new Blob(['old'], { type: 'image/png' }))
     expect(create).toHaveBeenCalledTimes(1)
-    expect(shell['selectedImageUrl']()).toBe('blob:new')
+    expect(shell['selectedBlobUrl']()).toBe('blob:new')
     fixture.destroy()
     expect(revoke).toHaveBeenCalledWith('blob:new')
     restoreObjectUrls()

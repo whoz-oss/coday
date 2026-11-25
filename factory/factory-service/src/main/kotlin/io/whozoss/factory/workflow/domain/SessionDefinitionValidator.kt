@@ -94,6 +94,9 @@ object SessionDefinitionValidator {
         WorkflowRouting.topologyError(steps)?.let { reason ->
             return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "steps", mapOf("reason" to reason))
         }
+        OutcomeReplayPlan.error(steps)?.let { reason ->
+            return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "steps.outcomeTransitions", mapOf("reason" to reason))
+        }
         return Result.Valid(steps)
     }
 }

@@ -36,6 +36,12 @@ import { Tone } from '../../core/models'
       font-size: 13px;
       font-weight: 600;
       white-space: nowrap;
+      /* Never overflow the parent: long labels are truncated with an ellipsis. */
+      max-width: 100%;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-sizing: border-box;
     }
     :host(.sf-chip--sm) {
       height: 24px;

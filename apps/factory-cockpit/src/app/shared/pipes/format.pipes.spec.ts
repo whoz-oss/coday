@@ -13,9 +13,10 @@ describe('UsdPipe', () => {
     expect(pipe.transform(0, 2, 1)).toBe('≥ $0.00')
   })
 
-  it('renders a dash for a missing value', () => {
+  it('renders a dash for unavailable cost and preserves unknown completeness', () => {
     expect(pipe.transform(null)).toBe('—')
     expect(pipe.transform(undefined, 2, 5)).toBe('—')
+    expect(pipe.transform(1.25, 2, null)).toBe('? $1.25')
   })
 })
 

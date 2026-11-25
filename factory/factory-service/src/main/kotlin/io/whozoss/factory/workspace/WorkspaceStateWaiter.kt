@@ -10,24 +10,25 @@ import org.springframework.stereotype.Service
  * status reads own their short transactions).
  *
  * Behaviour on each observed [WorkspaceSnapshot]:
- *  - `null` (no workspace was requested for the run) -> returns `null`; the run
- *    keeps the caller-provided `repoRoot` (there is nothing to wait for, and this
- *    is NOT a silent fallback to another directory);
+ *  - `null` (no persisted environment found) -> returns `null`, not permission
+ *    to use another directory. [RunWorktreeResolver] refuses every code step in
+ *    enabled mode; only the explicit workspace-disabled opt-out permits fallback;
  *  - [WorkspaceStatus.PREPARING] -> keeps polling until the timeout;
  *  - [WorkspaceStatus.READY] -> returns the exact [WorkspaceReadyFacts]
  *    (worktree path). A `READY` workspace without a path is a contradiction and
  *    fails with [WorkspaceProvisioningCodes.WORKSPACE_PATH_MISSING];
  *  - [WorkspaceStatus.FAILED] -> throws immediately with the actionable cause.
  *
- * STRICT RULE: when a workspace IS requested, the waiter NEVER returns a
- * different directory. It either returns the proven worktree path or throws.
+ * The waiter never selects a different directory. READY describes provisioning
+ * availability; [RunWorktreeResolver] additionally validates the local Git root,
+ * case/namespace binding and branch/HEAD before code execution.
  *
  * ## Source of truth
  * The run worktree is read from the Factory-owned
  * [io.whozoss.factory.environment.domain.WorkEnvironment] (via
- * [WorkspaceStatePort]). AgentOS persists a `CaseResourceBinding` per family but
- * exposes **no** read endpoint for its status or worktree path, so the Factory
- * cannot poll AgentOS directly; this is a documented gap, not an invented API.
+ * [WorkspaceStatePort]). Parent-run and standalone provisioning share adoption of
+ * the root case's READY path from AgentOS workspace/changes into that environment. This
+ * waiter reads the persisted environment, not an inferred namespace parent.
  */
 @Service
 class WorkspaceStateWaiter(
@@ -39,8 +40,9 @@ class WorkspaceStateWaiter(
 
     /**
      * Awaits the run's workspace, returning the proven worktree facts or `null`
-     * when no workspace was requested. Throws [WorkspaceProvisioningException] on
-     * a failed preparation or a timeout.
+     * when no environment exists or workspace checks are disabled. Null is not
+     * a fallback authorization; [RunWorktreeResolver] enforces the code-step policy.
+     * Throws [WorkspaceProvisioningException] on failed preparation or timeout.
      */
     fun awaitWorkspaceReady(
         scope: TenantScope,
@@ -72,7 +74,10 @@ class WorkspaceStateWaiter(
                             "The workspace of workflow '$workflowId' is READY but exposes no worktree path.",
                             details = mapOf("workflowId" to workflowId, "caseId" to snapshot.caseId),
                         )
-                    return WorkspaceReadyFacts(worktreePath = path, repoRoot = snapshot.repoRoot, caseId = snapshot.caseId)
+                    return WorkspaceReadyFacts(
+                        worktreePath = path, repoRoot = snapshot.repoRoot, caseId = snapshot.caseId,
+                        environmentId = snapshot.environmentId, baseCommit = snapshot.baseCommit, namespaceId = snapshot.namespaceId,
+                    )
                 }
 
                 WorkspaceStatus.FAILED -> throw WorkspaceProvisioningException(

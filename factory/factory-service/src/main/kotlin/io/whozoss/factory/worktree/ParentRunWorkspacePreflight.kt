@@ -7,7 +7,7 @@ import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import java.nio.file.Path
 
-/** Shared fail-closed workspace preflight for a new turn belonging to a parent Run. */
+/** Shared fail-closed preflight for parent-Run fragments and adopted standalone workspaces. */
 class ParentRunWorkspacePreflight(
     private val environments: WorkEnvironmentRepository?,
     private val validator: AgentOsWorkspaceIdentityValidator?,
@@ -19,7 +19,10 @@ class ParentRunWorkspacePreflight(
         attempt: DurableAgentAttempt,
         binding: TrustedCaseBinding,
     ) {
-        if (parentRunIdOf(instance) == null) return
+        val standalone = instance != null && environments?.findLatestByWorkflowId(scope, instance.workflowId)?.envType ==
+            io.whozoss.factory.workspace.StandaloneWorkspaceProvisioningService.ENV_TYPE
+        if (parentRunIdOf(instance) == null && !standalone) return
+        require(!binding.externalUserId.isNullOrBlank()) { "Authenticated workspace execution identity is required" }
         val workspaceValidator = validator
             ?: error("AgentOS workspace identity validator is required for parent Run fragments")
         val repository = environments
@@ -30,6 +33,7 @@ class ParentRunWorkspacePreflight(
             ?: error("Captured work environment '$environmentRef' is unavailable")
         if (environment.revision != attempt.expectedEnvironmentRevision) error("Captured work environment revision is stale")
         if (environment.namespaceId != namespaceId) error("Captured work environment namespace mismatch")
+        if (environment.workflowId != (parentRunIdOf(instance) ?: instance?.workflowId)) error("Captured work environment owner mismatch")
         if (environment.parentCaseId != instance?.rootCaseId) error("Captured work environment root case mismatch")
         workspaceValidator.validate(binding.caseId, Path.of(environment.worktreePath), binding.externalUserId)
     }

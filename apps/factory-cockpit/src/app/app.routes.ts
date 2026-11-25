@@ -23,8 +23,10 @@ export const routes: Routes = [
     path: 'sessions/:runId',
     loadComponent: () => import('./features/session/session-page.component').then((m) => m.SessionPageComponent),
   },
+  // `/history` is canonical; retain the former French path for saved bookmarks.
+  { path: 'historique', pathMatch: 'full', redirectTo: 'history' },
   {
-    path: 'historique',
+    path: 'history',
     loadComponent: () => import('./features/history/history-page.component').then((m) => m.HistoryPageComponent),
   },
   {

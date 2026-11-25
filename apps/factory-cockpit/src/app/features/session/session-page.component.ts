@@ -99,17 +99,8 @@ export class SessionPageComponent implements OnDestroy {
     { initialValue: '' }
   )
 
-  /**
-   * Stable step id from the current selection. Forwarded to the timeline
-   * for the block highlight and to the action-bar for step-scoped actions.
-   */
+  /** Stable logical step id for step-scoped actions and graph selection. */
   protected readonly selectedStepId = this.pageState.selectedStepId
-
-  /**
-   * Block highlight key for the timeline (plain string, not the full
-   * selection object, so the timeline component stays decoupled).
-   */
-  protected readonly selectedBlock = computed(() => this.selectedStepId())
 
   /**
    * Phase detail for the currently selected step, falling back to the
@@ -166,13 +157,13 @@ export class SessionPageComponent implements OnDestroy {
     })
     effect(() => {
       const s = this.session()
-      // Auto-select the active step on first load only (when nothing is selected).
-      // After that, the user's selection is preserved through SSE refreshes.
-      if (s?.phase.stepId && !this.selection()) {
+      // Follow the backend's active phase after every SSE-driven projection
+      // refresh until the user explicitly selects a diagram node or timeline
+      // block. The page state keeps that explicit selection pinned.
+      if (s?.phase.stepId) {
         this.pageState.selectDefaultStep()
-      } else if (s) {
-        this.pageState.reconcileSelection()
       }
+      this.pageState.reconcileSelection()
       const run = this.run()
       const namespaceId = run?.namespaceId
       const workstreamName = namespaceId
@@ -195,7 +186,7 @@ export class SessionPageComponent implements OnDestroy {
   }
 
   protected selectRoutingStep(stepId: string): void {
-    this.pageState.selection.set({ stepId })
+    this.pageState.selectStep(stepId)
   }
 
   protected selectBlock(b: TimelineBlock): void {

@@ -22,6 +22,51 @@ class DurableAgentAttemptProjectionTest : Neo4jDomainIntegrationTest() {
     @Autowired
     private lateinit var service: DurableAgentAttemptService
 
+    @Autowired
+    private lateinit var modelObserver: io.whozoss.factory.adapter.agentos.AttemptModelObserver
+
+    @Test
+    fun `actual model survives reload and recovery and is not inherited by a same-case successor`() {
+        val first = service.register(scope, attempt("model-first"))
+        modelObserver.captureBaseline(scope, NAMESPACE_ID, first.caseId, first.attemptId,
+            io.whozoss.factory.adapter.agentos.HighWaterMark(null, null))
+        val event = io.whozoss.factory.adapter.agentos.CaseEventView(
+            "event-model", "AgentRunningEvent", first.caseId, "2026-01-01T00:00:00Z",
+            mapOf("agentName" to "builder", "llmProvider" to "provider", "llmModel" to "actual-model"),
+        )
+        modelObserver.observe(scope, NAMESPACE_ID, first.caseId, first.attemptId, listOf(event))
+        modelObserver.observe(scope, NAMESPACE_ID, first.caseId, first.attemptId, listOf(event.copy(raw = event.raw + ("llmModel" to "changed"))))
+        val reloaded = service.find(scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, first.attemptId)!!
+        assertThat(reloaded.toDto().resolvedModel).isEqualTo(
+            io.whozoss.factory.agentattempt.domain.ResolvedModel("provider", "actual-model"),
+        )
+        val successor = service.register(scope, attempt("model-successor").copy(attemptNumber = 2))
+        assertThat(successor.toDto().resolvedModel).isNull()
+        // Legacy unknown baseline must not adopt an old event from the reused case.
+        modelObserver.observe(scope, NAMESPACE_ID, successor.caseId, successor.attemptId, listOf(event))
+        assertThat(service.find(scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, successor.attemptId)!!.resolvedModel).isNull()
+    }
+
+    @Test
+    fun `the same case and attempt ids in another tenant are neither read nor written`() {
+        val mine = service.register(scope, attempt("model-tenant"))
+        val otherScope = io.whozoss.factory.persistence.TenantScope(scope.organizationId, "other-workstream-model")
+        val theirs = service.register(otherScope, attempt("model-tenant"))
+        val baseline = io.whozoss.factory.adapter.agentos.HighWaterMark(null, null)
+        // Both tenants hold an attempt with the identical (caseId, attemptId): the scoped lookup must stay unique.
+        modelObserver.captureBaseline(scope, NAMESPACE_ID, mine.caseId, mine.attemptId, baseline)
+        assertThat(modelObserver.baseline(scope, NAMESPACE_ID, mine.caseId, mine.attemptId)).isNotNull()
+        assertThat(modelObserver.baseline(otherScope, NAMESPACE_ID, theirs.caseId, theirs.attemptId)).isNull()
+        val event = io.whozoss.factory.adapter.agentos.CaseEventView(
+            "event-tenant", "AgentRunningEvent", mine.caseId, "2026-01-01T00:00:00Z",
+            mapOf("agentName" to "builder", "llmProvider" to "provider", "llmModel" to "mine-only"),
+        )
+        modelObserver.observe(scope, NAMESPACE_ID, mine.caseId, mine.attemptId, listOf(event))
+        assertThat(service.find(scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, mine.attemptId)!!.resolvedModel)
+            .isEqualTo(io.whozoss.factory.agentattempt.domain.ResolvedModel("provider", "mine-only"))
+        assertThat(service.find(otherScope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, theirs.attemptId)!!.resolvedModel).isNull()
+    }
+
     @Test
     fun `the dto carries no execution secret nor internal recovery or lease data`() {
         val exposed = DurableAgentAttemptDto::class.memberProperties.map { it.name }

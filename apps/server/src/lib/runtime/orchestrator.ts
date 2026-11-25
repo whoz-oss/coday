@@ -179,6 +179,7 @@ export async function startAgentosService(ctx: OrchestratorContext): Promise<Sta
     port: ports.agentos,
     boltPort: ports.agentosBolt,
     expressPort: ports.express,
+    factoryPort: ports.factory,
     identityEmail,
     secrets: state ? secretsFor(ctx, state) : undefined,
   })

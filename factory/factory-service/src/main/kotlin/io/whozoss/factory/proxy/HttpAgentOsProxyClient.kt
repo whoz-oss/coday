@@ -58,15 +58,29 @@ class HttpAgentOsProxyClient(
 
     private class AgentOsNotFound : RuntimeException()
 
+    override fun getCumulativeUsage(caseIds: List<String>, externalUserId: String): CumulativeUsageDto? = try {
+        require(caseIds.isNotEmpty())
+        // Validate identifiers before embedding them in a URI; never relay arbitrary query text.
+        val ids = caseIds.distinct().map { java.util.UUID.fromString(it).toString() }
+        relay(
+            "/api/usage-records/aggregate/case-trees?caseIds=${ids.joinToString(",")}",
+            externalUserId,
+            object : ParameterizedTypeReference<CumulativeUsageDto>() {},
+        )
+    } catch (error: Exception) {
+        logger.warn { "Cumulative usage unavailable (${error.javaClass.simpleName})" }
+        null
+    }
+
     override fun ensureRunRootCase(caseId: String, namespaceId: String, title: String, externalUserId: String) {
         require(externalUserId.isNotBlank()) { "Authenticated provisioning identity is required" }
         fun read(): Map<String, Any?>? = try {
             relay("/api/cases/$caseId", externalUserId, object : ParameterizedTypeReference<Map<String, Any?>>() {})
         } catch (_: AgentOsNotFound) { null }
         fun validate(remote: Map<String, Any?>) {
-            check(remote["id"] == caseId && remote["namespaceId"] == namespaceId &&
-                remote["parentCaseId"] == null && remote["parentId"] == null && remote["removed"] != true) {
-                "AgentOS root case identity mismatch"
+            if (!(remote["id"] == caseId && remote["namespaceId"] == namespaceId &&
+                remote["parentCaseId"] == null && remote["parentId"] == null && remote["removed"] != true)) {
+                throw io.whozoss.factory.workspace.TerminalWorkspaceAdoptionException("AgentOS root case identity mismatch")
             }
         }
         read()?.let { validate(it); return }

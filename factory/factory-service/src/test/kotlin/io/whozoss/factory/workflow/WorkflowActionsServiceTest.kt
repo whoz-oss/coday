@@ -38,6 +38,7 @@ class WorkflowActionsServiceTest {
     private val scope = TenantScope("org", "workstream")
     private val namespace = "00000000-0000-4000-8000-000000000001"
     private val workflowId = "workflow-1"
+    private val reader = "reader-1"
 
     private val repository = mockk<WorkflowRepository>()
     private val evidenceRepository = mockk<WorkflowEvidenceRepository>()
@@ -124,7 +125,7 @@ class WorkflowActionsServiceTest {
             ),
         )
 
-        val result = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
 
         val reply = result.allowedActions.single { it.type == WorkflowActionTypes.REPLY }
         assertThat(reply.interactionId).isEqualTo("int-1")
@@ -141,7 +142,7 @@ class WorkflowActionsServiceTest {
             ),
         )
 
-        val result = service.workflowActions(scope, namespace, workflowId, canReply = false)
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = false, actorId = reader)
 
         assertThat(result.allowedActions.none { it.type == WorkflowActionTypes.REPLY }).isTrue()
         assertThat(result.blockers.map { it.code }).contains(WorkflowBlockerCodes.WAITING_HUMAN_INTERACTION)
@@ -158,7 +159,7 @@ class WorkflowActionsServiceTest {
             ),
         )
 
-        val result = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
 
         val retry = result.allowedActions.single { it.type == WorkflowActionTypes.RETRY }
         assertThat(retry.stepId).isEqualTo("frontend-build")
@@ -173,9 +174,9 @@ class WorkflowActionsServiceTest {
         stubBaseline(
             workflowAttempts = listOf(attempt("case-9", AgentAttemptStatus.RUNNING, revision = 7)),
         )
-        every { proxy.getRunCost("case-9", null) } returns null
+        every { proxy.getRunCost("case-9", reader) } returns null
 
-        val result = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
 
         val cancel = result.allowedActions.single { it.type == WorkflowActionTypes.CANCEL_ATTEMPT }
         assertThat(cancel.attemptId).isEqualTo("attempt-case-9")
@@ -192,10 +193,10 @@ class WorkflowActionsServiceTest {
                 attempt("case-b", AgentAttemptStatus.INDETERMINATE),
             ),
         )
-        every { proxy.getRunCost("case-a", null) } returns null
-        every { proxy.getRunCost("case-b", null) } returns null
+        every { proxy.getRunCost("case-a", reader) } returns null
+        every { proxy.getRunCost("case-b", reader) } returns null
 
-        val result = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
 
         assertThat(result.allowedActions.none { it.type == WorkflowActionTypes.CANCEL_ATTEMPT }).isTrue()
         assertThat(result.blockers.map { it.code })
@@ -207,11 +208,23 @@ class WorkflowActionsServiceTest {
         stubBaseline(
             revision = 5,
             workflowAttempts = listOf(attempt("case-1")),
+            instance = WorkflowInstanceRecord(
+                namespaceId = namespace,
+                workflowId = workflowId,
+                revision = 5,
+                status = "active",
+                creationCommandHash = null,
+                instance = mapOf("controllerExecution" to mapOf("caseId" to "case-1", "actorId" to "creator-1")),
+                projection = emptyMap(),
+            ),
         )
-        every { proxy.getRunCost("case-1", null) } returns runCost("case-1", paused = true, threshold = 50.0)
+        every { proxy.getRunCost("case-1", reader) } returns runCost("case-1", paused = true, threshold = 50.0)
 
-        val result = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
 
+        verify(exactly = 1) { proxy.getRunCost("case-1", reader) }
+        verify(exactly = 0) { proxy.getRunCost(any(), "creator-1") }
+        verify(exactly = 0) { proxy.getRunCost(any(), null) }
         assertThat(result.blockers.map { it.code }).contains(WorkflowBlockerCodes.REAL_COST_PAUSED)
         val continueCost = result.allowedActions.single { it.type == WorkflowActionTypes.CONTINUE_COST }
         val stopCost = result.allowedActions.single { it.type == WorkflowActionTypes.STOP_COST }
@@ -225,7 +238,7 @@ class WorkflowActionsServiceTest {
     fun `no actions are emitted when the state does not allow them`() {
         stubBaseline(revision = 3, steps = listOf(mapOf("id" to "done", "status" to "completed")))
 
-        val result = service.workflowActions(scope, namespace, workflowId, canReply = true)
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
 
         assertThat(result.allowedActions).isEmpty()
         assertThat(result.blockers).isEmpty()
@@ -236,7 +249,7 @@ class WorkflowActionsServiceTest {
         every { repository.findProjection(scope, namespace, workflowId) } returns null
         every { repository.findInstance(scope, namespace, workflowId) } returns null
 
-        assertThatThrownBy { service.workflowActions(scope, namespace, workflowId, canReply = true) }
+        assertThatThrownBy { service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader) }
             .isInstanceOf(FactoryException::class.java)
             .extracting { (it as FactoryException).errorCode }
             .isEqualTo("WORKFLOW_NOT_FOUND")

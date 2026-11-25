@@ -30,6 +30,20 @@ class OutboxDrainWorkerTest {
     private val worker = OutboxDrainWorker(drainService, sessionRunService, proxy, ObjectMapper())
 
     private fun stubDrain(vararg events: OutboxEvent) {
+        val queued = mutableListOf<OutboxEvent>()
+        every { drainService.enqueueContinuation(any(), any(), any(), any()) } answers {
+            val source = secondArg<OutboxEvent>()
+            queued.add(source.copy(eventType = "session_continuation", payload = thirdArg()))
+            Unit
+        }
+        every { drainService.dueContinuations(any(), any(), any()) } answers { queued.toList() }
+        every { drainService.claimContinuation(any(), any(), any()) } answers {
+            queued.firstOrNull { it.id == secondArg<String>() }?.copy(claimToken = "owner")
+        }
+        every { drainService.completeContinuation(any(), any(), any(), any()) } returns Unit
+        every { drainService.deferContinuation(any(), any(), any(), any(), any()) } returns Unit
+        every { drainService.submissionContext(any(), any(), any(), any()) } returns null
+        every { drainService.releaseContinuation(any(), any(), any()) } returns Unit
         every { drainService.pendingOrganizations() } returns listOf("org-1")
         every { drainService.drainPending(any(), any(), any(), any()) } answers {
             @Suppress("UNCHECKED_CAST")
@@ -92,6 +106,23 @@ class OutboxDrainWorkerTest {
     }
 
     @Test
+    fun `wrapped interruption retains continuation for restart and stops the drain`() {
+        stubDrain(OutboxEvent("interrupted", "session_run_requested",
+            """{"namespaceId":"ns-1","workflowId":"wf-1","repoRoot":"/repo"}""", 0, "ws-1"))
+        every { sessionRunService.runSession(any(), any(), any(), any(), any()) } throws
+            RuntimeException("HTTP interrupted", InterruptedException("shutdown"))
+        try {
+            worker.drain()
+            org.assertj.core.api.Assertions.assertThat(Thread.currentThread().isInterrupted).isTrue()
+            verify(exactly = 1) { drainService.releaseContinuation("org-1", "interrupted", "owner") }
+            verify(exactly = 0) { drainService.completeContinuation(any(), any(), any(), any()) }
+            verify(exactly = 0) { drainService.deferContinuation(any(), any(), any(), any(), any()) }
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
     fun `a failing continuation never breaks the worker`() {
         stubDrain(
             OutboxEvent(
@@ -102,7 +133,7 @@ class OutboxDrainWorkerTest {
                 workstreamId = "ws-1",
             ),
         )
-        every { proxy.resolveRepoRoot("ns-1", null) } returns null
+        every { proxy.resolveRepoRoot("ns-1", null) } returns "/repo"
         every { sessionRunService.runSession(any(), any(), any(), any(), any()) } throws IllegalStateException("boom")
 
         worker.drain()

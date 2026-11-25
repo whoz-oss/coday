@@ -1,0 +1,19 @@
+# FACTORY_WORKER integration (copy of the AgentOS config, platform scope)
+# To check: responseFormat is masked (****) on read.
+name: FACTORY_WORKER
+integrationType: HTTP_API
+description: "Factory Worker REST API described by the coday-factory OpenAPI spec"
+autoGrant: false
+authSettingName: null
+parameters:
+  baseUrl: http://localhost:3000
+  spec:
+    url: http://localhost:3000/api/factory/openapi/factory-worker.yaml
+    refreshMinutes: 60
+    maxBytes: 5242880
+  maxTools: 64
+  maxResponseChars: 20000
+  timeoutSeconds: 30
+  maxConcurrentCalls: 4
+  allowMutations: true
+  # responseFormat: ...

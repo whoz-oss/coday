@@ -39,12 +39,13 @@ import { MatTooltipModule } from '@angular/material/tooltip'
 export class MetricChipComponent {
   readonly icon = input.required<string>()
   readonly label = input('')
-  /** Number of sub-costs with an unknown price; > 0 marks the value as uncertain. */
-  readonly unknownCostCount = input(0)
+  /** Null means analytics could not determine cost completeness. */
+  readonly unknownCostCount = input<number | null | undefined>(undefined)
 
   protected readonly tooltip = computed(() => {
     const base = this.label()
     const unknown = this.unknownCostCount()
+    if (unknown == null) return `${base} · analytics availability unknown`
     return unknown > 0 ? `${base} · ${unknown} round(s) with unknown cost (floor value)` : base
   })
 }

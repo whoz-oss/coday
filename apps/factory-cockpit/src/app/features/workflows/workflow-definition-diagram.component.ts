@@ -1,10 +1,19 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core'
 import { FullWorkflowStep } from '../../core/factory-api.service'
+import { CorrectionCycle, StepExecution } from '../../core/models'
 
 /** Deterministic DAG layout; definition order breaks ties, never changes dependency data. */
 export function layoutDefinition(steps: FullWorkflowStep[]): {
   nodes: { step: FullWorkflowStep; x: number; y: number }[]
-  edges: { from: string; to: string; path: string; label: string; x: number; y: number }[]
+  edges: {
+    from: string
+    to: string
+    path: string
+    label: string
+    x: number
+    y: number
+    kind: 'dependency' | 'fail-return'
+  }[]
   width: number
   height: number
 } {
@@ -40,6 +49,7 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
       return [
         {
           label,
+          kind: 'dependency' as const,
           x: (x1 + x2) / 2,
           y: (y1 + y2) / 2 - 8,
           from: id,
@@ -49,9 +59,31 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
       ]
     })
   )
+  const failEdges = nodes.flatMap((node) => {
+    const targetId =
+      node.step.outcomeTransitions?.fail?.action === 'return' ? node.step.outcomeTransitions.fail.target : undefined
+    const target = targetId ? positioned.get(targetId) : undefined
+    if (!target) return []
+    const x1 = node.x + 108
+    const y1 = node.y + 80
+    const x2 = target.x + 108
+    const y2 = target.y + 80
+    const budget = node.step.outcomeTransitions?.fail?.maxCycles ?? 2
+    return [
+      {
+        from: node.step.id,
+        to: target.step.id,
+        kind: 'fail-return' as const,
+        label: `FAIL → correction (≤${budget})`,
+        x: (x1 + x2) / 2,
+        y: Math.max(y1, y2) + 26,
+        path: `M ${x1} ${y1} C ${x1} ${y1 + 56}, ${x2} ${y2 + 56}, ${x2} ${y2}`,
+      },
+    ]
+  })
   return {
     nodes,
-    edges,
+    edges: [...edges, ...failEdges],
     width: Math.max(260, ...nodes.map((node) => node.x + 240)),
     height: Math.max(180, ...nodes.map((node) => node.y + 164)),
   }
@@ -77,9 +109,10 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
               <path d="M 0 0 L 10 5 L 0 10 z" />
             </marker>
           </defs>
-          @for (edge of layout().edges; track edge.from + ':' + edge.to) {
+          @for (edge of layout().edges; track edge.kind + ':' + edge.from + ':' + edge.to) {
             <path
               class="edge"
+              [class.edge--fail-return]="edge.kind === 'fail-return'"
               [attr.d]="edge.path"
               marker-end="url(#definition-arrow)"
               [attr.data-dependency]="edge.from + ':' + edge.to"
@@ -109,6 +142,23 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
             }
             @if (node.step.status) {
               <span>{{ node.step.status }} · {{ node.step.activation }}</span>
+            }
+            @if (node.step.outcomeTransitions?.fail?.action === 'return') {
+              <span
+                >FAIL → {{ node.step.outcomeTransitions?.fail?.target }} · ≤{{
+                  node.step.outcomeTransitions?.fail?.maxCycles ?? 2
+                }}
+                cycles</span
+              >
+            }
+            @if (currentExecution(node.step.id); as execution) {
+              <span
+                >execution {{ execution.executionNumber }} · cycle {{ execution.cycleNumber ?? 0 }} ·
+                {{ execution.status }}</span
+              >
+            }
+            @if (correctionFor(node.step.id); as correction) {
+              <span>correction {{ correction.cycleNumber }}/{{ correction.maxCycles }} · {{ correction.status }}</span>
             }
             @if (node.step.routeDecision) {
               <span>Selected: {{ node.step.routeDecision.selectedRoutes.join(', ') }}</span>
@@ -148,6 +198,10 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
       fill: none;
       stroke: var(--sf-text-secondary, currentColor);
       stroke-width: 2;
+    }
+    .edge--fail-return {
+      stroke: var(--color-error, #b3261e);
+      stroke-dasharray: 5 4;
     }
     button {
       position: absolute;
@@ -195,7 +249,18 @@ export function layoutDefinition(steps: FullWorkflowStep[]): {
 export class WorkflowDefinitionDiagramComponent {
   readonly steps = input<FullWorkflowStep[]>([])
   readonly selectedId = input<string | null>(null)
+  readonly executions = input<StepExecution[]>([])
+  readonly correction = input<CorrectionCycle | undefined>()
   readonly disabled = input(false)
   readonly selected = output<string>()
   readonly layout = computed(() => layoutDefinition(this.steps()))
+  protected currentExecution(stepId: string): StepExecution | undefined {
+    return this.executions()
+      .filter((execution) => execution.stepId === stepId)
+      .at(-1)
+  }
+  protected correctionFor(stepId: string): CorrectionCycle | undefined {
+    const correction = this.correction()
+    return correction?.triggeringStepId === stepId || correction?.returnTargetStepId === stepId ? correction : undefined
+  }
 }

@@ -13,6 +13,8 @@ The `agentos-sdk` module defines four extension points:
 | `AiProviderPlugin` | `AiProvider` list -> `AiProviderRegistry` |
 | `ToolPlugin` | `StandardTool<*>` list -> `ToolRegistry` |
 
+A tool whose work blocks the calling thread (child process, socket, file lock) extends `BlockingTool<T>` instead of implementing `StandardTool<T>.execute` itself: it implements `executeBlocking`, which runs on `Dispatchers.IO` and is interrupted when the run is cancelled. It must release what it started (kill the child process...) when interrupted.
+
 ## Creating a Plugin
 
 A plugin requires two classes: a `Plugin` subclass (lifecycle hooks) and one or more `@Extension`-annotated classes implementing the relevant interface above.
@@ -33,10 +35,46 @@ The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlug
 | `agentos-mcp-plugin` | `MCP_STDIO`, `MCP_HTTP` | Tools of a local (stdio) or remote (HTTP) MCP server |
 | `agentos-http-plugin` | `HTTP_API` | Operations of an OpenAPI-described HTTP API (see [http-api-integration.md](http-api-integration.md)) |
 | `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
+| `agentos-gradle-plugin` | `GRADLE` | Structured Gradle tools (`gradle_compile`, `gradle_tests`, `gradle_dependency_insight`) run through the `gradlew` of a configured directory (see [GRADLE integration](#gradle-integration)) |
 
 `./gradlew deployPlugins` must be re-run after changing any plugin (it cleans, rebuilds and
 copies every plugin JAR into `plugins/`). For a one-shot local run, `./gradlew bootRunWithPlugins`
 deploys the plugins and then boots `agentos-service`.
+
+### GRADLE integration
+
+The `GRADLE` integration exposes three tools, named `<configName>__<tool>` like the other plugins:
+`gradle_compile` (main and test sources, compiler diagnostics parsed), `gradle_tests` (results read from the
+JUnit XML reports, with `--tests` filters) and `gradle_dependency_insight`. Each call must give
+a `timeoutSeconds` (1 to 270, kept under the 5 minutes of the context cache): the run is killed beyond it, and cancelling the case kills the whole Gradle
+process tree.
+
+```yaml
+name: GRADLE
+integrationType: GRADLE
+parameters:
+  projectDirectory: "{{NAMESPACE_CONFIG_PATH}}"   # root of the project: nothing outside it is ever run
+  gradlewDirectory: backend                       # directory that contains gradlew, inside projectDirectory (default: projectDirectory)
+  javaHome: /path/to/jdk                          # optional, passed as JAVA_HOME
+  inheritEnvironment: [ORG_GRADLE_PROJECT_token]  # optional, see below
+```
+
+What is executed is decided by the configuration, never by the agent: the tools have no path parameter.
+`gradlew` is looked for in `gradlewDirectory` only (no search in the parent directories or the
+subdirectories) and both the directory and the file must be inside `projectDirectory`, symbolic links
+resolved. The `settings.gradle(.kts)` read for module detection and for the composite-build note is the one of
+`gradlewDirectory`. For a repository with several Gradle builds, declare one integration per build.
+
+Gradle does not inherit the environment of the service. It gets an allow-list: `PATH`, `HOME`, `USER`,
+`LOGNAME`, `SHELL`, `TMPDIR`/`TMP`/`TEMP`, `TZ`, `LANG`/`LANGUAGE`/`LC_*`, `TERM`, `JAVA_HOME`, the proxy
+variables, `SSL_CERT_FILE`/`SSL_CERT_DIR` and `GRADLE_USER_HOME`/`GRADLE_OPTS`/`GRADLE_RO_DEP_CACHE`, so the LLM
+keys and tokens of the service are not visible to the build or its tests. A variable a build really needs is
+listed in `inheritEnvironment`. A proxy variable can carry credentials in its URL: it is the one default that can.
+
+The tools run the build of the repository (`gradlew`, `build.gradle.kts`, `buildSrc`, the wrapper distribution
+URL, init scripts) with the rights of the AgentOS service. An agent that can write to the repository can
+therefore get code executed through them, as with the `BASH` integration: the confinement and the environment
+filter reduce the blast radius, they are not a sandbox. Give the integration only to agents you trust with that.
 
 ## Filesystem Plugin
 
@@ -189,7 +227,7 @@ can still encode the value, so do not bind a secret to a BASH integration whose 
 to read it. Like the other plugins, this works per user only for settings where each user holds their own
 credential.
 
-BASH integrations can only be created at platform or namespace-shared scope (`BASH` is in
+BASH and GRADLE integrations can only be created at platform or namespace-shared scope (`BASH` and `GRADLE` are in
 `agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
 to their own commands.
 
@@ -198,12 +236,12 @@ to their own commands.
 A user-scoped `IntegrationConfig` with the same name as a platform or namespace-shared one is
 deep-merged over it and inherits its `authSettingName`. For types whose parameters name a network
 endpoint or a command, that overlay would let any authenticated user point a shared credential at a
-host they control (or, for `BASH`, run a command that reads it), so those types are refused in both user scopes at the API edge (`POST` -> 403,
+host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`), so those types are refused in both user scopes at the API edge (`POST` -> 403,
 `PUT` -> 404 because the endpoint hides existence). Shared scopes are unaffected.
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
-| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
+| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
 
 ## Tool Registration
 

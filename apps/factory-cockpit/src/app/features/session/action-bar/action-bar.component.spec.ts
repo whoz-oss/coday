@@ -182,7 +182,7 @@ describe('ActionBarComponent', () => {
   it('renders NEEDS_RESEARCH as information/access needed, not as a failure or unknown runtime', () => {
     const host = render([], [{ code: 'NEEDS_RESEARCH', stepId: 'research', label: 'Agent needs research' }])
 
-    expect(host.textContent).toContain('Informations ou accès nécessaires')
+    expect(host.textContent).toContain('Information or access needed')
     expect(host.querySelector('.blocker--research')).not.toBeNull()
     expect(host.querySelector('.blocker--failure')).toBeNull()
     expect(host.querySelector('.blocker--indeterminate')).toBeNull()
@@ -207,6 +207,15 @@ describe('ActionBarComponent', () => {
     expect(emitted).toEqual([
       { stepId: 'research', expectedRevision: 12, additionalContext: 'Repository access granted' },
     ])
+  })
+
+  it('shows the research resumption form in English', () => {
+    const host = render([{ type: 'resume_research', stepId: 'research', expectedRevision: 12 }])
+    const text = host.textContent ?? ''
+
+    expect(text).toContain('Additional context')
+    expect(text).toContain('0 / 4000 characters')
+    expect(text).not.toMatch(/Contexte|caractères|Décrivez|Saisissez/)
   })
 
   it('disables research resumption while a submission is in flight', () => {

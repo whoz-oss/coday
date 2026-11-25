@@ -23,7 +23,8 @@ import kotlin.concurrent.thread
  *   the observed case is ignored (defensive — the endpoint is per-case but
  *   the adapter does not trust it).
  * - Transient events (`ThinkingEvent`, `TextChunkEvent`, `CaseUpdatedEvent`)
- *   are display-only: dropped before any verdict/checkpoint logic.
+ *   are display-only: they slide the active observation deadline while the case
+ *   is actively running, then are dropped before any verdict/checkpoint logic.
  * - Reconnection uses bounded exponential backoff; on **every** reconnection
  *   a REST catch-up (`reconcile` callback) runs first so no durable event is
  *   missed while the stream was down.
@@ -31,8 +32,8 @@ import kotlin.concurrent.thread
  *   `:keep-alive` within [stallTimeoutMs] is treated as dropped.
  * - A verdict is **never** derived from silence: when the reconnection budget
  *   is exhausted the result is
- *   `Indeterminate("SSE reconnection budget exhausted")`, and when the
- *   active-execution budget elapses it is
+ *   `Indeterminate("SSE reconnection budget exhausted")`, and when the sliding
+ *   active-execution inactivity budget elapses it is
  *   `Indeterminate("SSE observation timeout")`. Waiting for a human pauses
  *   that budget and uses the separate bounded [humanWaitTimeoutMs].
  */
@@ -80,6 +81,14 @@ class AgentOsSseClient(
         var activeBudgetMs = timeoutMs
         var deadline = now() + activeBudgetMs
         var phase: HumanWaitPhase = HumanWaitPhase.Active
+        var reconnects = 0
+        fun recordActivity() {
+            reconnects = 0
+            if (phase is HumanWaitPhase.Active) {
+                activeBudgetMs = timeoutMs
+                deadline = now() + activeBudgetMs
+            }
+        }
         fun handleIntermediate(verdict: AgentOsExecutionVerdict.WaitingHuman) {
             val current = phase
             if (current is HumanWaitPhase.WaitingHuman && current.questionRef == verdict.questionRef) return
@@ -125,7 +134,6 @@ class AgentOsSseClient(
             }
         }
         observed.forEach(::applyLifecycleEvent)
-        var reconnects = 0
         var connectedOnce = false
         while (true) {
             if (connectedOnce) {
@@ -140,6 +148,7 @@ class AgentOsSseClient(
                     for (event in catchUp.events) {
                         if (event.caseId != caseId || event.isTransient()) continue
                         if (checkpoint.record(event)) {
+                            recordActivity()
                             observed.add(event)
                             onEvent(event)
                             applyLifecycleEvent(event)
@@ -172,7 +181,7 @@ class AgentOsSseClient(
             when (
                 val outcome = streamOnce(
                     caseId, externalUserId, checkpoint,
-                    ::currentDeadline, observed, onEvent, onAnswerObserved, ::applyLifecycleEvent, ::evaluateVerdict,
+                    ::currentDeadline, ::recordActivity, observed, onEvent, onAnswerObserved, ::applyLifecycleEvent, ::evaluateVerdict,
                 )
             ) {
                 is StreamOutcome.Verdict -> return outcome.verdict
@@ -224,6 +233,7 @@ class AgentOsSseClient(
         externalUserId: String?,
         checkpoint: EventCheckpoint,
         deadline: () -> Long,
+        onActivity: () -> Unit,
         observed: MutableList<CaseEventView>,
         onEvent: (CaseEventView) -> Unit,
         onAnswerObserved: (CaseEventView) -> Unit,
@@ -286,7 +296,7 @@ class AgentOsSseClient(
                         val frame = parser.finish()
                         if (frame != null) {
                             handleFrame(
-                                frame, caseId, checkpoint, observed, onEvent, onAnswerObserved, onLifecycleEvent, evaluateVerdict,
+                                frame, caseId, checkpoint, onActivity, observed, onEvent, onAnswerObserved, onLifecycleEvent, evaluateVerdict,
                             )?.let { return it }
                         }
                         return StreamOutcome.Dropped
@@ -294,7 +304,7 @@ class AgentOsSseClient(
                     is Signal.Line -> {
                         val frame = parser.feedLine(signal.value) ?: continue
                         handleFrame(
-                            frame, caseId, checkpoint, observed, onEvent, onAnswerObserved, onLifecycleEvent, evaluateVerdict,
+                            frame, caseId, checkpoint, onActivity, observed, onEvent, onAnswerObserved, onLifecycleEvent, evaluateVerdict,
                         )?.let { return it }
                     }
                 }
@@ -317,6 +327,7 @@ class AgentOsSseClient(
         frame: SseFrame,
         caseId: String,
         checkpoint: EventCheckpoint,
+        onActivity: () -> Unit,
         observed: MutableList<CaseEventView>,
         onEvent: (CaseEventView) -> Unit,
         onAnswerObserved: (CaseEventView) -> Unit,
@@ -326,8 +337,12 @@ class AgentOsSseClient(
         if (frame.isHeartbeat) return null // :keep-alive — liveness only
         val view = decode(frame) ?: return null
         if (view.caseId != caseId) return null // strict caseId filter
-        if (view.isTransient()) return null // display-only
+        if (view.isTransient()) {
+            onActivity()
+            return null // display-only, but proves active agent execution
+        }
         if (!checkpoint.record(view)) return null // duplicate eventId
+        onActivity()
         observed.add(view)
         onEvent(view)
         onLifecycleEvent(view)

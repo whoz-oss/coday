@@ -1,6 +1,6 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
-import { JsonPipe } from '@angular/common'
+import { JsonPipe, NgTemplateOutlet } from '@angular/common'
 import { firstValueFrom, Subscription } from 'rxjs'
 import {
   afterNextRender,
@@ -36,7 +36,6 @@ import {
   CaseStatusEvent,
   CaseUpdatedEvent,
   Configuration,
-  EnrichmentPhaseTrace,
   ErrorEvent,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
@@ -53,6 +52,8 @@ import {
   ConfirmDialogComponent,
   DrawerComponent,
   IconButtonComponent,
+  KebabMenuComponent,
+  KebabMenuItem,
 } from '@whoz-oss/design-system'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
@@ -62,12 +63,8 @@ import { ConfigChangeCardComponent } from '../config-change-card/config-change-c
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import { AgentActivityComponent } from '../agent-activity/agent-activity.component'
-import { AgentActivity, describeAgentActivity } from '../agent-activity/agent-activity.models'
-import {
-  buildDelegations,
-  DelegationPresentation,
-  isCorrelatedDelegateTool,
-} from '../delegation/models/delegation.models'
+import { AgentActivity, describeAgentActivity, toolActivityLabel } from '../agent-activity/agent-activity.models'
+import { buildDelegations, isCorrelatedDelegateTool } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
 import {
@@ -77,6 +74,8 @@ import {
   parseEffortCommand,
 } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { parseBtwCommand } from '../composer-autocomplete/btw-command'
+import { SideQuestionStateService } from '../../services/side-question-state.service'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import {
   buildReferenceMention,
@@ -87,6 +86,7 @@ import {
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
@@ -117,6 +117,8 @@ import {
 import { FileChipComponent } from '../file-chip/file-chip.component'
 import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
+import { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
+import { groupToolCalls, summarizeToolGroup, ToolGroupSummary, toolRunKey } from './tool-call-groups'
 import { CostPipe } from '../../pipes/cost.pipe'
 import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { AudioMessageComponent } from '../audio-message/audio-message.component'
@@ -125,6 +127,8 @@ import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
 
+// The timeline types live in case-chat.models.ts (tool-call-groups.ts needs them too); re-exported for existing importers.
+export type { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
 export interface ToolCall {
   requestId: string
   toolName: string
@@ -230,8 +234,10 @@ function hasActiveSelection(): boolean {
   selector: 'agentos-case-chat',
   imports: [
     IconButtonComponent,
+    KebabMenuComponent,
     CaseUsageComponent,
     JsonPipe,
+    NgTemplateOutlet,
     DrawerComponent,
     ExchangeShellComponent,
     CaseMembersComponent,
@@ -255,7 +261,7 @@ function hasActiveSelection(): boolean {
     CostPipe,
     TokenCountPipe,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
+  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService, SideQuestionStateService],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -277,6 +283,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
   protected readonly exchangeOpen = signal(false)
+  /** Width of the right drawer, resizable and shared with the case home. */
+  protected readonly drawerWidth = inject(ExchangeDrawerWidthService)
   /** Exchange files picked in the drawer: shown as chips, referenced (never uploaded) by the next message. */
   protected readonly referencedFiles = signal<ExchangeFileRef[]>([])
   protected readonly exchangeFileCount = this.exchangeState.fileCount
@@ -284,6 +292,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Files staged on the next message (component-scoped instance, see providers). */
   protected readonly attachments = inject(ComposerAttachmentsService)
   protected readonly autocomplete = inject(ComposerAutocompleteService)
+  /** The aside of the /btw side questions: component-scoped, so each chat has its own and it ends with the chat. */
+  protected readonly sideQuestions = inject(SideQuestionStateService)
+  /** The answer of the aside, rendered like an agent message. */
+  protected readonly sideAnswerHtml = computed<SafeHtml>(() => {
+    const answer = this.sideQuestions.answer()
+    return answer ? this.renderMarkdown(answer) : ''
+  })
   /** Voice messages: the recorder is component-scoped (microphone released with the host), the capability is app-wide. */
   protected readonly voice = inject(VoiceRecorderService)
   protected readonly voiceCapability = inject(VoiceCapabilityStateService)
@@ -485,6 +500,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Whether the kill confirmation dialog is showing. */
   protected readonly confirmingKill = signal(false)
 
+  /**
+   * Overflow menu of the case header: the destructive actions, kept out of the always-visible icons. Both open a
+   * confirmation (dialog for stop, inline for delete) rather than acting directly. Stop is disabled once the case ended.
+   */
+  protected readonly caseMenuItems = computed<KebabMenuItem[]>(() => [
+    { key: 'stop', label: 'Stop case', icon: 'cancel', variant: 'danger', disabled: this.isTerminal() },
+    { key: 'delete', label: 'Delete case', icon: 'delete', variant: 'danger' },
+  ])
+
+  protected onCaseMenuAction(key: string): void {
+    if (key === 'stop' && !this.isTerminal()) this.confirmingKill.set(true)
+    else if (key === 'delete') this.confirmingDelete.set(true)
+  }
+
   /** The case-level reasoning effort shown next to the composer; "default" means each agent's model setting. */
   protected readonly caseEffortLabel = computed(() => effortLabel(this.activeCase()?.reasoningEffort))
 
@@ -577,8 +606,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     isNamespaceTargeted(this.inputValue(), this.exchangeState.canWriteNamespace())
   )
 
-  /** Collapsed state per toolRequestId */
+  /** Ids of the tool calls the user expanded (collapsed by default). */
   protected readonly collapsedTools = signal<Set<string>>(new Set())
+
+  /** Ids of the tool groups the user expanded (collapsed by default). */
+  protected readonly expandedToolGroups = signal<Set<string>>(new Set())
 
   /**
    * Whether the user is currently scrolled to (or near) the bottom of the messages area.
@@ -593,6 +625,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   constructor() {
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
+    // While the agent runs, /btw is the only thing the composer accepts, and the only command it suggests.
+    this.autocomplete.enableBtwCommand(() => this.isRunning())
     // `#` lists what the agent reaches through its exchange tools: the namespace and this case.
     this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: this.caseId }))
 
@@ -846,7 +880,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       item.isLastInGroup = next?.kind !== 'message' || next.event.actor.role !== item.event.actor.role
     }
 
-    return items
+    return groupToolCalls(items)
   })
 
   /** Id of the latest run stopped at its iteration limit, while no user message has followed it. */
@@ -927,7 +961,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'message':
         return item.event.id
       case 'tool':
-        return item.call.requestId
+        // Same key as the group that starts with this call, so the entry survives the second call joining it.
+        return toolRunKey(item.call.requestId)
+      case 'toolGroup':
+        return item.groupId
       case 'technical':
       case 'notice':
         return item.eventId
@@ -1413,6 +1450,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.fileAutocompleteRef
     )
     if (consumed) return
+    // Escape closes the aside of a side question, once no dropdown is left to take it.
+    if (event.key === 'Escape' && this.sideQuestions.visible()) {
+      event.preventDefault()
+      this.sideQuestions.dismiss()
+      return
+    }
     if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
@@ -1461,7 +1504,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * opened through namespace access only is not in it), and a run reads it at its start.
    */
   private canChangeEffort(): boolean {
-    return !!this.activeCase() && !this.isTerminal()
+    // Not while the agent runs: nothing but /btw is accepted then, and a run reads the effort at its start.
+    return !!this.activeCase() && !this.isTerminal() && !this.isRunning()
   }
 
   /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
@@ -1518,10 +1562,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.confirmingDelete.set(false)
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
+    this.expandedToolGroups.set(new Set())
     this.isAtBottom.set(true)
     this.drawerPanel.set('files')
     this.isEditing.set(false)
     this.autocomplete.reset()
+    this.sideQuestions.dismiss()
     this.attachments.reset()
     this.referencedFiles.set([])
     this.voice.reset()
@@ -1537,8 +1583,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private submitting = false
 
   protected async submit(): Promise<void> {
-    if (this.submitting || !this.canSend) return
+    if (this.submitting) return
     const content = this.inputValue().trim()
+    // A typed "/btw <question>" is a side question, never a message for the agent. It is the one thing the
+    // composer accepts while the agent runs: it is answered aside, and posts nothing to the case.
+    const sideQuestion = parseBtwCommand(content)
+    if (sideQuestion !== undefined) {
+      this.askSideQuestion(sideQuestion)
+      return
+    }
+    // Anything else waits for the agent: the text stays in the composer.
+    if (!this.canSend) return
     // A typed "/effort <level>" is a command for the case, never a message for the agent. When the
     // effort cannot be changed here, the text stays in the composer.
     const effortCommand = parseEffortCommand(content)
@@ -1589,6 +1644,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private sendMessage(content: string): void {
     void this.postMessage(content)
+  }
+
+  /**
+   * Asks a side question: the answer shows in the aside, and neither the question nor the answer reaches the case.
+   * Does nothing the case cannot take (ended, gone) or while an upload or a recording is under way, like a send;
+   * an empty question keeps the text, to be completed.
+   */
+  private askSideQuestion(question: string): void {
+    if (!question || this.composerClosed() || this.attachments.isUploading() || this.voice.isBusy()) return
+    this.sideQuestions.ask(this.caseId, question)
+    this.inputValue.set('')
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = ''
+      this.resizeComposer(input)
+    }
   }
 
   /** The agent resumes from the history: its tool calls and its summary of the work so far. */
@@ -1892,6 +1963,32 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.collapsedTools().has(requestId)
   }
 
+  protected toggleToolGroup(groupId: string): void {
+    this.expandedToolGroups.update((set) => {
+      const next = new Set(set)
+      if (next.has(groupId)) {
+        next.delete(groupId)
+      } else {
+        next.add(groupId)
+      }
+      return next
+    })
+  }
+
+  /** Collapsed by default: a group is expanded only when its id is in the set. */
+  protected isToolGroupExpanded(groupId: string): boolean {
+    return this.expandedToolGroups().has(groupId)
+  }
+
+  /** Human sentence for a tool call ("Reading foo.ts"), shown instead of the raw tool name. */
+  protected toolCallLabel(call: ToolCall): string {
+    return toolActivityLabel(call.toolName, call.args)
+  }
+
+  protected toolGroupSummary(calls: ToolCall[]): ToolGroupSummary {
+    return summarizeToolGroup(calls)
+  }
+
   /**
    * What a message shows as its text, which is also what is copied: the text of a user message without the lines of
    * the files it carries (shown as chips), the whole text otherwise.
@@ -1959,6 +2056,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'AnswerEvent':
       case 'CaseUpdatedEvent':
       case 'TextChunkEvent':
+        return true
+      case 'ThinkingEvent':
+        // Transient progress signal, already shown by the agent-activity line and never persisted: rendering it
+        // would make the live timeline differ from the replayed one and split the tool groups.
         return true
       default:
         return false

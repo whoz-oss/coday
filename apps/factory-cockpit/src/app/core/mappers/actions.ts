@@ -22,9 +22,16 @@ import { asObject, getString, getNumber, getBoolean, asList } from './utils'
  * `metrics.realCost`. Every field is optional for robustness.
  */
 export interface RealCost {
-  cost?: number
-  unknownCostCount?: number
-  liveTokens?: number
+  /** Undefined means no realCost block; null means analytics explicitly unavailable. */
+  cost?: number | null
+  unknownCostCount?: number | null
+  liveTokens?: number | null
+  /** Run-wide cumulative token totals. `liveTokens` is intentionally not used for these. */
+  totalTokens?: number | null
+  inputTokens?: number | null
+  outputTokens?: number | null
+  cacheReadTokens?: number | null
+  cacheWriteTokens?: number | null
   paused?: boolean
   active?: boolean
   runCostThreshold?: number | null
@@ -36,12 +43,30 @@ export interface RealCost {
 export function extractRealCost(metrics: unknown): RealCost | undefined {
   const metricsObj = asObject(metrics)
   if (!metricsObj) return undefined
-  const source = asObject(metricsObj['realCost']) ?? metricsObj
+  const explicitRealCost = asObject(metricsObj['realCost'])
+  const source = explicitRealCost ?? metricsObj
 
-  const cost = getNumber(source, 'cost')
-  const unknownCostCount = getNumber(source, 'unknownCostCount')
-  const liveTokens = getNumber(source, 'liveTokens')
-  if (cost === undefined && unknownCostCount === undefined && liveTokens === undefined) return undefined
+  const nullableNumber = (key: string): number | null | undefined =>
+    source[key] === null ? null : getNumber(source, key)
+  const cost = nullableNumber('cost')
+  const unknownCostCount = nullableNumber('unknownCostCount')
+  const liveTokens = nullableNumber('liveTokens')
+  const totalTokens = nullableNumber('totalTokens')
+  const inputTokens = nullableNumber('inputTokens')
+  const outputTokens = nullableNumber('outputTokens')
+  const cacheReadTokens = nullableNumber('cacheReadTokens')
+  const cacheWriteTokens = nullableNumber('cacheWriteTokens')
+  if (
+    cost === undefined &&
+    unknownCostCount === undefined &&
+    liveTokens === undefined &&
+    totalTokens === undefined &&
+    inputTokens === undefined &&
+    outputTokens === undefined &&
+    cacheReadTokens === undefined &&
+    cacheWriteTokens === undefined
+  )
+    return explicitRealCost ? { cost: null, unknownCostCount: null } : undefined
 
   const thresholdRaw = source['runCostThreshold']
   const runCostThreshold = thresholdRaw === null ? null : (getNumber(source, 'runCostThreshold') ?? null)
@@ -50,6 +75,11 @@ export function extractRealCost(metrics: unknown): RealCost | undefined {
     cost,
     unknownCostCount,
     liveTokens,
+    totalTokens,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
     paused: getBoolean(source, 'paused'),
     active: getBoolean(source, 'active'),
     runCostThreshold,
@@ -118,6 +148,8 @@ export function extractInteractions(payload: unknown): HumanInteraction[] {
     if (recipientRole) interaction.recipientRole = recipientRole
     const namespaceId = getString(obj, 'namespaceId') ?? getString(payloadObj, 'namespaceId')
     if (namespaceId) interaction.namespaceId = namespaceId
+    const executionId = getString(obj, 'executionId') ?? getString(payloadObj, 'executionId')
+    if (executionId) interaction.executionId = executionId
     const createdAt = getString(obj, 'createdAt') ?? getString(payloadObj, 'createdAt')
     if (createdAt) interaction.createdAt = createdAt
     return interaction
@@ -153,6 +185,10 @@ export function extractAttempts(payload: unknown): AgentAttempt[] {
     }
     const effectiveMandate = getString(obj, 'effectiveMandate')
     if (effectiveMandate) attempt.effectiveMandate = effectiveMandate
+    const resolvedModel = asObject(obj['resolvedModel'])
+    const provider = getString(resolvedModel, 'provider')
+    const model = getString(resolvedModel, 'model')
+    if (provider && model) attempt.resolvedModel = { provider, model }
     const failureCode = getString(obj, 'failureCode')
     if (failureCode) attempt.failureCode = failureCode
     const resultEvidenceId = getString(obj, 'resultEvidenceId')
@@ -173,6 +209,12 @@ export function extractAttempts(payload: unknown): AgentAttempt[] {
     if (waitingDurationMs !== undefined) attempt.waitingDurationMs = waitingDurationMs
     const waitingSince = getString(obj, 'waitingSince')
     if (waitingSince) attempt.waitingSince = waitingSince
+    const correctionCycleId = getString(obj, 'correctionCycleId')
+    if (correctionCycleId) attempt.correctionCycleId = correctionCycleId
+    const correctionCycleNumber = getNumber(obj, 'correctionCycleNumber')
+    if (correctionCycleNumber !== undefined) attempt.correctionCycleNumber = correctionCycleNumber
+    const triggeringExecutionId = getString(obj, 'triggeringExecutionId')
+    if (triggeringExecutionId) attempt.triggeringExecutionId = triggeringExecutionId
     return attempt
   })
 }

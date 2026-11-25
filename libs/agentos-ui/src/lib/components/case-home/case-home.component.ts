@@ -54,6 +54,7 @@ import {
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
@@ -156,6 +157,8 @@ export class CaseHomeComponent implements OnInit {
   protected readonly inputValue = signal('')
   /** Right-side file drawer (namespace files only: there is no case yet). */
   protected readonly filesOpen = signal(false)
+  /** Width of the right drawer, resizable and shared with the case chat. */
+  protected readonly drawerWidth = inject(ExchangeDrawerWidthService)
   /** Exchange files picked in the drawer: shown as chips, referenced (never uploaded) by the first message. */
   protected readonly referencedFiles = signal<ExchangeFileRef[]>([])
   protected readonly isCreating = signal(false)

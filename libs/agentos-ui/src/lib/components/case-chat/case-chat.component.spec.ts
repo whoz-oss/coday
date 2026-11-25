@@ -17,6 +17,7 @@ import {
   ReasoningEffort,
   ToolRequestEvent,
   ToolResponseEvent,
+  ThinkingEvent,
   User,
   VoiceMessageControllerService,
   WarnEvent,
@@ -34,6 +35,7 @@ import { UserStateService } from '../../services/user-state.service'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
+import { SideQuestionApiService } from '../../services/side-question-api.service'
 import { CaseChatComponent } from './case-chat.component'
 
 /**
@@ -653,6 +655,189 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
   })
 
+  describe('/btw side question', () => {
+    let sideApi: { ask: jest.Mock }
+    let answer: Subject<{ answer: string }>
+
+    beforeEach(() => {
+      answer = new Subject<{ answer: string }>()
+      sideApi = { ask: jest.fn().mockReturnValue(answer) }
+      TestBed.overrideProvider(SideQuestionApiService, { useValue: sideApi })
+    })
+
+    it('asks aside, posts nothing to the case, clears the composer and does not set the case running', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw what is the plan?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'what is the plan?')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(ref.instance['inputValue']()).toBe('')
+      expect(ref.instance['sideQuestions'].pending()).toBe(true)
+
+      answer.next({ answer: 'The plan is X.' })
+      expect(ref.instance['sideQuestions'].answer()).toBe('The plan is X.')
+      expect(ref.instance['events']()).toEqual([])
+    })
+
+    it('works while the agent runs: the case stays running and nothing is posted or interrupted', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('/btw how long will it take?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).toHaveBeenCalledWith('c-1', 'how long will it take?')
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['inputValue']()).toBe('')
+    })
+
+    it('while the agent runs, any other text is not sent and stays in the composer', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('please also fix the tests')
+
+      await ref.instance['submit']()
+
+      expect(http.post).not.toHaveBeenCalled()
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('please also fix the tests')
+    })
+
+    it('while the agent runs, a typed /effort command is not applied and nothing is sent', async () => {
+      TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'RUNNING' } as Case])
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      ref.instance['inputValue'].set('/effort high')
+
+      await ref.instance['submit']()
+
+      expect(TestBed.inject(CaseStateService).setReasoningEffort).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/effort high')
+    })
+
+    it('while the agent runs, staged attachments and references are not sent either', async () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+      attachments(ref).addFiles([new File(['x'], 'report.pdf')])
+      ref.instance['inputValue'].set('with a file')
+
+      await ref.instance['submit']()
+
+      expect(exchangeState.uploadFile).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('with a file')
+    })
+
+    it('while the agent runs, the mic and the Continue button stay out of reach', () => {
+      const ref = makeComponent()
+      ref.instance['isRunning'].set(true)
+
+      expect(ref.instance['canRecord']).toBe(false)
+      ref.instance['continueAfterLimit']()
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('a /btw without a question asks nothing and keeps the text to be completed', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/btw')
+    })
+
+    it('asks nothing on a case that has ended or is gone', async () => {
+      const ref = makeComponent()
+      ref.instance['caseGone'].set(true)
+      ref.instance['inputValue'].set('/btw still there?')
+
+      await ref.instance['submit']()
+
+      expect(sideApi.ask).not.toHaveBeenCalled()
+      expect(ref.instance['inputValue']()).toBe('/btw still there?')
+    })
+
+    it('a new /btw replaces the previous aside', async () => {
+      const second = new Subject<{ answer: string }>()
+      sideApi.ask.mockReturnValueOnce(answer).mockReturnValueOnce(second)
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('/btw first?')
+      await ref.instance['submit']()
+      ref.instance['inputValue'].set('/btw second?')
+      await ref.instance['submit']()
+
+      answer.next({ answer: 'stale' })
+
+      expect(ref.instance['sideQuestions'].question()).toBe('second?')
+      expect(ref.instance['sideQuestions'].answer()).toBeNull()
+    })
+
+    it('Escape dismisses the aside, and leaves the composer text alone', () => {
+      const ref = makeComponent()
+      ref.instance['sideQuestions'].ask('c-1', 'q')
+      ref.instance['inputValue'].set('typing')
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+
+      ref.instance['onKeydown'](escape)
+
+      expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      expect(escape.defaultPrevented).toBe(true)
+      expect(ref.instance['inputValue']()).toBe('typing')
+    })
+
+    it('Escape does nothing special without an aside', () => {
+      const ref = makeComponent()
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+
+      ref.instance['onKeydown'](escape)
+
+      expect(escape.defaultPrevented).toBe(false)
+    })
+
+    it('a case switch closes the aside', () => {
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        ref.instance['sideQuestions'].ask('c-1', 'q')
+
+        ref.instance['reinitialise']()
+
+        expect(ref.instance['sideQuestions'].visible()).toBe(false)
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        log.mockRestore()
+      }
+    })
+
+    it('renders the answer with the markdown of the agent messages', () => {
+      const ref = makeComponent()
+      ref.instance['sideQuestions'].ask('c-1', 'q')
+      answer.next({ answer: 'It is **bold**' })
+
+      expect(String(ref.instance['sideAnswerHtml']())).toContain('bold')
+    })
+
+    it('is component-scoped: each chat gets its own aside', () => {
+      const a = makeComponent()
+      const b = makeComponent()
+      a.instance['sideQuestions'].ask('c-1', 'q')
+
+      expect(b.instance['sideQuestions'].visible()).toBe(false)
+    })
+  })
+
   describe('/effort command', () => {
     const loadCase = (): void => {
       TestBed.inject(CaseStateService).cases.set([{ id: 'c-1', namespaceId: 'ns-1', status: 'IDLE' } as Case])
@@ -761,6 +946,36 @@ describe('CaseChatComponent — submit with attachments', () => {
     // isTerminal is now a computed derived from _sseStatus; drive it via the signal.
     ref.instance['_sseStatus'].set('KILLED')
     expect(ref.instance['canSend']).toBe(false)
+  })
+
+  describe('case header overflow menu', () => {
+    it('offers labelled danger items for stop and delete', () => {
+      const ref = makeComponent()
+      const items = ref.instance['caseMenuItems']()
+      expect(items.map((i: { key: string; label: string }) => [i.key, i.label])).toEqual([
+        ['stop', 'Stop case'],
+        ['delete', 'Delete case'],
+      ])
+      expect(items.every((i: { variant?: string }) => i.variant === 'danger')).toBe(true)
+    })
+
+    it('opens the confirmations, never acting directly', () => {
+      const ref = makeComponent()
+      ref.instance['onCaseMenuAction']('stop')
+      expect(ref.instance['confirmingKill']()).toBe(true)
+      ref.instance['onCaseMenuAction']('delete')
+      expect(ref.instance['confirmingDelete']()).toBe(true)
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('disables stop once the case has ended', () => {
+      const ref = makeComponent()
+      ref.instance['_sseStatus'].set('KILLED')
+      const stop = ref.instance['caseMenuItems']().find((i: { key: string }) => i.key === 'stop')
+      expect(stop.disabled).toBe(true)
+      ref.instance['onCaseMenuAction']('stop')
+      expect(ref.instance['confirmingKill']()).toBe(false)
+    })
   })
 
   describe('kill with confirmation', () => {
@@ -1018,6 +1233,86 @@ describe('CaseChatComponent — submit with attachments', () => {
       })
     )
     expect(timeline.some((item) => item.kind === 'tool')).toBe(false)
+  })
+
+  it('folds two consecutive tool calls into one group, and keeps a lone call as a card', () => {
+    const ref = makeComponent()
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const request = (id: string): ToolRequestEvent => ({
+      id: `req-${id}`,
+      type: 'ToolRequestEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata,
+      toolName: 'FILES__readFile',
+      toolRequestId: id,
+      args: '{"filePath":"a.ts"}',
+    })
+
+    ref.instance['events'].set([request('t-1')])
+    expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['tool'])
+
+    ref.instance['events'].set([request('t-1'), request('t-2')])
+    const timeline = ref.instance['timeline']()
+    expect(timeline.map((item) => item.kind)).toEqual(['toolGroup'])
+    expect(timeline[0]).toEqual(expect.objectContaining({ groupId: 'group-t-1' }))
+    expect(ref.instance['isToolGroupExpanded']('group-t-1')).toBe(false)
+    ref.instance['toggleToolGroup']('group-t-1')
+    expect(ref.instance['isToolGroupExpanded']('group-t-1')).toBe(true)
+  })
+
+  describe('live tool call grouping', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const base = { caseId: 'c-1', namespaceId: 'ns-1', timestamp: '2026-01-01T00:00:00Z', metadata }
+    const request = (id: string): ToolRequestEvent => ({
+      ...base,
+      id: `req-${id}`,
+      type: 'ToolRequestEvent',
+      toolName: 'FILES__readFile',
+      toolRequestId: id,
+      args: '{"filePath":"a.ts"}',
+    })
+    const response = (id: string): ToolResponseEvent => ({
+      ...base,
+      id: `res-${id}`,
+      type: 'ToolResponseEvent',
+      toolName: 'FILES__readFile',
+      toolRequestId: id,
+      output: { content: 'ok' },
+      success: true,
+      images: [],
+      toolMetadata: {},
+    })
+    // The backend streams one after each tool response, but never persists it.
+    const thinking = (): ThinkingEvent => ({ ...base, id: 'thinking-1', type: 'ThinkingEvent' })
+
+    it('stays one group when a transient ThinkingEvent is streamed between two calls, technical logs on', () => {
+      showTechnical.set(true)
+      const ref = makeComponent()
+      ref.instance['events'].set([request('t-1'), response('t-1'), thinking(), request('t-2'), response('t-2')])
+
+      const timeline = ref.instance['timeline']()
+      expect(timeline.map((item) => item.kind)).toEqual(['toolGroup'])
+      const group = timeline[0]
+      expect(group?.kind === 'toolGroup' && group.calls).toHaveLength(2)
+    })
+
+    it('tracks a lone call and the group that grows from it under the same key', () => {
+      const ref = makeComponent()
+
+      ref.instance['events'].set([request('t-1'), response('t-1')])
+      const [lone] = ref.instance['timeline']()
+      expect(lone?.kind).toBe('tool')
+
+      ref.instance['events'].set([request('t-1'), response('t-1'), request('t-2'), response('t-2')])
+      const [group] = ref.instance['timeline']()
+      expect(group?.kind).toBe('toolGroup')
+
+      const track = ref.instance['trackTimelineItem']
+      expect(track(0, lone!)).toBe('group-t-1')
+      expect(track(0, group!)).toBe(track(0, lone!))
+    })
   })
 
   describe('question timeline items', () => {

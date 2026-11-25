@@ -1,0 +1,23 @@
+# FACTORY_WORKSTREAM integration (copy of the AgentOS config, platform scope)
+# To check: responseFormat and auth.apiKeyIn / auth.apiKeyName are masked (****) on read.
+name: FACTORY_WORKSTREAM
+integrationType: HTTP_API
+description: "Factory Workstream REST API (launching and steering workflow runs) described by the coday-factory OpenAPI spec"
+autoGrant: false
+authSettingName: null
+parameters:
+  baseUrl: http://localhost:3000
+  spec:
+    url: http://localhost:3000/api/factory/openapi/factory-workstream.yaml
+    refreshMinutes: 60
+    maxBytes: 5242880
+  maxTools: 64
+  maxResponseChars: 20000
+  timeoutSeconds: 30
+  maxConcurrentCalls: 4
+  allowMutations: true
+  # No operation filter (includeOperations, includeTags, excludeOperations... are null on the platform side)
+  # responseFormat: ...
+  # auth:
+  #   apiKeyIn: ...
+  #   apiKeyName: ...

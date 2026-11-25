@@ -39,6 +39,10 @@ factory:
     # Persistence mode: `embedded-neo4j` (default, in-process engine, no Docker)
     # or `neo4j` (standalone server, configure spring.neo4j.*).
     mode: ${FACTORY_PERSISTENCE_MODE:embedded-neo4j}
+    # Database selection (mode `neo4j` only): Factory honours the standard Spring property
+    # `spring.data.neo4j.database` (env SPRING_DATA_NEO4J_DATABASE), like AgentOS, so both can use
+    # separate named databases on a multi-database server (Enterprise/Aura). Unset = default database.
+    # Leave it unset in `embedded-neo4j` mode (Community has a single database).
     data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:${user.home}/.coday/factory/data/database}
     embedded-bolt-host: ${FACTORY_EMBEDDED_BOLT_HOST:localhost}
     embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:0}

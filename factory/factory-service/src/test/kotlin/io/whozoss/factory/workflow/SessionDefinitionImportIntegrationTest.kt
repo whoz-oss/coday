@@ -11,6 +11,7 @@ import io.whozoss.factory.capability.AgentTurnRequest
 import io.whozoss.factory.capability.AgentTurnResult
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityResolver
+import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
@@ -350,6 +351,57 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
 
         assertThat(emitter.frames).anyMatch {
             it.startsWith("event: ${WorkflowProjectionEvents.UPDATED}\ndata: ") && it.contains(workflowId)
+        }
+    }
+
+    @Test
+    fun `scoped subscribers can reread each intermediate step projection before session completion`() {
+        val workflowId = "wf-intermediate-sse"
+        startSession(
+            "intermediate-sse-dag",
+            workflowId,
+            listOf(stepJson("h", "human", "reviewer", emptyList())),
+        )
+        val observedStatuses = mutableListOf<String>()
+        val emitter = object : SseEmitter(0L) {
+            override fun send(builder: SseEventBuilder) {
+                val frame = builder.build().firstOrNull()?.data as? String ?: return
+                if (frame.startsWith("event: ${WorkflowProjectionEvents.UPDATED}\ndata: ") && frame.contains(workflowId)) {
+                    observedStatuses += step(workflowId, "h")["status"] as String
+                }
+            }
+        }
+        val otherTenantStatuses = mutableListOf<String>()
+        val otherTenant = object : SseEmitter(0L) {
+            override fun send(builder: SseEventBuilder) {
+                val frame = builder.build().firstOrNull()?.data as? String ?: return
+                if (frame.startsWith("event:")) otherTenantStatuses += frame
+            }
+        }
+        sseHub.register(scope, namespace, emitter)
+        sseHub.register(TenantScope("other-org", scope.workstreamId), namespace, otherTenant)
+        try {
+            val result = sessionRunService.runSession(scope, namespace, workflowId, repoRoot)
+
+            assertThat(result.status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+            // READY, claimed RUNNING, WAITING_HUMAN, then the final session snapshot.
+            // Merely checking for any SSE event misses setStatus publishing to the legacy raw key.
+            assertThat(observedStatuses).containsExactly(
+                WorkflowStatuses.READY,
+                WorkflowStatuses.RUNNING,
+                WorkflowStatuses.WAITING_HUMAN,
+                WorkflowStatuses.WAITING_HUMAN,
+            )
+            observedStatuses.clear()
+            answerHuman(workflowId, "h", "approve")
+            assertThat(sessionRunService.runSession(scope, namespace, workflowId, repoRoot).status)
+                .isEqualTo(WorkflowStatuses.COMPLETED)
+            // The completion transition must also notify before the final session snapshot.
+            assertThat(observedStatuses).containsExactly(WorkflowStatuses.COMPLETED, WorkflowStatuses.COMPLETED)
+            assertThat(otherTenantStatuses).isEmpty()
+        } finally {
+            emitter.complete()
+            otherTenant.complete()
         }
     }
 

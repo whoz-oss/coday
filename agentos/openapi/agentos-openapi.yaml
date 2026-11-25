@@ -1646,6 +1646,37 @@ paths:
           description: No Content
       tags:
       - run-cost-controller
+  /api/cases/{caseId}/side-questions:
+    post:
+      description: "POST /api/cases/{caseId}/side-questions: answers a quick question\
+        \ from the conversation of the case, without tools. Nothing is persisted or\
+        \ broadcast, and a running turn is not interrupted. 400 for a blank or too\
+        \ long question, 409 when the namespace has no default AI model, 502 when\
+        \ the model fails to answer."
+      operationId: askSideQuestionCaseSideQuestion
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SideQuestionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SideQuestionResponse"
+          description: OK
+      summary: Ask a side question about a case
+      tags:
+      - case-side-question-controller
   /api/cases/{caseId}/voice-messages:
     post:
       operationId: postVoiceMessage
@@ -2101,7 +2132,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`, `BASH`) cannot be created in either user scope (403).
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (see `application.yml` for the default list) cannot be created in either user scope (403).
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -3870,6 +3901,27 @@ paths:
           description: OK
       tags:
       - usage-record-controller
+  /api/usage-records/aggregate/case-trees:
+    get:
+      operationId: cumulativeUsage
+      parameters:
+      - in: query
+        name: caseIds
+        required: true
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CumulativeUsageDto"
+          description: OK
+      tags:
+      - cumulative-usage-controller
   /api/usage-records/by-case/{caseId}:
     get:
       operationId: listByCaseIdUsageRecord
@@ -4262,6 +4314,12 @@ components:
           additionalProperties: {}
       required:
       - content
+    AdminCaseListing:
+      type: string
+      enum:
+      - OWN
+      - SWITCH
+      - ALL
     AgentConfig:
       type: object
       properties:
@@ -5300,6 +5358,42 @@ components:
           format: double
       required:
       - expectedThreshold
+    CumulativeUsageDto:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        cost:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        liveTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - cost
+      - inputTokens
+      - liveTokens
+      - outputTokens
+      - totalTokens
+      - unknownCostCount
     EnrichmentPhaseTrace:
       type: object
       properties:
@@ -5992,6 +6086,9 @@ components:
     Namespace:
       type: object
       properties:
+        adminCaseListing:
+          $ref: "#/components/schemas/AdminCaseListing"
+          description: Cases admins see. Null inherits the platform default.
         configPath:
           type: string
           description: "Optional filesystem path to a directory containing base configuration\
@@ -6099,6 +6196,9 @@ components:
     NamespaceListItem:
       type: object
       properties:
+        adminCaseListingEffective:
+          $ref: "#/components/schemas/AdminCaseListing"
+          description: Resolved cases admins see. Read-only.
         configPath:
           type: string
         defaultAgentName:
@@ -6793,6 +6893,25 @@ components:
         withRemoved:
           type: boolean
           default: false
+    SideQuestionRequest:
+      type: object
+      properties:
+        question:
+          type: string
+          description: "The question, asked about the conversation of the case. Not\
+            \ blank, at most 4000 characters."
+          maxLength: 4000
+          minLength: 1
+      required:
+      - question
+    SideQuestionResponse:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: "The answer, in Markdown. It is not saved anywhere."
+      required:
+      - answer
     Skill:
       type: object
       properties:

@@ -12,12 +12,14 @@ import {
   TimelineLane,
   TimelineStepStatus,
   Tone,
+  StepExecution,
 } from '../models'
 import { asArray, asObject, getString, getNumber, toEpochMs } from './utils'
 import {
   classifyActorKind,
   classifyLane,
   actorName,
+  explicitActorName,
   resolveStepState,
   stepDurationSec,
   toneForActor,
@@ -148,7 +150,7 @@ function attemptStepStatus(attempt: AgentAttempt): TimelineStepStatus {
  * Also appends attempts whose `stepId` is synthetic (e.g. `technical-design--searcher`
  * spawned by NeedsResearchRouter) so Searcher executions appear on their own lane!
  */
-export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unknown[] {
+export function timelineSteps(steps: unknown[], attempts: AgentAttempt[], executions: StepExecution[] = []): unknown[] {
   const byStep = new Map<string, AgentAttempt[]>()
   for (const attempt of attempts) {
     if (!attempt.stepId) continue
@@ -158,11 +160,15 @@ export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unkno
   }
 
   const knownStepIds = new Set<string>()
+  const executionStepIds = new Set(executions.map((execution) => execution.stepId))
   const mappedSteps = steps.flatMap((step) => {
     const obj = asObject(step) ?? {}
     const stepId = getString(obj, 'id')
     if (stepId) knownStepIds.add(stepId)
     const history = stepId ? byStep.get(stepId) : undefined
+    // Outcome-managed projections own a ledger entry for every responsibility.
+    // Render that ledger once, enriching it from its linked attempt below.
+    if (executionStepIds.has(stepId ?? '')) return []
     if (classifyActorKind(obj) !== 'agent' || !history?.length) return [step]
 
     const ordered = [...history].sort(compareAttempts)
@@ -231,7 +237,33 @@ export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unkno
     }
   }
 
-  return [...mappedSteps, ...syntheticSteps]
+  const executionSteps = executions.map((execution) => {
+    const declared = steps.find((step) => getString(asObject(step), 'id') === execution.stepId)
+    const base = asObject(declared) ?? {}
+    const attempt = execution.attemptId
+      ? attempts.find((candidate) => candidate.attemptId === execution.attemptId)
+      : undefined
+    return {
+      ...base,
+      id: `${execution.stepId}:execution:${execution.executionId}`,
+      sourceStepId: execution.stepId,
+      name: `${getString(base, 'name') ?? execution.stepId} · execution ${execution.executionNumber}`,
+      status: attempt ? attemptStepStatus(attempt) : execution.status,
+      attemptId: execution.attemptId,
+      attemptNumber: attempt?.attemptNumber,
+      agentName: attempt?.agentName,
+      caseId: attempt?.caseId,
+      failureCode: attempt?.failureCode,
+      startedAt: execution.startedAt ?? attempt?.startedAt ?? attempt?.activeSince ?? attempt?.createdAt,
+      completedAt: execution.completedAt ?? attempt?.completedAt,
+      executionId: execution.executionId,
+      executionNumber: execution.executionNumber,
+      cycleNumber: execution.cycleNumber,
+      triggeringExecutionId: execution.triggeringExecutionId,
+      resultEvidenceId: execution.resultEvidenceId,
+    }
+  })
+  return [...mappedSteps, ...syntheticSteps, ...executionSteps]
 }
 
 // ---------------------------------------------------------------------------
@@ -277,22 +309,37 @@ export function mapStepsToPhaseSegments(steps: unknown[], totalDurationSec = 0):
   })
 }
 
+/**
+ * Short label of who is currently working: the actor/agent name of the active
+ * (else last) step. Step names can be long sentences, so they are only a
+ * fallback when the step declares no explicit actor.
+ */
+function stepBadgeLabel(step: unknown): string | undefined {
+  const obj = asObject(step)
+  return explicitActorName(step) ?? getString(obj, 'name') ?? getString(obj, 'id')
+}
+
 export function currentPhaseName(steps: unknown[]): string | undefined {
   const active = steps.find((step) => ['running', 'waiting_human', 'ready'].includes(resolveStepState(step)))
-  if (active) return getString(asObject(active), 'name') ?? getString(asObject(active), 'id')
+  if (active) return stepBadgeLabel(active)
   const last = steps[steps.length - 1]
-  return last ? (getString(asObject(last), 'name') ?? getString(asObject(last), 'id')) : undefined
+  return last ? stepBadgeLabel(last) : undefined
 }
 
 // ---------------------------------------------------------------------------
 // Timeline lanes
 // ---------------------------------------------------------------------------
 
-export function resolveTimelineOriginMs(input: unknown, timing?: unknown, attempts?: unknown): number {
+export function resolveTimelineOriginMs(
+  input: unknown,
+  timing?: unknown,
+  attempts?: unknown,
+  executions: StepExecution[] = []
+): number {
   const snapshot = asObject(input) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
   const rawSteps = asArray(projection['steps'])
-  const steps = timelineSteps(rawSteps, extractAttempts(attempts))
+  const steps = timelineSteps(rawSteps, extractAttempts(attempts), executions)
   const controllerRequest = readControllerRequest(snapshot, projection)
   const starts = [...rawSteps, ...steps]
     .map((step) => toEpochMs(asObject(step)?.['startedAt']))
@@ -332,10 +379,15 @@ function normalizeTicks(values: unknown, t0: number, startSec: number, endSec: n
 /**
  * Derive the temporal lanes from a projection snapshot (+ optional timing).
  */
-export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?: unknown): TimelineLane[] {
+export function mapProjectionToLanes(
+  input: unknown,
+  timing?: unknown,
+  attempts?: unknown,
+  executions: StepExecution[] = []
+): TimelineLane[] {
   const snapshot = asObject(input) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
-  const steps = timelineSteps(asArray(projection['steps']), extractAttempts(attempts))
+  const steps = timelineSteps(asArray(projection['steps']), extractAttempts(attempts), executions)
   const controllerRequest = readControllerRequest(snapshot, projection)
   const creationMs = workflowCreationMs(snapshot, projection)
   if (steps.length === 0 && !controllerRequest && creationMs === null) return []
@@ -344,7 +396,7 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
     .map((step) => toEpochMs(asObject(step)?.['startedAt']))
     .filter((value): value is number => value !== null)
   const requestStartMs = toEpochMs(controllerRequest?.observedAt)
-  const t0 = resolveTimelineOriginMs(input, timing, attempts)
+  const t0 = resolveTimelineOriginMs(input, timing, attempts, executions)
 
   const syntheticEnds = new Map<string, number>()
   const dependencyEnd = (obj: Record<string, unknown>): number => {
@@ -398,6 +450,7 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
     const lane = ensureLane(descriptor, contextPct)
     const status = resolveStepState(entry.obj)
     const isAttempt = getString(entry.obj, 'attemptId') !== undefined
+    const isLedgerExecution = getString(entry.obj, 'executionId') !== undefined
     const isVisibleExecution =
       status === 'running' ||
       status === 'completed' ||
@@ -405,7 +458,8 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
       status === 'indeterminate' ||
       status === 'cancelled' ||
       (status === 'waiting_human' && entry.start !== null) ||
-      (status === 'pending' && isAttempt)
+      (status === 'pending' && (isAttempt || isLedgerExecution)) ||
+      (status === 'ready' && isLedgerExecution)
     if (!isVisibleExecution) continue
 
     const stepIdForWindow = getString(entry.obj, 'sourceStepId') ?? getString(entry.obj, 'id')
@@ -477,6 +531,14 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
     if (blockCaseId) block.caseId = blockCaseId
     const blockFailureCode = getString(entry.obj, 'failureCode')
     if (blockFailureCode) block.failureCode = blockFailureCode
+    const executionId = getString(entry.obj, 'executionId')
+    if (executionId) block.executionId = executionId
+    const executionNumber = getNumber(entry.obj, 'executionNumber')
+    if (executionNumber !== undefined) block.executionNumber = executionNumber
+    const cycleNumber = getNumber(entry.obj, 'cycleNumber')
+    if (cycleNumber !== undefined) block.cycleNumber = cycleNumber
+    const triggeringExecutionId = getString(entry.obj, 'triggeringExecutionId')
+    if (triggeringExecutionId) block.triggeringExecutionId = triggeringExecutionId
     if (hasAuthoritativeDurations) {
       const openActiveMs = status === 'running' && activeSinceMs !== null ? Math.max(Date.now() - activeSinceMs, 0) : 0
       const openWaitingMs =
@@ -572,7 +634,7 @@ export function mapProjectionToRunSummary(
     const hasAnyStartedStep = steps.some((step) => getString(asObject(step), 'startedAt') !== undefined)
     const requestSegment: PhaseSegment = {
       key: 'user-request',
-      label: 'Demande utilisateur',
+      label: 'User request',
       ratio: phases.length > 0 ? Math.min(1 / (phases.length + 1), 0.15) : 1,
       tone: 'amber',
       status: hasAnyStartedStep ? 'done' : 'pending',
@@ -601,10 +663,14 @@ export function mapProjectionToRunSummary(
     cardState,
     currentPhase: currentPhaseName(steps),
     goal,
-    costUsd: realCost?.cost ?? getNumber(projection, 'costUsd') ?? getNumber(snapshot, 'costUsd') ?? 0,
-    unknownCostCount: realCost?.unknownCostCount ?? 0,
+    // Cost is analytics-owned; projection values are legacy/budget data and
+    // must not replace an unavailable analytics result.
+    costUsd: realCost?.cost ?? null,
+    unknownCostCount: realCost?.unknownCostCount ?? null,
     durationSec,
-    tokens: getNumber(projection, 'tokens') ?? 0,
+    // `liveTokens` is not cumulative usage. Only the run-wide realCost total
+    // is safe to surface as Total tokens; otherwise keep the value unknown.
+    tokens: realCost?.totalTokens ?? null,
     phases,
   }
   if (waitingHuman) summary.waitingHuman = true
