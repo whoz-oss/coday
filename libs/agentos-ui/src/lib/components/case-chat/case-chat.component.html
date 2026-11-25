@@ -562,99 +562,65 @@
           <!-- A run stopped at its cost threshold asks its decision in place of the composer, like a question to the
                user: nothing else can be posted until it is taken. The draft and the staged files are kept. -->
           <agentos-cost-pause-card />
-        } @else if (autocomplete.atSuggestions().length > 0 || autocomplete.memberSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-agent-autocomplete
-              [agents]="autocomplete.atSuggestions()"
-              [members]="autocomplete.memberSuggestions()"
-              (selected)="onAgentSelected($event)"
-              (memberSelected)="onMemberMentioned($event)"
-              (dismissed)="closeAtAutocomplete()"
-            />
-          </div>
-        }
-        @if (autocomplete.fileSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-file-autocomplete
-              [files]="autocomplete.fileSuggestions()"
-              (selected)="onFileSelected($event)"
-              (dismissed)="closeFileAutocomplete()"
-            />
-          </div>
-        }
-        @if (autocomplete.slashSuggestions().length > 0) {
-          <div class="case-chat__autocomplete">
-            <agentos-prompt-autocomplete
-              [prompts]="autocomplete.slashSuggestions()"
-              (selected)="onPromptSelected($event)"
-              (dismissed)="closeSlashAutocomplete()"
-            />
-          </div>
-        }
-        <agentos-composer-attachments
-          #attachmentsUi
-          [attachments]="attachments.attachments()"
-          [namespaceBadge]="namespaceTargeted()"
-          [limitError]="attachments.limitError()"
-          [disabled]="attachments.isUploading()"
-          [references]="referencedFiles()"
-          (removed)="attachments.remove($event)"
-          (referenceRemoved)="removeReference($event)"
-          (filesSelected)="attachments.addFiles($event)"
-        />
-        <textarea
-          #composerInput
-          class="case-chat__input"
-          [placeholder]="
-            teamChat()
-              ? 'Message the team — @mention an agent to get a reply, or a teammate to notify them'
-              : isRunning()
-                ? 'Agent is working — use /btw to ask a side question'
-                : 'Reply…'
-          "
-          rows="3"
-          [value]="inputValue()"
-          [hidden]="voice.isActive()"
-          [disabled]="composerClosed() || attachments.isUploading()"
-          (input)="onInput($event)"
-          (keydown)="onKeydown($event)"
-          (paste)="canStageFiles() && attachments.onPaste($event)"
-        ></textarea>
-        <agentos-voice-recorder
-          [state]="voice.state()"
-          [elapsedMs]="voice.elapsedMs()"
-          [error]="voice.error()"
-          [sendKey]="sendKeyLabel"
-          (keyPressed)="onRecordingKeydown($event)"
-        />
-        <div class="case-chat__actions">
-          @if (canAttach()) {
-            <ds-icon-button
-              icon="attach_file"
-              variant="default"
-              title="Attach files"
-              [disabled]="!canStageFiles()"
-              (action)="attachmentsUi.openPicker()"
-            />
-          }
-          @if (activeCase()) {
-            <agentos-case-settings
-              [model]="activeCase()?.modelName ?? null"
-              [effort]="activeCase()?.reasoningEffort ?? null"
-              [disabled]="isTerminal()"
-              (modelSelected)="onModelSelected($event)"
-              (effortSelected)="onEffortSelected($event)"
-            />
-          }
-          <span class="case-chat__actions-hint"></span>
-          @if (teamChat() && addressedAgent() && isRunning()) {
-            <div class="case-chat__notice-bar" role="status">
-              <span>Wait for the agent to finish before calling another one.</span>
+        } @else {
+          @if (autocomplete.atSuggestions().length > 0 || autocomplete.memberSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-agent-autocomplete
+                [agents]="autocomplete.atSuggestions()"
+                [members]="autocomplete.memberSuggestions()"
+                (selected)="onAgentSelected($event)"
+                (memberSelected)="onMemberMentioned($event)"
+                (dismissed)="closeAtAutocomplete()"
+              />
             </div>
           }
-          @if (sendError()) {
-            <div class="case-chat__notice-bar" role="alert">{{ sendError() }}</div>
+          @if (autocomplete.fileSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-file-autocomplete
+                [files]="autocomplete.fileSuggestions()"
+                (selected)="onFileSelected($event)"
+                (dismissed)="closeFileAutocomplete()"
+              />
+            </div>
           }
+          @if (autocomplete.slashSuggestions().length > 0) {
+            <div class="case-chat__autocomplete">
+              <agentos-prompt-autocomplete
+                [prompts]="autocomplete.slashSuggestions()"
+                (selected)="onPromptSelected($event)"
+                (dismissed)="closeSlashAutocomplete()"
+              />
+            </div>
+          }
+          <agentos-composer-attachments
+            #attachmentsUi
+            [attachments]="attachments.attachments()"
+            [namespaceBadge]="namespaceTargeted()"
+            [limitError]="attachments.limitError()"
+            [disabled]="attachments.isUploading()"
+            [references]="referencedFiles()"
+            (removed)="attachments.remove($event)"
+            (referenceRemoved)="removeReference($event)"
+            (filesSelected)="attachments.addFiles($event)"
+          />
+          <textarea
+            #composerInput
+            class="case-chat__input"
+            [placeholder]="
+              teamChat()
+                ? 'Message the team — @mention an agent to get a reply, or a teammate to notify them'
+                : isRunning()
+                  ? 'Agent is working — use /btw to ask a side question'
+                  : 'Reply…'
+            "
+            rows="3"
+            [value]="inputValue()"
+            [hidden]="voice.isActive()"
+            [disabled]="composerClosed() || attachments.isUploading()"
+            (input)="onInput($event)"
+            (keydown)="onKeydown($event)"
+            (paste)="canStageFiles() && attachments.onPaste($event)"
+          ></textarea>
           <agentos-voice-recorder
             [state]="voice.state()"
             [elapsedMs]="voice.elapsedMs()"
@@ -663,31 +629,67 @@
             (keyPressed)="onRecordingKeydown($event)"
           />
           <div class="case-chat__actions">
-            <!-- Right next to the send button, on its left -->
-            @if (voiceCapability.available()) {
+            @if (canAttach()) {
               <ds-icon-button
-                icon="mic"
+                icon="attach_file"
                 variant="default"
-                title="Record a voice message"
-                [disabled]="!canRecord"
-                (action)="startRecording()"
+                title="Attach files"
+                [disabled]="!canStageFiles()"
+                (action)="attachmentsUi.openPicker()"
               />
             }
+            @if (activeCase()) {
+              <agentos-case-settings
+                [model]="activeCase()?.modelName ?? null"
+                [effort]="activeCase()?.reasoningEffort ?? null"
+                [disabled]="isTerminal()"
+                (modelSelected)="onModelSelected($event)"
+                (effortSelected)="onEffortSelected($event)"
+              />
+            }
+            <span class="case-chat__actions-hint"></span>
+            @if (teamChat() && addressedAgent() && isRunning()) {
+              <div class="case-chat__notice-bar" role="status">
+                <span>Wait for the agent to finish before calling another one.</span>
+              </div>
+            }
+            @if (sendError()) {
+              <div class="case-chat__notice-bar" role="alert">{{ sendError() }}</div>
+            }
+            <agentos-voice-recorder
+              [state]="voice.state()"
+              [elapsedMs]="voice.elapsedMs()"
+              [error]="voice.error()"
+              [sendKey]="sendKeyLabel"
+              (keyPressed)="onRecordingKeydown($event)"
+            />
+            <div class="case-chat__actions">
+              <!-- Right next to the send button, on its left -->
+              @if (voiceCapability.available()) {
+                <ds-icon-button
+                  icon="mic"
+                  variant="default"
+                  title="Record a voice message"
+                  [disabled]="!canRecord"
+                  (action)="startRecording()"
+                />
+              }
 
-            @if (isRunning()) {
-              <ds-icon-button icon="stop" variant="default" title="Interrupt" (action)="interrupt()" />
-            }
-            @if (!isRunning() || teamChat()) {
-              <ds-icon-button
-                icon="send"
-                variant="primary"
-                [title]="voice.isRecording() ? 'Send voice message' : preferences.composerHint()"
-                [disabled]="!canSendNow"
-                (action)="onSendClick()"
-              />
-            }
+              @if (isRunning()) {
+                <ds-icon-button icon="stop" variant="default" title="Interrupt" (action)="interrupt()" />
+              }
+              @if (!isRunning() || teamChat()) {
+                <ds-icon-button
+                  icon="send"
+                  variant="primary"
+                  [title]="voice.isRecording() ? 'Send voice message' : preferences.composerHint()"
+                  [disabled]="!canSendNow"
+                  (action)="onSendClick()"
+                />
+              }
+            </div>
           </div>
-        </div>
+        }
         @if (isTerminal()) {
           <div class="case-chat__notice-bar">
             <span class="case-chat__notice-label"
