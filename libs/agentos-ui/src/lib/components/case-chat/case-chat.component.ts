@@ -70,13 +70,6 @@ import { AgentActivity, describeAgentActivity, toolActivityLabel } from '../agen
 import { buildDelegations, isCorrelatedDelegateTool } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EffortOption, messageEffortLabel, parseEffortCommand } from '../composer-autocomplete/effort-command'
-import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
-import {
-  effortLabel,
-  EffortOption,
-  messageEffortLabel,
-  parseEffortCommand,
-} from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { CaseSettingsComponent } from '../case-settings/case-settings.component'
 import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
