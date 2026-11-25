@@ -307,7 +307,19 @@ export function mapProjectionToPhaseByStepId(
     const obj = asObject(step)
     const stepId = getString(obj, 'id') ?? getString(obj, 'key')
     if (!stepId) continue
-    result.set(stepId, buildPhaseDetail(steps, fallbackStatus, interactions, attempts, evidenceItems, stepId, undefined, attemptsLoadError))
+    result.set(
+      stepId,
+      buildPhaseDetail(
+        steps,
+        fallbackStatus,
+        interactions,
+        attempts,
+        evidenceItems,
+        stepId,
+        undefined,
+        attemptsLoadError
+      )
+    )
   }
   return result
 }
@@ -327,7 +339,14 @@ export function mapProjectionToPhaseByAttemptId(
     result.set(
       attempt.attemptId,
       buildPhaseDetail(
-        steps, fallbackStatus, interactions, attempts, evidenceItems, attempt.stepId, attempt.attemptId, attemptsLoadError
+        steps,
+        fallbackStatus,
+        interactions,
+        attempts,
+        evidenceItems,
+        attempt.stepId,
+        attempt.attemptId,
+        attemptsLoadError
       )
     )
   }

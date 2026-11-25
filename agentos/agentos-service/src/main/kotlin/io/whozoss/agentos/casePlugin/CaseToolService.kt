@@ -1,6 +1,7 @@
 package io.whozoss.agentos.casePlugin
 
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.caseEvent.effectiveConversation
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -76,7 +77,7 @@ class CaseToolService(
                 )
         val inNamespace =
             canRead && caseRepository.findByIds(listOf(caseId)).firstOrNull()?.namespaceId == namespaceId
-        return if (inNamespace) caseEventService.findByParent(caseId) else null
+        return if (inNamespace) caseEventService.findByParent(caseId).effectiveConversation() else null
     }
 
     companion object : KLogging()

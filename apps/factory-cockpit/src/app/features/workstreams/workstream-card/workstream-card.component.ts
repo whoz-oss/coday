@@ -32,7 +32,7 @@ export class WorkstreamCardComponent {
   /** Null when any run's analytics are unavailable; never synthesize a zero. */
   protected readonly totalCost = computed<number | null>(() => {
     const runs = this.workstream().runs
-    const realCostOf = (run: WorkstreamView['runs'][number]): number | null => run.run ? run.run.costUsd : run.costUsd
+    const realCostOf = (run: WorkstreamView['runs'][number]): number | null => (run.run ? run.run.costUsd : run.costUsd)
     if (runs.some((run) => realCostOf(run) === null)) return null
     return runs.reduce<number>((sum, run) => sum + (realCostOf(run) ?? 0), 0)
   })
