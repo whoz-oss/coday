@@ -195,6 +195,33 @@ class SessionSequencerTest {
     }
 
     @Test
+    fun `a cancelled step with pending dependents is cancelled, and running while another step still runs`() {
+        val steps = listOf(step("a"), step("b", "a"), step("c", "b"), step("d"))
+
+        val sealed = SessionSequencer.terminalStatus(
+            steps,
+            statuses(
+                "a" to WorkflowStatuses.CANCELLED,
+                "b" to WorkflowStatuses.PENDING,
+                "c" to WorkflowStatuses.PENDING,
+                "d" to WorkflowStatuses.COMPLETED,
+            ),
+        )
+        val live = SessionSequencer.terminalStatus(
+            steps,
+            statuses(
+                "a" to WorkflowStatuses.CANCELLED,
+                "b" to WorkflowStatuses.BLOCKED,
+                "c" to WorkflowStatuses.BLOCKED,
+                "d" to WorkflowStatuses.RUNNING,
+            ),
+        )
+
+        assertThat(sealed).isEqualTo(WorkflowStatuses.CANCELLED)
+        assertThat(live).isEqualTo(WorkflowStatuses.RUNNING)
+    }
+
+    @Test
     fun `a cancelled step does not seal the session while another step is still running`() {
         val steps = listOf(step("a"), step("b"))
 

@@ -283,15 +283,26 @@ class CapabilityExecutionService(
         return attempt.status.terminal
     }
 
-    /** The latest attempt of the step was explicitly cancelled by a user (Stop). */
-    fun isUserCancelled(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): Boolean {
-        val latest = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
-        return latest.status == AgentAttemptStatus.INTERRUPTED && latest.failureCode == USER_CANCELLED
+    /**
+     * Id of the attempt a user cancelled (Stop) that the step must now be sealed `cancelled` for, or
+     * `null` when there is none.
+     *
+     * The recognition is bound to the attempt being sealed, never to "some old attempt of the step":
+     * the latest attempt of the step must be `interrupted` with failure code [USER_CANCELLED] and,
+     * when the step state carries an `execution` (outcome-managed run), that attempt must be pinned
+     * to the step's current execution (`contextEnvelope.inputs.stepExecutionId`). A legitimate re-arm
+     * (retry, research or answer resumption) registers a new attempt or starts a new execution, so it
+     * is never re-sealed by the cancellation of a previous one. The caller additionally restricts the
+     * check to a step whose status a live attempt holds (`running` or `waiting_human`).
+     */
+    fun userCancelledAttemptId(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): String? {
+        val latest = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return null
+        val cancelled = latest.status == AgentAttemptStatus.INTERRUPTED && latest.failureCode == USER_CANCELLED
+        val currentExecutionId = currentExecution(scope, namespaceId, workflowId, stepId)?.get("executionId")
+        val pinnedExecutionId = latest.contextEnvelope?.let { AttemptContextEnvelope.fromJson(it).inputs["stepExecutionId"] }
+        val boundToCurrentExecution = currentExecutionId == null || pinnedExecutionId == currentExecutionId
+        return latest.attemptId.takeIf { cancelled && boundToCurrentExecution }
     }
-
-    /** Id of the latest durable attempt of the step, or `null` when none exists. */
-    fun latestAttemptId(scope: TenantScope, namespaceId: String, workflowId: String, stepId: String): String? =
-        durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId)?.attemptId
 
     /**
      * A waiting step may resume a completed turn, a standard queryUser turn returned to

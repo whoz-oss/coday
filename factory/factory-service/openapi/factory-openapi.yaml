@@ -1305,8 +1305,8 @@ paths:
     post:
       tags:
       - workflows
-      summary: "Explicitly cancel a durable agent attempt (revision-fenced, interrupt/kill\
-        \ + reconcile)."
+      summary: "Explicitly cancel a durable agent attempt (owner only, durable cancel\
+        \ then authenticated kill + reconcile)."
       operationId: cancelAttemptWorkflow
       parameters:
       - name: workflowId

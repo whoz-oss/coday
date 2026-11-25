@@ -555,17 +555,29 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
-    fun `kill falls back to the identity recorded at case creation`() {
+    fun `kill sends no identity even when one was recorded at case creation`() {
         val (adapter, server) = build()
         server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
         server.expect(requestTo("$baseUrl/api/cases"))
             .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
         server.expect(requestTo("$baseUrl/api/cases/case-1/kill"))
-            .andExpect(header("X-External-User-Id", "user-1"))
+            .andExpect(headerDoesNotExist("X-External-User-Id"))
             .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
         adapter.createOrRecoverExecution("ns-1", "wf-1", "step-1", "user-1", "attempt-1", null, "case-1")
 
         adapter.kill("case-1")
+
+        server.verify()
+    }
+
+    @Test
+    fun `interrupt without an identity keeps the unauthenticated kill of the escalation chain`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1/kill"))
+            .andExpect(headerDoesNotExist("X-External-User-Id"))
+            .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
+
+        adapter.interrupt("case-1", "budget exceeded")
 
         server.verify()
     }

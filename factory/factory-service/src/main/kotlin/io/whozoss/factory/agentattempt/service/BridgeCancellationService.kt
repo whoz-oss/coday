@@ -7,10 +7,9 @@ import io.whozoss.factory.agentattempt.domain.AttemptNotFoundException
 import io.whozoss.factory.agentattempt.domain.InvalidAttemptTransitionException
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.persistence.TenantScope
-import io.whozoss.factory.worktree.WorktreeExecutionOccupancyHandle
-import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
+import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
+import io.whozoss.factory.workflow.domain.WorkflowException
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
-import mu.KotlinLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 
@@ -37,22 +36,26 @@ data class CancellationOutcome(
  * it does NOT cancel the run. Only an explicit `requestCancel` (through
  * `POST /api/factory/workflows/{workflowId}/attempts/{attemptId}/cancel`) drives:
  *
+ *  0. the authorization: only the user who launched the run (the persisted
+ *     `controllerRequest.actorId`) may stop it, checked before any write or remote call;
  *  1. a revision-fenced durable transition to `INTERRUPTED` tagged `USER_CANCELLED` (the lease
  *     owner token is rotated, fencing any in-flight worker out of finalization). It comes FIRST:
  *     a live sequencer that observes the kill must find itself fenced and never finalize the
- *     attempt as an ordinary `AGENT_INTERRUPTED` failure, and a stale revision never kills;
- *  2. `adapter.interrupt(caseId, reason, identity)` — best-effort stop (the AgentOS contract
- *     exposes only the kill route; the interruption intent is remembered so a terminal
- *     `KILLED` derives to `Interrupted`);
- *  3. a post-kill `adapter.reconcile(caseId)` snapshot;
- *  4. when AgentOS acknowledged the kill, the release of the worktree occupancy
- *     held by the attempt (fail-closed: an unacknowledged kill keeps it).
+ *     attempt as an ordinary `AGENT_INTERRUPTED` failure, and a stale revision or an attempt that
+ *     already reached another terminal status never kills;
+ *  2. `adapter.interrupt(caseId, reason, owner)` — the authenticated best-effort stop (the
+ *     interruption intent is remembered so a terminal `KILLED` derives to `Interrupted`);
+ *  3. a post-kill `adapter.reconcile(caseId)` snapshot.
  *
- * The kill is issued with the identity of the persisted workflow actor, which
- * created every case of the family: AgentOS authorizes it (`Case` `DELETE`).
+ * The kill is issued as the run owner, who created every case of the family: AgentOS authorizes
+ * it (`Case` `DELETE`). The caller is checked against that same owner, so nobody else can borrow
+ * the owner's rights through Factory.
  *
- * The remote calls run with NO active transaction; only the final durable write
- * is transactional.
+ * The worktree occupancy of the cancelled attempt is deliberately RETAINED (fail-closed): an
+ * acknowledged kill does not prove that a tool already running in the worktree has stopped, so
+ * releasing it here could let another writer claim a worktree still being written to.
+ *
+ * The remote calls run with NO active transaction; only the durable write is transactional.
  */
 @Component
 @ConditionalOnProperty(prefix = "factory.adapter.agentos", name = ["enabled"], havingValue = "true", matchIfMissing = true)
@@ -60,10 +63,7 @@ class BridgeCancellationService(
     private val attempts: DurableAgentAttemptService,
     private val adapter: AgentOsExecutionAdapter,
     private val workflowRepository: WorkflowRepository? = null,
-    private val worktreeOccupancyService: WorktreeExecutionOccupancyService? = null,
 ) {
-
-    private val logger = KotlinLogging.logger {}
 
     fun requestCancel(
         scope: TenantScope,
@@ -72,13 +72,16 @@ class BridgeCancellationService(
         attemptId: String,
         expectedRevision: Int?,
         reason: String = DEFAULT_REASON,
-        actorId: String? = null,
+        actorId: String,
     ): CancellationOutcome {
         val attempt = attempts.findByAttemptId(scope, namespaceId, workflowId, attemptId)
             ?: throw AttemptNotFoundException(
                 "Durable attempt '$attemptId' not found",
                 details = mapOf("namespaceId" to namespaceId, "workflowId" to workflowId, "attemptId" to attemptId),
             )
+
+        // (0) Only the run owner may stop it, before any write or remote call — also on a replay.
+        val owner = requireRunOwner(scope, namespaceId, workflowId, actorId)
 
         if (attempt.status == AgentAttemptStatus.INTERRUPTED) {
             return CancellationOutcome(attempt.attemptId, workflowId, attempt.stepId, attempt.status, attempt.revision, idempotent = true, reconciledVerdict = null)
@@ -101,14 +104,10 @@ class BridgeCancellationService(
             expectedRevision,
             CapabilityExecutionService.USER_CANCELLED,
         )
-        // (2) remember the interruption intent and issue the authenticated best-effort kill.
-        // The persisted workflow actor created the case family and holds the right to kill it.
-        val identity = persistedActorId(scope, namespaceId, workflowId) ?: actorId?.takeIf { it.isNotBlank() }
-        val killed = adapter.interrupt(attempt.caseId, reason, identity)
+        // (2) remember the interruption intent and issue the authenticated best-effort kill, as the owner.
+        val killed = adapter.interrupt(attempt.caseId, reason, owner)
         // (3) post-kill reconciliation snapshot.
         val reconciled = runCatching { adapter.reconcile(attempt.caseId) }.getOrNull()
-        // (4) the runtime acknowledged the kill: the attempt no longer writes in its worktree.
-        if (killed) releaseOccupancy(scope, namespaceId, workflowId, attempt.stepId, attemptId)
         return CancellationOutcome(
             attemptId = cancelled.attemptId,
             workflowId = cancelled.workflowId,
@@ -121,44 +120,25 @@ class BridgeCancellationService(
         )
     }
 
-    /** The authenticated actor persisted on the workflow instance, never a request-supplied value. */
-    private fun persistedActorId(scope: TenantScope, namespaceId: String, workflowId: String): String? {
-        val instance = workflowRepository?.findInstance(scope, namespaceId, workflowId) ?: return null
-        val controllerRequest = instance.instance["controllerRequest"] as? Map<*, *>
-        return (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }
-    }
-
     /**
-     * Releases the exact worktree acquisition captured by the attempt. Never fails the committed
-     * cancellation: a failure is logged and leaves the occupancy retained (fail-closed).
+     * The owner of the run is the authenticated actor persisted on the workflow instance, never a
+     * request-supplied value. The caller must be exactly that owner: a missing owner (nothing proves
+     * who launched the run) or another caller is refused with `403 ACTION_NOT_ALLOWED`.
      */
-    private fun releaseOccupancy(
-        scope: TenantScope,
-        namespaceId: String,
-        workflowId: String,
-        stepId: String,
-        attemptId: String,
-    ) {
-        val service = worktreeOccupancyService ?: return
-        runCatching {
-            val attempt = attempts.find(scope, namespaceId, workflowId, stepId, attemptId) ?: return
-            val resourceIdentity = attempt.occupancyResourceIdentity ?: return
-            val ownerKind = attempt.occupancyOwnerKind ?: return
-            val ownerId = attempt.occupancyOwnerId ?: return
-            val generation = attempt.occupancyGeneration ?: return
-            service.releaseOwned(
-                WorktreeExecutionOccupancyHandle(
-                    environmentId = attempt.environmentRef ?: "",
-                    resourceIdentity = resourceIdentity,
-                    ownerScope = scope,
-                    ownerKind = ownerKind,
-                    ownerId = ownerId,
-                    generation = generation,
-                ),
+    private fun requireRunOwner(scope: TenantScope, namespaceId: String, workflowId: String, actorId: String): String {
+        val instance = workflowRepository?.findInstance(scope, namespaceId, workflowId)
+        val controllerRequest = instance?.instance?.get("controllerRequest") as? Map<*, *>
+        val owner = (controllerRequest?.get("actorId") as? String)?.takeIf { it.isNotBlank() }
+        if (owner == null || owner != actorId) {
+            // Explicit 403: the shared code-to-status table maps ACTION_NOT_ALLOWED to 400, but a refused
+            // identity is an authorization failure.
+            throw WorkflowException(
+                WorkflowErrorCodes.ACTION_NOT_ALLOWED,
+                "Only the user who launched the run can stop it.",
+                statusCode = 403,
             )
-        }.onFailure { error ->
-            logger.warn(error) { "Worktree occupation of attempt '$attemptId' retained: release after cancellation failed" }
         }
+        return owner
     }
 
     private fun AgentOsExecutionVerdict.label(): String = when (this) {

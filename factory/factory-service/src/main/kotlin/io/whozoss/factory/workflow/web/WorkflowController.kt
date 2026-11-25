@@ -537,11 +537,12 @@ class WorkflowController(
      *
      * Closing the SSE stream (or a browser tab) only stops *observing* the run;
      * it never cancels it. Cancellation requires this explicit, revision-fenced
-     * command, which interrupts/kills the AgentOS case, reconciles its post-kill
-     * state and moves the attempt to the durable terminal `interrupted` status.
+     * command, restricted to the user who launched the run: it first moves the attempt
+     * to the durable terminal `interrupted` status, then kills the AgentOS case as that
+     * user and reconciles its post-kill state.
      */
     @PostMapping(path = ["/{workflowId}/attempts/{attemptId}/cancel"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(summary = "Explicitly cancel a durable agent attempt (revision-fenced, interrupt/kill + reconcile).")
+    @Operation(summary = "Explicitly cancel a durable agent attempt (owner only, durable cancel then authenticated kill + reconcile).")
     fun cancelAttempt(
         @PathVariable workflowId: String,
         @PathVariable attemptId: String,

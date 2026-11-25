@@ -454,19 +454,19 @@ class DefaultAgentOsExecutionAdapter(
     }
 
     /**
-     * Best-effort authenticated kill — never throws. AgentOS authorizes the kill
-     * (`Case` `DELETE`), so the request carries `X-External-User-Id`: the given
-     * [externalUserId], else the identity recorded when the case was bound.
+     * Best-effort kill — never throws. AgentOS authorizes the kill (`Case` `DELETE`), so a caller
+     * that acts for a user passes that user as [externalUserId], and only that explicit value is
+     * sent as `X-External-User-Id`: there is deliberately no fallback to the identity recorded when
+     * the case was bound, so the escalation and shutdown kills ([interrupt] without identity and
+     * [kill]) keep their current, unauthenticated request.
      *
      * @return `true` only when AgentOS acknowledged the kill (2xx); a failure is
      *   logged at WARN with the case id and HTTP status, and yields `false`.
      */
     private fun postKill(caseId: String, externalUserId: String?): Boolean {
-        val identity = externalUserId?.takeIf { it.isNotBlank() }
-            ?: executions.values.firstOrNull { it.caseId == caseId }?.externalUserId?.takeIf { it.isNotBlank() }
         return try {
             val spec = client.post().uri("/api/cases/$caseId/kill")
-            if (identity != null) spec.header("X-External-User-Id", identity)
+            externalUserId?.takeIf { it.isNotBlank() }?.let { spec.header("X-External-User-Id", it) }
             spec.retrieve().toBodilessEntity()
             true
         } catch (e: Exception) {
