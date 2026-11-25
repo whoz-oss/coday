@@ -41,10 +41,12 @@ class AgentOsAdapterConfiguration {
         proxyProperties: ProxyProperties,
         properties: AgentOsAdapterProperties,
         activeCaseRegistry: ActiveCaseRegistry,
+        modelObserver: AttemptModelObserver,
     ): AgentOsExecutionAdapter = DefaultAgentOsExecutionAdapter(
         builder = builder.clone(),
         baseUrl = proxyProperties.agentosUrl,
         registry = activeCaseRegistry,
+        modelObserver = modelObserver,
         sseClientFactory = { baseUrl ->
             AgentOsSseClient(
                 baseUrl = baseUrl,

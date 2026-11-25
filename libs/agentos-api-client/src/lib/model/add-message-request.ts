@@ -13,6 +13,7 @@ export interface AddMessageRequest {
   answerToEventId?: string
   content: string
   mode?: AddMessageRequestModeEnum
+  rerunOf?: string
   sessionContext?: { [key: string]: any }
 }
 export enum AddMessageRequestModeEnum {

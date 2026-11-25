@@ -66,6 +66,20 @@ open class Neo4jCaseEventRepository(
         return active.size
     }
 
+    @Transactional
+    override fun deleteFrom(
+        caseId: UUID,
+        eventId: UUID,
+    ): Int {
+        val active = caseEventNodeNeo4jRepository.findActiveByCaseId(caseId.toString())
+        val index = active.indexOfFirst { it.id == eventId.toString() }
+        if (index < 0) return 0
+        val tail = active.subList(index, active.size)
+        caseEventNodeNeo4jRepository.saveAll(tail.map { mapper.withRemoved(it, true) })
+        logger.debug { "[Neo4jCaseEventRepository] Soft-deleted ${tail.size} events from $eventId for case $caseId" }
+        return tail.size
+    }
+
     override fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant> {
         val rows = caseEventNodeNeo4jRepository.findLastMessageTimestamps(caseIds.map { it.toString() })
         return rows.associate { row ->

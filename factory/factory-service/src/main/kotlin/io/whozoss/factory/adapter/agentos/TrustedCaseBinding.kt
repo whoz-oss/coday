@@ -41,4 +41,10 @@ data class TrustedCaseBinding(
     val externalUserId: String? = null,
     /** Optional title used only when this binding creates a new AgentOS case. */
     val title: String? = null,
+    /**
+     * Tenant of the durable attempt. Required to read or write execution-bound metadata (observed model):
+     * attempt and case ids derive from workflow/step ids only, so they are NOT unique across tenants.
+     * `null` (legacy entry points) disables that metadata rather than guessing a tenant.
+     */
+    val scope: io.whozoss.factory.persistence.TenantScope? = null,
 )

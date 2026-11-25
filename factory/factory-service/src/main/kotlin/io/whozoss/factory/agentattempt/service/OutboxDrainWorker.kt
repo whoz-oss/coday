@@ -3,15 +3,37 @@ package io.whozoss.factory.agentattempt.service
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
+import io.whozoss.factory.settings.RunConcurrencyLimit
+import io.whozoss.factory.settings.RunConcurrencySettingsService
 import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.SessionRunSubmissionService
+import jakarta.annotation.PreDestroy
 import mu.KotlinLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.nio.file.Path
 import java.time.Clock
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import io.whozoss.factory.workspace.TransientWorkspaceAdoptionException
+
+/**
+ * Where the drain worker runs the (long) continuation of a claimed workflow.
+ *
+ * A dedicated functional type, deliberately not [java.util.concurrent.Executor]: Spring Boot
+ * exposes a shared `applicationTaskExecutor` bean of that type, which would otherwise be injected
+ * in the worker's constructor. Production uses the bounded pool the worker owns; unit tests pass a
+ * synchronous implementation.
+ */
+fun interface ContinuationExecutor {
+    /** @throws java.util.concurrent.RejectedExecutionException when the task cannot be accepted. */
+    fun execute(task: Runnable)
+}
 
 /**
  * Background drain worker of the transactional outbox.
@@ -28,8 +50,17 @@ import io.whozoss.factory.workspace.TransientWorkspaceAdoptionException
  * legacy result-context resolution) is deferred with bounded durable backoff
  * (90 minutes FROM FIRST transient failure, not normal enqueue/downtime).
  * Standalone adoption is a single readiness probe; parent Run polling is unchanged.
- * The existing fixed-delay scheduler still executes full sequencer/agent turns: this
- * patch does not introduce an executor or make agent execution non-blocking.
+ *
+ * Parallel dispatch: the tick thread only hands off and claims (short transactions), then submits
+ * each claimed continuation to a bounded pool owned by the worker, so a full sequencer/agent turn
+ * no longer blocks the next claims. Before every claim the number of continuations in flight in
+ * this process is compared with the limit read from [RunConcurrencyLimit] (default 5, changeable
+ * at runtime): when it is reached the remaining due continuations simply stay `pending`, and a
+ * freed slot is refilled at the next tick. Lowering the limit never interrupts a run in flight.
+ * An in-process in-flight guard prevents re-claiming a continuation whose 2 h lease expired while
+ * it is still executing here. A workflow still has at most one continuation (deterministic id +
+ * compare-and-set claim), and the per-workflow run locks and the worktree occupancy fence are
+ * unchanged, so two steps of one run never collide.
  * A worker result submission is a
  * short HTTP transaction that only enqueues an event; the (potentially long)
  * sequencer continuation — which may itself run an agent turn — never holds the
@@ -47,9 +78,34 @@ class OutboxDrainWorker(
     private val agentOsProxyClient: AgentOsProxyClient,
     private val objectMapper: ObjectMapper,
     private val clock: Clock = Clock.systemUTC(),
+    private val concurrency: RunConcurrencyLimit = RunConcurrencyLimit { DEFAULT_MAX_PARALLEL_RUNS },
+    continuationExecutor: ContinuationExecutor? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
+
+    private val workerThreadCounter = AtomicInteger()
+
+    /** The pool owned (and shut down) by the worker; absent when an executor is injected. */
+    private val ownedPool: ThreadPoolExecutor? = if (continuationExecutor == null) {
+        ThreadPoolExecutor(
+            0, RunConcurrencySettingsService.MAX, KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, SynchronousQueue<Runnable>(),
+            ThreadFactory { task ->
+                Thread(task, "factory-run-worker-${workerThreadCounter.incrementAndGet()}").apply { isDaemon = true }
+            },
+        )
+    } else {
+        null
+    }
+
+    private val executor: ContinuationExecutor =
+        continuationExecutor ?: ContinuationExecutor { task -> checkNotNull(ownedPool).execute(task) }
+
+    /** Continuations running in this process, keyed by organization and continuation id. */
+    private val inFlight = ConcurrentHashMap.newKeySet<String>()
+
+    /** Number of continuations currently running in this process (logging and diagnostics only). */
+    fun activeRuns(): Int = inFlight.size
 
     /** A pending DAG continuation resolved from a `result_submitted` event. */
     private data class Continuation(
@@ -86,37 +142,92 @@ class OutboxDrainWorker(
                 .onFailure { logger.warn(it) { "Could not read durable continuations" } }.getOrElse { continue }
             for (candidate in due) {
                 if (Thread.currentThread().isInterrupted) return
+                // Checked before every claim and read fresh, so that an admin change applies at once
+                // and the remaining due continuations stay pending (unclaimed) when the limit is hit.
+                if (inFlight.size >= currentLimit()) return
+                val key = inFlightKey(organizationId, candidate.id)
+                // Lease expired while the run is still executing here: never run it twice.
+                if (key in inFlight) continue
                 val event = drainService.claimContinuation(organizationId, candidate.id, clock.instant()) ?: continue
                 val token = requireNotNull(event.claimToken)
+                inFlight.add(key)
                 try {
-                    // The deadline bounds failed adoption probes, not replay of committed
-                    // DAG results/parent notification after normal queue downtime.
-                    val continuation = requireNotNull(parseSessionRunRequested(organizationId, event))
-                    sessionRunService.runSession(
-                        continuation.scope, continuation.namespaceId, continuation.workflowId,
-                        continuation.repoRoot, continuation.ticket,
-                    )
-                    drainService.completeContinuation(organizationId, event.id, clock.instant(), token)
-                } catch (error: Exception) {
-                    // Interruptions (including HTTP wrappers) are shutdown, not adoption failures.
-                    if (Thread.currentThread().isInterrupted || generateSequence<Throwable>(error) { it.cause }
-                            .any { it is InterruptedException }) {
-                        // Clear the flag while the driver performs the short fenced release.
-                        // A failed release still falls back to crash lease recovery.
-                        Thread.interrupted()
-                        try {
-                            drainService.releaseContinuation(organizationId, event.id, token)
-                        } finally {
-                            Thread.currentThread().interrupt()
-                        }
-                        return
-                    }
-                    drainService.deferContinuation(organizationId, event.id, clock.instant(),
-                        error is TransientWorkspaceAdoptionException, token)
-                    logger.warn(error) { "Continuation ${event.id}: ${if (error is TransientWorkspaceAdoptionException)
-                        "workspace adoption deferred (bounded durable backoff)" else "failed without automatic retry"}" }
+                    executor.execute { runClaimedContinuation(organizationId, event, token, key) }
+                } catch (rejected: Exception) {
+                    // Not started: hand the claim back so that the next tick can retry.
+                    inFlight.remove(key)
+                    logger.warn(rejected) { "Continuation ${event.id} could not be submitted; claim released" }
+                    drainService.releaseContinuation(organizationId, event.id, token)
+                    return
                 }
             }
+        }
+    }
+
+    private fun currentLimit(): Int =
+        concurrency.current().coerceIn(RunConcurrencySettingsService.MIN, RunConcurrencySettingsService.MAX)
+
+    private fun inFlightKey(organizationId: String, eventId: String) = "$organizationId|$eventId"
+
+    /** Task body: never lets an exception escape to the pool and always frees the in-flight slot. */
+    private fun runClaimedContinuation(organizationId: String, event: OutboxEvent, token: String, key: String) {
+        try {
+            logger.debug { "Continuation ${event.id} started (active runs: ${inFlight.size}, limit: ${currentLimit()})" }
+            executeContinuation(organizationId, event, token)
+        } catch (error: Exception) {
+            logger.warn(error) { "Continuation ${event.id}: execution task failed unexpectedly" }
+        } finally {
+            inFlight.remove(key)
+        }
+    }
+
+    /** Runs one claimed continuation to its durable outcome (complete, defer or release). */
+    private fun executeContinuation(organizationId: String, event: OutboxEvent, token: String) {
+        try {
+            // The deadline bounds failed adoption probes, not replay of committed
+            // DAG results/parent notification after normal queue downtime.
+            val continuation = requireNotNull(parseSessionRunRequested(organizationId, event))
+            sessionRunService.runSession(
+                continuation.scope, continuation.namespaceId, continuation.workflowId,
+                continuation.repoRoot, continuation.ticket,
+            )
+            drainService.completeContinuation(organizationId, event.id, clock.instant(), token)
+        } catch (error: Exception) {
+            // Interruptions (including HTTP wrappers) are shutdown, not adoption failures.
+            if (Thread.currentThread().isInterrupted || generateSequence<Throwable>(error) { it.cause }
+                    .any { it is InterruptedException }) {
+                // Clear the flag while the driver performs the short fenced release.
+                // A failed release still falls back to crash lease recovery.
+                Thread.interrupted()
+                try {
+                    drainService.releaseContinuation(organizationId, event.id, token)
+                } finally {
+                    Thread.currentThread().interrupt()
+                }
+                return
+            }
+            drainService.deferContinuation(organizationId, event.id, clock.instant(),
+                error is TransientWorkspaceAdoptionException, token)
+            logger.warn(error) { "Continuation ${event.id}: ${if (error is TransientWorkspaceAdoptionException)
+                "workspace adoption deferred (bounded durable backoff)" else "failed without automatic retry"}" }
+        }
+    }
+
+    /**
+     * Graceful shutdown: interrupts the continuations in flight. Each of them releases its claim
+     * through the interruption branch of [executeContinuation]; a claim that is not released falls
+     * back to lease recovery, as after a crash.
+     */
+    @PreDestroy
+    fun shutdown() {
+        val pool = ownedPool ?: return
+        pool.shutdownNow()
+        try {
+            if (!pool.awaitTermination(SHUTDOWN_WAIT_SECONDS, TimeUnit.SECONDS)) {
+                logger.warn { "Run workers did not stop within $SHUTDOWN_WAIT_SECONDS s; claims fall back to lease recovery" }
+            }
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
         }
     }
 
@@ -184,5 +295,8 @@ class OutboxDrainWorker(
         const val RESULT_SUBMITTED = "result_submitted"
         const val SESSION_RUN_REQUESTED = SessionRunSubmissionService.SESSION_RUN_REQUESTED
         const val DRAIN_LIMIT = 50
+        const val DEFAULT_MAX_PARALLEL_RUNS = 5
+        const val KEEP_ALIVE_SECONDS = 60L
+        const val SHUTDOWN_WAIT_SECONDS = 10L
     }
 }

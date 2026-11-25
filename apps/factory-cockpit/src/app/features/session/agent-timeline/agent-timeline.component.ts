@@ -52,7 +52,9 @@ export class AgentTimelineComponent {
     // Ordinary planned steps remain absent. A durable outcome execution is a
     // real historical/current generation even before it starts, so keep it selectable.
     const isVisible = (block: TimelineBlock): boolean =>
-      block.status !== 'pending' && block.status !== 'ready' || block.executionId !== undefined || block.attemptId !== undefined
+      (block.status !== 'pending' && block.status !== 'ready') ||
+      block.executionId !== undefined ||
+      block.attemptId !== undefined
     const extend = (block: TimelineBlock): TimelineBlock => {
       if (block.status !== 'running' || now <= block.endSec) return block
       const deltaSec = now - block.endSec

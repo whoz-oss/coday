@@ -3,50 +3,27 @@ package io.whozoss.agentos.integrationConfig
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldContainExactly
-import io.kotest.matchers.string.shouldContain
 import org.springframework.security.access.AccessDeniedException
 import java.util.UUID
 
+/**
+ * Mechanism of [IntegrationConfigScopePolicy], independent of the default list of denied types.
+ * The denial per scope is covered end to end by `IntegrationConfigControllerMvcIntegrationSpec`.
+ */
 class IntegrationConfigScopePolicyUnitSpec : StringSpec({
     val userId = UUID.randomUUID()
-    val defaultPolicy = IntegrationConfigScopePolicy(IntegrationsProperties())
-
-    "the default denied list covers every network-reaching or command-running integration type" {
-        IntegrationsProperties().userScopeDeniedTypes shouldContainExactly
-            listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH")
-    }
-
-    listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH").forEach { type ->
-        "a user-scoped $type config is denied with an AccessDeniedException naming the type" {
-            val exception =
-                shouldThrow<AccessDeniedException> {
-                    defaultPolicy.requireScopeAllowed(userId = userId, integrationType = type)
-                }
-            exception.message shouldContain type
-        }
-    }
-
-    "a shared (non user-scoped) config of a denied type is allowed" {
-        shouldNotThrowAny { defaultPolicy.requireScopeAllowed(userId = null, integrationType = "MCP_HTTP") }
-    }
-
-    "a shared (non user-scoped) BASH config is allowed" {
-        shouldNotThrowAny { defaultPolicy.requireScopeAllowed(userId = null, integrationType = "BASH") }
-    }
-
-    "a user-scoped config of a type outside the list is allowed" {
-        shouldNotThrowAny { defaultPolicy.requireScopeAllowed(userId = userId, integrationType = "JIRA") }
-    }
+    val policy = IntegrationConfigScopePolicy(IntegrationsProperties(userScopeDeniedTypes = listOf("JIRA")))
 
     "the match is exact, like the plugin registry lookup" {
-        shouldNotThrowAny { defaultPolicy.requireScopeAllowed(userId = userId, integrationType = "mcp_http") }
+        shouldThrow<AccessDeniedException> { policy.requireScopeAllowed(userId = userId, integrationType = "JIRA") }
+        shouldNotThrowAny { policy.requireScopeAllowed(userId = userId, integrationType = "jira") }
     }
 
     "a configured list replaces the default one" {
-        val policy = IntegrationConfigScopePolicy(IntegrationsProperties(userScopeDeniedTypes = listOf("JIRA")))
+        val defaultType = IntegrationsProperties().userScopeDeniedTypes.first()
+        val defaultPolicy = IntegrationConfigScopePolicy(IntegrationsProperties())
 
-        shouldThrow<AccessDeniedException> { policy.requireScopeAllowed(userId = userId, integrationType = "JIRA") }
-        shouldNotThrowAny { policy.requireScopeAllowed(userId = userId, integrationType = "MCP_HTTP") }
+        shouldThrow<AccessDeniedException> { defaultPolicy.requireScopeAllowed(userId = userId, integrationType = defaultType) }
+        shouldNotThrowAny { policy.requireScopeAllowed(userId = userId, integrationType = defaultType) }
     }
 })

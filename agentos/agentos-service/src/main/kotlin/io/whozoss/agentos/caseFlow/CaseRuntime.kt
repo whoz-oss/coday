@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.DefaultCaseEventEmitter
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventList
+import io.whozoss.agentos.caseEvent.effectiveConversation
 import io.whozoss.agentos.logging.LogContext
 import io.whozoss.agentos.orchestration.CaseEventEmitter
 import io.whozoss.agentos.sdk.actor.Actor
@@ -104,7 +105,18 @@ class CaseRuntime(
      */
     private val maxIterations: Int = 100,
 ) : CaseEventEmitter by emitter {
+    /** The whole log of the case, re-runs included. Read it through [conversation] to reason on it. */
     private val eventList = InMemoryCaseEventList(inputEvents)
+
+    /**
+     * The conversation as it effectively stands: the log without what a re-run of a user message cut off
+     * (see [effectiveConversation]). This is the single door through which the runtime, the agents and their
+     * tools read the history, so that none of them ever sees a message that was replaced.
+     */
+    private fun conversation(): List<CaseEvent> = eventList.getAll().effectiveConversation()
+
+    /** The effective conversation, for the validation of a re-run (see [CaseServiceImpl.addMessage]). */
+    fun conversationSnapshot(): List<CaseEvent> = conversation()
 
     /**
      * The stop requested for the current turn, [StopRequest.NOT_REQUESTED] while there is none. Raised by
@@ -332,6 +344,23 @@ class CaseRuntime(
     fun isRunning(): Boolean = runInFlight.get()
 
     /**
+     * Drop the event [eventId] and every later one from the in-memory history, so the next agent run no
+     * longer sees them, and forget the commands queued from the removed turn. Returns the number of events
+     * dropped, 0 when [eventId] is not in the history.
+     *
+     * Plain truncation: holds no admission lock and does no I/O. Checking that the case is idle is the
+     * caller's job ([CaseServiceImpl.rewindCase]).
+     */
+    fun rewindFrom(eventId: UUID): Int {
+        val removed = eventList.removeFrom(eventId)
+        if (removed > 0) {
+            commandQueue.clear()
+            pendingQuestionResumptions.clear()
+        }
+        return removed
+    }
+
+    /**
      * Claim the [CaseStatus.PENDING] transition atomically, in memory only: a turn is queued and has not
      * started. [GatedRunLauncher] claims it for a turn its gate holds back, then publishes it.
      * [CaseServiceImpl.resumeSubCase] claims it without a gate and does not publish it: [run] replaces it
@@ -444,6 +473,7 @@ class CaseRuntime(
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
         sessionContext: Map<String, Any?>? = null,
+        rerunOf: UUID? = null,
     ) {
         if (logger.isDebugEnabled) {
             userTurnStartedAtNanos.set(System.nanoTime())
@@ -482,9 +512,18 @@ class CaseRuntime(
         }
 
         storeAndEmitEvent(
-            MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content, sessionContext = sessionContext),
+            MessageEvent(
+                caseId = id,
+                namespaceId = namespaceId,
+                actor = actor,
+                content = content,
+                sessionContext = sessionContext,
+                rerunOf = rerunOf,
+            ),
         )
-        selectAgent(content, eventList.getAll()).forEach { storeAndEmitEvent(it) }
+        // The new message is already in the log: for a re-run, the conversation is cut before the replaced message,
+        // so the agent is chosen from what stood before it.
+        selectAgent(content, conversation()).forEach { storeAndEmitEvent(it) }
     }
 
     // -------------------------------------------------------------------------
@@ -591,7 +630,7 @@ class CaseRuntime(
             // runTurns() so the AgentSelectedEvent is in the history before the loop
             // starts scanning backward.
             pendingQuestionResumptions.clear()
-            findQuestionsToResume(eventList.getAll()).let { questions ->
+            findQuestionsToResume(conversation()).let { questions ->
                 questions.firstOrNull()?.let(::resumeQuestion)
                 questions.drop(1).forEach(pendingQuestionResumptions::addLast)
             }
@@ -651,7 +690,7 @@ class CaseRuntime(
      * duplicate it in the history and on the SSE flow.
      */
     private fun closeAgentLeftOpenByCurrentTurn() {
-        val events = eventList.getAll()
+        val events = conversation()
         val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER && it.startsAgentTurn }
         val lastOrchestration =
             events
@@ -707,7 +746,7 @@ class CaseRuntime(
                         "[CaseRuntime $id] Draining command queue, ${commandQueue.size} command(s) remaining"
                     }
                     val actor =
-                        resolveLastUserActor(eventList.getAll())
+                        resolveLastUserActor(conversation())
                             ?: return CaseStatus.ERROR
                     addUserMessage(actor, nextCommand.content)
                     iterationCount = 0
@@ -735,7 +774,7 @@ class CaseRuntime(
      * - [StepResult.STOP] when a kill is requested or no agent can be found.
      */
     private suspend fun processNextStep(): StepResult {
-        val events = eventList.getAll()
+        val events = conversation()
         logger.debug { "[CaseRuntime $id] processNextStep - total events: ${events.size}" }
 
         val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER && it.startsAgentTurn }
@@ -765,8 +804,8 @@ class CaseRuntime(
                     logger.info { "[CaseRuntime $id] Rehydrating from AgentRunningEvent for agent: ${event.agentName}" }
                     runAgent(
                         event.agentName,
-                        eventList.getAll(),
-                        { eventList.getAll() },
+                        conversation(),
+                        { conversation() },
                         resolveUserId(events),
                     ) { agentMayContinue() }
                     return StepResult.CONTINUE
@@ -828,8 +867,8 @@ class CaseRuntime(
                     }
                     runAgent(
                         event.agentName,
-                        eventList.getAll(),
-                        { eventList.getAll() },
+                        conversation(),
+                        { conversation() },
                         userId,
                     ) { agentMayContinue() }
                     return if (isKillRequested()) StepResult.STOP else StepResult.CONTINUE

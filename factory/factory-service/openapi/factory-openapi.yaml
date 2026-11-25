@@ -127,6 +127,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/admin/settings/run-concurrency:
+    get:
+      tags:
+      - run-concurrency-admin-controller
+      operationId: getRunConcurrencyRunConcurrencyAdmin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+    put:
+      tags:
+      - run-concurrency-admin-controller
+      operationId: updateRunConcurrencyRunConcurrencyAdmin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
   /api/factory/workstreams:
     get:
       tags:
@@ -3468,6 +3499,8 @@ components:
           type: string
         effectiveMandate:
           type: string
+        resolvedModel:
+          $ref: "#/components/schemas/ResolvedModel"
       required:
       - activeDurationMs
       - agentName
@@ -3481,6 +3514,16 @@ components:
       - stepId
       - terminal
       - waitingDurationMs
+    ResolvedModel:
+      type: object
+      properties:
+        provider:
+          type: string
+        model:
+          type: string
+      required:
+      - model
+      - provider
     WorkflowDataEnvelopeListDurableAgentAttemptDto:
       type: object
       properties:

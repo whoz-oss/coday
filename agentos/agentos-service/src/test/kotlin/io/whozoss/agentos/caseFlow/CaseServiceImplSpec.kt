@@ -3165,6 +3165,241 @@ class CaseServiceImplSpec :
             service.getById(case.id).status shouldBe CaseStatus.KILLED
         }
 
+        // -------------------------------------------------------------------------
+        // rewindCase: soft-delete a user message and everything after it (#1759)
+        // -------------------------------------------------------------------------
+
+        /** An agent that records the history it is given on each run, then finishes. */
+        fun recordingAgent(histories: MutableList<List<CaseEvent>>): Agent =
+            mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val events = firstArg<List<CaseEvent>>()
+                    histories.add(events)
+                    flow {
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = events.first().caseId,
+                                agentId = agentId,
+                                agentName = agentName,
+                            ),
+                        )
+                    }
+                }
+            }
+
+        fun userMessage(
+            caseId: UUID,
+            text: String,
+        ) = MessageEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            actor = userActor,
+            content = listOf(MessageContent.Text(text)),
+        )
+
+        fun userTexts(events: List<CaseEvent>): List<String> =
+            events
+                .filterIsInstance<MessageEvent>()
+                .filter { it.actor.role == ActorRole.USER }
+                .flatMap { it.content.filterIsInstance<MessageContent.Text>().map { c -> c.content } }
+
+        /** Persists a case straight in [status] with two completed turns, without any live runtime. */
+        fun seedTwoTurns(
+            caseRepository: CaseRepository,
+            caseEventService: CaseEventService,
+            status: CaseStatus = CaseStatus.IDLE,
+        ): Triple<Case, MessageEvent, MessageEvent> {
+            val case = caseRepository.save(Case(namespaceId = namespaceId, status = status))
+            val first = caseEventService.create(userMessage(case.id, "first")) as MessageEvent
+            caseEventService.create(AgentSelectedEvent(namespaceId = namespaceId, caseId = case.id, agentId = agentId, agentName = agentName))
+            caseEventService.create(AgentFinishedEvent(namespaceId = namespaceId, caseId = case.id, agentId = agentId, agentName = agentName))
+            val second = caseEventService.create(userMessage(case.id, "second")) as MessageEvent
+            caseEventService.create(AgentSelectedEvent(namespaceId = namespaceId, caseId = case.id, agentId = agentId, agentName = agentName))
+            caseEventService.create(AgentFinishedEvent(namespaceId = namespaceId, caseId = case.id, agentId = agentId, agentName = agentName))
+            return Triple(case, first, second)
+        }
+
+        "rewindCase on an idle case with a live runtime drops the message and what follows, in persistence and in the runtime history" {
+            val histories = mutableListOf<List<CaseEvent>>()
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(agent = recordingAgent(histories), caseEventService = caseEventService)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val runtime = service.getCaseRuntime(case.id)
+                val scope = CoroutineScope(Dispatchers.IO)
+
+                listOf("first", "second").forEach { text ->
+                    val idle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+                    awaitSubscribers(runtime)
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text(text)))
+                    idle.join()
+                    awaitNotRunning(runtime)
+                }
+                val before = caseEventService.findByParent(case.id)
+                val second = before.filterIsInstance<MessageEvent>().single { it.content == listOf(MessageContent.Text("second")) }
+                val removedIds = before.dropWhile { it.id != second.id }.map { it.id }.toSet()
+
+                val rewound = service.rewindCase(case.id, second.id)
+
+                rewound.status shouldBe CaseStatus.IDLE
+                val after = caseEventService.findByParent(case.id)
+                after.map { it.id }.any { it in removedIds } shouldBe false
+                userTexts(after) shouldBe listOf("first")
+                after.last().shouldBeInstanceOf<CaseStatusEvent>().status shouldBe CaseStatus.IDLE
+
+                // The live runtime no longer sends the removed turn to the agent.
+                val idle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+                awaitSubscribers(runtime)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("third")))
+                idle.join()
+                userTexts(histories.last()) shouldBe listOf("first", "third")
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "rewindCase on a case without a live runtime leaves a shortened history for the next rehydration" {
+            val histories = mutableListOf<List<CaseEvent>>()
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val caseRepository = InMemoryCaseRepository()
+            val service =
+                buildService(agent = recordingAgent(histories), caseEventService = caseEventService, caseRepository = caseRepository)
+            try {
+                val (case, _, second) = seedTwoTurns(caseRepository, caseEventService)
+                service.findActiveRuntime(case.id) shouldBe null
+
+                service.rewindCase(case.id, second.id).status shouldBe CaseStatus.IDLE
+
+                userTexts(caseEventService.findByParent(case.id)) shouldBe listOf("first")
+                caseEventService.findByParent(case.id).last().shouldBeInstanceOf<CaseStatusEvent>()
+                // No runtime was created just to rewind.
+                service.findActiveRuntime(case.id) shouldBe null
+
+                val runtime = service.getCaseRuntime(case.id)
+                val idle = CoroutineScope(Dispatchers.IO).expectCaseStatus(runtime, CaseStatus.IDLE)
+                awaitSubscribers(runtime)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("third")))
+                idle.join()
+                userTexts(histories.last()) shouldBe listOf("first", "third")
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "rewindCase to the first message empties the conversation" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val caseRepository = InMemoryCaseRepository()
+            val service = buildService(caseEventService = caseEventService, caseRepository = caseRepository)
+            try {
+                val (case, first, _) = seedTwoTurns(caseRepository, caseEventService)
+
+                service.rewindCase(case.id, first.id)
+
+                val remaining = caseEventService.findByParent(case.id)
+                userTexts(remaining) shouldBe emptyList()
+                remaining.single().shouldBeInstanceOf<CaseStatusEvent>().status shouldBe CaseStatus.IDLE
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        listOf(CaseStatus.RUNNING, CaseStatus.PENDING, CaseStatus.KILLED, CaseStatus.ERROR).forEach { status ->
+            "rewindCase of a $status case throws ConflictException and removes nothing" {
+                val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val caseRepository = InMemoryCaseRepository()
+                val service = buildService(caseEventService = caseEventService, caseRepository = caseRepository)
+                try {
+                    val (case, _, second) = seedTwoTurns(caseRepository, caseEventService, status)
+                    val eventCount = caseEventService.findByParent(case.id).size
+
+                    shouldThrow<ConflictException> { service.rewindCase(case.id, second.id) }
+
+                    caseEventService.findByParent(case.id).size shouldBe eventCount
+                    service.getById(case.id).status shouldBe status
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "rewindCase of an unknown case throws ResourceNotFoundException" {
+            val service = buildService()
+            shouldThrow<ResourceNotFoundException> { service.rewindCase(UUID.randomUUID(), UUID.randomUUID()) }
+        }
+
+        "rewindCase refuses an unknown, a removed or a foreign event with ResourceNotFoundException" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val caseRepository = InMemoryCaseRepository()
+            val service = buildService(caseEventService = caseEventService, caseRepository = caseRepository)
+            try {
+                val (case, _, second) = seedTwoTurns(caseRepository, caseEventService)
+                val (_, _, foreign) = seedTwoTurns(caseRepository, caseEventService)
+                caseEventService.delete(second.id)
+                val eventCount = caseEventService.findByParent(case.id).size
+
+                shouldThrow<ResourceNotFoundException> { service.rewindCase(case.id, UUID.randomUUID()) }
+                shouldThrow<ResourceNotFoundException> { service.rewindCase(case.id, second.id) }
+                shouldThrow<ResourceNotFoundException> { service.rewindCase(case.id, foreign.id) }
+
+                caseEventService.findByParent(case.id).size shouldBe eventCount
+                userTexts(caseEventService.findByParent(foreign.caseId)) shouldBe listOf("first", "second")
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "rewindCase refuses an agent message and a non-message event with BadRequestException" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val caseRepository = InMemoryCaseRepository()
+            val service = buildService(caseEventService = caseEventService, caseRepository = caseRepository)
+            try {
+                val (case, _, _) = seedTwoTurns(caseRepository, caseEventService)
+                val agentMessage =
+                    caseEventService.create(
+                        MessageEvent(
+                            namespaceId = namespaceId,
+                            caseId = case.id,
+                            actor = Actor(id = agentId.toString(), displayName = agentName, role = ActorRole.AGENT),
+                            content = listOf(MessageContent.Text("answer")),
+                        ),
+                    )
+                val selected = caseEventService.findByParent(case.id).first { it is AgentSelectedEvent }
+                val eventCount = caseEventService.findByParent(case.id).size
+
+                shouldThrow<BadRequestException> { service.rewindCase(case.id, agentMessage.id) }
+                shouldThrow<BadRequestException> { service.rewindCase(case.id, selected.id) }
+
+                caseEventService.findByParent(case.id).size shouldBe eventCount
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "rewindCase is refused while an admitted launch has not started yet" {
+            val gate = TestLaunchGate().also { it.open = true }
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseLaunchGate = gate, caseEventService = caseEventService)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val runtime = service.getCaseRuntime(case.id)
+                synchronized(runtime) {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("admitted")))
+                    service.hasRunningExecutions(listOf(case.id)) shouldBe true
+                    val message = caseEventService.findByParent(case.id).filterIsInstance<MessageEvent>().single()
+
+                    shouldThrow<ConflictException> { service.rewindCase(case.id, message.id) }
+                }
+            } finally {
+                service.shutdown()
+            }
+        }
+
         "killing a parent case also kills its active sub-cases" {
             // Verifies that killCase propagates depth-first to sub-cases created by
             // delegation. The parent is killed; both sub-cases must reach KILLED status

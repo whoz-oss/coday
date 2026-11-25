@@ -218,7 +218,7 @@ class BridgeRecoveryWorker(
             }
             return Outcome.SKIPPED
         }
-        val snapshot = runCatching { adapter.reconcileResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId)) }.getOrNull() ?: return Outcome.SKIPPED
+        val snapshot = runCatching { adapter.reconcileResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId, candidate.scope)) }.getOrNull() ?: return Outcome.SKIPPED
         // A durable business result remains authoritative even if runtime reconciliation
         // reports failure or a stale human wait instead of an indeterminate observation.
         val authoritative = resolveAuthoritativeObservation(candidate, snapshot)
@@ -391,7 +391,7 @@ class BridgeRecoveryWorker(
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         val observation = runCatching {
-            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), effectiveObservationTimeoutMs)
+            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId, candidate.scope), effectiveObservationTimeoutMs)
         }.getOrElse {
             AgentOsObservationResult(
                 AgentOsExecutionVerdict.Indeterminate(
@@ -439,6 +439,7 @@ class BridgeRecoveryWorker(
             environmentRef = attempt.environmentRef,
             environmentRevision = attempt.expectedEnvironmentRevision,
             externalUserId = externalUserId,
+            scope = candidate.scope,
         )
         ParentRunWorkspacePreflight(workEnvironmentRepository, workspaceIdentityValidator).validate(
             scope = candidate.scope, namespaceId = attempt.namespaceId, instance = instance,
@@ -459,7 +460,7 @@ class BridgeRecoveryWorker(
         }
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         val observation = runCatching {
-            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId), effectiveObservationTimeoutMs)
+            adapter.observeTurnResult(TurnToken.unbaselined(attempt.caseId, attempt.attemptId, candidate.scope), effectiveObservationTimeoutMs)
         }.getOrElse {
             AgentOsObservationResult(
                 AgentOsExecutionVerdict.Indeterminate(

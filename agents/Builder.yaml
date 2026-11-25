@@ -4,6 +4,7 @@ modelName: BIG
 integrations:
   FACTORY_WORKER:
   FILES:
+  FILES_NAMESPACE:
   GIT:
   GITHUB:
     - gh

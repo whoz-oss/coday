@@ -58,6 +58,20 @@ class HttpAgentOsProxyClient(
 
     private class AgentOsNotFound : RuntimeException()
 
+    override fun getCumulativeUsage(caseIds: List<String>, externalUserId: String): CumulativeUsageDto? = try {
+        require(caseIds.isNotEmpty())
+        // Validate identifiers before embedding them in a URI; never relay arbitrary query text.
+        val ids = caseIds.distinct().map { java.util.UUID.fromString(it).toString() }
+        relay(
+            "/api/usage-records/aggregate/case-trees?caseIds=${ids.joinToString(",")}",
+            externalUserId,
+            object : ParameterizedTypeReference<CumulativeUsageDto>() {},
+        )
+    } catch (error: Exception) {
+        logger.warn { "Cumulative usage unavailable (${error.javaClass.simpleName})" }
+        null
+    }
+
     override fun ensureRunRootCase(caseId: String, namespaceId: String, title: String, externalUserId: String) {
         require(externalUserId.isNotBlank()) { "Authenticated provisioning identity is required" }
         fun read(): Map<String, Any?>? = try {

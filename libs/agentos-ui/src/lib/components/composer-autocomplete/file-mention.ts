@@ -1,9 +1,10 @@
-import {
-  ExchangeFileEntryScopeEnum,
-  ExchangeManifest,
-  ExchangeManifestCapabilityEnum,
-} from '@whoz-oss/agentos-api-client'
+import { ExchangeManifest, ExchangeManifestCapabilityEnum } from '@whoz-oss/agentos-api-client'
 import type { ExchangeFileRef, ExchangeScope } from '../../services/exchange-state.service'
+import {
+  mentionScopeWord,
+  referencedMentionEntry,
+  referencedMentionLine,
+} from '../composer-attachments/composer-attachments.utils'
 
 /**
  * Pure helpers for the `#` file mention of the chat composer (no Angular, no HTTP).
@@ -45,7 +46,7 @@ export function fileReference(file: Pick<FileSuggestion, 'scope' | 'path'>): str
 
 /** Mention scope of an exchange scope. */
 export function scopeOfRef(scope: ExchangeScope): FileMentionScope {
-  return scope === ExchangeFileEntryScopeEnum.CASE ? 'case' : 'namespace'
+  return mentionScopeWord(scope)
 }
 
 /** Identity of a referenced file across both scopes. */
@@ -79,8 +80,7 @@ export function withoutFileReferences(current: ExchangeFileRef[], removed: Excha
  */
 export function buildReferenceMention(refs: ExchangeFileRef[]): string {
   if (refs.length === 0) return ''
-  const references = refs.map((ref) => fileReference({ scope: scopeOfRef(ref.scope), path: ref.path }).trim())
-  return `[Files referenced: ${references.join(', ')}]`
+  return referencedMentionLine(refs.map((ref) => referencedMentionEntry(ref.scope, ref.path)))
 }
 
 /** Replaces the trailing `#<prefix>` word of the value with [reference]. */

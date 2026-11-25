@@ -165,6 +165,8 @@ class MessageEventNode(
     val reasoningEffort: String? = null,
     /** Enum name of the [io.whozoss.agentos.sdk.aiProvider.ReasoningEffort] asked, before the provider's limits. */
     val requestedReasoningEffort: String? = null,
+    /** Id of the user message this one re-runs, null for a regular message (see MessageEvent.rerunOf). */
+    val rerunOf: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

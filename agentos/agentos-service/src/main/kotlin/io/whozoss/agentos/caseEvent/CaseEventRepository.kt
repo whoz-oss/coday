@@ -21,4 +21,16 @@ interface CaseEventRepository : EntityRepository<CaseEvent, UUID> {
      * case's own creation timestamp for such cases.
      */
     fun findLastMessageTimestamps(caseIds: Collection<UUID>): Map<UUID, Instant>
+
+    /**
+     * Soft-delete the active event [eventId] of [caseId] and every active event after it, in the order
+     * of [findByParent] (timestamp, then id).
+     *
+     * @return the number of events removed, or 0 (nothing changed) when [eventId] is not an active
+     *   event of [caseId]
+     */
+    fun deleteFrom(
+        caseId: UUID,
+        eventId: UUID,
+    ): Int
 }

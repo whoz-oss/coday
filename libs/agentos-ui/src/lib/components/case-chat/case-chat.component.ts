@@ -1,9 +1,11 @@
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
+import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http'
 import { JsonPipe, NgTemplateOutlet } from '@angular/common'
 import { firstValueFrom, Subscription } from 'rxjs'
 import {
   afterNextRender,
+  ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
@@ -19,7 +21,6 @@ import {
   signal,
   Signal,
   viewChild,
-  ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { SafeHtml } from '@angular/platform-browser'
@@ -28,11 +29,13 @@ import {
   Actor,
   AddMessageRequest,
   AddMessageRequestModeEnum,
+  AgentConfig,
   AgentFinishedEvent,
   AgentRunningEvent,
   AgentSelectedEvent,
   AnswerEvent,
   Audio as AudioContent,
+  Case,
   CaseEvent,
   CaseStatusEnum,
   CaseStatusEvent,
@@ -41,6 +44,7 @@ import {
   ErrorEvent,
   IntentionGeneratedEvent,
   MessageEvent as CaseMessageEvent,
+  Prompt,
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
   ToolRequestEvent,
@@ -48,7 +52,6 @@ import {
   ToolSelectedEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
-import { AgentConfig, Case, Prompt } from '@whoz-oss/agentos-api-client'
 import {
   BlueprintDirective,
   ConfirmDialogComponent,
@@ -61,7 +64,7 @@ import {
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
-import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
+import { questionElementId, QuestionPanelComponent } from '../question-panel/question-panel.component'
 import { ConfigChangeCardComponent } from '../config-change-card/config-change-card.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
@@ -69,14 +72,16 @@ import { AgentActivityComponent } from '../agent-activity/agent-activity.compone
 import { AgentActivity, describeAgentActivity, toolActivityLabel } from '../agent-activity/agent-activity.models'
 import { buildDelegations, isCorrelatedDelegateTool } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
-import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
-import {
-  EffortOption,
-  effortLabel,
-  messageEffortLabel,
-  parseEffortCommand,
-} from '../composer-autocomplete/effort-command'
+import { EffortOption, messageEffortLabel, parseEffortCommand } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
+import { CaseSettingsComponent } from '../case-settings/case-settings.component'
+import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
+import { stripSettingsCommand } from '../composer-autocomplete/settings-command'
+import { AiModelStateService } from '../../services/ai-model-state.service'
+import { chatModelOptions } from '../../services/chat-model.utils'
+import { ModelOption } from '../agent-config-form/model-options'
+import { parseBtwCommand } from '../composer-autocomplete/btw-command'
+import { SideQuestionStateService } from '../../services/side-question-state.service'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
 import {
   buildReferenceMention,
@@ -86,30 +91,51 @@ import {
 } from '../composer-autocomplete/file-mention'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeSelectionAction, ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
+import { buildSelectionMessage } from '../exchange-content-viewer/exchange-selection-message'
+import { parseProposal } from '../exchange-content-viewer/exchange-proposal'
+import { ExchangeSelectionRequestService } from '../../services/exchange-selection-request.service'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
-import { findLegitimateAnswer, runningAfter, senderLabel } from './case-chat.utils'
+import {
+  effectiveConversation,
+  findLegitimateAnswer,
+  isAuthorOf,
+  rerunErrorMessage,
+  rerunTargetOf,
+  runningAfter,
+  senderLabel,
+  textOfMessage,
+  withText,
+} from './case-chat.utils'
+import { MessageActionsComponent } from '../message-actions/message-actions.component'
+import { MessageEditorComponent } from '../message-editor/message-editor.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
-import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
-import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import {
+  isNamespaceTargeted,
+  joinAttachmentMentions,
+  joinMentionLines,
+  resolveUploadScope,
+  splitAttachmentMentions,
+} from '../composer-attachments/composer-attachments.utils'
+import { FileChipComponent } from '../file-chip/file-chip.component'
 import { configChangeQuestionIds } from './config-change-questions'
 import { buildTurnMetrics, formatTurnDuration, TurnMetrics } from './turn-metrics'
-import { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
 import { groupToolCalls, summarizeToolGroup, ToolGroupSummary, toolRunKey } from './tool-call-groups'
 import { CostPipe } from '../../pipes/cost.pipe'
 import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { AudioMessageComponent } from '../audio-message/audio-message.component'
-import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { UserStateService } from '../../services/user-state.service'
-
-// The timeline types live in case-chat.models.ts (tool-call-groups.ts needs them too); re-exported for existing importers.
-export type { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
+import { ExecutionNotice, TechnicalItem, TimelineItem, ToolCall } from './case-chat.models'
+import { ComposerAttachmentsComponent } from 'libs/agentos-ui/src/lib/components/composer-attachments/composer-attachments.component'
+import { EffortAutocompleteComponent } from 'libs/agentos-ui/src/lib/components/effort-autocomplete/effort-autocomplete.component'
+import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
+import { CostPauseCardComponent } from 'libs/agentos-ui/src/lib/components/cost-pause-card/cost-pause-card.component'
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -156,33 +182,44 @@ function hasActiveSelection(): boolean {
 @Component({
   selector: 'agentos-case-chat',
   imports: [
-    IconButtonComponent,
-    KebabMenuComponent,
-    CaseUsageComponent,
-    JsonPipe,
-    NgTemplateOutlet,
-    DrawerComponent,
-    ExchangeShellComponent,
-    CaseMembersComponent,
-    PromptAutocompleteComponent,
-    AgentAutocompleteComponent,
-    EffortAutocompleteComponent,
-    FileAutocompleteComponent,
-    BlueprintDirective,
-    CaseStatusGlyphComponent,
-    CopyButtonComponent,
-    ComposerAttachmentsComponent,
-    QuestionPanelComponent,
-    ConfigChangeCardComponent,
-    DelegationCardComponent,
-    ConfirmDialogComponent,
     AgentActivityComponent,
     AudioMessageComponent,
-    VoiceRecorderComponent,
+    BlueprintDirective,
+    CaseMembersComponent,
+    CaseStatusGlyphComponent,
+    CaseUsageComponent,
+    ConfigChangeCardComponent,
+    ConfirmDialogComponent,
+    CopyButtonComponent,
     CostPipe,
+    DelegationCardComponent,
+    DrawerComponent,
+    ExchangeShellComponent,
+    FileChipComponent,
+    IconButtonComponent,
+    JsonPipe,
+    KebabMenuComponent,
+    MessageActionsComponent,
+    MessageEditorComponent,
+    NgTemplateOutlet,
+    QuestionPanelComponent,
     TokenCountPipe,
+    ComposerAttachmentsComponent,
+    PromptAutocompleteComponent,
+    EffortAutocompleteComponent,
+    FileAutocompleteComponent,
+    AgentAutocompleteComponent,
+    CaseSettingsComponent,
+    VoiceRecorderComponent,
+    CostPauseCardComponent,
   ],
-  providers: [ComposerAttachmentsService, ComposerAutocompleteService, VoiceRecorderService],
+  providers: [
+    ComposerAttachmentsService,
+    ComposerAutocompleteService,
+    VoiceRecorderService,
+    SideQuestionStateService,
+    CaseRunCostStateService,
+  ],
   templateUrl: './case-chat.component.html',
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrl: './case-chat.component.scss',
@@ -195,11 +232,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly injector = inject(Injector)
   private readonly markdown = inject(MarkdownRendererService)
   private readonly exchangeState = inject(ExchangeStateService)
+  private readonly selectionRequests = inject(ExchangeSelectionRequestService)
+  /** Id of the selection request whose message was posted, while its first agent answer is awaited. */
+  private awaitedSelectionRequest: string | null = null
 
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
   private readonly caseState = inject(CaseStateService)
   private readonly oauthService = inject(OAuthAgentosService)
+  private readonly aiModels = inject(AiModelStateService)
   private readonly userState = inject(UserStateService)
 
   /** Right-side file-exchange drawer open state + entry-point badge count. */
@@ -213,11 +254,23 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Files staged on the next message (component-scoped instance, see providers). */
   protected readonly attachments = inject(ComposerAttachmentsService)
   protected readonly autocomplete = inject(ComposerAutocompleteService)
+  /** The aside of the /btw side questions: component-scoped, so each chat has its own and it ends with the chat. */
+  protected readonly sideQuestions = inject(SideQuestionStateService)
+  /** The answer of the aside, rendered like an agent message. */
+  protected readonly sideAnswerHtml = computed<SafeHtml>(() => {
+    const answer = this.sideQuestions.answer()
+    return answer ? this.renderMarkdown(answer) : ''
+  })
   /** Voice messages: the recorder is component-scoped (microphone released with the host), the capability is app-wide. */
   protected readonly voice = inject(VoiceRecorderService)
   protected readonly voiceCapability = inject(VoiceCapabilityStateService)
   /** Attaching goes through the case exchange: same write gate as the drawer's upload button. */
   protected readonly canAttach = this.exchangeState.canWriteCase
+  /** Run cost of this case, polled once for the usage strip and the cost pause card (component-scoped, see providers). */
+  private readonly runCost = inject(CaseRunCostStateService)
+  /** The run waits for its cost decision: the cost pause card then takes the place of the composer. */
+  protected readonly runCostPaused = this.runCost.paused
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   /**
    * Files can be staged (picker + drop) only when the composer itself is usable: staging on
    * a terminal case would be a dead end, and staging during an upload batch would be
@@ -279,17 +332,74 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly composerInput = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput')
   private readonly messagesContainer = viewChild<ElementRef<HTMLDivElement>>('messagesContainer')
   private readonly promptAutocompleteRef = viewChild(PromptAutocompleteComponent)
-  private readonly effortAutocompleteRef = viewChild(EffortAutocompleteComponent)
+  private readonly settings = viewChild(CaseSettingsComponent)
+  // The pickers live in the shared settings component: the autocomplete service drives them from here.
+  private readonly effortAutocompleteRef = computed(() => this.settings()?.effortPicker())
+  private readonly modelAutocompleteRef = computed(() => this.settings()?.modelPicker())
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
   private readonly fileAutocompleteRef = viewChild(FileAutocompleteComponent)
 
   protected readonly events = signal<CaseEvent[]>([])
 
   /**
-   * Pre-computed markdown HTML per event id.
+   * Pre-computed markdown HTML per event id, of what the message shows as its text (see [bodyOf]).
    * Populated at SSE ingestion time so the computed() timeline stays synchronous.
    */
   private readonly messageHtmlCache = new Map<string, SafeHtml>()
+
+  // ---------------------------------------------------------------------------
+  // Edit and re-run of a user message
+  // ---------------------------------------------------------------------------
+
+  /** Id of the user message whose bubble is the editor, if any: one at a time. */
+  private readonly editingId = signal<string | null>(null)
+
+  /**
+   * The re-run on its way: the message it replaces and the text that was sent. Set when the user sends, lifted
+   * when the server's re-run message comes back on the stream (or when the request fails).
+   *
+   * It never touches [events]: the log only grows. The timeline hides what followed the message and shows the
+   * new text in its place, so nothing blinks between the send and the answer of the server.
+   */
+  protected readonly pendingRerun = signal<{ targetId: string; text: string } | null>(null)
+
+  /** Why the last re-run was refused, shown under the message it concerns. */
+  protected readonly rerunError = signal<{ eventId: string; message: string } | null>(null)
+
+  /**
+   * The conversation as it effectively stands: the log without what a re-run replaced (see
+   * [effectiveConversation], the same rule as the server). The log itself, [events], stays whole.
+   */
+  private readonly effectiveEvents = computed(() => effectiveConversation(this.events()))
+
+  /**
+   * What the timeline, the delegations and the activity line read: the effective conversation and, while a re-run
+   * is on its way, its optimistic form, where the message being replaced shows the new text and nothing follows it.
+   */
+  private readonly conversationEvents = computed<CaseEvent[]>(() => {
+    const effective = this.effectiveEvents()
+    const pending = this.pendingRerun()
+    if (!pending) return effective
+    const index = effective.findLastIndex((event) => event.id === pending.targetId)
+    const target = index >= 0 ? effective[index] : undefined
+    if (target?.type !== 'MessageEvent') return effective
+    return [...effective.slice(0, index), withText(target, pending.text)]
+  })
+
+  /**
+   * The markdown of the text being re-run: [messageHtmlCache] holds the one of the original text. The files the
+   * text carries are shown as chips, not rendered.
+   */
+  private readonly pendingHtml = computed<SafeHtml>(() => {
+    const pending = this.pendingRerun()
+    return pending ? this.renderMarkdown(splitAttachmentMentions(pending.text).body) : ''
+  })
+
+  /** The message being edited, as long as it is still part of the conversation. */
+  protected readonly activeEditId = computed<string | null>(() => {
+    const id = this.editingId()
+    return id !== null && this.conversationEvents().some((event) => event.id === id) ? id : null
+  })
 
   protected inputValue = signal('')
   protected isRunning = signal(false)
@@ -368,6 +478,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Whether the kill confirmation dialog is showing. */
   protected readonly confirmingKill = signal(false)
 
+  /** The user message the rewind confirmation dialog is asking about, or null when it is closed. */
+  protected readonly rewindTarget = signal<CaseMessageEvent | null>(null)
+
+  /** A rewind request is in flight: a second one would race the first on the same history. */
+  private rewinding = false
+
   /**
    * Overflow menu of the case header: the destructive actions, kept out of the always-visible icons. Both open a
    * confirmation (dialog for stop, inline for delete) rather than acting directly. Stop is disabled once the case ended.
@@ -388,8 +504,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     else if (key === 'delete') this.confirmingDelete.set(true)
   }
 
-  /** The case-level reasoning effort shown next to the composer; "default" means each agent's model setting. */
-  protected readonly caseEffortLabel = computed(() => effortLabel(this.activeCase()?.reasoningEffort))
+  /** The chat models the case can be switched to, loaded once for the namespace (empty until then, or on failure). */
+  private readonly availableModels = signal<ModelOption[]>([])
+
+  /** The /model picker entries: the way back to the agents' own models, then the models of the namespace. */
+  private readonly modelChoiceList = computed(() => modelChoices(this.availableModels()))
 
   /** Which panel is active in the right drawer: files exchange or case members. */
   protected readonly drawerPanel = signal<'files' | 'members'>('files')
@@ -499,6 +618,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   constructor() {
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
+    this.autocomplete.enableModelCommand(
+      () => this.canChangeEffort(),
+      () => this.modelChoiceList()
+    )
+    // While the agent runs, /btw is the only thing the composer accepts, and the only command it suggests.
+    this.autocomplete.enableBtwCommand(() => this.isRunning())
     // `#` lists what the agent reaches through its exchange tools: the namespace and this case.
     this.autocomplete.enableFileMentions(() => ({ namespaceId: this.namespaceId, caseId: this.caseId }))
 
@@ -511,6 +636,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       if (this.isRunning() || this.isTerminal()) return
       queueMicrotask(() => {
         if (this.isEditing()) return
+        // A message being edited keeps the focus the editor took.
+        if (this.activeEditId() !== null) return
         if (hasActiveSelection()) return
         // A pending question takes the focus instead (see the effect below).
         if (this.pendingQuestionId()) return
@@ -524,6 +651,25 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       const questionId = this.pendingQuestionId()
       if (!questionId || this.isRunning()) return
       afterNextRender(() => this.focusQuestionControls(questionId), { injector: this.injector })
+    })
+
+    // The run cost state follows the case on display, its edit rights and whether it runs.
+    effect(() => {
+      const running = this.isRunning() || this.caseStatus() === 'RUNNING'
+      this.runCost.bind(this._activeCaseId() || null, this.canAttach(), running)
+    })
+
+    // A run reaching its cost threshold is a request to the user: move the focus to its first action, once per pause
+    // (rising edge), under the same guards as a pending question.
+    let wasPaused = false
+    effect(() => {
+      const paused = this.runCost.paused()
+      const appeared = paused && !wasPaused
+      const resolved = !paused && wasPaused
+      wasPaused = paused
+      if (appeared) afterNextRender(() => this.focusCostPauseControls(), { injector: this.injector })
+      // The textarea comes back with the draft it had: size it to that draft again.
+      if (resolved) afterNextRender(() => this.resizeComposer(), { injector: this.injector })
     })
 
     // Keep the composer sized to its current content, including after a message is sent
@@ -565,7 +711,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * 2. Walk events in order to emit timeline items, deduplicating tool entries
    *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
    */
-  protected readonly delegations = computed(() => buildDelegations(this.events()))
+  protected readonly delegations = computed(() => buildDelegations(this.conversationEvents()))
 
   /**
    * What each agent turn cost, keyed by the id of its `AgentFinishedEvent`.
@@ -573,6 +719,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Keyed on `events()` alone, like [delegations]: the timeline also depends on the technical-log
    * and tool-call toggles, and walking the whole stream again on every flip of a checkbox buys
    * nothing.
+   *
+   * Computed on the whole log, not on the effective conversation: what a re-run replaced was spent all the
+   * same, so the running total of a turn counts it.
    */
   private readonly turnMetrics = computed(() => buildTurnMetrics(this.events()))
 
@@ -581,10 +730,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Derived from the event stream and from the delegation pairing above, so it follows the turn
    * without any extra bookkeeping.
    */
-  protected readonly activity = computed<AgentActivity>(() => describeAgentActivity(this.events(), this.delegations()))
+  protected readonly activity = computed<AgentActivity>(() =>
+    describeAgentActivity(this.conversationEvents(), this.delegations())
+  )
 
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
-    const allEvents = this.events()
+    const allEvents = this.conversationEvents()
+    const pendingRerun = this.pendingRerun()
     const showTechnical = this.showTechnical()
     const showToolCalls = this.showToolCalls()
     const delegations = this.delegations()
@@ -669,12 +821,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           warningsThisTurn.clear()
           lastAgentMessageIndex = null
         }
+        // The message being re-run shows the text that was sent: its cached markdown is the one of the original.
+        const isPending = pendingRerun?.targetId === e.id
         items.push({
           kind: 'message',
           event: msg,
-          html: this.messageHtmlCache.get(e.id) ?? '',
+          html: isPending ? this.pendingHtml() : (this.messageHtmlCache.get(e.id) ?? ''),
+          files: role === 'USER' ? splitAttachmentMentions(this.extractText(msg)).files : [],
           isFirstInGroup,
           isLastInGroup: false,
+          pending: isPending,
         })
         if (role === 'AGENT') lastAgentMessageIndex = items.length - 1
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
@@ -746,7 +902,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Id of the latest run stopped at its iteration limit, while no user message has followed it. */
   protected readonly continuableStopId = computed<string | null>(() => {
-    const events = this.events()
+    const events = this.conversationEvents()
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i]
       if (e?.type === 'MessageEvent' && e.actor.role === 'USER' && (e as CaseMessageEvent).startsAgentTurn !== false)
@@ -757,7 +913,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   })
 
   /** Questions answered through a configuration card: see {@link configChangeQuestionIds}. */
-  protected readonly configChangeQuestionIds = computed(() => configChangeQuestionIds(this.events()))
+  protected readonly configChangeQuestionIds = computed(() => configChangeQuestionIds(this.conversationEvents()))
 
   /** Final timeline: base + trailing streaming assistant bubble during a RUNNING turn. */
   protected readonly timeline = computed<TimelineItem[]>(() => {
@@ -803,7 +959,25 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * typing in another field (a non-empty composer draft included).
    */
   private focusQuestionControls(questionId: string): void {
-    if (hasActiveSelection()) return
+    if (!this.mayMoveFocus()) return
+    const target = this.messagesContainer()?.nativeElement.querySelector<HTMLElement>(
+      `[data-question-controls="${questionId}"] button:not(:disabled), [data-question-controls="${questionId}"] input:not(:disabled)`
+    )
+    target?.focus()
+  }
+
+  /** Focus the first enabled action of the cost pause card, under the guards of {@link mayMoveFocus}. */
+  private focusCostPauseControls(): void {
+    if (!this.mayMoveFocus()) return
+    this.host.nativeElement.querySelector<HTMLElement>('[data-cost-pause-controls] button:not(:disabled)')?.focus()
+  }
+
+  /**
+   * Whether a request to the user may take the keyboard focus: not while the user is selecting text, nor typing in
+   * another field (a non-empty composer draft included).
+   */
+  private mayMoveFocus(): boolean {
+    if (hasActiveSelection()) return false
     const active = document.activeElement
     const composer = this.composerInput()?.nativeElement
     const inOtherField =
@@ -811,11 +985,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         active instanceof HTMLTextAreaElement ||
         active instanceof HTMLSelectElement) &&
       (active !== composer || composer.value.trim().length > 0)
-    if (inOtherField) return
-    const target = this.messagesContainer()?.nativeElement.querySelector<HTMLElement>(
-      `[data-question-controls="${questionId}"] button:not(:disabled), [data-question-controls="${questionId}"] input:not(:disabled)`
-    )
-    target?.focus()
+    return !inOtherField
   }
 
   protected trackTimelineItem(_index: number, item: TimelineItem): string {
@@ -961,6 +1131,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.voiceCapability.load()
+    this.aiModels
+      .listAvailable(this.namespaceId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((models) => this.availableModels.set(chatModelOptions(models)))
     this.connectSse()
 
     // Re-initialise when the ?case query param changes (case-shell navigates with queryParams).
@@ -1098,7 +1272,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
           if (event.type === 'MessageEvent') {
             const msg = event as CaseMessageEvent
-            const text = this.extractText(msg)
+            const text = this.bodyOf(msg)
             if (!this.messageHtmlCache.has(event.id)) {
               this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
             }
@@ -1108,6 +1282,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
+          this.trackSelectionRequest(event)
+
+          // The server's own re-run message replaces the one on screen: nothing is pending any more, and the
+          // effective conversation takes it from here.
+          const rerunTarget = rerunTargetOf(event)
+          if (rerunTarget !== null && rerunTarget === this.pendingRerun()?.targetId) {
+            this.pendingRerun.set(null)
+          }
 
           if (event.type === 'TextChunkEvent') {
             const chunk = (event as unknown as { chunk?: string }).chunk
@@ -1307,9 +1489,16 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       this.promptAutocompleteRef,
       this.agentAutocompleteRef,
       this.effortAutocompleteRef,
-      this.fileAutocompleteRef
+      this.fileAutocompleteRef,
+      this.modelAutocompleteRef
     )
     if (consumed) return
+    // Escape closes the aside of a side question, once no dropdown is left to take it.
+    if (event.key === 'Escape' && this.sideQuestions.visible()) {
+      event.preventDefault()
+      this.sideQuestions.dismiss()
+      return
+    }
     if (this.preferences.shouldSend(event)) {
       event.preventDefault()
       this.submit()
@@ -1359,19 +1548,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * opened through namespace access only is not in it), and a run reads it at its start.
    */
   private canChangeEffort(): boolean {
-    return !this.teamChat() && !!this.activeCase() && !this.isTerminal()
+    // Not while the agent runs: nothing but /btw is accepted then, and a run reads the effort at its start.
+    return !this.teamChat() && !!this.activeCase() && !this.isTerminal() && !this.isRunning()
   }
 
-  /** Apply the level picked after /effort and clear the command from the composer, like Claude Code. */
+  protected closeEffortAutocomplete(): void {
+    this.autocomplete.effortSuggestions.set([])
+  }
+
+  /** Apply the level picked after /effort (or with the chip), and remove the command, only it, from the composer. */
   protected onEffortSelected(option: EffortOption): void {
     this.autocomplete.effortSuggestions.set([])
     if (!this.canChangeEffort()) return
-    this.inputValue.set('')
-    const input = this.composerInput()?.nativeElement
-    if (input) {
-      input.value = ''
-      this.resizeComposer(input)
-    }
+    this.removeSettingsCommand()
     this.caseState
       .setReasoningEffort(this.caseId, option.effort)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -1380,8 +1569,33 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       })
   }
 
-  protected closeEffortAutocomplete(): void {
-    this.autocomplete.effortSuggestions.set([])
+  /** Apply the model picked after /model (null = back to each agent's own), and remove the command from the composer. */
+  protected onModelSelected(choice: ModelChoice): void {
+    this.autocomplete.modelSuggestions.set([])
+    if (!this.canChangeEffort()) return
+    this.removeSettingsCommand()
+    this.caseState
+      .setModel(this.caseId, choice.model)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => console.error('[CaseChat] Failed to set the AI model', err),
+      })
+  }
+
+  /**
+   * A choice made from the chip leaves the composer alone: its text, its cursor, the attachments. Only a typed
+   * `/model` or `/effort` command is removed, and the textarea is touched only when the text really changes.
+   */
+  private removeSettingsCommand(): void {
+    const current = this.inputValue()
+    const next = stripSettingsCommand(current)
+    if (next === current) return
+    this.inputValue.set(next)
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = next
+      this.resizeComposer(input)
+    }
   }
 
   protected closeAtAutocomplete(): void {
@@ -1408,11 +1622,15 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.caseGone.set(false)
     this.events.set([])
     this.messageHtmlCache.clear()
+    this.editingId.set(null)
+    this.pendingRerun.set(null)
+    this.rerunError.set(null)
     this.inputValue.set('')
     this.isRunning.set(false)
     // isTerminal is now computed; clearing _sseStatus is sufficient.
     this._sseStatus.set('')
     this.confirmingDelete.set(false)
+    this.rewindTarget.set(null)
     this.streamingText.set('')
     this.collapsedTools.set(new Set())
     this.expandedToolGroups.set(new Set())
@@ -1420,6 +1638,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.drawerPanel.set('files')
     this.isEditing.set(false)
     this.autocomplete.reset()
+    this.sideQuestions.dismiss()
     this.attachments.reset()
     this.referencedFiles.set([])
     this.voice.reset()
@@ -1435,8 +1654,17 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private submitting = false
 
   protected async submit(): Promise<void> {
-    if (this.submitting || !this.canSend) return
+    if (this.submitting) return
     const content = this.inputValue().trim()
+    // A typed "/btw <question>" is a side question, never a message for the agent. It is the one thing the
+    // composer accepts while the agent runs: it is answered aside, and posts nothing to the case.
+    const sideQuestion = parseBtwCommand(content)
+    if (sideQuestion !== undefined) {
+      this.askSideQuestion(sideQuestion)
+      return
+    }
+    // Anything else waits for the agent: the text stays in the composer.
+    if (!this.canSend) return
     // A typed "/effort <level>" is a command for the case, never a message for the agent. When the
     // effort cannot be changed here, the text stays in the composer.
     const effortCommand = this.teamChat() ? undefined : parseEffortCommand(content)
@@ -1446,6 +1674,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       } else {
         // Missing or unknown level: show the levels instead of doing nothing.
         this.autocomplete.showEffortLevels()
+      }
+      return
+    }
+    // Same for "/model <name>": a command for the case, never a message for the agent. The name must be one of
+    // the models the picker lists; anything else reopens the picker.
+    const modelName = parseModelCommand(content)
+    if (modelName !== undefined) {
+      const choice = modelName === null ? undefined : findModelChoice(this.modelChoiceList(), modelName)
+      if (choice) {
+        this.onModelSelected(choice)
+      } else {
+        this.autocomplete.showModelChoices()
       }
       return
     }
@@ -1464,11 +1704,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         }
         const referenceMention = buildReferenceMention(references)
         if (referenceMention) mentions.push(referenceMention)
-        const mentionBlock = mentions.join('\n')
+        const mentionBlock = joinMentionLines(mentions)
         // An upload failure or a mid-flight case switch blocks the send: failed chips carry
         // the mapped errors (or the switch reset the batch), the input stays intact.
         if (this.caseId !== caseIdAtSubmit) return
-        const sent = await this.postMessage(content ? `${content}\n\n${mentionBlock}` : mentionBlock)
+        const sent = await this.postMessage(joinAttachmentMentions(content, mentionBlock))
         // Only a confirmed send clears the composer: on failure the text and the uploaded
         // chips stay, and a retry rebuilds the mention without re-uploading anything.
         if (sent && this.caseId === caseIdAtSubmit) {
@@ -1491,11 +1731,93 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Asks a side question: the answer shows in the aside, and neither the question nor the answer reaches the case.
+   * Does nothing the case cannot take (ended, gone) or while an upload or a recording is under way, like a send;
+   * an empty question keeps the text, to be completed.
+   */
+  private askSideQuestion(question: string): void {
+    if (!question || this.composerClosed() || this.attachments.isUploading() || this.voice.isBusy()) return
+    this.sideQuestions.ask(this.caseId, question)
+    this.inputValue.set('')
+    const input = this.composerInput()?.nativeElement
+    if (input) {
+      input.value = ''
+      this.resizeComposer(input)
+    }
+  }
+
   /** The agent resumes from the history: its tool calls and its summary of the work so far. */
   protected continueAfterLimit(): void {
     // An attachment send in flight is not running yet: posting now would send two messages.
     if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.composerClosed()) return
     void this.postMessage('Continue', true)
+  }
+
+  /**
+   * The user asked an agent to act on a selection of an exchange document: send it right away when the
+   * composer could send now, so the agent runs on it directly. Otherwise (a turn is running, the case is
+   * over, an upload, a recording or a send is in flight) the message is put in the composer, never lost.
+   * The files drawer stays open either way.
+   */
+  protected onSelectionAction(action: ExchangeSelectionAction): void {
+    const request = this.selectionRequests.register({
+      ref: action.ref,
+      from: action.from ?? 0,
+      to: action.to ?? 0,
+      selection: action.selection,
+      ...(action.selectionMarkdown !== undefined ? { selectionMarkdown: action.selectionMarkdown } : {}),
+      ...(action.selectionHtml !== undefined ? { selectionHtml: action.selectionHtml } : {}),
+      instruction: action.instruction,
+    })
+    const message = buildSelectionMessage(action, request.id)
+    if (
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      !this.attachments.isUploading() &&
+      !this.submitting &&
+      !this.voice.isBusy()
+    ) {
+      this.postMessage(message)
+      return
+    }
+    const draft = this.inputValue().trim()
+    this.inputValue.set(draft ? `${draft}\n\n${message}` : message)
+    queueMicrotask(() => this.composerInput()?.nativeElement.focus())
+  }
+
+  /**
+   * Ties the answer of an agent to the selection request it belongs to, from the event stream: the USER message
+   * that carries the request marker starts the wait, and the FIRST agent message after it settles the request (the
+   * agent hand-offs and delegation details that follow are not looked at). An error, or a case that is killed,
+   * fails it. A marker unknown to the service (replayed history after a page reload) is ignored.
+   */
+  private trackSelectionRequest(event: CaseEvent): void {
+    if (event.type === 'MessageEvent') {
+      const message = event as CaseMessageEvent
+      const text = this.extractText(message)
+      if (message.actor.role === 'USER') {
+        const id = /\[selection-request:([\w-]+)\]/.exec(text)?.[1]
+        if (id && this.selectionRequests.get(id)?.status === 'waiting') this.awaitedSelectionRequest = id
+      } else if (message.actor.role === 'AGENT' && this.awaitedSelectionRequest) {
+        const id = this.awaitedSelectionRequest
+        this.awaitedSelectionRequest = null
+        const { explanation, proposal } = parseProposal(text)
+        if (proposal !== null) this.selectionRequests.propose(id, proposal, explanation)
+        else this.selectionRequests.answer(id, text.trim())
+      }
+    } else if (event.type === 'ErrorEvent') {
+      this.failSelectionRequests((event as ErrorEvent).message || 'The agent failed')
+    } else if (event.type === 'CaseStatusEvent') {
+      const status = (event as CaseStatusEvent).status as string
+      if (status === 'KILLED' || status === 'ERROR')
+        this.failSelectionRequests('The case ended before the agent answered')
+    }
+  }
+
+  private failSelectionRequests(error: string): void {
+    this.awaitedSelectionRequest = null
+    this.selectionRequests.failWaiting(error)
   }
 
   private postMessage(content: string, resumeAgent = false): Promise<boolean> {
@@ -1529,6 +1851,107 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     )
   }
 
+  // ---------------------------------------------------------------------------
+  // Edit and re-run of a user message
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Whether the pencil and the reload button are offered on a message: it is the current user's own message, the case is idle and
+   * open, and no other bubble is being edited or re-run. The server holds the same rules (author, idle case);
+   * these only decide what is offered.
+   */
+  protected canEditMessage(message: CaseMessageEvent): boolean {
+    return (
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      this.activeEditId() === null &&
+      this.pendingRerun() === null &&
+      isAuthorOf(message.actor, this.currentUserId())
+    )
+  }
+
+  /**
+   * The text the editor starts from: what the user wrote in the text parts of the message, which a re-run replaces.
+   * The lines of its files are not part of it: they are shown as chips, and put back by [rerunMessage].
+   */
+  protected editText(message: CaseMessageEvent): string {
+    return splitAttachmentMentions(textOfMessage(message)).body
+  }
+
+  /** Whether the bubble of [message] is the editor right now. */
+  protected isEditingMessage(message: CaseMessageEvent): boolean {
+    return this.activeEditId() === message.id
+  }
+
+  /** Why the last re-run of [message] was refused, if it was. */
+  protected rerunErrorOf(message: CaseMessageEvent): string | null {
+    const error = this.rerunError()
+    return error?.eventId === message.id ? error.message : null
+  }
+
+  protected startMessageEdit(message: CaseMessageEvent): void {
+    if (!this.canEditMessage(message)) return
+    this.rerunError.set(null)
+    this.editingId.set(message.id)
+  }
+
+  protected cancelMessageEdit(): void {
+    this.editingId.set(null)
+  }
+
+  /**
+   * Runs again from the message [message] with its text as it is: exactly the Rerun of the editor opened and sent
+   * without a change, through [rerunMessage] (same request, same pending display, same restoration on a refusal).
+   * Offered under the same conditions as the pencil, which are checked again here.
+   */
+  protected reloadMessage(message: CaseMessageEvent): Promise<void> {
+    if (!this.canEditMessage(message)) return Promise.resolve()
+    return this.rerunMessage(message, this.editText(message))
+  }
+
+  /**
+   * Runs again from the message [message], with [text] in its place, [text] being what the user wrote: the lines of
+   * the files the message carries are put back after it, as they were sent. The bubble shows the new text at once
+   * and what followed it disappears, without anything being removed from the log: the server's re-run message
+   * confirms it through the stream. A refusal puts the display back and says why.
+   */
+  protected async rerunMessage(message: CaseMessageEvent, text: string): Promise<void> {
+    const { mentions } = splitAttachmentMentions(textOfMessage(message))
+    // A message of files only has nothing to say: it is still a message to run again.
+    const content = joinAttachmentMentions(text.trim(), mentions)
+    if (!content || this.isRunning() || this.composerClosed() || this.pendingRerun() !== null) return
+    const caseIdAtSend = this.caseId
+    this.rerunError.set(null)
+    this.editingId.set(null)
+    this.pendingRerun.set({ targetId: message.id, text: content })
+    this.isRunning.set(true)
+    try {
+      await firstValueFrom(
+        this.http.post(`${this.config.basePath}/api/cases/${caseIdAtSend}/messages`, {
+          content,
+          rerunOf: message.id,
+        })
+      )
+    } catch (err) {
+      console.error('[CaseChat] Failed to re-run a message', err)
+      // The chat moved to another case meanwhile: its state was reset, and is not ours to touch.
+      if (this.caseId !== caseIdAtSend) return
+      this.pendingRerun.set(null)
+      // Not simply idle: another run may have started on the case, which is what a 409 can mean.
+      this.isRunning.set(this.isRunningPerLog())
+      this.rerunError.set({
+        eventId: message.id,
+        message: rerunErrorMessage(err instanceof HttpErrorResponse ? err.status : undefined),
+      })
+    }
+  }
+
+  /** Whether the log says that the case runs, which is where the running state comes back to after a refusal. */
+  private isRunningPerLog(): boolean {
+    const latest = this.events().findLast((event) => runningAfter(event) !== null)
+    return !!latest && runningAfter(latest) === true
+  }
+
   protected interrupt(): void {
     this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/interrupt`, {}).subscribe({
       // Server transitions to IDLE; SSE stays open. We'll update isRunning on CaseStatusEvent.
@@ -1552,6 +1975,69 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       },
       error: (err) => console.error('[CaseChat] Failed to reopen case', err),
     })
+  }
+
+  /**
+   * Rewinding rewrites the history, so it is offered only when nothing else is moving on the case: the agent
+   * is idle, the case is open (a terminal case is reopened first), nothing is being posted, and the user
+   * can write to it.
+   */
+  protected canRewind(): boolean {
+    return (
+      this.canAttach() &&
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      !this.attachments.isUploading() &&
+      !this.voice.isBusy() &&
+      !this.submitting &&
+      !this.rewinding
+    )
+  }
+
+  /**
+   * Whether the rewind button is offered under [message], in its actions bar: any user message (the current user's
+   * or a collaborator's), never an agent message, while the case can be rewound (see [canRewind]).
+   */
+  protected canRewindMessage(message: CaseMessageEvent): boolean {
+    return message.actor.role === 'USER' && this.canRewind()
+  }
+
+  /** Opens the confirmation for a user message; rewinding is destructive, so it never acts directly. */
+  protected askRewind(event: CaseMessageEvent): void {
+    if (!this.canRewindMessage(event)) return
+    this.rewindTarget.set(event)
+  }
+
+  /**
+   * Removes the confirmed message and everything after it, then puts its text back in the composer.
+   * The server answers with the case back to IDLE; the history is then replayed from a fresh stream, which
+   * no longer carries the removed events. Nothing is sent: the user edits the text and posts it again.
+   */
+  protected rewind(): void {
+    const target = this.rewindTarget()
+    this.rewindTarget.set(null)
+    if (!target || !this.canRewind()) return
+    const caseIdAtRewind = this.caseId
+    const text = this.extractText(target)
+    this.rewinding = true
+    this.http
+      .post(`${this.config.basePath}/api/cases/${caseIdAtRewind}/rewind`, { eventId: target.id })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.rewinding = false
+          // The user moved to another case meanwhile: its composer is not ours to fill.
+          if (this.caseId !== caseIdAtRewind) return
+          this.caseState.updateCaseStatus(caseIdAtRewind, 'IDLE')
+          this.reinitialise()
+          this.inputValue.set(text)
+          afterNextRender(() => this.composerInput()?.nativeElement.focus(), { injector: this.injector })
+        },
+        error: (err) => {
+          this.rewinding = false
+          console.error('[CaseChat] Failed to rewind case', err)
+        },
+      })
   }
 
   protected extractText(event: CaseMessageEvent): string {
@@ -1729,9 +2215,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return summarizeToolGroup(calls)
   }
 
-  /** Extract plain text from a message item for clipboard copy. */
+  /**
+   * What a message shows as its text, which is also what is copied: the text of a user message without the lines of
+   * the files it carries (shown as chips), the whole text otherwise.
+   */
+  private bodyOf(message: CaseMessageEvent): string {
+    const text = this.extractText(message)
+    return message.actor.role === 'USER' ? splitAttachmentMentions(text).body : text
+  }
+
+  /** Extract plain text from a message item for clipboard copy: what the bubble shows, without the file lines. */
   protected messageText(item: TimelineItem & { kind: 'message' }): string {
-    return this.extractText(item.event)
+    return this.bodyOf(item.event)
   }
 
   /** How long the turn took, in the shortest form that still carries the information. */

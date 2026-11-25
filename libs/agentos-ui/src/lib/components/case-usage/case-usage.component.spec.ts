@@ -9,6 +9,7 @@ import {
   UsageRecordControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { of, Subject, throwError } from 'rxjs'
+import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
 import { CaseStateService } from '../../services/case-state.service'
 import { CaseUsageComponent } from './case-usage.component'
 
@@ -39,6 +40,10 @@ const totals = {
   unknownCostCount: 0,
 }
 
+/**
+ * The usage strip is a read-only readout of the state the chat provides: the polling is the state service's, driven here
+ * through `bind` like the chat does. The cost decision itself is covered by the cost pause card spec.
+ */
 describe('CaseUsageComponent', () => {
   let costs: { getRunCost: jest.Mock; continueCostRunRunCost: jest.Mock; stopCostRunRunCost: jest.Mock }
   let usage: { aggregateByCaseTreeUsageRecord: jest.Mock }
@@ -56,6 +61,7 @@ describe('CaseUsageComponent', () => {
     TestBed.configureTestingModule({
       imports: [CaseUsageComponent],
       providers: [
+        CaseRunCostStateService,
         { provide: UsageConfigurationControllerService, useValue: configuration },
         { provide: RunCostControllerService, useValue: costs },
         { provide: UsageRecordControllerService, useValue: usage },
@@ -72,27 +78,34 @@ describe('CaseUsageComponent', () => {
   })
 
   function render(canWrite = true) {
+    const runCost = TestBed.inject(CaseRunCostStateService)
+    runCost.bind('case-a', canWrite, false)
     const fixture = TestBed.createComponent(CaseUsageComponent)
-    fixture.componentRef.setInput('caseId', 'case-a')
-    fixture.componentRef.setInput('canWrite', canWrite)
     fixture.detectChanges()
     tick(0)
     fixture.detectChanges()
     return fixture
   }
 
+  /** What the chat does when the case, the rights or the activity change. */
+  function rebind(fixture: ComponentFixture<CaseUsageComponent>, caseId: string, running: boolean, canWrite = true) {
+    TestBed.inject(CaseRunCostStateService).bind(caseId, canWrite, running)
+    fixture.detectChanges()
+  }
+
+  const runCostState = () => TestBed.inject(CaseRunCostStateService)
+
   it('waits for startup settings before fetching usage or polling an active run', fakeAsync(() => {
     const settings = new Subject<{ enabled: boolean }>()
     configuration.getUsageConfiguration.mockReturnValue(settings)
     const fixture = render()
-    fixture.componentRef.setInput('running', true)
-    fixture.detectChanges()
+    rebind(fixture, 'case-a', true)
     tick(10000)
     expect(fixture.nativeElement.textContent).toContain('Loading usage settings')
     expect(costs.getRunCost).not.toHaveBeenCalled()
     expect(usage.aggregateByCaseTreeUsageRecord).not.toHaveBeenCalled()
-    fixture.componentInstance.continue(state().pausedCases[0])
-    fixture.componentInstance.stop()
+    runCostState().continue(state().pausedCases[0])
+    runCostState().stop()
     expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
     expect(costs.stopCostRunRunCost).not.toHaveBeenCalled()
 
@@ -110,18 +123,18 @@ describe('CaseUsageComponent', () => {
   it('hides consumption and blocks requests, polling and cost decisions when disabled', fakeAsync(() => {
     configuration.getUsageConfiguration.mockReturnValue(of({ enabled: false }))
     const fixture = render()
-    fixture.componentRef.setInput('running', true)
-    fixture.detectChanges()
+    rebind(fixture, 'case-a', true)
     tick(10000)
     agentMessageEvents.next({ id: 'answer-1', caseId: 'case-a' } as MessageEvent)
-    fixture.componentInstance.continue(state().pausedCases[0])
-    fixture.componentInstance.stop()
+    runCostState().continue(state().pausedCases[0])
+    runCostState().stop()
     expect(fixture.nativeElement.textContent.trim()).toBe('')
     expect(fixture.nativeElement.querySelector('button')).toBeNull()
     expect(costs.getRunCost).not.toHaveBeenCalled()
     expect(usage.aggregateByCaseTreeUsageRecord).not.toHaveBeenCalled()
     expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
     expect(costs.stopCostRunRunCost).not.toHaveBeenCalled()
+    expect(runCostState().paused()).toBe(false)
     fixture.destroy()
   }))
 
@@ -141,29 +154,20 @@ describe('CaseUsageComponent', () => {
     fixture.destroy()
   }))
 
-  it('renders consumption and the exact doubled threshold before confirmation', fakeAsync(() => {
+  it('is a readout when the run is paused: the title and figures, no decision, not forced open', fakeAsync(() => {
     const fixture = render()
-    const text = fixture.nativeElement.textContent
-    expect(text).toContain('Paused')
-    expect(text).toContain('12.00')
-    expect(text).toContain('double threshold to 20.00')
-    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
-    fixture.destroy()
-  }))
+    const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
 
-  it('submits one explicit confirmation while the request is pending', fakeAsync(() => {
-    const response = new Subject<RunCostDto>()
-    costs.continueCostRunRunCost.mockReturnValue(response)
-    const fixture = render()
-    fixture.componentInstance.continue(state().pausedCases[0])
-    fixture.componentInstance.continue(state().pausedCases[0])
-    expect(costs.continueCostRunRunCost).toHaveBeenCalledTimes(1)
-    expect(costs.continueCostRunRunCost).toHaveBeenCalledWith('case-a', { expectedThreshold: 10 })
-    costs.getRunCost.mockReturnValue(of({ ...state(), paused: false, pausedCases: [], runCostThreshold: 20 }))
-    response.next({ ...state(), runCostThreshold: 20 })
-    response.complete()
-    fixture.detectChanges()
-    expect(fixture.nativeElement.textContent).not.toContain('double threshold')
+    expect(text).toContain('Paused · cost threshold reached')
+    expect(text).toContain('12.00')
+    expect(fixture.nativeElement.querySelector('.usage--paused')).not.toBeNull()
+    expect(fixture.nativeElement.querySelector('details').open).toBe(false)
+    // The decision is asked in the composer (cost pause card), nowhere else.
+    expect(fixture.nativeElement.querySelector('button')).toBeNull()
+    expect(text).not.toContain('double threshold')
+    expect(text).not.toContain('Stop')
+    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
+    expect(costs.stopCostRunRunCost).not.toHaveBeenCalled()
     fixture.destroy()
   }))
 
@@ -203,15 +207,6 @@ describe('CaseUsageComponent', () => {
     fixture.destroy()
   }))
 
-  it('does not offer confirmation controls to read-only viewers', fakeAsync(() => {
-    costs.getRunCost.mockReturnValue(of(state('case-a', false)))
-    const fixture = render(false)
-    expect(fixture.nativeElement.querySelector('button')).toBeNull()
-    fixture.componentInstance.continue(state('case-a', false).pausedCases[0])
-    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
-    fixture.destroy()
-  }))
-
   /** The value of the summary figure carrying [label], so an assertion names what it reads. */
   function figure(fixture: ComponentFixture<CaseUsageComponent>, label: string): string | undefined {
     const pair = Array.from(fixture.nativeElement.querySelectorAll('.usage__figure')).find(
@@ -220,104 +215,29 @@ describe('CaseUsageComponent', () => {
     return (pair as HTMLElement | undefined)?.querySelector('.usage__figure-value')?.textContent?.trim()
   }
 
-  it('identifies a parent pause and uses the parent threshold while showing the child run', fakeAsync(() => {
+  it('shows the live threshold of a parent pause while the child run is on display', fakeAsync(() => {
     costs.getRunCost.mockReturnValue(of(parentPause()))
     const fixture = render()
     const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
 
     expect(text).toContain('Paused · cost threshold reached')
-    expect(fixture.nativeElement.querySelector('details').open).toBe(true)
+    expect(fixture.nativeElement.querySelector('details').open).toBe(false)
     expect(figure(fixture, 'threshold')).toBe('100.00')
-    expect(text).toContain('Parent conversation: 12.00 consumed.')
-    expect(text).toContain('Continue · double threshold to 20.00')
-    expect(text).not.toContain('double threshold to 200.00')
-    expect(text).not.toContain('Delegated run:')
-    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
+    expect(fixture.nativeElement.querySelector('button')).toBeNull()
     fixture.destroy()
   }))
 
-  it('confirms the parent threshold and refreshes the child after the decision', fakeAsync(() => {
-    const pending = new Subject<RunCostDto>()
-    costs.getRunCost.mockReturnValue(of(parentPause()))
-    costs.continueCostRunRunCost.mockReturnValue(pending)
-    const fixture = render()
-    costs.getRunCost.mockClear()
-
-    fixture.nativeElement.querySelector('button').click()
-    fixture.detectChanges()
-    expect(costs.continueCostRunRunCost).toHaveBeenCalledTimes(1)
-    expect(costs.continueCostRunRunCost).toHaveBeenCalledWith('parent-case', { expectedThreshold: 10 })
-    expect(costs.getRunCost).not.toHaveBeenCalled()
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
-    expect(buttons.every((button) => button.disabled)).toBe(true)
-
-    costs.getRunCost.mockReturnValue(of({ ...parentPause(), paused: false, pausedCases: [] }))
-    pending.next({ ...state('parent-case'), runCostThreshold: 20, paused: false, pausedCases: [] })
-    pending.complete()
-    fixture.detectChanges()
-
-    expect(costs.getRunCost).toHaveBeenCalledWith('case-a')
-    expect(costs.getRunCost).not.toHaveBeenCalledWith('parent-case')
-    expect(TestBed.inject(CaseStateService).refreshCaseThreshold).toHaveBeenCalledWith('parent-case')
-    expect(fixture.componentInstance.run()?.caseId).toBe('case-a')
-    expect(fixture.componentInstance.run()?.runCostThreshold).toBe(100)
-    expect(fixture.nativeElement.textContent).not.toContain('Paused')
-    fixture.destroy()
-  }))
-
-  it('shows a readable parent pause without continuation permission and stops only the writable child', fakeAsync(() => {
-    const paused = parentPause(false)
-    costs.getRunCost.mockReturnValue(of(paused))
-    const fixture = render(true)
-    const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
-
-    expect(text).toContain('Parent conversation: 12.00 consumed.')
-    expect(text).toContain('A member with edit permission on the parent conversation must approve continuation.')
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Stop'])
-    fixture.componentInstance.continue(paused.pausedCases[0])
-    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
-    buttons[0].click()
-    expect(costs.stopCostRunRunCost).toHaveBeenCalledTimes(1)
-    expect(costs.stopCostRunRunCost).toHaveBeenCalledWith('case-a')
-    expect(costs.stopCostRunRunCost).not.toHaveBeenCalledWith('parent-case')
-    fixture.destroy()
-  }))
-
-  it('allows parent continuation from a read-only child without offering child Stop', fakeAsync(() => {
-    costs.getRunCost.mockReturnValue(of(parentPause()))
-    costs.continueCostRunRunCost.mockReturnValue(of({ ...state('parent-case'), runCostThreshold: 20 }))
-    const fixture = render(false)
-    const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
-
-    expect(text).toContain('Parent conversation: 12.00 consumed.')
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Continue · double threshold to 20.00'])
-    costs.getRunCost.mockClear()
-    costs.getRunCost.mockReturnValue(of({ ...parentPause(), paused: false, pausedCases: [] }))
-    buttons[0].click()
-    expect(costs.continueCostRunRunCost).toHaveBeenCalledWith('parent-case', { expectedThreshold: 10 })
-    expect(costs.getRunCost).toHaveBeenCalledWith('case-a')
-    fixture.componentInstance.stop()
-    expect(costs.stopCostRunRunCost).not.toHaveBeenCalled()
-    fixture.destroy()
-  }))
-
-  it('explains a hidden linked pause without inventing parent details or a confirmation action', fakeAsync(() => {
+  it('reads a hidden linked pause as paused without inventing parent details', fakeAsync(() => {
     costs.getRunCost.mockReturnValue(of({ ...parentPause(), cost: 2, pausedCases: [] }))
     usage.aggregateByCaseTreeUsageRecord.mockReturnValue(of({ ...totals, cost: 2 }))
     const fixture = render()
     const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
 
     expect(text).toContain('Paused · cost threshold reached')
-    expect(fixture.nativeElement.querySelector('details').open).toBe(true)
-    expect(text).toContain('This run is waiting for confirmation in a linked conversation you cannot access.')
+    expect(fixture.nativeElement.querySelector('details').open).toBe(false)
     expect(text).not.toContain('parent-case')
-    expect(text).not.toContain('12.00')
     expect(text).not.toContain('double threshold')
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Stop'])
-    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
+    expect(fixture.nativeElement.querySelector('button')).toBeNull()
     fixture.destroy()
   }))
 
@@ -343,14 +263,14 @@ describe('CaseUsageComponent', () => {
     const pending = new Subject<RunCostDto>()
     costs.getRunCost.mockReturnValueOnce(pending)
     const fixture = render()
-    fixture.componentRef.setInput('caseId', 'case-b')
-    fixture.detectChanges()
+    rebind(fixture, 'case-b', false)
     tick(0)
     fixture.detectChanges()
     pending.next(state('case-a'))
     pending.complete()
-    expect(fixture.componentInstance.run()?.caseId).toBe('case-b')
+    expect(runCostState().run()?.caseId).toBe('case-b')
     fixture.destroy()
+    TestBed.resetTestingModule()
     const calls = costs.getRunCost.mock.calls.length
     agentMessageEvents.next({ id: 'answer-after-destroy', caseId: 'case-b' } as MessageEvent)
     expect(costs.getRunCost).toHaveBeenCalledTimes(calls)
@@ -360,36 +280,31 @@ describe('CaseUsageComponent', () => {
     costs.getRunCost.mockReturnValue(throwError(() => new Error('offline')))
     const fixture = render()
     expect(fixture.nativeElement.textContent).toContain('could not be refreshed')
-    expect(fixture.componentInstance.run()).toBeNull()
+    expect(runCostState().run()).toBeNull()
     fixture.destroy()
   }))
+
   it('discovers a pause when a new run starts in an already open idle conversation', fakeAsync(() => {
     const idle = { ...state(), active: false, paused: false, pausedCases: [], cost: 0 }
     costs.getRunCost.mockReturnValue(of(idle))
     const fixture = render()
-    expect(fixture.nativeElement.querySelector('button')).toBeNull()
+    expect(runCostState().paused()).toBe(false)
     tick(10000)
     expect(costs.getRunCost).toHaveBeenCalledTimes(1)
 
     // The chat starts the activity signal before the runtime necessarily exists.
-    fixture.componentRef.setInput('running', true)
-    fixture.detectChanges()
+    rebind(fixture, 'case-a', true)
     tick(0)
-    expect(fixture.componentInstance.run()?.active).toBe(false)
+    expect(runCostState().run()?.active).toBe(false)
     const aggregateCalls = usage.aggregateByCaseTreeUsageRecord.mock.calls.length
     costs.getRunCost.mockReturnValue(of(state()))
     // No final AGENT message is emitted while the cost gate waits for a decision.
     tick(2000)
     fixture.detectChanges()
 
+    expect(runCostState().paused()).toBe(true)
     expect(fixture.nativeElement.textContent).toContain('Paused · cost threshold reached')
-    expect(fixture.nativeElement.querySelector('details').open).toBe(true)
-    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
-    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
-      'Continue · double threshold to 20.00',
-      'Stop',
-    ])
-    expect(buttons.every((button) => !button.disabled)).toBe(true)
+    expect(fixture.nativeElement.querySelector('details').open).toBe(false)
     expect(usage.aggregateByCaseTreeUsageRecord).toHaveBeenCalledTimes(aggregateCalls)
     fixture.destroy()
   }))
@@ -398,8 +313,7 @@ describe('CaseUsageComponent', () => {
     const fixture = render()
     const pending = new Subject<RunCostDto>()
     costs.getRunCost.mockReturnValueOnce(pending)
-    fixture.componentRef.setInput('running', true)
-    fixture.detectChanges()
+    rebind(fixture, 'case-a', true)
     tick(0)
     const pendingCalls = costs.getRunCost.mock.calls.length
     tick(6000)
@@ -423,14 +337,12 @@ describe('CaseUsageComponent', () => {
 
   it('refreshes on completion and stops polling until another run starts', fakeAsync(() => {
     const fixture = render()
-    fixture.componentRef.setInput('running', true)
-    fixture.detectChanges()
+    rebind(fixture, 'case-a', true)
     tick(2000)
     const finished = { ...state(), active: false, paused: false, pausedCases: [], cost: 20 }
     costs.getRunCost.mockReturnValue(of(finished))
     usage.aggregateByCaseTreeUsageRecord.mockReturnValue(of({ ...totals, cost: 20 }))
-    fixture.componentRef.setInput('running', false)
-    fixture.detectChanges()
+    rebind(fixture, 'case-a', false)
     tick(0)
     fixture.detectChanges()
     expect(fixture.nativeElement.textContent).toContain('20.00 recorded')
@@ -443,28 +355,25 @@ describe('CaseUsageComponent', () => {
 
   it('cancels an active poll on navigation and removes the timer on destroy', fakeAsync(() => {
     const fixture = render()
-    fixture.componentRef.setInput('running', true)
-    fixture.detectChanges()
+    rebind(fixture, 'case-a', true)
     tick(0)
     const pending = new Subject<RunCostDto>()
     costs.getRunCost.mockReturnValueOnce(pending)
     tick(2000)
-    fixture.componentRef.setInput('caseId', 'case-b')
-    fixture.componentRef.setInput('running', false)
-    fixture.detectChanges()
+    rebind(fixture, 'case-b', false)
     tick(0)
     pending.next(state('case-a'))
     pending.complete()
     fixture.detectChanges()
-    expect(fixture.componentInstance.run()?.caseId).toBe('case-b')
+    expect(runCostState().run()?.caseId).toBe('case-b')
     const idleCalls = costs.getRunCost.mock.calls.length
     tick(2000)
     expect(costs.getRunCost).toHaveBeenCalledTimes(idleCalls)
-    fixture.componentRef.setInput('running', true)
-    fixture.detectChanges()
+    rebind(fixture, 'case-b', true)
     tick(2000)
     expect(costs.getRunCost).toHaveBeenLastCalledWith('case-b')
     fixture.destroy()
+    TestBed.resetTestingModule()
     const calls = costs.getRunCost.mock.calls.length
     tick(10000)
     expect(costs.getRunCost).toHaveBeenCalledTimes(calls)
@@ -475,7 +384,7 @@ describe('CaseUsageComponent', () => {
     cases.set([{ id: 'case-a', runCostThreshold: 30 } as Case])
     const fixture = render()
     expect(cases()[0].runCostThreshold).toBe(30)
-    expect(fixture.componentInstance.run()?.runCostThreshold).toBe(10)
+    expect(runCostState().run()?.runCostThreshold).toBe(10)
     fixture.destroy()
   }))
 })

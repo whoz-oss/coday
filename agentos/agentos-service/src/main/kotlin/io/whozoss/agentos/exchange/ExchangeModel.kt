@@ -17,3 +17,22 @@ class InvalidExchangePathException(message: String) : RuntimeException(message)
  * this to HTTP 422 Unprocessable Entity rather than loading it into memory.
  */
 class ExchangeFileTooLargeException(message: String) : RuntimeException(message)
+
+/**
+ * Thrown when [ExchangeStorageService.writeContent] is given an etag that no longer matches the file
+ * (it was modified since the editor opened it). Callers map this to HTTP 409 Conflict.
+ */
+class ExchangeEditConflictException(message: String) : RuntimeException(message)
+
+/**
+ * Body of the `PUT .../files/content` endpoints: the full new text of an existing file.
+ *
+ * [etag] is the one returned when the content was read; when present, the write is refused if the
+ * file changed since. Lives in the service, not in the SDK, because the edit endpoints are not part
+ * of the `ExchangeApi` contract (see `browseCaseFiles`).
+ */
+data class ExchangeFileUpdateRequest(
+    val path: String,
+    val content: String,
+    val etag: String? = null,
+)

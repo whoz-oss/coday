@@ -12,6 +12,8 @@ import io.whozoss.agentos.auth.StaticCredentialFactory
 import io.whozoss.agentos.authSetting.AuthSetting
 import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.chat.AiProviderErrorProperties
+import io.whozoss.agentos.caseEvent.effectiveConversation
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
 import io.whozoss.agentos.chat.sentTo
@@ -98,6 +100,8 @@ class AgentServiceImpl(
     private val agentConfigProperties: AgentConfigProperties,
     private val limitsConfig: LimitsConfigProperties,
     private val exchangeRootResolver: ExchangeRootResolver,
+    /** Whether a provider error shown to the case carries the provider response body. */
+    private val aiProviderErrorProperties: AiProviderErrorProperties = AiProviderErrorProperties(),
     /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
     private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
     private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
@@ -234,7 +238,8 @@ class AgentServiceImpl(
         subCaseManager: SubCaseManager? = null,
     ): ResolvedAgentDefinition {
         val baseModel =
-            agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
+            findCaseModelOverride(agentConfig, context)
+                ?: agentConfig.modelName?.let { aiModelService.findAiModel(context.namespaceId, it) }
                 ?: findDefaultModelConfig(context.namespaceId)
                 ?: throw IllegalArgumentException(
                     "AgentConfig '${agentConfig.name}' could not resolve an AiModel " +
@@ -642,6 +647,26 @@ class AgentServiceImpl(
 
     private fun findDefaultModelConfig(namespaceId: UUID): AiModel? = aiModelService.findAiModel(namespaceId)
 
+    /**
+     * The model the case asks every agent to use ([AgentExecutionContext.modelName]), or null when the case has no
+     * override. A name that no longer resolves (model deleted or renamed since it was chosen) is logged and read as
+     * no override, so the run goes on with the agent's own model instead of failing.
+     */
+    private fun findCaseModelOverride(
+        agentConfig: AgentConfig,
+        context: AgentExecutionContext,
+    ): AiModel? {
+        val requested = context.modelName ?: return null
+        val model = aiModelService.findAiModel(context.namespaceId, requested)
+        if (model == null) {
+            logger.warn {
+                "Case ${context.caseId}: model override '$requested' no longer resolves in namespace " +
+                    "${context.namespaceId}, agent '${agentConfig.name}' falls back to its own model"
+            }
+        }
+        return model
+    }
+
     // -------------------------------------------------------------------------
     // Agent instantiation
     // -------------------------------------------------------------------------
@@ -733,6 +758,7 @@ class AgentServiceImpl(
                     reasoningEffort = modelConfig.reasoningEffort?.sentTo(providerConfig.apiType),
                     requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
+                    exposeProviderResponseBody = aiProviderErrorProperties.exposeResponseBody,
                 )
             }
 
@@ -761,6 +787,7 @@ class AgentServiceImpl(
                     requestedReasoningEffort = modelConfig.reasoningEffort,
                     toolMetricsService = toolMetricsService,
                     maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                    exposeProviderResponseBody = aiProviderErrorProperties.exposeResponseBody,
                 )
             }
         }
@@ -1001,7 +1028,7 @@ class AgentServiceImpl(
             parentCaseId = context.caseId,
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
-            loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            loadCaseEvents = { caseId -> caseEventService.findByParent(caseId).effectiveConversation() },
             timeoutMs =
                 (
                     config.delegationTimeoutSeconds

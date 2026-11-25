@@ -2,10 +2,25 @@ package io.whozoss.agentos.caseFlow
 
 import io.kotest.matchers.shouldBe
 
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.aiModel.AiModelService
+import io.whozoss.agentos.aiProvider.AiProviderService
+import io.whozoss.agentos.sdk.aiProvider.AiApiType
+import io.whozoss.agentos.sdk.aiProvider.AiModel
+import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.actor.ActorRole
+import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
+import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserRepository
@@ -47,10 +62,35 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
     @Autowired lateinit var userService: UserService
+    @Autowired lateinit var caseService: CaseService
+    @Autowired lateinit var caseEventService: CaseEventService
     @Autowired lateinit var userRepository: UserRepository
     @Autowired lateinit var caseEventService: io.whozoss.agentos.caseEvent.CaseEventService
     @Autowired lateinit var caseService: CaseService
     @Autowired lateinit var permissionNodeRepository: PermissionNodeNeo4jRepository
+    @Autowired lateinit var aiProviderService: AiProviderService
+    @Autowired lateinit var aiModelService: AiModelService
+
+    /** A model of [namespaceId] that [alias] resolves to, as the case-level model override needs. */
+    private fun createModel(namespaceId: UUID, alias: String) {
+        val provider = aiProviderService.create(
+            AiProvider(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                namespaceId = namespaceId,
+                name = "provider-${UUID.randomUUID()}",
+                apiType = AiApiType.Anthropic,
+            ),
+        )
+        aiModelService.create(
+            AiModel(
+                metadata = EntityMetadata(id = UUID.randomUUID()),
+                aiProviderId = provider.id,
+                namespaceId = namespaceId,
+                apiModelName = "claude-$alias-test",
+                alias = alias,
+            ),
+        )
+    }
 
     init {
 
@@ -317,6 +357,91 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
             ).andExpect(status().isBadRequest)
         }
 
+        "PUT /api/cases/{id}/model sets and clears the override, which PUT /api/cases/{id} keeps" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-model"),
+            )
+            createModel(ns.id, "BIG")
+            createModel(ns.id, "SMALL")
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "title": "initial", "modelName": "SMALL" }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.modelName").value("SMALL"))
+                .andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/model")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "modelName": "BIG" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.modelName").value("BIG"))
+
+            mockMvc.perform(
+                put("/api/cases/$caseId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "$caseId", "namespaceId": "${ns.id}", "title": "renamed" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.title").value("renamed"))
+                .andExpect(jsonPath("$.modelName").value("BIG"))
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/model")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "modelName": null }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.modelName").doesNotExist())
+        }
+
+        "PUT /api/cases/{id}/model with an unknown model returns 400 and keeps the current override" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-model-400"),
+            )
+            createModel(ns.id, "BIG")
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "modelName": "BIG" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1]
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/model")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "modelName": "no-such-model" }""")
+            ).andExpect(status().isBadRequest)
+
+            mockMvc.perform(get("/api/cases/$caseId"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.modelName").value("BIG"))
+        }
+
+        "POST /api/cases with an unknown model returns 400" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-create-model-400"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "modelName": "no-such-model" }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "PUT /api/cases/{id}/model returns 404 when the case does not exist" {
+            mockMvc.perform(
+                put("/api/cases/${UUID.randomUUID()}/model")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "modelName": null }""")
+            ).andExpect(status().isNotFound)
+        }
+
         "PUT /api/cases/{id} returns 404 when case does not exist" {
             val ns = namespaceService.create(
                 Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-put-404"),
@@ -408,8 +533,84 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // DELETE /api/cases/{id} returns 404 on a second attempt (already soft-deleted)
+        // POST /api/cases/{caseId}/rewind
         // -------------------------------------------------------------------------
+
+        "POST /api/cases/{id}/rewind returns 200 with status IDLE and removes the message and what follows" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-rewind"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = UUID.fromString(Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1])
+            val actor = Actor(id = UUID.randomUUID().toString(), displayName = "User", role = ActorRole.USER)
+            val message = caseEventService.create(
+                MessageEvent(namespaceId = ns.id, caseId = caseId, actor = actor, content = listOf(MessageContent.Text("hi"))),
+            )
+            caseEventService.create(WarnEvent(namespaceId = ns.id, caseId = caseId, message = "after"))
+
+            mockMvc.perform(
+                post("/api/cases/$caseId/rewind")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "eventId": "${message.id}" }""")
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.id").value(caseId.toString()))
+                .andExpect(jsonPath("$.status").value("IDLE"))
+
+            caseEventService.findByParent(caseId).none { it is MessageEvent || it is WarnEvent } shouldBe true
+            caseEventService.findByParent(caseId).last().shouldBeInstanceOf<CaseStatusEvent>().status shouldBe CaseStatus.IDLE
+        }
+
+        "POST /api/cases/{id}/rewind returns 409 on a KILLED case" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-rewind-killed"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = UUID.fromString(Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1])
+            val actor = Actor(id = UUID.randomUUID().toString(), displayName = "User", role = ActorRole.USER)
+            val message = caseEventService.create(
+                MessageEvent(namespaceId = ns.id, caseId = caseId, actor = actor, content = listOf(MessageContent.Text("hi"))),
+            )
+            caseService.killCase(caseId)
+
+            mockMvc.perform(
+                post("/api/cases/$caseId/rewind")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "eventId": "${message.id}" }""")
+            ).andExpect(status().isConflict)
+        }
+
+        "POST /api/cases/{id}/rewind returns 404 for an unknown event and 400 for a non-user-message event" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-rewind-errors"),
+            )
+            val createResponse = mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}" }""")
+            ).andExpect(status().isCreated).andReturn().response.contentAsString
+            val caseId = UUID.fromString(Regex("\"id\"\\s*:\\s*\"([0-9a-f-]+)\"").find(createResponse)!!.groupValues[1])
+            val warn = caseEventService.create(WarnEvent(namespaceId = ns.id, caseId = caseId, message = "warn"))
+
+            mockMvc.perform(
+                post("/api/cases/$caseId/rewind")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "eventId": "${UUID.randomUUID()}" }""")
+            ).andExpect(status().isNotFound)
+            mockMvc.perform(
+                post("/api/cases/$caseId/rewind")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "eventId": "${warn.id}" }""")
+            ).andExpect(status().isBadRequest)
+        }
 
         // -------------------------------------------------------------------------
         // PUT /api/cases/{id}/star and DELETE /api/cases/{id}/star

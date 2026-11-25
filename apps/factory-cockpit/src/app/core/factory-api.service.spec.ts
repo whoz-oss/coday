@@ -504,6 +504,68 @@ describe('FactoryApiService', () => {
     })
   })
 
+  describe('run concurrency admin setting', () => {
+    const settings = {
+      maxParallelRuns: 5,
+      defaultMaxParallelRuns: 5,
+      min: 1,
+      max: 20,
+      updatedAt: null,
+      updatedBy: null,
+    }
+
+    it('getRunConcurrency issues a GET and unwraps the { data } envelope', () => {
+      let result: unknown
+      service.getRunConcurrency().subscribe((value) => (result = value))
+
+      const request = http.expectOne('/api/factory/admin/settings/run-concurrency')
+      expect(request.request.method).toBe('GET')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: settings })
+
+      expect(result).toEqual(settings)
+    })
+
+    it('updateRunConcurrency issues a PUT with the JSON body and unwraps the envelope', () => {
+      let result: unknown
+      service.updateRunConcurrency(7).subscribe((value) => (result = value))
+
+      const request = http.expectOne('/api/factory/admin/settings/run-concurrency')
+      expect(request.request.method).toBe('PUT')
+      expect(request.request.body).toEqual({ maxParallelRuns: 7 })
+      expect(request.request.headers.get('Content-Type')).toBe('application/json')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      request.flush({ data: { ...settings, maxParallelRuns: 7, updatedBy: 'alice' } })
+
+      expect(result).toEqual({ ...settings, maxParallelRuns: 7, updatedBy: 'alice' })
+    })
+
+    it('updateRunConcurrency normalizes a 400 INVALID_MAX_PARALLEL_RUNS failure', () => {
+      let error: FactoryApiError | undefined
+      service.updateRunConcurrency(0).subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http.expectOne('/api/factory/admin/settings/run-concurrency').flush(
+        {
+          error: {
+            code: 'INVALID_MAX_PARALLEL_RUNS',
+            message: 'maxParallelRuns must be an integer between 1 and 20',
+            details: { min: 1, max: 20 },
+          },
+        },
+        { status: 400, statusText: 'Bad Request' }
+      )
+
+      expect(error).toEqual(
+        expect.objectContaining({
+          code: 'INVALID_MAX_PARALLEL_RUNS',
+          status: 400,
+          details: { min: 1, max: 20 },
+        })
+      )
+    })
+  })
+
   describe('admin artifact operations', () => {
     it('runGarbageCollection posts to /admin/artifacts/gc with the dryRun body and a correlation id', () => {
       let result: unknown

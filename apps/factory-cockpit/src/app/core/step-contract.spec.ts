@@ -7,7 +7,7 @@ import {
 } from './mappers/phase-detail'
 
 describe('explicit step contracts', () => {
-  it('builds a French routing section without fabricating routing for ordinary steps', () => {
+  it('builds an English routing section without fabricating routing for ordinary steps', () => {
     expect(buildRoutingSection({ id: 'ordinary' })).toBeNull()
     const section = buildRoutingSection({
       decision: {
@@ -22,13 +22,13 @@ describe('explicit step contracts', () => {
       executed: true,
       join: 'decision',
     })
-    expect(section?.label).toBe('Routage conditionnel')
+    expect(section?.label).toBe('Conditional routing')
     expect(section?.items).toEqual(
       expect.arrayContaining([
         { title: 'route-1', subtitle: 'one', status: 'selected' },
         { title: 'route-2', subtitle: 'two', status: 'not_selected' },
-        { title: 'Exécutée', subtitle: 'oui' },
-        { title: 'Tentative retenue', subtitle: 'a' },
+        { title: 'Executed', subtitle: 'Yes' },
+        { title: 'Selected attempt', subtitle: 'a' },
       ])
     )
   })
@@ -44,9 +44,9 @@ describe('explicit step contracts', () => {
 
   it('renders configured prose in Entry Mission Exit order without raw JSON', () => {
     expect(stepContractSections(step).map((section) => section.label)).toEqual([
-      'Préparation (configurée)',
-      'Mission (configurée)',
-      'Livrables (configurés)',
+      'Preparation (configured)',
+      'Mission (configured)',
+      'Deliverables (configured)',
     ])
     expect(stepContractSections(step).map((section) => section.body)).toEqual([
       '• Inspect branch\n• Sync',
@@ -54,7 +54,7 @@ describe('explicit step contracts', () => {
       '• Commit\n• Push',
     ])
     expect(stepContractSections({ mission: 'Analyze', entry: [], exit: [] })[0]?.body).toBe(
-      'Aucune obligation configurée.'
+      'No configured requirements.'
     )
   })
 
@@ -66,20 +66,20 @@ describe('explicit step contracts', () => {
     ])
     const details = mapProjectionToPhaseByAttemptId([step], 'succeeded', [], attempts)
     const mandate = (id: string): string | undefined =>
-      details.get(id)?.sections.find((section) => section.label === 'Mandat effectif de la tentative')?.body
+      details.get(id)?.sections.find((section) => section.label === 'Attempt mandate')?.body
     expect(mandate('a1')).toBe('OLD\nMANDATE')
     expect(mandate('a2')).toBe('NEW MANDATE')
-    expect(mandate('a3')).toContain('Indisponible')
+    expect(mandate('a3')).toContain('Not recorded')
     expect(
       buildPhaseDetail([step], 'succeeded', [], attempts, [], step.id, 'unknown').sections.find(
-        (section) => section.label === 'Mandat effectif de la tentative'
+        (section) => section.label === 'Attempt mandate'
       )?.notAvailable
     ).toBe(true)
   })
 
   it('explains legacy defaults without fabricating a dispatched mandate', () => {
     const sections = buildPhaseDetail([{ id: 'legacy' }], 'queued').sections
-    expect(sections[0]?.body).toContain('Contrat historique')
-    expect(sections.find((section) => section.label === 'Mandat effectif de la tentative')?.notAvailable).toBe(true)
+    expect(sections[0]?.body).toContain('No configured step contract')
+    expect(sections.find((section) => section.label === 'Attempt mandate')?.notAvailable).toBe(true)
   })
 })

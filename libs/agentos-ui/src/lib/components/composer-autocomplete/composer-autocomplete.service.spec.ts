@@ -7,9 +7,11 @@ import { PromptStateService } from '../../services/prompt-state.service'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { EffortAutocompleteComponent } from '../effort-autocomplete/effort-autocomplete.component'
 import { FileAutocompleteComponent } from '../file-autocomplete/file-autocomplete.component'
+import { ModelAutocompleteComponent } from '../model-autocomplete/model-autocomplete.component'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { ComposerAutocompleteService, FILE_CACHE_TTL_MS } from './composer-autocomplete.service'
 import { FileSuggestion } from './file-mention'
+import { modelChoices } from './model-command'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -195,6 +197,80 @@ describe('ComposerAutocompleteService', () => {
   // Slash-command pipeline
   // -------------------------------------------------------------------------
 
+  describe('/btw command', () => {
+    it('is not offered until the host enables it', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy')]))
+
+      service.onInput('/b', { set: jest.fn() })
+      tick(60)
+
+      expect(service.slashSuggestions()).toEqual([])
+    }))
+
+    it('heads the slash suggestions, with its description', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy'), makePrompt('bug-report')]))
+      service.enableBtwCommand(() => false)
+
+      service.onInput('/', { set: jest.fn() })
+      tick(60)
+
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['btw', 'deploy', 'bug-report'])
+      expect(service.slashSuggestions()[0]!.description).toBe('Ask a side question without interrupting the agent')
+    }))
+
+    it('is filtered by the prefix like any other command', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy'), makePrompt('bug-report')]))
+      service.enableBtwCommand(() => false)
+
+      service.onInput('/b', { set: jest.fn() })
+      tick(60)
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['btw', 'bug-report'])
+
+      service.onInput('/d', { set: jest.fn() })
+      tick(60)
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['deploy'])
+    }))
+
+    it('wins over a prompt of the same name', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('btw')]))
+      service.enableBtwCommand(() => false)
+
+      service.onInput('/bt', { set: jest.fn() })
+      tick(60)
+
+      expect(service.slashSuggestions()).toHaveLength(1)
+      expect(service.slashSuggestions()[0]!.description).toBe('Ask a side question without interrupting the agent')
+    }))
+
+    it('is the only command offered while the agent runs, and shows before the prompts are loaded', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('deploy')]))
+      service.enableBtwCommand(() => true)
+
+      service.onInput('/', { set: jest.fn() })
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['btw'])
+      tick(60)
+      expect(service.slashSuggestions().map((p) => p.name)).toEqual(['btw'])
+
+      service.onInput('/d', { set: jest.fn() })
+      tick(60)
+      expect(service.slashSuggestions()).toEqual([])
+    }))
+
+    it('inserts "/btw " when selected', () => {
+      const { service } = setup()
+      const inputValue = { set: jest.fn() }
+
+      service.onPromptSelected({ name: 'btw' } as Prompt, refSignal(undefined), refSignal(undefined), inputValue)
+
+      expect(inputValue.set).toHaveBeenCalledWith('/btw ')
+    })
+  })
+
   describe('/effort command', () => {
     it('is not offered until the host enables it', fakeAsync(() => {
       const { service } = setup()
@@ -253,6 +329,139 @@ describe('ComposerAutocompleteService', () => {
       expect(service.onKeydown(escape, mockPromptRef(), mockAgentRef(), effortRef)).toBe(true)
       expect(service.effortSuggestions()).toEqual([])
     }))
+  })
+
+  describe('/model command', () => {
+    const choices = () =>
+      modelChoices([
+        { value: 'BIG', label: 'BIG (claude-opus)' },
+        { value: 'SMALL', label: 'SMALL (claude-haiku)' },
+      ])
+    const labels = (service: ComposerAutocompleteService): string[] => service.modelSuggestions().map((c) => c.label)
+
+    it('is not offered until the host enables it', fakeAsync(() => {
+      const { service } = setup()
+
+      service.onInput('/model', { set: jest.fn() })
+      tick(60)
+
+      expect(service.modelSuggestions()).toEqual([])
+    }))
+
+    it('lists the way back and every model from two letters of the command on', fakeAsync(() => {
+      const { service, promptState } = setup()
+      promptState.listEffective.mockReturnValue(of([makePrompt('modernize')]))
+      service.enableModelCommand(() => true, choices)
+
+      service.onInput('/mo', { set: jest.fn() })
+      tick(60)
+
+      expect(labels(service)).toEqual(['agent', 'BIG', 'SMALL'])
+      // The prompt whose name starts the same way does not open over the picker.
+      expect(service.slashSuggestions()).toEqual([])
+    }))
+
+    it('filters the models by the name typed after the command', fakeAsync(() => {
+      const { service } = setup()
+      service.enableModelCommand(() => true, choices)
+
+      service.onInput('/model s', { set: jest.fn() })
+
+      expect(labels(service)).toEqual(['SMALL'])
+    }))
+
+    it('stays closed while the host says the model cannot be saved', fakeAsync(() => {
+      const { service } = setup()
+      service.enableModelCommand(() => false, choices)
+
+      service.onInput('/model', { set: jest.fn() })
+      tick(60)
+
+      expect(service.modelSuggestions()).toEqual([])
+    }))
+
+    it('closes when the value is no longer a /model command, or no model matches', fakeAsync(() => {
+      const { service } = setup()
+      service.enableModelCommand(() => true, choices)
+
+      service.onInput('/model', { set: jest.fn() })
+      service.onInput('hello', { set: jest.fn() })
+      expect(service.modelSuggestions()).toEqual([])
+
+      service.onInput('/model', { set: jest.fn() })
+      service.onInput('/model zz', { set: jest.fn() })
+      expect(service.modelSuggestions()).toEqual([])
+    }))
+
+    it('reads the models when the picker opens, so models loaded late are listed', fakeAsync(() => {
+      const { service } = setup()
+      let loaded = modelChoices([])
+      service.enableModelCommand(
+        () => true,
+        () => loaded
+      )
+
+      service.onInput('/model', { set: jest.fn() })
+      expect(labels(service)).toEqual(['agent'])
+
+      loaded = choices()
+      service.onInput('/model ', { set: jest.fn() })
+      expect(labels(service)).toEqual(['agent', 'BIG', 'SMALL'])
+    }))
+
+    it('takes the keyboard: Enter delegates to the model picker, Escape closes it', fakeAsync(() => {
+      const { service } = setup()
+      service.enableModelCommand(() => true, choices)
+      const modelRef = refSignal({ navigate: jest.fn() } as unknown as ModelAutocompleteComponent)
+      service.onInput('/model b', { set: jest.fn() })
+
+      const enter = new KeyboardEvent('keydown', { key: 'Enter' })
+      expect(service.onKeydown(enter, mockPromptRef(), mockAgentRef(), undefined, undefined, modelRef)).toBe(true)
+      expect(modelRef()?.navigate).toHaveBeenCalledWith('Enter')
+
+      const escape = new KeyboardEvent('keydown', { key: 'Escape' })
+      expect(service.onKeydown(escape, mockPromptRef(), mockAgentRef(), undefined, undefined, modelRef)).toBe(true)
+      expect(service.modelSuggestions()).toEqual([])
+    }))
+
+    it('and /effort never open together', fakeAsync(() => {
+      const { service } = setup()
+      service.enableEffortCommand(() => true)
+      service.enableModelCommand(() => true, choices)
+
+      service.onInput('/effort', { set: jest.fn() })
+      expect(service.effortSuggestions().length).toBeGreaterThan(0)
+      expect(service.modelSuggestions()).toEqual([])
+
+      service.onInput('/model', { set: jest.fn() })
+      expect(service.modelSuggestions().length).toBeGreaterThan(0)
+      expect(service.effortSuggestions()).toEqual([])
+    }))
+
+    it('reset() closes the picker', fakeAsync(() => {
+      const { service } = setup()
+      service.enableModelCommand(() => true, choices)
+      service.onInput('/model', { set: jest.fn() })
+
+      service.reset()
+
+      expect(service.modelSuggestions()).toEqual([])
+    }))
+  })
+
+  describe('showModelChoices()', () => {
+    it('lists every model when the command is available, and nothing otherwise', () => {
+      const { service } = setup()
+      service.showModelChoices()
+      expect(service.modelSuggestions()).toEqual([])
+
+      service.enableModelCommand(
+        () => true,
+        () => modelChoices([{ value: 'BIG', label: 'BIG' }])
+      )
+      service.showModelChoices()
+      expect(service.modelSuggestions().map((c) => c.label)).toEqual(['agent', 'BIG'])
+    })
   })
 
   describe('showEffortLevels()', () => {

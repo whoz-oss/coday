@@ -21,9 +21,16 @@ import { EnvironmentScope, ExchangeEnvironment } from '../../services/exchange-e
 import { ExchangeEnvironmentComponent } from '../exchange-environment/exchange-environment.component'
 import { ExchangeDirectoryEntry, ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ExchangePathSegment } from '../../services/exchange-state.service'
+import {
+  ExchangeFileRef,
+  ExchangeSaveStatus,
+  ExchangeScope,
+  ExchangeScopeStatus,
+  ExchangeSelectionAction,
+} from '../../services/exchange-state.service'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
-import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
+import { ExchangeSelectionRequest } from '../../services/exchange-selection-request.service'
 import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-list.component'
 import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
 import { ExchangeFileRow, ExchangeItemComponent } from '../exchange-item/exchange-item.component'
@@ -107,9 +114,26 @@ export class ExchangeDrawerComponent {
   readonly referenced = input<ExchangeFileRef[]>([])
   readonly contentStatus = input<'loading' | 'ready' | 'error'>('loading')
   readonly canViewSelected = input<boolean>(true)
+  /** The selected file can be edited (writable scope, text format): relayed to the viewer. */
+  readonly canEditSelected = input<boolean>(false)
+  readonly saveStatus = input<ExchangeSaveStatus>('idle')
+  readonly saveError = input<string | null>(null)
+  /** Namespace of the case, for the agents the viewer's composer suggests on `@`. */
+  readonly namespaceId = input<string>('')
+  /** The agent request about the open file, if any. */
+  readonly request = input<ExchangeSelectionRequest | null>(null)
 
   readonly fileSelected = output<ExchangeFileRef>()
   readonly referenceToggled = output<ExchangeReferenceToggle>()
+  /** The viewer's edited text to write to the file. */
+  readonly saveRequested = output<{ ref: ExchangeFileRef; content: string }>()
+  readonly reloadRequested = output<void>()
+  /** The viewer's selection to run an agent on. */
+  readonly selectionActionRequested = output<ExchangeSelectionAction>()
+  /** The request about the open file was settled in the viewer. */
+  readonly requestCleared = output<string>()
+  /** Whether the viewer holds unsaved edits. */
+  readonly dirtyChanged = output<boolean>()
   /** A directory was opened, or a breadcrumb level was clicked. Empty path means the scope root. */
   readonly folderOpened = output<{ scope: ExchangeScope; path: string }>()
   readonly loadMoreRequested = output<ExchangeScope>()
