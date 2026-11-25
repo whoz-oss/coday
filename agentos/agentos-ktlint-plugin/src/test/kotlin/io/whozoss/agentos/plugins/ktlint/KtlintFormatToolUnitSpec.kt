@@ -7,8 +7,11 @@ import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolTimeout
 import java.nio.file.Files
+import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 class KtlintFormatToolUnitSpec :
     StringSpec({
@@ -98,13 +101,63 @@ class KtlintFormatToolUnitSpec :
                 projectDir.writeFile(relativePath = "C.kt", content = CLEAN_SOURCE)
                 val tool =
                     KtlintFormatTool(
-                        bounded = BoundedKtlintRun(projectRoot = projectDir, runner = HangingRunner(hangingOn = setOf("B.kt"))),
+                        bounded = isolatedRun(projectRoot = projectDir, runner = HangingRunner(hangingOn = setOf("B.kt"))),
                     )
 
                 val error = tool.format(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = 1).errorText()
 
                 error shouldContain "timed out after 1 seconds"
                 error shouldContain "modified: A.kt"
+                error shouldNotContain "modified: C.kt"
+            }
+        }
+
+        "format waits for the file in progress after a timeout, so that it is listed as modified" {
+            withProject { projectDir ->
+                listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
+                val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = 1_500)
+                val tool = KtlintFormatTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner))
+
+                val error = tool.format(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = 1).errorText()
+
+                error shouldContain "timed out after 1 seconds"
+                error shouldContain "modified: B.kt"
+                error shouldNotContain "still being processed"
+                error shouldNotContain "modified: C.kt"
+            }
+        }
+
+        "format names the file still in progress as possibly modified when its worker does not end in time" {
+            withProject { projectDir ->
+                listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
+                val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = 3_000)
+                val tool =
+                    KtlintFormatTool(
+                        bounded = isolatedRun(projectRoot = projectDir, runner = runner, settleTimeout = Duration.ofMillis(100)),
+                    )
+
+                val error = tool.format(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = 1).errorText()
+
+                error shouldContain "modified: A.kt"
+                error shouldContain "may be modified after this answer: B.kt"
+                error shouldContain "ktlint_format"
+                runner.busyFinished.await(10, TimeUnit.SECONDS) shouldBe true
+            }
+        }
+
+        "format names the failing file and lists the files already rewritten when the engine fails" {
+            withProject { projectDir ->
+                listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
+                val tool =
+                    KtlintFormatTool(
+                        bounded = BoundedKtlintRun(projectRoot = projectDir, runner = FailingRunner(failingOn = setOf("B.kt"))),
+                    )
+
+                val error = tool.format(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText()
+
+                error shouldContain "ktlint failed: Not a valid Kotlin file"
+                error shouldContain "modified: A.kt"
+                error shouldContain "Failing file: B.kt"
                 error shouldNotContain "modified: C.kt"
             }
         }
@@ -130,7 +183,8 @@ class KtlintFormatToolUnitSpec :
                 projectDir.writeFile(relativePath = "Sample.kt", content = CLEAN_SOURCE)
                 val tool = KtlintFormatTool(projectRoot = projectDir)
 
-                tool.format(files = listOf("Sample.kt"), timeoutSeconds = ToolTimeout.MAX_SECONDS).successText() shouldContain "0 file(s) modified"
+                tool.format(files = listOf("Sample.kt"), timeoutSeconds = ToolTimeout.MAX_SECONDS).successText() shouldContain
+                    "0 file(s) modified"
             }
         }
 

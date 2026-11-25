@@ -9,6 +9,7 @@ integrations:
   MEMORY:
   GITHUB:
   GIT:
+  GRADLE:
   KTLINT:
     - ktlint_format
   ATLASSIAN_JIRA:

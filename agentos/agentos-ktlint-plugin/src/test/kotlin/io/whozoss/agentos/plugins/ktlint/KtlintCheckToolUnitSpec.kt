@@ -7,6 +7,7 @@ import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolTimeout
 import java.nio.file.Files
 import java.util.UUID
 
@@ -89,7 +90,8 @@ class KtlintCheckToolUnitSpec :
             withProject { projectDir ->
                 val tool = KtlintCheckTool(projectRoot = projectDir)
 
-                tool.check(files = listOf("../outside.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText() shouldContain "outside the project"
+                tool.check(files = listOf("../outside.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText() shouldContain
+                    "outside the project"
             }
         }
 
@@ -106,13 +108,30 @@ class KtlintCheckToolUnitSpec :
                 projectDir.writeFile(relativePath = "Slow.kt", content = CLEAN_SOURCE)
                 val tool =
                     KtlintCheckTool(
-                        bounded = BoundedKtlintRun(projectRoot = projectDir, runner = HangingRunner(hangingOn = setOf("Slow.kt"))),
+                        bounded = isolatedRun(projectRoot = projectDir, runner = HangingRunner(hangingOn = setOf("Slow.kt"))),
                     )
 
                 val error = tool.check(files = listOf("Slow.kt"), timeoutSeconds = 1).errorText()
 
                 error shouldContain "timed out after 1 seconds"
                 error shouldContain "timeoutSeconds"
+            }
+        }
+
+        "check names the failing file and keeps the violations of the files checked before it" {
+            withProject { projectDir ->
+                listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
+                val tool =
+                    KtlintCheckTool(
+                        bounded = BoundedKtlintRun(projectRoot = projectDir, runner = FailingRunner(failingOn = setOf("B.kt"))),
+                    )
+
+                val error = tool.check(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText()
+
+                error shouldContain "ktlint failed: Not a valid Kotlin file"
+                error shouldContain "A.kt:1:1 violation (test:rule)"
+                error shouldContain "Failing file: B.kt"
+                error shouldNotContain "C.kt:1:1"
             }
         }
 

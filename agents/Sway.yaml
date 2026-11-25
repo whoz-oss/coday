@@ -10,13 +10,9 @@ integrations:
   GITHUB:
     - gh
   GIT:
+  GRADLE:
   KTLINT:
     - ktlint_format
-  DELEGATE:
-    - Nxay
-    - Daemonay
-    - Searchay
-    - Reviewer
   CHROME:
     # Navigate and manage tabs
     - navigate_page

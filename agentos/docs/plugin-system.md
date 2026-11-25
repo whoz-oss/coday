@@ -253,21 +253,21 @@ can still encode the value, so do not bind a secret to a BASH integration whose 
 to read it. Like the other plugins, this works per user only for settings where each user holds their own
 credential.
 
-BASH and GRADLE integrations can only be created at platform or namespace-shared scope (`BASH` and `GRADLE` are in
-`agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
-to their own commands.
+BASH, GRADLE and KTLINT integrations can only be created at platform or namespace-shared scope (`BASH`, `GRADLE` and
+`KTLINT` are in `agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
+to their own commands, nor widen the `projectDirectory` of a shared build or style tool.
 
 ### User-scope denial for network-reaching types
 
 A user-scoped `IntegrationConfig` with the same name as a platform or namespace-shared one is
 deep-merged over it and inherits its `authSettingName`. For types whose parameters name a network
 endpoint or a command, that overlay would let any authenticated user point a shared credential at a
-host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`), so those types are refused in both user scopes at the API edge (`POST` -> 403,
+host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`; for `KTLINT`, point `projectDirectory` at `/` so that `ktlint_format` rewrites any Kotlin file the service can write), so those types are refused in both user scopes at the API edge (`POST` -> 403,
 `PUT` -> 404 because the endpoint hides existence). Shared scopes are unaffected.
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
-| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
+| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
 
 ## Tool Registration
 

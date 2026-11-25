@@ -6,6 +6,7 @@ import io.kotest.core.spec.Spec
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import io.whozoss.agentos.sdk.tool.ToolTimeout
 import java.io.File
 import java.nio.file.Files
 import kotlin.reflect.KClass

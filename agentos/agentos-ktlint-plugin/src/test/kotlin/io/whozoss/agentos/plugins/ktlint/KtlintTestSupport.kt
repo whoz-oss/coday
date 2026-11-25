@@ -2,8 +2,11 @@ package io.whozoss.agentos.plugins.ktlint
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 internal const val CLEAN_SOURCE = "val answer = 42\n"
 internal const val TRAILING_SPACE_SOURCE = "val answer = 42 \n"
@@ -74,6 +77,52 @@ internal class HangingRunner(
             hangInterrupted.countDown()
             throw e
         }
+    }
+}
+
+/** A pool of [threads] daemon threads, for a test that needs to control how many runs can be served at once. */
+internal fun daemonPool(threads: Int): ExecutorService =
+    Executors.newFixedThreadPool(threads) { task -> Thread(task).apply { isDaemon = true } }
+
+/**
+ * A run on its own threads, so that tests whose runner hangs or stays busy never delay one another on the small pool
+ * the plugin shares.
+ */
+internal fun isolatedRun(
+    projectRoot: Path,
+    runner: StyleRunner,
+    settleTimeout: Duration = Duration.ofSeconds(5),
+    worker: ExecutorService = Executors.newCachedThreadPool { task -> Thread(task).apply { isDaemon = true } },
+): BoundedKtlintRun = BoundedKtlintRun(projectRoot = projectRoot, runner = runner, settleTimeout = settleTimeout, worker = worker)
+
+/**
+ * Runner that works instantly on every file but the ones named in [failingOn], on which the engine fails, like ktlint
+ * does on a file that is not valid Kotlin. Every other file has one violation and is reported as rewritten.
+ */
+internal class FailingRunner(
+    private val failingOn: Set<String>,
+) : StyleRunner {
+    override fun lint(file: Path): List<KtlintViolation> {
+        failIfListed(file = file)
+        return listOf(
+            KtlintViolation(
+                file = file.fileName.toString(),
+                line = 1,
+                column = 1,
+                ruleId = "test:rule",
+                detail = "violation",
+                autoCorrectable = false,
+            ),
+        )
+    }
+
+    override fun format(file: Path): FormatResult {
+        failIfListed(file = file)
+        return FormatResult(file = file.fileName.toString(), modified = true, correctedCount = 1, remaining = emptyList())
+    }
+
+    private fun failIfListed(file: Path) {
+        check(file.fileName.toString() !in failingOn) { "Not a valid Kotlin file" }
     }
 }
 

@@ -3,15 +3,21 @@ package io.whozoss.agentos.plugins.ktlint
 import io.whozoss.agentos.sdk.tool.BlockingTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.sdk.tool.ToolSchema
+import io.whozoss.agentos.sdk.tool.ToolTimeout
+import io.whozoss.agentos.sdk.tool.prefixedToolName
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Tool that autocorrects the ktlint violations of Kotlin files, REWRITING them in place.
  *
  * Works on files only (never a whole tree) and is time-boxed by a mandatory `timeoutSeconds`: when it expires,
  * the files already rewritten stay modified and are listed. Cancelling the call stops the run between two files
- * (the file in progress is finished first).
+ * (the file in progress is finished first). On a timeout the answer waits briefly for that file, so that it is
+ * listed when it was rewritten; when it is still being processed it is named as possibly modified. When the engine
+ * fails on a file, the answer names it and lists the files rewritten before it.
  *
  * The business logic ([format]) is blocking and returns a [KtlintToolResult]; [executeBlocking] maps it to a
  * [ToolExecutionResult] (`KTLINT_FAILURE` / `KTLINT_ERROR` error types). Running it interruptibly on the IO
@@ -62,11 +68,11 @@ KTLINT_ERROR means the formatting itself could not run."""
     override fun executeBlocking(
         input: Input?,
         context: ToolContext,
-    ): ToolExecutionResult {
-        val params = input ?: return missingTimeoutResult()
-        val timeoutSeconds = params.timeoutSeconds ?: return missingTimeoutResult()
-        return format(files = params.files.orEmpty(), timeoutSeconds = timeoutSeconds).toToolExecutionResult()
-    }
+    ): ToolExecutionResult =
+        when (val timeoutSeconds = input?.timeoutSeconds) {
+            null -> missingTimeoutResult()
+            else -> format(files = input?.files.orEmpty(), timeoutSeconds = timeoutSeconds).toToolExecutionResult()
+        }
 
     /**
      * Autocorrects [files] in place and reports what was fixed, which files were modified and what remains.
@@ -80,14 +86,17 @@ KTLINT_ERROR means the formatting itself could not run."""
         timeoutSeconds: Int,
     ): KtlintToolResult {
         val done = CopyOnWriteArrayList<FormatResult>()
+        val inProgress = AtomicReference<Path?>(null)
         return bounded.execute(
             files = files,
             timeoutSeconds = timeoutSeconds,
-            onTimeout = { alreadyModified(done = done) },
+            onAbort = { end -> abortDetails(end = end, done = done, current = inProgress.get()) },
         ) { resolved ->
             resolved.forEach { file ->
                 BoundedKtlintRun.ensureRunning()
+                inProgress.set(file)
                 done += bounded.runner.format(file = file)
+                inProgress.set(null)
             }
             val modifiedFiles = done.filter { it.modified }.map { it.file }
             val remaining = done.flatMap { it.remaining }
@@ -104,11 +113,40 @@ KTLINT_ERROR means the formatting itself could not run."""
         }
     }
 
-    private fun alreadyModified(done: List<FormatResult>): String =
-        done
-            .filter { it.modified }
-            .joinToString(separator = "") { "\n  modified: ${it.file}" }
-            .let { modified -> if (modified.isEmpty()) "" else "\nFiles already modified before the timeout:$modified" }
+    /**
+     * What the agent must know when the run stopped before its end: the files rewritten so far and, from [current]
+     * (the file the worker had reached), the failing file or the file that may still be rewritten after this answer.
+     */
+    private fun abortDetails(
+        end: RunEnd,
+        done: List<FormatResult>,
+        current: Path?,
+    ): String {
+        val modified =
+            done
+                .filter { it.modified }
+                .joinToString(separator = "") { "\n  modified: ${it.file}" }
+                .let { lines -> if (lines.isEmpty()) "" else "\nFiles already modified before the ${end.moment}:$lines" }
+        val currentFile = current?.let { bounded.relativeName(file = it) }
+        val reached =
+            when (end) {
+                RunEnd.FAILED -> {
+                    currentFile?.let { "\nFailing file: $it. The files after it were not processed." }
+                }
+
+                RunEnd.TIMED_OUT_WORKER_BUSY -> {
+                    currentFile?.let {
+                        "\nFile still being processed, it may be modified after this answer: $it. " +
+                            "Do not run $name on it again right away."
+                    }
+                }
+
+                RunEnd.TIMED_OUT -> {
+                    null
+                }
+            }.orEmpty()
+        return modified + reached
+    }
 
     companion object {
         const val TOOL_NAME = "ktlint_format"

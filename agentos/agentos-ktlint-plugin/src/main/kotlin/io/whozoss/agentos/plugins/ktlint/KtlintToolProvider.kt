@@ -31,29 +31,47 @@ class KtlintToolProvider : ToolPlugin {
         config: JsonNode?,
         configName: String?,
         context: ToolContext?,
-    ): List<StandardTool<*>> {
-        if (config == null || config.isNull) {
-            logger.warn { "KTLINT integration '$configName': no config provided, no tools registered" }
-            return emptyList()
+    ): List<StandardTool<*>> =
+        when (val projectRoot = resolveProjectRoot(config = config, configName = configName)) {
+            null -> emptyList()
+            else -> toolsOn(projectRoot = projectRoot, configName = configName)
         }
 
-        val projectRoot =
-            try {
-                realProjectRoot(config = config)
-            } catch (e: IllegalArgumentException) {
-                logger.error { "KTLINT integration '$configName': invalid config — ${e.message}" }
-                return emptyList()
-            } catch (e: IOException) {
-                logger.error { "KTLINT integration '$configName': projectDirectory cannot be resolved — ${e.message}" }
-                return emptyList()
-            }
-
+    /** The check and format tools sharing one bounded run on [projectRoot]. */
+    private fun toolsOn(
+        projectRoot: Path,
+        configName: String?,
+    ): List<StandardTool<*>> {
         val bounded = BoundedKtlintRun(projectRoot = projectRoot)
         return listOf(
             KtlintCheckTool(bounded = bounded, configName = configName),
             KtlintFormatTool(bounded = bounded, configName = configName),
         )
     }
+
+    /** The real project root of [config], or null (the reason is logged) when there is no usable one. */
+    private fun resolveProjectRoot(
+        config: JsonNode?,
+        configName: String?,
+    ): Path? =
+        when {
+            config == null || config.isNull -> {
+                logger.warn { "KTLINT integration '$configName': no config provided, no tools registered" }
+                null
+            }
+
+            else -> {
+                try {
+                    realProjectRoot(config = config)
+                } catch (e: IllegalArgumentException) {
+                    logger.error { "KTLINT integration '$configName': invalid config — ${e.message}" }
+                    null
+                } catch (e: IOException) {
+                    logger.error { "KTLINT integration '$configName': projectDirectory cannot be resolved — ${e.message}" }
+                    null
+                }
+            }
+        }
 
     private fun realProjectRoot(config: JsonNode): Path {
         val integrationConfig = KtlintConfigParser.parse(config = config)

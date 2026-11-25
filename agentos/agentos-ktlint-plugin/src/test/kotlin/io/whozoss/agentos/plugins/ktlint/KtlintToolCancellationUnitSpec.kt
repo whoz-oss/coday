@@ -53,7 +53,7 @@ class KtlintToolCancellationUnitSpec :
             withProject { projectDir ->
                 listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
                 val runner = HangingRunner(hangingOn = setOf("B.kt"))
-                val tool = KtlintFormatTool(bounded = BoundedKtlintRun(projectRoot = projectDir, runner = runner))
+                val tool = KtlintFormatTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner))
                 val input = KtlintFormatTool.Input(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS)
 
                 val elapsedMillis =
@@ -78,7 +78,7 @@ class KtlintToolCancellationUnitSpec :
             withProject { projectDir ->
                 listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
                 val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = busyMillis)
-                val tool = KtlintFormatTool(bounded = BoundedKtlintRun(projectRoot = projectDir, runner = runner))
+                val tool = KtlintFormatTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner))
                 val input = KtlintFormatTool.Input(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS)
 
                 runBlocking {
@@ -105,7 +105,7 @@ class KtlintToolCancellationUnitSpec :
             withProject { projectDir ->
                 listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
                 val runner = HangingRunner(hangingOn = setOf("B.kt"))
-                val tool = KtlintCheckTool(bounded = BoundedKtlintRun(projectRoot = projectDir, runner = runner))
+                val tool = KtlintCheckTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner))
                 val input = KtlintCheckTool.Input(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS)
 
                 val elapsedMillis =
@@ -129,7 +129,7 @@ class KtlintToolCancellationUnitSpec :
             withProject { projectDir ->
                 listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
                 val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = busyMillis)
-                val tool = KtlintCheckTool(bounded = BoundedKtlintRun(projectRoot = projectDir, runner = runner))
+                val tool = KtlintCheckTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner))
                 val input = KtlintCheckTool.Input(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS)
 
                 runBlocking {
