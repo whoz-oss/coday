@@ -2017,7 +2017,6 @@ class WorkflowService(
         }
 
         // Durable attempts -> active attempts are cancellable, terminal ones are blockers.
-        val latestAttempts = attempts.groupBy { it.stepId }.mapValues { (_, values) -> values.maxByOrNull { it.attemptNumber } }
         val outcomeManaged = governedInstance?.projection?.containsKey("stepExecutions") == true
         val currentExecutionIds = steps.mapNotNull { step ->
             (step["id"] as? String)?.let { id -> (step["executionId"] as? String)?.let { id to it } }
