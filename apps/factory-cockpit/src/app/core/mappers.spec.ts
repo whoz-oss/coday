@@ -13,6 +13,7 @@ import {
   mapProjectionToPhaseByAttemptId,
   mapProjectionToRunSummary,
   mapProjectionToSessionDetail,
+  mapSessionDetailToRunSummary,
   mapStepsToPhaseSegments,
   mapWorkflowStateToRunStatus,
 } from './mappers'
@@ -2220,6 +2221,202 @@ describe('mappers', () => {
       expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(
         2
       )
+    })
+  })
+
+  describe('outcome transition with return and budget left (WZ-36374)', () => {
+    const reviewStep = (executionId: string, status: string) => ({
+      id: 'code-review',
+      name: 'Code review',
+      status,
+      executionId,
+      dependsOn: ['implement'],
+      responsibility: { kind: 'agent', name: 'Reviewer' },
+    })
+    const replayedSteps = (reviewStatus: string, reviewExecutionId: string, others: string, suffix: string) => [
+      {
+        id: 'tech-assessment',
+        name: 'Tech assessment',
+        status: others,
+        executionId: `ta-${suffix}`,
+        responsibility: { kind: 'agent', name: 'Architect' },
+      },
+      {
+        id: 'implement',
+        name: 'Implement',
+        status: others,
+        executionId: `im-${suffix}`,
+        dependsOn: ['tech-assessment'],
+        responsibility: { kind: 'agent', name: 'Builder' },
+      },
+      reviewStep(reviewExecutionId, reviewStatus),
+    ]
+    const ledger = [
+      { executionId: 'ta-1', stepId: 'tech-assessment', executionNumber: 1, cycleNumber: 0, status: 'completed' },
+      { executionId: 'im-1', stepId: 'implement', executionNumber: 1, cycleNumber: 0, status: 'completed' },
+      {
+        executionId: 'cr-1',
+        stepId: 'code-review',
+        executionNumber: 1,
+        cycleNumber: 0,
+        status: 'failed',
+        attemptId: 'attempt-cr-1',
+      },
+    ]
+    const replayedLedger = [
+      ...ledger,
+      {
+        executionId: 'ta-2',
+        stepId: 'tech-assessment',
+        executionNumber: 2,
+        cycleNumber: 1,
+        status: 'pending',
+        triggeringExecutionId: 'cr-1',
+      },
+      {
+        executionId: 'im-2',
+        stepId: 'implement',
+        executionNumber: 2,
+        cycleNumber: 1,
+        status: 'pending',
+        triggeringExecutionId: 'cr-1',
+      },
+      {
+        executionId: 'cr-2',
+        stepId: 'code-review',
+        executionNumber: 2,
+        cycleNumber: 1,
+        status: 'pending',
+        triggeringExecutionId: 'cr-1',
+      },
+    ]
+    const correction = {
+      cycleId: 'cycle-1',
+      cycleNumber: 1,
+      maxCycles: 2,
+      status: 'active',
+      triggeringStepId: 'code-review',
+      returnTargetStepId: 'tech-assessment',
+    }
+    const evidenceOf = (executionId: string, stepId: string, status: string, offset: number) => ({
+      evidenceId: `ev-${executionId}`,
+      stepId,
+      kind: 'session-step',
+      facts: { stepId, executionId, status, startedAt: isoOffset(offset), durationMs: 5_000 },
+    })
+    const previousExecutionEvidence = {
+      items: [
+        evidenceOf('ta-1', 'tech-assessment', 'completed', 0),
+        evidenceOf('im-1', 'implement', 'completed', 10),
+        evidenceOf('cr-1', 'code-review', 'failed', 20),
+      ],
+    }
+
+    it('keeps the run active and the replayed steps pending after an accepted FAIL with return', () => {
+      const session = mapProjectionToSessionDetail(
+        {
+          workflowId: 'wz-36374',
+          projection: {
+            status: 'ready',
+            correction,
+            stepExecutions: replayedLedger,
+            steps: replayedSteps('pending', 'cr-2', 'pending', '2'),
+          },
+        },
+        undefined,
+        previousExecutionEvidence
+      )
+
+      expect(session.status).not.toBe('failed')
+      expect(session.status).toBe('queued')
+      expect(session.executionState).toBe('pending')
+      expect(session.steps.map((step) => step.status)).toEqual(['pending', 'pending', 'pending'])
+      // AC2: the rejected attempt stays visible, with its FAIL, in the execution history.
+      const rejected = session.lanes.flatMap((lane) => lane.blocks).find((block) => block.executionId === 'cr-1')
+      expect(rejected).toMatchObject({ stepId: 'code-review', status: 'failed' })
+      expect(mapSessionDetailToRunSummary({ workflowId: 'wz-36374' }, session).cardState).toBe('pending')
+    })
+
+    it('keeps evidence of the current execution on the step', () => {
+      const session = mapProjectionToSessionDetail(
+        {
+          workflowId: 'wz-36374',
+          projection: {
+            status: 'running',
+            correction,
+            stepExecutions: replayedLedger,
+            steps: replayedSteps('pending', 'cr-2', 'completed', '2'),
+          },
+        },
+        undefined,
+        {
+          items: [
+            ...previousExecutionEvidence.items,
+            evidenceOf('cr-2', 'code-review', 'running', 30),
+          ],
+        }
+      )
+
+      expect(session.steps.find((step) => step.key === 'code-review')?.status).toBe('running')
+      expect(session.status).toBe('running')
+    })
+
+    it('does not flip the run to failed in the window between the FAIL and the replay', () => {
+      const session = mapProjectionToSessionDetail(
+        {
+          workflowId: 'wz-36374',
+          projection: {
+            status: 'running',
+            stepExecutions: ledger,
+            steps: replayedSteps('failed', 'cr-1', 'completed', '1'),
+          },
+        },
+        undefined,
+        previousExecutionEvidence
+      )
+
+      expect(session.status).toBe('running')
+    })
+
+    it('waits for a human when the correction budget is exhausted', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'wz-36374',
+        projection: {
+          status: 'waiting_human',
+          correction: { ...correction, cycleNumber: 2, status: 'waiting_human' },
+          stepExecutions: ledger,
+          steps: replayedSteps('failed', 'cr-1', 'completed', '1'),
+        },
+      })
+
+      expect(session.executionState).toBe('waiting_human')
+      expect(session.status).toBe('running')
+    })
+
+    it('still ends as failed when the backend publishes a terminal failed status (technical failure)', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'wz-36374',
+        projection: {
+          status: 'failed',
+          stepExecutions: ledger,
+          steps: replayedSteps('failed', 'cr-1', 'completed', '1'),
+        },
+      })
+
+      expect(session.status).toBe('failed')
+      expect(session.executionState).toBe('failed')
+    })
+
+    it('keeps a legacy run without execution ledger failed when a step failed', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'legacy',
+        projection: {
+          status: 'running',
+          steps: [{ id: 'build', status: 'failed', responsibility: { kind: 'code', name: 'build' } }],
+        },
+      })
+
+      expect(session.status).toBe('failed')
     })
   })
 
