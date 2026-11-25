@@ -177,6 +177,10 @@ export function mapProjectionToSessionDetail(
         attempt.failureCode?.toUpperCase() === 'AGENT_NEEDS_RESEARCH'
     )
   const stepStates = steps.map(resolveStepState)
+  // An outcome-managed run (execution ledger present) can hold a failed step while the backend is still replaying
+  // a correction: its projected status is then the authority and only a published `failed` ends the run.
+  const outcomeManaged = stepExecutions.length > 0
+  const stepsForceFailedStatus = derivedStatus === 'failed' && (!outcomeManaged || projectedStatus === 'failed')
   const isActivelyRunning = stepStates.includes('running') || hasRunningAttempt
   const waitingHuman =
     !isActivelyRunning &&
@@ -186,7 +190,11 @@ export function mapProjectionToSessionDetail(
       latestAttempts.some((attempt) => attempt.status === 'waiting_human') ||
       (agentQuestions ?? []).some((q) => !q.answered))
   const status: RunStatus =
-    isActivelyRunning || waitingHuman ? 'running' : derivedStatus === 'failed' ? 'failed' : projectedStatus
+    isActivelyRunning || waitingHuman
+      ? 'running'
+      : stepsForceFailedStatus
+        ? 'failed'
+        : projectedStatus
   const activelyRunning = isActivelyRunning
   const executionState: import('../models').TimelineStepStatus = waitingHuman
     ? 'waiting_human'
@@ -482,6 +490,14 @@ function extractCorrection(value: unknown): CorrectionCycle | undefined {
 }
 
 function mergeCodeEvidenceIntoSteps(steps: unknown[], evidenceItems: unknown[]): unknown[] {
+  // Evidence recorded for a previous execution of a replayed step must not describe its current execution.
+  const currentExecutionByStep = new Map<string, string>()
+  for (const raw of steps) {
+    const step = asObject(raw)
+    const stepId = getString(step, 'id')
+    const executionId = getString(step, 'executionId')
+    if (stepId && executionId) currentExecutionByStep.set(stepId, executionId)
+  }
   const latestByStep = new Map<string, Record<string, unknown>>()
   for (const raw of evidenceItems) {
     const item = asObject(raw)
@@ -491,6 +507,9 @@ function mergeCodeEvidenceIntoSteps(steps: unknown[], evidenceItems: unknown[]):
     if (!stepId) continue
     const facts = asObject(item?.['facts'])
     if (!facts) continue
+    const evidenceExecutionId = getString(facts, 'executionId') ?? getString(item, 'executionId')
+    const currentExecutionId = currentExecutionByStep.get(stepId)
+    if (evidenceExecutionId && currentExecutionId && evidenceExecutionId !== currentExecutionId) continue
     const status = getString(facts, 'status') ?? getString(item, 'outcome')
     const temporal = getNumber(facts, 'durationMs') !== undefined || getString(facts, 'startedAt') !== undefined
     if (!temporal && status !== 'running') continue
