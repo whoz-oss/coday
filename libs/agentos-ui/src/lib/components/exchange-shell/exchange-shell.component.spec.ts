@@ -1,6 +1,10 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
-import { ExchangeControllerService, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import {
+  ExchangeControllerService,
+  ExchangeFileEntryScopeEnum,
+  ExchangeFolderApiService,
+} from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs'
 import { CaseWorkspaceService } from '../../services/case-workspace.service'
 import { MAX_VIEWABLE_SIZE } from '../../services/exchange-content.utils'
@@ -50,11 +54,19 @@ describe('ExchangeShellComponent filters', () => {
       getCaseFileContentExchange: jest.fn().mockReturnValue(of({ content: 'body' })),
       getNamespaceFileContentExchange: jest.fn().mockReturnValue(of({ content: 'body' })),
     }
+    // The folder operations (upload into a folder, create / delete a folder, the ZIP) go through the hand-written client.
+    const folderApi = {
+      uploadFile: jest.fn().mockReturnValue(of({})),
+      createDirectory: jest.fn().mockReturnValue(of({})),
+      deleteDirectory: jest.fn().mockReturnValue(of({ success: true, message: 'ok' })),
+      downloadArchive: jest.fn().mockReturnValue(of(new Blob(['zip']))),
+    }
     TestBed.configureTestingModule({
       imports: [ExchangeShellComponent],
       providers: [
         { provide: ActivatedRoute, useValue: { queryParams: route } },
         { provide: ExchangeControllerService, useValue: api },
+        { provide: ExchangeFolderApiService, useValue: folderApi },
         { provide: CaseWorkspaceService, useValue: { watch: jest.fn(), enabled$: of(false) } },
       ],
     })
@@ -64,7 +76,7 @@ describe('ExchangeShellComponent filters', () => {
     fixture.detectChanges()
     const shell = fixture.componentInstance
     const state = TestBed.inject(ExchangeStateService)
-    return { fixture, shell, state, api, route }
+    return { fixture, shell, state, api, route, folderApi }
   }
 
   it('reveals the namespace filter after an external file is reported by the existing refresh', () => {
@@ -1048,13 +1060,13 @@ describe('ExchangeShellComponent filters', () => {
   )
 
   it('refreshes active results after a case upload and delete without refetching namespace', fakeAsync(() => {
-    const { fixture, state, shell, api } = setup()
+    const { fixture, state, shell, api, folderApi } = setup()
     let present = false
+    folderApi.uploadFile.mockImplementation(() => {
+      present = true
+      return of({})
+    })
     Object.assign(api, {
-      uploadCaseFileExchange: jest.fn().mockImplementation(() => {
-        present = true
-        return of({})
-      }),
       deleteCaseFileExchange: jest.fn().mockImplementation(() => {
         present = false
         return of({})
@@ -1084,13 +1096,13 @@ describe('ExchangeShellComponent filters', () => {
   }))
 
   it('refreshes a filtered namespace after mutations without invalidating the case cache', fakeAsync(() => {
-    const { fixture, state, shell, api } = setup()
+    const { fixture, state, shell, api, folderApi } = setup()
     let present = false
+    folderApi.uploadFile.mockImplementation(() => {
+      present = true
+      return of({})
+    })
     Object.assign(api, {
-      uploadNamespaceFileExchange: jest.fn().mockImplementation(() => {
-        present = true
-        return of({})
-      }),
       deleteNamespaceFileExchange: jest.fn().mockImplementation(() => {
         present = false
         return of({})
@@ -1416,6 +1428,347 @@ describe('ExchangeShellComponent filters', () => {
     fixture.destroy()
     expect(revoke).toHaveBeenCalledWith('blob:new')
     restoreObjectUrls()
+  })
+
+  describe('folders: download, create, delete and upload', () => {
+    const folder = (path: string) => ({ path, name: path.split('/').pop()!, directory: true })
+    const READ_WRITE_LISTING = { ...listing, capability: 'READ_WRITE' }
+
+    /** A case drawer on a writable (or read-only) listing, optionally browsing inside [path]. */
+    function setupFolders(options: { capability?: string; path?: string; entries?: unknown[] } = {}) {
+      const ctx = setup()
+      const { capability = 'READ_WRITE', path = '', entries = [folder('docs')] } = options
+      ctx.api.browseCaseFilesExchange.mockImplementation((_id: string, directory: string) =>
+        of({ ...READ_WRITE_LISTING, capability, path: directory, entries, totalEntries: entries.length })
+      )
+      ctx.state.refreshCase()
+      if (path) ctx.state.browseCase(path)
+      ctx.fixture.detectChanges()
+      const el = ctx.fixture.nativeElement as HTMLElement
+      const section = () => el.querySelector('[data-track="ExchangeDrawer-caseSection"]')!
+      const save = jest
+        .spyOn(ctx.state as unknown as { saveBlob: (body: Blob | string, filename: string) => void }, 'saveBlob')
+        .mockImplementation(() => undefined)
+      return { ...ctx, el, section, save }
+    }
+
+    it('downloads the whole case as ONE zip from the root, under the unchanged label', fakeAsync(() => {
+      const { fixture, section, folderApi, api, save } = setupFolders()
+      const button = section().querySelector<HTMLButtonElement>('ds-icon-button[icon="download"] button')!
+      expect(button.title).toBe('Download all case files')
+
+      button.click()
+      tick()
+
+      expect(folderApi.downloadArchive).toHaveBeenCalledTimes(1)
+      expect(folderApi.downloadArchive).toHaveBeenCalledWith(CASE, 'c-1', '')
+      expect(save).toHaveBeenCalledTimes(1)
+      expect(save).toHaveBeenCalledWith(expect.any(Blob), 'case-files.zip')
+      // No manifest, no file-by-file download: this is what a browser blocked as a multiple download.
+      expect(api.getCaseFilesManifestExchange).not.toHaveBeenCalled()
+      fixture.destroy()
+    }))
+
+    it('scopes the download button to the browsed folder: new label, one zip of that folder', fakeAsync(() => {
+      const { fixture, section, folderApi, save } = setupFolders({ path: 'docs/specs', entries: [] })
+      const button = section().querySelector<HTMLButtonElement>('ds-icon-button[icon="download"] button')!
+      expect(button.title).toBe('Download all files in this folder')
+
+      button.click()
+      tick()
+
+      expect(folderApi.downloadArchive).toHaveBeenCalledTimes(1)
+      expect(folderApi.downloadArchive).toHaveBeenCalledWith(CASE, 'c-1', 'docs/specs')
+      expect(save).toHaveBeenCalledWith(expect.any(Blob), 'specs.zip')
+      fixture.destroy()
+    }))
+
+    it('shows the failure of a download instead of staying silent', fakeAsync(() => {
+      const { fixture, shell, section, folderApi } = setupFolders()
+      const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      folderApi.downloadArchive.mockReturnValue(throwError(() => ({ status: 500, message: 'Archive failed' })))
+
+      section().querySelector<HTMLButtonElement>('ds-icon-button[icon="download"] button')!.click()
+      tick()
+      fixture.detectChanges()
+
+      expect(shell['actionError']()).toBe('Archive failed')
+      expect((fixture.nativeElement as HTMLElement).querySelector('[role=alert]')?.textContent).toContain(
+        'Archive failed'
+      )
+      error.mockRestore()
+      fixture.destroy()
+    }))
+
+    it('creates a folder in the browsed folder from the New folder prompt', fakeAsync(() => {
+      const { fixture, el, section, folderApi } = setupFolders({ path: 'docs', entries: [] })
+      section().querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+      fixture.detectChanges()
+      const input = el.querySelector<HTMLInputElement>('[data-track="ExchangeFolderForm-name"]')!
+      expect(el.querySelector('agentos-exchange-folder-form')?.textContent).toContain('New folder in "docs"')
+
+      input.value = 'api'
+      input.dispatchEvent(new Event('input'))
+      el.querySelector<HTMLButtonElement>('[data-track="ExchangeFolderForm-create"]')!.click()
+      tick()
+      fixture.detectChanges()
+
+      expect(folderApi.createDirectory).toHaveBeenCalledTimes(1)
+      expect(folderApi.createDirectory).toHaveBeenCalledWith(CASE, 'c-1', 'docs/api')
+      expect(el.querySelector('agentos-exchange-folder-form')).toBeNull()
+      fixture.destroy()
+    }))
+
+    it.each(['', '  ', 'a/b', 'a\\b', '.', '..'])(
+      'refuses the folder name "%s" before calling the server',
+      fakeAsync((name) => {
+        const { fixture, el, section, folderApi } = setupFolders()
+        section().querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+        fixture.detectChanges()
+        const input = el.querySelector<HTMLInputElement>('[data-track="ExchangeFolderForm-name"]')!
+        input.value = name
+        input.dispatchEvent(new Event('input'))
+
+        el.querySelector<HTMLButtonElement>('[data-track="ExchangeFolderForm-create"]')!.click()
+        fixture.detectChanges()
+
+        expect(folderApi.createDirectory).not.toHaveBeenCalled()
+        expect(el.querySelector('agentos-exchange-folder-form [role=alert]')).not.toBeNull()
+        fixture.destroy()
+      })
+    )
+
+    it('closes the New folder prompt on Cancel without creating anything', fakeAsync(() => {
+      const { fixture, el, section, folderApi } = setupFolders()
+      section().querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+      fixture.detectChanges()
+
+      el.querySelector<HTMLButtonElement>('[data-track="ExchangeFolderForm-cancel"]')!.click()
+      fixture.detectChanges()
+
+      expect(el.querySelector('agentos-exchange-folder-form')).toBeNull()
+      expect(folderApi.createDirectory).not.toHaveBeenCalled()
+      fixture.destroy()
+    }))
+
+    it('shows a refused creation (name already used) to the user', fakeAsync(() => {
+      const { fixture, shell, el, section, folderApi } = setupFolders()
+      folderApi.createDirectory.mockReturnValue(throwError(() => ({ status: 409 })))
+      section().querySelector<HTMLButtonElement>('ds-icon-button[icon="create_new_folder"] button')!.click()
+      fixture.detectChanges()
+      const input = el.querySelector<HTMLInputElement>('[data-track="ExchangeFolderForm-name"]')!
+      input.value = 'docs'
+      input.dispatchEvent(new Event('input'))
+
+      el.querySelector<HTMLButtonElement>('[data-track="ExchangeFolderForm-create"]')!.click()
+      tick()
+
+      expect(shell['actionError']()).toBe('A file or folder with this name already exists.')
+      fixture.destroy()
+    }))
+
+    it('asks for confirmation naming the folder and its file count, then deletes it', fakeAsync(() => {
+      const { fixture, el, section, folderApi, api } = setupFolders()
+      api.getCaseFilesManifestExchange.mockReturnValue(
+        of({
+          capability: 'READ_WRITE',
+          files: [file('docs/a.md'), file('docs/deep/b.md'), file('docs-old/c.md'), file('top.md')],
+        })
+      )
+
+      section()
+        .querySelector<HTMLButtonElement>('.exchange-drawer__folder-row ds-icon-button[icon="delete"] button')!
+        .click()
+      tick()
+      fixture.detectChanges()
+
+      const dialog = el.querySelector('[role=dialog]')!
+      expect(dialog.textContent).toContain('Delete folder')
+      expect(dialog.textContent).toContain('Delete folder "docs" and its 2 files? This action cannot be undone.')
+      expect(folderApi.deleteDirectory).not.toHaveBeenCalled()
+
+      el.querySelector<HTMLButtonElement>('.ds-confirm-dialog__button--confirm')!.click()
+      tick()
+
+      expect(folderApi.deleteDirectory).toHaveBeenCalledTimes(1)
+      expect(folderApi.deleteDirectory).toHaveBeenCalledWith(CASE, 'c-1', 'docs')
+      fixture.destroy()
+    }))
+
+    it('says the folder is empty when it holds no file', fakeAsync(() => {
+      const { fixture, el, section, api } = setupFolders()
+      api.getCaseFilesManifestExchange.mockReturnValue(of({ capability: 'READ_WRITE', files: [file('top.md')] }))
+
+      section()
+        .querySelector<HTMLButtonElement>('.exchange-drawer__folder-row ds-icon-button[icon="delete"] button')!
+        .click()
+      tick()
+      fixture.detectChanges()
+
+      expect(el.querySelector('[role=dialog]')?.textContent).toContain('Delete folder "docs"? It contains no files.')
+      fixture.destroy()
+    }))
+
+    it('keeps a generic warning when the file count cannot be read', fakeAsync(() => {
+      const { fixture, el, section, api } = setupFolders()
+      api.getCaseFilesManifestExchange.mockReturnValue(throwError(() => ({ status: 500 })))
+
+      section()
+        .querySelector<HTMLButtonElement>('.exchange-drawer__folder-row ds-icon-button[icon="delete"] button')!
+        .click()
+      tick()
+      fixture.detectChanges()
+
+      expect(el.querySelector('[role=dialog]')?.textContent).toContain(
+        'Delete folder "docs" and everything in it? This action cannot be undone.'
+      )
+      fixture.destroy()
+    }))
+
+    it('deletes nothing when the confirmation is cancelled', fakeAsync(() => {
+      const { fixture, el, section, folderApi } = setupFolders()
+      section()
+        .querySelector<HTMLButtonElement>('.exchange-drawer__folder-row ds-icon-button[icon="delete"] button')!
+        .click()
+      tick()
+      fixture.detectChanges()
+
+      el.querySelector<HTMLButtonElement>('.ds-confirm-dialog__button--cancel')!.click()
+      tick()
+      fixture.detectChanges()
+
+      expect(folderApi.deleteDirectory).not.toHaveBeenCalled()
+      expect(el.querySelector('[role=dialog]')).toBeNull()
+      fixture.destroy()
+    }))
+
+    it('shows a refused deletion (protected entries) and leaves the folder in place', fakeAsync(() => {
+      const { fixture, shell, el, section, folderApi } = setupFolders({ entries: [folder('repo')] })
+      folderApi.deleteDirectory.mockReturnValue(throwError(() => ({ status: 409 })))
+      section()
+        .querySelector<HTMLButtonElement>('.exchange-drawer__folder-row ds-icon-button[icon="delete"] button')!
+        .click()
+      tick()
+      fixture.detectChanges()
+
+      el.querySelector<HTMLButtonElement>('.ds-confirm-dialog__button--confirm')!.click()
+      tick()
+      fixture.detectChanges()
+
+      expect(shell['actionError']()).toBe('This folder contains protected files and cannot be deleted.')
+      expect(section().textContent).toContain('repo')
+      fixture.destroy()
+    }))
+
+    it('closes the previewed file when its folder is deleted', fakeAsync(() => {
+      const { fixture, shell, folderApi } = setupFolders()
+      shell['onFileSelected']({ scope: CASE, path: 'docs/a.md' })
+      expect(shell['selectedFile']()).not.toBeNull()
+      shell['pendingFolderDelete'].set({ scope: CASE, path: 'docs' })
+
+      void shell['onConfirmFolderDelete']()
+      tick()
+
+      expect(folderApi.deleteDirectory).toHaveBeenCalledWith(CASE, 'c-1', 'docs')
+      expect(shell['selectedFile']()).toBeNull()
+      fixture.destroy()
+    }))
+
+    it('keeps the previewed file when another folder is deleted', fakeAsync(() => {
+      const { fixture, shell } = setupFolders()
+      shell['onFileSelected']({ scope: CASE, path: 'docs-old/a.md' })
+      shell['pendingFolderDelete'].set({ scope: CASE, path: 'docs' })
+
+      void shell['onConfirmFolderDelete']()
+      tick()
+
+      expect(shell['selectedFile']()).toEqual({ scope: CASE, path: 'docs-old/a.md' })
+      fixture.destroy()
+    }))
+
+    it('drops a pending folder deletion when the case changes', fakeAsync(() => {
+      const { fixture, shell, route, folderApi } = setupFolders()
+      shell['onDeleteFolderRequest']({ scope: CASE, path: 'docs' })
+      expect(shell['folderConfirmOpen']()).toBe(true)
+
+      route.next({ ns: 'ns-1', case: 'c-2' })
+      fixture.detectChanges()
+      expect(shell['folderConfirmOpen']()).toBe(false)
+      void shell['onConfirmFolderDelete']()
+      tick()
+
+      expect(folderApi.deleteDirectory).not.toHaveBeenCalled()
+      fixture.destroy()
+    }))
+
+    it.each([CASE, NAMESPACE])(
+      'hides create, delete-folder and upload on a read-only %s scope',
+      fakeAsync((scope) => {
+        const { fixture, api, state } = setup()
+        const el = fixture.nativeElement as HTMLElement
+        const entries = [folder('docs')]
+        const browse = scope === CASE ? api.browseCaseFilesExchange : api.browseNamespaceFilesExchange
+        browse.mockReturnValue(of({ ...listing, capability: 'READ', entries, totalEntries: 1 }))
+        if (scope === CASE) state.refreshCase()
+        else state.refreshNamespace()
+        fixture.detectChanges()
+        const section = el.querySelector(
+          `[data-track="ExchangeDrawer-${scope === CASE ? 'case' : 'namespace'}Section"]`
+        )!
+
+        expect(section.textContent).toContain('docs')
+        expect(section.textContent).toContain('read-only')
+        expect(section.querySelector('ds-icon-button[icon="create_new_folder"]')).toBeNull()
+        expect(section.querySelector('ds-icon-button[icon="upload_file"]')).toBeNull()
+        expect(section.querySelector('.exchange-drawer__folder-row ds-icon-button[icon="delete"]')).toBeNull()
+        // Reading stays possible: the download of the folder is still offered.
+        expect(section.querySelector('ds-icon-button[icon="download"]')).not.toBeNull()
+        fixture.destroy()
+      })
+    )
+
+    it('offers the same actions on the namespace scope, wired to the namespace id', fakeAsync(() => {
+      const { fixture, api, state, folderApi } = setup()
+      const el = fixture.nativeElement as HTMLElement
+      api.browseNamespaceFilesExchange.mockReturnValue(
+        of({ ...listing, capability: 'READ_WRITE', entries: [folder('shared')], totalEntries: 1 })
+      )
+      state.refreshNamespace()
+      fixture.detectChanges()
+      const section = el.querySelector('[data-track="ExchangeDrawer-namespaceSection"]')!
+      jest
+        .spyOn(state as unknown as { saveBlob: (body: Blob | string, filename: string) => void }, 'saveBlob')
+        .mockImplementation(() => undefined)
+
+      section.querySelector<HTMLButtonElement>('ds-icon-button[icon="download"] button')!.click()
+      tick()
+      expect(folderApi.downloadArchive).toHaveBeenCalledWith(NAMESPACE, 'ns-1', '')
+
+      section
+        .querySelector<HTMLButtonElement>('.exchange-drawer__folder-row ds-icon-button[icon="delete"] button')!
+        .click()
+      tick()
+      fixture.detectChanges()
+      el.querySelector<HTMLButtonElement>('.ds-confirm-dialog__button--confirm')!.click()
+      tick()
+      expect(folderApi.deleteDirectory).toHaveBeenCalledWith(NAMESPACE, 'ns-1', 'shared')
+      fixture.destroy()
+    }))
+
+    it('uploads the files picked in a folder into that folder, every one of them', fakeAsync(() => {
+      const { fixture, shell, folderApi } = setupFolders({ path: 'docs', entries: [] })
+      const first = new File(['1'], 'a.txt')
+      const second = new File(['2'], 'b.txt')
+
+      void shell['onUpload']({ scope: CASE, files: [first, second] })
+      tick()
+
+      expect(folderApi.uploadFile.mock.calls).toEqual([
+        [CASE, 'c-1', 'docs', first],
+        [CASE, 'c-1', 'docs', second],
+      ])
+      fixture.destroy()
+    }))
   })
 
   it('ignores a late preview for the same path after switching cases', () => {

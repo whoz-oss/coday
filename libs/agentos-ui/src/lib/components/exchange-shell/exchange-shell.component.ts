@@ -20,6 +20,7 @@ import {
   isBlobPreviewFile,
   isFormatViewable,
 } from '../../services/exchange-content.utils'
+import { folderBaseName, folderDeleteMessage as buildFolderDeleteMessage } from '../../services/exchange-folder.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
 import {
   ExchangeDrawerComponent,
@@ -95,6 +96,16 @@ export class ExchangeShellComponent {
     if (!ref) return ''
     const filename = ref.path.split('/').pop() ?? ref.path
     return `Delete "${filename}"? This action cannot be undone.`
+  })
+
+  // ── Folder delete confirmation ──────────────────────────────────────────────
+  protected readonly pendingFolderDelete = signal<ExchangeFileRef | null>(null)
+  /** Files under the folder awaiting confirmation; null while counting, or when the count could not be read. */
+  protected readonly pendingFolderFileCount = signal<number | null>(null)
+  protected readonly folderConfirmOpen = computed(() => this.pendingFolderDelete() !== null)
+  protected readonly folderDeleteMessage = computed(() => {
+    const ref = this.pendingFolderDelete()
+    return ref ? buildFolderDeleteMessage(folderBaseName(ref.path), this.pendingFolderFileCount()) : ''
   })
 
   /** The case currently initialised, so an unrelated query-param change does not re-init. */
@@ -214,6 +225,7 @@ export class ExchangeShellComponent {
               this.state.denyManifestAccess(scope)
               if (untracked(this.selectedFile)?.scope === scope) this.clearSelection()
               if (untracked(this.pendingDelete)?.scope === scope) this.pendingDelete.set(null)
+              if (untracked(this.pendingFolderDelete)?.scope === scope) this.pendingFolderDelete.set(null)
             }
           },
           complete: () => {
@@ -326,13 +338,54 @@ export class ExchangeShellComponent {
   protected async onDownloadAll(scope: ExchangeScope): Promise<void> {
     if (this.scopeForbidden(scope)) return
     this.actionError.set(null)
-    const result = await this.state.downloadAll(scope)
-    if (result.failedCount > 0) {
-      this.actionError.set(
-        result.error ??
-          (result.failedCount === 1 ? 'A file failed to download.' : `${result.failedCount} files failed to download.`)
-      )
+    // One ZIP of the folder being browsed (the whole scope from the root): a single download, which a browser lets through.
+    const result = await this.state.downloadFolder(scope)
+    if (!result.success) this.actionError.set(result.error ?? 'Download failed')
+  }
+
+  // ── Folders (create, delete) ───────────────────────────────────────────────────
+  protected async onCreateFolder(event: { scope: ExchangeScope; name: string }): Promise<void> {
+    if (this.scopeForbidden(event.scope)) return
+    this.actionError.set(null)
+    const result = await this.state.createFolder(event.scope, event.name)
+    if (!result.success) this.actionError.set(result.error ?? 'Could not create the folder.')
+  }
+
+  protected onDeleteFolderRequest(ref: ExchangeFileRef): void {
+    if (this.scopeForbidden(ref.scope)) return
+    this.pendingFolderDelete.set(ref)
+    this.pendingFolderFileCount.set(null)
+    // The count only words the confirmation: when it cannot be read the generic text stands.
+    this.state
+      .folderFileCount(ref.scope, ref.path)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (count) => {
+          const pending = this.pendingFolderDelete()
+          if (pending?.scope === ref.scope && pending.path === ref.path) this.pendingFolderFileCount.set(count)
+        },
+        error: () => undefined,
+      })
+  }
+
+  protected async onConfirmFolderDelete(): Promise<void> {
+    const ref = this.pendingFolderDelete()
+    this.pendingFolderDelete.set(null)
+    if (!ref || this.scopeForbidden(ref.scope)) return
+    const result = await this.state.deleteFolder(ref.scope, ref.path)
+    if (!result.success) {
+      this.actionError.set(result.error ?? 'Could not delete the folder.')
+      return
     }
+    // Close the viewer if the file being previewed lived in the folder just deleted.
+    const open = this.selectedFile()
+    if (open && open.scope === ref.scope && open.path.startsWith(`${ref.path.replace(/\/+$/, '')}/`)) {
+      this.clearSelection()
+    }
+  }
+
+  protected onCancelFolderDelete(): void {
+    this.pendingFolderDelete.set(null)
   }
 
   // ── Delete (confirmed, case or namespace) ──────────────────────────────────────
@@ -424,6 +477,7 @@ export class ExchangeShellComponent {
     this.clearSelection()
     // A confirmation opened in the previous context would otherwise delete the same path in the new one.
     this.pendingDelete.set(null)
+    this.pendingFolderDelete.set(null)
     this.actionError.set(null)
   }
 

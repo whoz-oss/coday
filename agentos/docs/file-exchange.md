@@ -82,18 +82,39 @@ sit under their owning resource:
 | `GET /api/cases/{caseId}/files/manifest` | case | Case `READ` |
 | `GET /api/cases/{caseId}/files/content?path=` | case | Case `READ` |
 | `GET /api/cases/{caseId}/files/download?path=` | case | Case `READ` |
-| `POST /api/cases/{caseId}/files` (multipart `file`) | case | Case `WRITE` |
+| `POST /api/cases/{caseId}/files` (multipart `file`, optional `directory=`) | case | Case `WRITE` |
 | `DELETE /api/cases/{caseId}/files?path=` | case | Case `WRITE` |
+| `POST /api/cases/{caseId}/files/directory?path=` | case | Case `WRITE` |
+| `DELETE /api/cases/{caseId}/files/directory?path=` | case | Case `WRITE` |
+| `GET /api/cases/{caseId}/files/archive?path=` | case | Case `READ` |
 | `GET /api/namespaces/{namespaceId}/files/manifest` | namespace | Namespace `READ` |
 | `GET /api/namespaces/{namespaceId}/files/content?path=` | namespace | Namespace `READ` |
 | `GET /api/namespaces/{namespaceId}/files/download?path=` | namespace | Namespace `READ` |
-| `POST /api/namespaces/{namespaceId}/files` (multipart `file`) | namespace | Namespace `WRITE` |
+| `POST /api/namespaces/{namespaceId}/files` (multipart `file`, optional `directory=`) | namespace | Namespace `WRITE` |
 | `DELETE /api/namespaces/{namespaceId}/files?path=` | namespace | Namespace `WRITE` |
+| `POST /api/namespaces/{namespaceId}/files/directory?path=` | namespace | Namespace `WRITE` |
+| `DELETE /api/namespaces/{namespaceId}/files/directory?path=` | namespace | Namespace `WRITE` |
+| `GET /api/namespaces/{namespaceId}/files/archive?path=` | namespace | Namespace `READ` |
 
 The manifest reports the caller's capability: `NONE`, `READ`, or `READ_WRITE`. Namespace writes
 (upload/delete) require Namespace `WRITE` (namespace admin / super-admin); plain members are read-only.
 Downloads emit a plain `filename="..."` for ASCII names and
 add RFC 5987 `filename*=UTF-8''...` only for non-ASCII names.
+
+The folder routes (`.../files/directory` for `POST` and `DELETE`, `.../files/archive`, and the `directory`
+upload parameter) are additive and not part of the `ExchangeApi` SDK contract, like directory browsing:
+
+- `POST .../files?directory=docs/specs` stores the file at `docs/specs/<filename>` (missing folders are created;
+  the extension allow-list is checked on the file name). Without `directory`, the file lands at the scope root.
+- `POST .../files/directory?path=` creates a folder (and its missing parents); `409` when a file or a folder
+  already uses the path.
+- `DELETE .../files/directory?path=` deletes a folder with everything in it, symlinks inside being removed as
+  links and never followed. The scope root can not be deleted (`400`), and a folder whose subtree holds a
+  reserved entry (a Git worktree's `.git`, so the case `repo/` folder and each of its ancestors) answers `409`
+  and deletes nothing.
+- `GET .../files/archive?path=` streams the folder (empty path: the whole scope) as one `application/zip`, named
+  after the folder (`case-files.zip` / `namespace-files.zip` at the root), entry names relative to the folder.
+  It follows the manifest's rules: reserved entries and symlinks are left out, depth is capped.
 
 ## Agent Tools
 
@@ -315,11 +336,13 @@ of every origin.
 The Files drawer browses one directory level at a time. Both case and namespace scopes expose
 `GET .../files/directory?path=&page=0&size=200`, with directories first and an explicit `hasMore`
 flag. The server caps pages at 500 entries. Existing manifest endpoints remain recursive for
-consumers that need the full list, including **Download all**.
+consumers that need the full list. **Download all** no longer uses it: it downloads the folder being
+browsed (the whole scope from the root) as a single ZIP through `GET .../files/archive`, because a browser
+blocks the many successive downloads of one file each.
 
 Opening the next page keeps previous entries visible. Background refreshes preserve the current
 folder and loaded pages; a missing subfolder returns to the authorized root, while revoked scope
-access remains hidden. Download-all captures the starting scope so navigation cannot redirect an
+access remains hidden. The download captures the starting scope so navigation cannot redirect an
 in-flight download to a different case.
 
 Git metadata is inaccessible through Exchange REST endpoints and agent file tools, including

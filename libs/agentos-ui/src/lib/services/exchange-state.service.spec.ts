@@ -6,6 +6,7 @@ import {
   ExchangeDirectoryListing,
   ExchangeDirectoryListingCapabilityEnum,
   ExchangeFileEntryScopeEnum,
+  ExchangeFolderApiService,
 } from '@whoz-oss/agentos-api-client'
 import { firstValueFrom, of, Subject, throwError } from 'rxjs'
 import { ExchangeStateService } from './exchange-state.service'
@@ -15,14 +16,19 @@ describe('ExchangeStateService', () => {
   let controller: {
     browseCaseFilesExchange: jest.Mock
     browseNamespaceFilesExchange: jest.Mock
-    uploadCaseFileExchange: jest.Mock
     deleteCaseFileExchange: jest.Mock
-    uploadNamespaceFileExchange: jest.Mock
     deleteNamespaceFileExchange: jest.Mock
     downloadCaseFileExchange: jest.Mock
     downloadNamespaceFileExchange: jest.Mock
     getCaseFilesManifestExchange: jest.Mock
     getNamespaceFilesManifestExchange: jest.Mock
+  }
+  /** The hand-written folder client: uploads (with their directory), folder create / delete and the ZIP. */
+  let folderApi: {
+    uploadFile: jest.Mock
+    createDirectory: jest.Mock
+    deleteDirectory: jest.Mock
+    downloadArchive: jest.Mock
   }
   let service: ExchangeStateService
   let workspaces: { watch: jest.Mock }
@@ -61,20 +67,25 @@ describe('ExchangeStateService', () => {
     controller = {
       browseCaseFilesExchange: jest.fn().mockReturnValue(of(listing(ExchangeDirectoryListingCapabilityEnum.NONE))),
       browseNamespaceFilesExchange: jest.fn().mockReturnValue(of(listing(ExchangeDirectoryListingCapabilityEnum.NONE))),
-      uploadCaseFileExchange: jest.fn(),
       deleteCaseFileExchange: jest.fn(),
-      uploadNamespaceFileExchange: jest.fn(),
       deleteNamespaceFileExchange: jest.fn(),
       downloadCaseFileExchange: jest.fn(),
       downloadNamespaceFileExchange: jest.fn(),
       getCaseFilesManifestExchange: jest.fn(),
       getNamespaceFilesManifestExchange: jest.fn(),
     }
+    folderApi = {
+      uploadFile: jest.fn(),
+      createDirectory: jest.fn(),
+      deleteDirectory: jest.fn(),
+      downloadArchive: jest.fn(),
+    }
     workspaces = { watch: jest.fn().mockReturnValue(of({ view: { equipped: false } })) }
     TestBed.configureTestingModule({
       providers: [
         ExchangeStateService,
         { provide: ExchangeControllerService, useValue: controller },
+        { provide: ExchangeFolderApiService, useValue: folderApi },
         { provide: CaseWorkspaceService, useValue: workspaces },
       ],
     })
@@ -135,7 +146,7 @@ describe('ExchangeStateService', () => {
       init()
       controller.getCaseFilesManifestExchange.mockReturnValue(of({ files: [] }))
       controller.getNamespaceFilesManifestExchange.mockReturnValue(of({ files: [] }))
-      controller.uploadCaseFileExchange.mockReturnValue(of(caseFile))
+      folderApi.uploadFile.mockReturnValue(of(caseFile))
       controller.deleteNamespaceFileExchange.mockReturnValue(of({ success: true }))
       await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))
       await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.NAMESPACE))
@@ -154,7 +165,7 @@ describe('ExchangeStateService', () => {
     it('does not invalidate the new case when an old case mutation completes', async () => {
       init()
       const pending = new Subject<ExchangeDirectoryEntry>()
-      controller.uploadCaseFileExchange.mockReturnValue(pending)
+      folderApi.uploadFile.mockReturnValue(pending)
       const upload = service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
       service.initializeForCase('ns-1', 'c-2')
       const generation = service.caseManifestVersion()
@@ -476,11 +487,16 @@ describe('ExchangeStateService', () => {
   describe('writes refresh the case manifest', () => {
     it('upload success → reloads manifest and clears caseUploading', async () => {
       init()
-      controller.uploadCaseFileExchange.mockReturnValue(of(caseFile))
+      folderApi.uploadFile.mockReturnValue(of(caseFile))
       controller.browseCaseFilesExchange.mockClear()
       const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
       expect(result.success).toBe(true)
-      expect(controller.uploadCaseFileExchange).toHaveBeenCalledWith('c-1', expect.any(File))
+      expect(folderApi.uploadFile).toHaveBeenCalledWith(
+        ExchangeFileEntryScopeEnum.CASE,
+        'c-1',
+        '',
+        expect.any(File)
+      )
       expect(controller.browseCaseFilesExchange).toHaveBeenCalledWith('c-1', '', 0)
       expect(service.caseUploading()).toBe(false)
       // a case upload must not have flipped the namespace flag (per-scope isolation)
@@ -489,7 +505,7 @@ describe('ExchangeStateService', () => {
 
     it('upload 409 → returns a friendly conflict error', async () => {
       init()
-      controller.uploadCaseFileExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      folderApi.uploadFile.mockReturnValue(throwError(() => ({ status: 409 })))
       const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'a.txt'))
       expect(result.success).toBe(false)
       expect(result.error).toBe('A file with this name already exists.')
@@ -499,7 +515,7 @@ describe('ExchangeStateService', () => {
       // Announcing a duplicate that does not exist sends people looking for a file they never
       // uploaded. The Git workspace answers 409 while it is still being prepared.
       init()
-      controller.uploadCaseFileExchange.mockReturnValue(
+      folderApi.uploadFile.mockReturnValue(
         throwError(() => ({
           status: 409,
           error: { message: 'The workspace for this case is still being prepared. It will be ready in a moment.' },
@@ -512,7 +528,7 @@ describe('ExchangeStateService', () => {
 
     it('upload 400 → surfaces the disallowed file type error from the backend', async () => {
       init()
-      controller.uploadCaseFileExchange.mockReturnValue(
+      folderApi.uploadFile.mockReturnValue(
         throwError(() => ({ status: 400, error: { message: "File type not allowed for upload: 'x.exe'" } }))
       )
       const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'x.exe'))
@@ -522,7 +538,7 @@ describe('ExchangeStateService', () => {
 
     it('upload 400 without a body message falls back to a generic disallowed-type message', async () => {
       init()
-      controller.uploadCaseFileExchange.mockReturnValue(throwError(() => ({ status: 400 })))
+      folderApi.uploadFile.mockReturnValue(throwError(() => ({ status: 400 })))
       const result = await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, new File(['x'], 'x.exe'))
       expect(result.error).toBe('This file type is not allowed.')
     })
@@ -541,11 +557,16 @@ describe('ExchangeStateService', () => {
   describe('namespace writes (admin)', () => {
     it('upload success → calls the namespace endpoint and reloads', async () => {
       init()
-      controller.uploadNamespaceFileExchange.mockReturnValue(of(nsFile))
+      folderApi.uploadFile.mockReturnValue(of(nsFile))
       controller.browseNamespaceFilesExchange.mockClear()
       const result = await service.uploadFile(ExchangeFileEntryScopeEnum.NAMESPACE, new File(['x'], 'shared.md'))
       expect(result.success).toBe(true)
-      expect(controller.uploadNamespaceFileExchange).toHaveBeenCalledWith('ns-1', expect.any(File))
+      expect(folderApi.uploadFile).toHaveBeenCalledWith(
+        ExchangeFileEntryScopeEnum.NAMESPACE,
+        'ns-1',
+        '',
+        expect.any(File)
+      )
       expect(controller.browseNamespaceFilesExchange).toHaveBeenCalledWith('ns-1', '', 0)
     })
 
@@ -575,13 +596,18 @@ describe('ExchangeStateService', () => {
     })
 
     it('uploads to the namespace without any case initialised', async () => {
-      controller.uploadNamespaceFileExchange.mockReturnValue(of(nsFile))
+      folderApi.uploadFile.mockReturnValue(of(nsFile))
 
       service.initializeForNamespace('ns-1')
       const result = await service.uploadFile(ExchangeFileEntryScopeEnum.NAMESPACE, new File(['x'], 'shared.md'))
 
       expect(result.success).toBe(true)
-      expect(controller.uploadNamespaceFileExchange).toHaveBeenCalledWith('ns-1', expect.any(File))
+      expect(folderApi.uploadFile).toHaveBeenCalledWith(
+        ExchangeFileEntryScopeEnum.NAMESPACE,
+        'ns-1',
+        '',
+        expect.any(File)
+      )
     })
 
     it('clear() then initializeForNamespace re-inits cleanly (chat to home transition)', () => {
@@ -783,53 +809,349 @@ describe('ExchangeStateService', () => {
     })
   })
 
-  describe('complete download', () => {
-    it.each([ExchangeFileEntryScopeEnum.CASE, ExchangeFileEntryScopeEnum.NAMESPACE])(
-      'uses the recursive manifest rather than the displayed directory for %s',
-      async (scope) => {
-        init()
-        const manifest =
-          scope === ExchangeFileEntryScopeEnum.CASE
-            ? controller.getCaseFilesManifestExchange
-            : controller.getNamespaceFilesManifestExchange
-        const download =
-          scope === ExchangeFileEntryScopeEnum.CASE
-            ? controller.downloadCaseFileExchange
-            : controller.downloadNamespaceFileExchange
-        manifest.mockReturnValue(of({ files: [{ path: 'not-on-this-page/deep.txt' }] }))
-        download.mockReturnValue(of(new Blob(['content'])))
-        jest
-          .spyOn(service as unknown as { saveBlob: (body: Blob | string, filename: string) => void }, 'saveBlob')
-          .mockImplementation(() => undefined)
-        expect(await service.downloadAll(scope)).toEqual({ success: true, failedCount: 0 })
-        expect(download).toHaveBeenCalledWith(
-          scope === ExchangeFileEntryScopeEnum.CASE ? 'c-1' : 'ns-1',
-          'not-on-this-page/deep.txt'
-        )
-      }
-    )
-
-    it('keeps the original case id if navigation changes before the manifest response', async () => {
-      init()
-      const manifest = new Subject<{ files: { path: string }[] }>()
-      controller.getCaseFilesManifestExchange.mockReturnValue(manifest)
-      controller.downloadCaseFileExchange.mockReturnValue(of(new Blob(['content'])))
+  describe('folder download (one ZIP)', () => {
+    const saveBlobSpy = () =>
       jest
         .spyOn(service as unknown as { saveBlob: (body: Blob | string, filename: string) => void }, 'saveBlob')
         .mockImplementation(() => undefined)
-      const result = service.downloadAll(ExchangeFileEntryScopeEnum.CASE)
-      service.initializeForCase('ns-2', 'c-2')
-      manifest.next({ files: [{ path: 'deep/file.txt' }] })
-      manifest.complete()
-      await result
-      expect(controller.downloadCaseFileExchange).toHaveBeenCalledWith('c-1', 'deep/file.txt')
+
+    it.each([
+      [ExchangeFileEntryScopeEnum.CASE, 'c-1', 'case-files.zip'],
+      [ExchangeFileEntryScopeEnum.NAMESPACE, 'ns-1', 'namespace-files.zip'],
+    ])('from the root of the %s scope: one archive call for the whole scope, one .zip', async (scope, id, name) => {
+      init()
+      const save = saveBlobSpy()
+      folderApi.downloadArchive.mockReturnValue(of(new Blob(['zip'])))
+
+      expect(await service.downloadFolder(scope)).toEqual({ success: true })
+
+      expect(folderApi.downloadArchive).toHaveBeenCalledTimes(1)
+      expect(folderApi.downloadArchive).toHaveBeenCalledWith(scope, id, '')
+      expect(save).toHaveBeenCalledTimes(1)
+      expect(save).toHaveBeenCalledWith(expect.any(Blob), name)
+      // The recursive manifest and the per-file endpoints are no longer part of a download: that was the multi-download.
+      expect(controller.getCaseFilesManifestExchange).not.toHaveBeenCalled()
+      expect(controller.getNamespaceFilesManifestExchange).not.toHaveBeenCalled()
+      expect(controller.downloadCaseFileExchange).not.toHaveBeenCalled()
+      expect(controller.downloadNamespaceFileExchange).not.toHaveBeenCalled()
     })
 
-    it('reports an incomplete download if listing the full scope fails', async () => {
+    it.each([ExchangeFileEntryScopeEnum.CASE, ExchangeFileEntryScopeEnum.NAMESPACE])(
+      'scopes the %s download to the folder being browsed and names the archive after it',
+      async (scope) => {
+        const browse =
+          scope === ExchangeFileEntryScopeEnum.CASE
+            ? controller.browseCaseFilesExchange
+            : controller.browseNamespaceFilesExchange
+        browse.mockImplementation((_id: string, path: string) =>
+          of({ ...listing(ExchangeDirectoryListingCapabilityEnum.READ_WRITE, [caseFile]), path })
+        )
+        init()
+        if (scope === ExchangeFileEntryScopeEnum.CASE) service.browseCase('docs/specs')
+        else service.browseNamespace('docs/specs')
+        const save = saveBlobSpy()
+        folderApi.downloadArchive.mockReturnValue(of(new Blob(['zip'])))
+
+        await service.downloadFolder(scope)
+
+        expect(folderApi.downloadArchive).toHaveBeenCalledTimes(1)
+        expect(folderApi.downloadArchive).toHaveBeenCalledWith(
+          scope,
+          scope === ExchangeFileEntryScopeEnum.CASE ? 'c-1' : 'ns-1',
+          'docs/specs'
+        )
+        expect(save).toHaveBeenCalledWith(expect.any(Blob), 'specs.zip')
+      }
+    )
+
+    it('keeps the original case id if navigation changes before the archive arrives', async () => {
       init()
-      controller.getCaseFilesManifestExchange.mockReturnValue(throwError(() => ({ status: 403 })))
-      expect((await service.downloadAll(ExchangeFileEntryScopeEnum.CASE)).success).toBe(false)
-      expect(controller.downloadCaseFileExchange).not.toHaveBeenCalled()
+      const archive = new Subject<Blob>()
+      folderApi.downloadArchive.mockReturnValue(archive)
+      saveBlobSpy()
+      const result = service.downloadFolder(ExchangeFileEntryScopeEnum.CASE)
+      service.initializeForCase('ns-2', 'c-2')
+      archive.next(new Blob(['zip']))
+      archive.complete()
+      expect(await result).toEqual({ success: true })
+      expect(folderApi.downloadArchive).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, 'c-1', '')
+    })
+
+    it('reports a failure and saves nothing when the archive cannot be fetched', async () => {
+      init()
+      const save = saveBlobSpy()
+      const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      folderApi.downloadArchive.mockReturnValue(throwError(() => ({ status: 500, message: 'boom' })))
+
+      const result = await service.downloadFolder(ExchangeFileEntryScopeEnum.CASE)
+
+      expect(result).toEqual({ success: false, error: 'boom' })
+      expect(save).not.toHaveBeenCalled()
+      error.mockRestore()
+    })
+
+    it('says so when the folder is gone (404)', async () => {
+      init()
+      saveBlobSpy()
+      const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      folderApi.downloadArchive.mockReturnValue(throwError(() => ({ status: 404 })))
+
+      const result = await service.downloadFolder(ExchangeFileEntryScopeEnum.CASE, 'gone')
+
+      expect(result).toEqual({ success: false, error: 'This folder no longer exists.' })
+      error.mockRestore()
+    })
+
+    it('fails without an active scope', async () => {
+      expect((await service.downloadFolder(ExchangeFileEntryScopeEnum.CASE)).success).toBe(false)
+      expect(folderApi.downloadArchive).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('uploads into the browsed folder', () => {
+    const browseInto = (scope: ExchangeFileEntryScopeEnum, path: string) => {
+      const browse =
+        scope === ExchangeFileEntryScopeEnum.CASE
+          ? controller.browseCaseFilesExchange
+          : controller.browseNamespaceFilesExchange
+      browse.mockImplementation((_id: string, directory: string) =>
+        of({ ...listing(ExchangeDirectoryListingCapabilityEnum.READ_WRITE), path: directory })
+      )
+      init()
+      if (scope === ExchangeFileEntryScopeEnum.CASE) service.browseCase(path)
+      else service.browseNamespace(path)
+    }
+
+    it.each([
+      [ExchangeFileEntryScopeEnum.CASE, 'c-1'],
+      [ExchangeFileEntryScopeEnum.NAMESPACE, 'ns-1'],
+    ])('sends the browsed folder as the directory of a %s upload', async (scope, id) => {
+      browseInto(scope, 'docs')
+      folderApi.uploadFile.mockReturnValue(of(caseFile))
+      const file = new File(['x'], 'report.txt')
+
+      const result = await service.uploadFile(scope, file)
+
+      expect(result.success).toBe(true)
+      expect(folderApi.uploadFile).toHaveBeenCalledWith(scope, id, 'docs', file)
+    })
+
+    it('lets a caller upload to the root while a folder is browsed (composer attachments)', async () => {
+      browseInto(ExchangeFileEntryScopeEnum.CASE, 'docs')
+      folderApi.uploadFile.mockReturnValue(of(caseFile))
+      const file = new File(['x'], 'report.txt')
+
+      await service.uploadFile(ExchangeFileEntryScopeEnum.CASE, file, '')
+
+      expect(folderApi.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, 'c-1', '', file)
+    })
+
+    it('does not borrow the folder of the other scope', async () => {
+      browseInto(ExchangeFileEntryScopeEnum.CASE, 'docs')
+      folderApi.uploadFile.mockReturnValue(of(nsFile))
+
+      await service.uploadFile(ExchangeFileEntryScopeEnum.NAMESPACE, new File(['x'], 'shared.md'))
+
+      expect(folderApi.uploadFile).toHaveBeenCalledWith(
+        ExchangeFileEntryScopeEnum.NAMESPACE,
+        'ns-1',
+        '',
+        expect.any(File)
+      )
+    })
+  })
+
+  describe('create folder', () => {
+    it.each([
+      [ExchangeFileEntryScopeEnum.CASE, 'c-1'],
+      [ExchangeFileEntryScopeEnum.NAMESPACE, 'ns-1'],
+    ])('creates the %s folder at the root and reloads only that scope', async (scope, id) => {
+      init()
+      folderApi.createDirectory.mockReturnValue(of({ path: 'docs', name: 'docs', directory: true }))
+      controller.browseCaseFilesExchange.mockClear()
+      controller.browseNamespaceFilesExchange.mockClear()
+
+      const result = await service.createFolder(scope, ' docs ')
+
+      expect(result).toEqual({ success: true })
+      expect(folderApi.createDirectory).toHaveBeenCalledWith(scope, id, 'docs')
+      const reloaded =
+        scope === ExchangeFileEntryScopeEnum.CASE
+          ? controller.browseCaseFilesExchange
+          : controller.browseNamespaceFilesExchange
+      const untouched =
+        scope === ExchangeFileEntryScopeEnum.CASE
+          ? controller.browseNamespaceFilesExchange
+          : controller.browseCaseFilesExchange
+      expect(reloaded).toHaveBeenCalledWith(id, '', 0)
+      expect(untouched).not.toHaveBeenCalled()
+    })
+
+    it('creates the folder inside the folder being browsed', async () => {
+      controller.browseCaseFilesExchange.mockImplementation((_id: string, directory: string) =>
+        of({ ...listing(ExchangeDirectoryListingCapabilityEnum.READ_WRITE), path: directory })
+      )
+      init()
+      service.browseCase('docs')
+      folderApi.createDirectory.mockReturnValue(of({ path: 'docs/api', name: 'api', directory: true }))
+
+      await service.createFolder(ExchangeFileEntryScopeEnum.CASE, 'api')
+
+      expect(folderApi.createDirectory).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, 'c-1', 'docs/api')
+    })
+
+    it('answers a name already in use with a plain message on 409', async () => {
+      init()
+      folderApi.createDirectory.mockReturnValue(throwError(() => ({ status: 409 })))
+
+      const result = await service.createFolder(ExchangeFileEntryScopeEnum.CASE, 'docs')
+
+      expect(result).toEqual({ success: false, error: 'A file or folder with this name already exists.' })
+    })
+
+    it('prefers the server reason when the workspace is not usable yet (also a 409)', async () => {
+      init()
+      const reason = 'The workspace for this case is still being prepared. It will be ready in a moment.'
+      folderApi.createDirectory.mockReturnValue(throwError(() => ({ status: 409, error: { message: reason } })))
+
+      const result = await service.createFolder(ExchangeFileEntryScopeEnum.CASE, 'docs')
+
+      expect(result).toEqual({ success: false, error: reason })
+    })
+
+    it('surfaces the server message on 400', async () => {
+      init()
+      folderApi.createDirectory.mockReturnValue(
+        throwError(() => ({ status: 400, error: { message: 'Invalid path' } }))
+      )
+
+      const result = await service.createFolder(ExchangeFileEntryScopeEnum.CASE, '.git')
+
+      expect(result).toEqual({ success: false, error: 'Invalid path' })
+    })
+
+    it('does not reload the new case when an old case folder is created after navigation', async () => {
+      init()
+      const pending = new Subject<ExchangeDirectoryEntry>()
+      folderApi.createDirectory.mockReturnValue(pending)
+      const creation = service.createFolder(ExchangeFileEntryScopeEnum.CASE, 'docs')
+      service.initializeForCase('ns-1', 'c-2')
+      const generation = service.caseManifestVersion()
+      pending.next({ path: 'docs', name: 'docs', directory: true })
+      await creation
+      expect(service.caseManifestVersion()).toBe(generation)
+    })
+
+    it('fails without an active scope', async () => {
+      expect((await service.createFolder(ExchangeFileEntryScopeEnum.CASE, 'docs')).success).toBe(false)
+      expect(folderApi.createDirectory).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('delete folder', () => {
+    it.each([
+      [ExchangeFileEntryScopeEnum.CASE, 'c-1'],
+      [ExchangeFileEntryScopeEnum.NAMESPACE, 'ns-1'],
+    ])('deletes the %s folder and reloads only that scope', async (scope, id) => {
+      init()
+      folderApi.deleteDirectory.mockReturnValue(of({ success: true, message: 'ok' }))
+      controller.browseCaseFilesExchange.mockClear()
+      controller.browseNamespaceFilesExchange.mockClear()
+
+      const result = await service.deleteFolder(scope, 'docs')
+
+      expect(result).toEqual({ success: true })
+      expect(folderApi.deleteDirectory).toHaveBeenCalledWith(scope, id, 'docs')
+      const reloaded =
+        scope === ExchangeFileEntryScopeEnum.CASE
+          ? controller.browseCaseFilesExchange
+          : controller.browseNamespaceFilesExchange
+      const untouched =
+        scope === ExchangeFileEntryScopeEnum.CASE
+          ? controller.browseNamespaceFilesExchange
+          : controller.browseCaseFilesExchange
+      expect(reloaded).toHaveBeenCalledWith(id, '', 0)
+      expect(untouched).not.toHaveBeenCalled()
+    })
+
+    it('steps up to the parent when the folder being browsed is the one deleted', async () => {
+      controller.browseCaseFilesExchange.mockImplementation((_id: string, directory: string) =>
+        of({ ...listing(ExchangeDirectoryListingCapabilityEnum.READ_WRITE), path: directory })
+      )
+      init()
+      service.browseCase('docs/old')
+      folderApi.deleteDirectory.mockReturnValue(of({ success: true, message: 'ok' }))
+
+      await service.deleteFolder(ExchangeFileEntryScopeEnum.CASE, 'docs/old')
+
+      expect(service.caseBrowsePath()).toBe('docs')
+      expect(controller.browseCaseFilesExchange).toHaveBeenLastCalledWith('c-1', 'docs', 0)
+    })
+
+    it('answers a protected subtree (409) with a plain message and keeps the listing', async () => {
+      init()
+      folderApi.deleteDirectory.mockReturnValue(throwError(() => ({ status: 409 })))
+      controller.browseCaseFilesExchange.mockClear()
+
+      const result = await service.deleteFolder(ExchangeFileEntryScopeEnum.CASE, 'repo')
+
+      expect(result).toEqual({
+        success: false,
+        error: 'This folder contains protected files and cannot be deleted.',
+      })
+      expect(controller.browseCaseFilesExchange).not.toHaveBeenCalled()
+    })
+
+    it('surfaces the server message on 400 and falls back to a generic one', async () => {
+      init()
+      folderApi.deleteDirectory.mockReturnValueOnce(
+        throwError(() => ({ status: 400, error: { message: 'Not a directory' } }))
+      )
+      expect((await service.deleteFolder(ExchangeFileEntryScopeEnum.CASE, 'a.txt')).error).toBe('Not a directory')
+
+      folderApi.deleteDirectory.mockReturnValueOnce(throwError(() => ({ status: 500 })))
+      expect((await service.deleteFolder(ExchangeFileEntryScopeEnum.CASE, 'docs')).error).toBe(
+        'Could not delete the folder.'
+      )
+    })
+  })
+
+  describe('folderFileCount (confirmation text)', () => {
+    const entry = (path: string) => ({ path, filename: path.split('/').pop() as string, size: 1 })
+
+    it('counts only the files under the folder, at any depth', async () => {
+      init()
+      controller.getCaseFilesManifestExchange.mockReturnValue(
+        of({
+          capability: 'READ_WRITE',
+          files: ['docs/a.md', 'docs/api/b.md', 'docs-old/c.md', 'docs.md', 'other/d.md'].map(entry),
+        })
+      )
+
+      expect(await firstValueFrom(service.folderFileCount(ExchangeFileEntryScopeEnum.CASE, 'docs'))).toBe(2)
+      expect(await firstValueFrom(service.folderFileCount(ExchangeFileEntryScopeEnum.CASE, 'docs/api'))).toBe(1)
+      expect(await firstValueFrom(service.folderFileCount(ExchangeFileEntryScopeEnum.CASE, 'empty'))).toBe(0)
+    })
+
+    it('reuses the cached recursive manifest of the scope', async () => {
+      init()
+      controller.getNamespaceFilesManifestExchange.mockReturnValue(
+        of({ capability: 'READ', files: [entry('docs/a.md')] })
+      )
+
+      await firstValueFrom(service.folderFileCount(ExchangeFileEntryScopeEnum.NAMESPACE, 'docs'))
+      await firstValueFrom(service.folderFileCount(ExchangeFileEntryScopeEnum.NAMESPACE, 'docs'))
+
+      expect(controller.getNamespaceFilesManifestExchange).toHaveBeenCalledTimes(1)
+    })
+
+    it('errors when the manifest cannot be read, so the caller keeps its generic wording', async () => {
+      init()
+      controller.getCaseFilesManifestExchange.mockReturnValue(throwError(() => ({ status: 500 })))
+
+      await expect(firstValueFrom(service.folderFileCount(ExchangeFileEntryScopeEnum.CASE, 'docs'))).rejects.toEqual({
+        status: 500,
+      })
     })
   })
 })

@@ -161,7 +161,9 @@ export class ComposerAttachmentsService {
         if (this.generation !== generation) return null
         if (attachment.status === 'uploaded') continue
         this.patch(attachment.id, { status: 'uploading', error: undefined })
-        const result = await this.exchangeState.uploadFile(scope, attachment.file)
+        // Always the scope root, whatever folder the drawer is browsing: the mention below names the file by
+        // its bare name, which is only true there.
+        const result = await this.exchangeState.uploadFile(scope, attachment.file, '')
         if (this.generation !== generation) return null
         if (result.success) {
           this.patch(attachment.id, { status: 'uploaded', uploadedScope: scope })

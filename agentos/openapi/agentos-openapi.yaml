@@ -1349,6 +1349,12 @@ paths:
         schema:
           type: string
           format: uuid
+      - in: query
+        name: directory
+        required: false
+        schema:
+          type: string
+          default: ""
       requestBody:
         content:
           multipart/form-data:
@@ -1366,6 +1372,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExchangeFileEntry"
+          description: OK
+      tags:
+      - exchange-controller
+  /api/cases/{caseId}/files/archive:
+    get:
+      operationId: downloadCaseArchiveExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      responses:
+        "200":
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
           description: OK
       tags:
       - exchange-controller
@@ -1397,6 +1429,29 @@ paths:
       tags:
       - exchange-controller
   /api/cases/{caseId}/files/directory:
+    delete:
+      operationId: deleteCaseDirectoryExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDeleteResponse"
+          description: OK
+      tags:
+      - exchange-controller
     get:
       operationId: browseCaseFilesExchange
       parameters:
@@ -1432,6 +1487,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
+      tags:
+      - exchange-controller
+    post:
+      operationId: createCaseDirectoryExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryEntry"
           description: OK
       tags:
       - exchange-controller
@@ -2601,6 +2679,12 @@ paths:
         schema:
           type: string
           format: uuid
+      - in: query
+        name: directory
+        required: false
+        schema:
+          type: string
+          default: ""
       requestBody:
         content:
           multipart/form-data:
@@ -2618,6 +2702,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExchangeFileEntry"
+          description: OK
+      tags:
+      - exchange-controller
+  /api/namespaces/{namespaceId}/files/archive:
+    get:
+      operationId: downloadNamespaceArchiveExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      responses:
+        "200":
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
           description: OK
       tags:
       - exchange-controller
@@ -2649,6 +2759,29 @@ paths:
       tags:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/directory:
+    delete:
+      operationId: deleteNamespaceDirectoryExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDeleteResponse"
+          description: OK
+      tags:
+      - exchange-controller
     get:
       operationId: browseNamespaceFilesExchange
       parameters:
@@ -2684,6 +2817,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
+      tags:
+      - exchange-controller
+    post:
+      operationId: createNamespaceDirectoryExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryEntry"
           description: OK
       tags:
       - exchange-controller

@@ -43,6 +43,7 @@ git_push.sh
 index.ts
 model/actor.ts
 model/add-message-request.ts
+model/admin-case-listing.ts
 model/agent-config-defaults-dto.ts
 model/agent-config-search-request.ts
 model/agent-config.ts

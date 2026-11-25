@@ -26,6 +26,7 @@ import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../servi
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
 import { ExchangeFileListComponent } from '../exchange-file-list/exchange-file-list.component'
 import { ExchangeFolderNavComponent } from '../exchange-folder-nav/exchange-folder-nav.component'
+import { ExchangeFolderFormComponent } from '../exchange-folder-form/exchange-folder-form.component'
 import { ExchangeFileRow, ExchangeItemComponent } from '../exchange-item/exchange-item.component'
 import { FilteredFileTree } from '../../services/exchange-file-filter.utils'
 
@@ -61,6 +62,7 @@ export interface ExchangeReferenceToggle {
     EmptyStateComponent,
     ExchangeFileListComponent,
     ExchangeFolderNavComponent,
+    ExchangeFolderFormComponent,
     ExchangeContentViewerComponent,
     ExchangeItemComponent,
     NgTemplateOutlet,
@@ -117,6 +119,10 @@ export class ExchangeDrawerComponent {
   readonly downloadRequested = output<ExchangeFileRef>()
   readonly downloadAllRequested = output<ExchangeScope>()
   readonly deleteRequested = output<ExchangeFileRef>()
+  /** A new folder was named: it is created inside the folder the scope is browsing. */
+  readonly createFolderRequested = output<{ scope: ExchangeScope; name: string }>()
+  /** The delete button of a folder row was pressed; the parent confirms and deletes. */
+  readonly deleteFolderRequested = output<ExchangeFileRef>()
   readonly retryRequested = output<void>()
   readonly filterChanged = output<{ scope: ExchangeScope; query: string }>()
   readonly filterRetry = output<ExchangeScope>()
@@ -289,6 +295,28 @@ export class ExchangeDrawerComponent {
   protected readonly CASE = ExchangeFileEntryScopeEnum.CASE
   protected readonly NAMESPACE = ExchangeFileEntryScopeEnum.NAMESPACE
 
+  /** Scope whose new-folder prompt is open: one prompt at a time. */
+  protected readonly creatingFolderIn = signal<ExchangeScope | null>(null)
+  /** Where the new folder of a scope would be created: the folder being browsed. */
+  protected readonly caseParentPath = computed(() => this.caseBreadcrumb().at(-1)?.path ?? '')
+  protected readonly namespaceParentPath = computed(() => this.namespaceBreadcrumb().at(-1)?.path ?? '')
+  /** The download button is scoped to the folder being browsed, and says so once inside one. */
+  protected readonly caseDownloadTitle = computed(() =>
+    this.caseBreadcrumb().length > 0 ? 'Download all files in this folder' : 'Download all case files'
+  )
+  protected readonly namespaceDownloadTitle = computed(() =>
+    this.namespaceBreadcrumb().length > 0 ? 'Download all files in this folder' : 'Download all namespace files'
+  )
+
+  protected toggleFolderForm(scope: ExchangeScope): void {
+    this.creatingFolderIn.update((current) => (current === scope ? null : scope))
+  }
+
+  protected onFolderNamed(scope: ExchangeScope, name: string): void {
+    this.creatingFolderIn.set(null)
+    this.createFolderRequested.emit({ scope, name })
+  }
+
   private readonly environmentPanel = viewChild(ExchangeEnvironmentComponent)
   private readonly environment = signal<{ scope: EnvironmentScope; view: ExchangeEnvironment | null } | null>(null)
   protected onEnvironmentChanged(snapshot: { scope: EnvironmentScope; view: ExchangeEnvironment | null }): void {
@@ -331,6 +359,8 @@ export class ExchangeDrawerComponent {
   }
 
   protected onFolderOpen(scope: ExchangeScope, path: string): void {
+    // The prompt names a folder of the level it was opened in: leaving that level drops it.
+    this.creatingFolderIn.set(null)
     this.folderOpened.emit({ scope, path })
   }
   protected readonly namespaceRows = computed(() => this.namespaceFiles().map(ExchangeItemComponent.toRow))

@@ -1,4 +1,4 @@
-import { computed, inject, Injectable, Signal, signal } from '@angular/core'
+import { computed, inject, Injectable, Injector, Signal, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import {
   CaseWorkspaceViewStatusEnum,
@@ -9,6 +9,7 @@ import {
   ExchangeDirectoryListing,
   ExchangeDirectoryListingCapabilityEnum,
   ExchangeFileEntry,
+  ExchangeFolderApiService,
   ExchangeManifestCapabilityEnum,
 } from '@whoz-oss/agentos-api-client'
 import {
@@ -21,7 +22,6 @@ import {
   expand,
   filter,
   finalize,
-  firstValueFrom,
   ignoreElements,
   map,
   Observable,
@@ -39,6 +39,7 @@ import {
   timer,
 } from 'rxjs'
 import { CaseWorkspaceService } from './case-workspace.service'
+import { folderBaseName } from './exchange-folder.utils'
 
 /** Scope of an exchange (matches the generated `ExchangeFileEntryScopeEnum`). */
 export type ExchangeScope = ExchangeFileEntryScopeEnum
@@ -112,6 +113,9 @@ export function toBreadcrumb(path: string): ExchangePathSegment[] {
 export class ExchangeStateService {
   private readonly controller = inject(ExchangeControllerService)
   private readonly workspaces = inject(CaseWorkspaceService)
+  // Resolved on the first folder action only: browsing and listing never need it, and a host that mocks the
+  // generated client alone must not have to provide HttpClient and Configuration for the folder one.
+  private readonly injector = inject(Injector)
 
   private namespaceId: string | null = null
   private caseId: string | null = null
@@ -599,15 +603,34 @@ export class ExchangeStateService {
   }
 
   // ── Writes (case + namespace, gated per scope by the server-computed capability) ──
-  async uploadFile(scope: ExchangeScope, file: File): Promise<{ success: boolean; error?: string }> {
+  private get folderApi(): ExchangeFolderApiService {
+    return this.injector.get(ExchangeFolderApiService)
+  }
+
+  /**
+   * Folder being browsed in a scope, relative to the scope root (empty string is the root). Read from the requested
+   * path rather than from the loaded view: a write made while the listing reloads must still target the folder the
+   * user is in, not fall back to the root.
+   */
+  private browsePathOf(scope: ExchangeScope): string {
+    return scope === ExchangeFileEntryScopeEnum.CASE ? this.casePath : this.namespacePath
+  }
+
+  /**
+   * Upload [file] into [directory], by default the folder being browsed in that scope. A caller that has no
+   * folder in mind (the composer attachments) passes the empty string: the file then lands at the scope root.
+   */
+  async uploadFile(
+    scope: ExchangeScope,
+    file: File,
+    directory: string = this.browsePathOf(scope)
+  ): Promise<{ success: boolean; error?: string }> {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const id = isCase ? this.caseId : this.namespaceId
     if (!id) return { success: false, error: 'No active scope' }
     const uploading = isCase ? this.caseUploading : this.namespaceUploading
     uploading.set(true)
-    const upload$ = isCase
-      ? this.controller.uploadCaseFileExchange(id, file)
-      : this.controller.uploadNamespaceFileExchange(id, file)
+    const upload$ = this.folderApi.uploadFile(scope, id, directory, file)
     return new Promise((resolve) => {
       upload$.subscribe({
         next: () => {
@@ -659,6 +682,96 @@ export class ExchangeStateService {
     })
   }
 
+  /** Reload the listing and the recursive manifest of one scope. */
+  private refreshScope(scope: ExchangeScope): void {
+    if (scope === ExchangeFileEntryScopeEnum.CASE) this.refreshCase()
+    else this.refreshNamespace()
+  }
+
+  /** Message of a folder write that failed: the server's own words when it gave some, else [fallback]. */
+  private folderErrorMessage(err: { message?: string; error?: { message?: string } }, fallback: string): string {
+    return err?.error?.message ?? fallback
+  }
+
+  /**
+   * Create the folder [name] inside the folder being browsed. The name is one path segment: validating it is the
+   * caller's job (see validateFolderName), the server refuses anything unsafe all the same.
+   */
+  async createFolder(scope: ExchangeScope, name: string): Promise<{ success: boolean; error?: string }> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return { success: false, error: 'No active scope' }
+    const parent = this.browsePathOf(scope)
+    const path = parent ? `${parent}/${name.trim()}` : name.trim()
+    return new Promise((resolve) => {
+      this.folderApi.createDirectory(scope, id, path).subscribe({
+        next: () => {
+          if (id === (isCase ? this.caseId : this.namespaceId)) this.refreshScope(scope)
+          resolve({ success: true })
+        },
+        error: (err: { status?: number; message?: string; error?: { message?: string } }) => {
+          // A 409 is also a Git workspace that is not usable yet: only then show the server's reason.
+          const reason = err?.error?.message
+          const conflict =
+            reason && /workspace/i.test(reason) ? reason : 'A file or folder with this name already exists.'
+          resolve({
+            success: false,
+            error: err?.status === 409 ? conflict : this.folderErrorMessage(err, 'Could not create the folder.'),
+          })
+        },
+      })
+    })
+  }
+
+  /**
+   * Delete the folder at [path] with everything in it. When the folder being browsed is that folder (or inside it)
+   * the listing moves up to its parent, which is the level the user still has.
+   */
+  async deleteFolder(scope: ExchangeScope, path: string): Promise<{ success: boolean; error?: string }> {
+    const isCase = scope === ExchangeFileEntryScopeEnum.CASE
+    const id = isCase ? this.caseId : this.namespaceId
+    if (!id) return { success: false, error: 'No active scope' }
+    const folder = path.replace(/^\/+|\/+$/g, '')
+    return new Promise((resolve) => {
+      this.folderApi.deleteDirectory(scope, id, folder).subscribe({
+        next: () => {
+          if (id === (isCase ? this.caseId : this.namespaceId)) {
+            const browsed = this.browsePathOf(scope)
+            if (browsed === folder || browsed.startsWith(`${folder}/`)) {
+              const parent = folder.split('/').slice(0, -1).join('/')
+              this.invalidateManifest(scope)
+              if (isCase) this.browseCase(parent)
+              else this.browseNamespace(parent)
+            } else {
+              this.refreshScope(scope)
+            }
+          }
+          resolve({ success: true })
+        },
+        error: (err: { status?: number; message?: string; error?: { message?: string } }) =>
+          resolve({
+            success: false,
+            error:
+              err?.status === 409
+                ? 'This folder contains protected files and cannot be deleted.'
+                : this.folderErrorMessage(err, 'Could not delete the folder.'),
+          }),
+      })
+    })
+  }
+
+  /**
+   * Number of files under the folder at [path], from the recursive manifest of the scope (shared and cached, so
+   * opening the confirmation costs no more than a filter does).
+   */
+  folderFileCount(scope: ExchangeScope, path: string): Observable<number> {
+    const prefix = `${path.replace(/^\/+|\/+$/g, '')}/`
+    return this.fileManifest(scope).pipe(
+      map((files) => files.filter((file) => file.path.replace(/^\/+/, '').startsWith(prefix)).length),
+      take(1)
+    )
+  }
+
   // ── Download ──────────────────────────────────────────────────────────────────
   downloadFile(scope: ExchangeScope, path: string): Promise<{ success: boolean; error?: string }> {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
@@ -685,33 +798,34 @@ export class ExchangeStateService {
   }
 
   /**
-   * Download every file of a scope, staggered ~300 ms apart (ported from legacy).
-   * Returns the count of files that failed so the caller can surface a single summary error.
+   * Download a folder, with everything in it, as ONE ZIP: [path] defaults to the folder being browsed, and the
+   * empty string is the whole scope. A single download is what a browser lets through: a file per request, as
+   * this used to do, is refused after the first as an automatic multiple download.
+   *
+   * The scope id is captured for the whole operation, even if the user navigates meanwhile.
    */
-  async downloadAll(scope: ExchangeScope): Promise<{ success: boolean; failedCount: number; error?: string }> {
+  downloadFolder(scope: ExchangeScope, path?: string): Promise<{ success: boolean; error?: string }> {
     const isCase = scope === ExchangeFileEntryScopeEnum.CASE
     const id = isCase ? this.caseId : this.namespaceId
-    if (!id) return { success: false, failedCount: 1, error: 'No active scope' }
-    // Download-all retains the recursive manifest contract; browsing is only one directory.
-    // Capture the scope id for the entire operation, even if the user navigates meanwhile.
-    let manifest
-    try {
-      manifest = await firstValueFrom(
-        isCase
-          ? this.controller.getCaseFilesManifestExchange(id)
-          : this.controller.getNamespaceFilesManifestExchange(id)
-      )
-    } catch {
-      return { success: false, failedCount: 1, error: 'Could not list all files. No complete download was performed.' }
-    }
-    let failedCount = 0
-    let index = 0
-    for (const file of manifest.files) {
-      if (index++ > 0) await new Promise((resolve) => setTimeout(resolve, 300))
-      const result = await this.downloadFrom(scope, id, file.path)
-      if (!result.success) failedCount++
-    }
-    return { success: failedCount === 0, failedCount }
+    if (!id) return Promise.resolve({ success: false, error: 'No active scope' })
+    const folder = (path ?? this.browsePathOf(scope)).replace(/^\/+|\/+$/g, '')
+    const filename = `${folder ? folderBaseName(folder) : isCase ? 'case-files' : 'namespace-files'}.zip`
+    return new Promise((resolve) => {
+      this.folderApi.downloadArchive(scope, id, folder).subscribe({
+        next: (body) => {
+          this.saveBlob(body, filename)
+          resolve({ success: true })
+        },
+        error: (err: { status?: number; message?: string }) => {
+          console.error('[exchange] folder download failed', err)
+          // The body of a failed blob request is a Blob, not the server's JSON: only the status is reliable.
+          resolve({
+            success: false,
+            error: err?.status === 404 ? 'This folder no longer exists.' : (err?.message ?? 'Download failed'),
+          })
+        },
+      })
+    })
   }
 
   private saveBlob(body: Blob | string, filename: string): void {

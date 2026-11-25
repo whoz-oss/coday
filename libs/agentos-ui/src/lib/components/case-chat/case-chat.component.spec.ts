@@ -448,7 +448,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     await ref.instance['submit']()
 
     expect(calls).toEqual(['upload', 'post'])
-    expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, expect.any(File))
+    expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, expect.any(File), '')
     expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
       content: 'analyse this file\n\n[Files attached to the case exchange: report.pdf]',
       userId: 'default-user',
@@ -478,7 +478,7 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     await ref.instance['submit']()
 
-    expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.NAMESPACE, expect.any(File))
+    expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.NAMESPACE, expect.any(File), '')
     const content = (http.post.mock.calls[0]![1] as { content: string }).content
     expect(content).toContain('[Files attached to the namespace exchange: shared.md]')
   })
@@ -491,7 +491,7 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     await ref.instance['submit']()
 
-    expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, expect.any(File))
+    expect(exchangeState.uploadFile).toHaveBeenCalledWith(ExchangeFileEntryScopeEnum.CASE, expect.any(File), '')
   })
 
   it('allows an attachment-only send: the content is the mention block', async () => {
