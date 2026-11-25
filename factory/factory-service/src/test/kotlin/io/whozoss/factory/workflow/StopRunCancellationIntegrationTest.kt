@@ -588,6 +588,9 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
         val submitted = submissions.submit(scope, namespace, workflowId, repoRoot.toString(), "attempt-cancelled:$attemptId", null)
         assertThat(submitted.queued).isTrue()
         OutboxDrainWorker(outboxDrain, runner, mockk<AgentOsProxyClient>(), ObjectMapper(), Clock.systemUTC()).drain()
+        // The worker only claims on the tick thread and runs the continuation on its own pool: wait for the
+        // durable outcome instead of assuming drain() returned after the run.
+        awaitContinuationDispatched()
 
         assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.CANCELLED)
         assertThat(statusOf(workflowId, "B")).isEqualTo(WorkflowStatuses.BLOCKED)
@@ -607,6 +610,13 @@ class StopRunCancellationIntegrationTest : Neo4jDomainIntegrationTest() {
         }
         assertThat(adapter.createCalls.get()).isZero()
         assertThat(adapter.startCalls.get()).isZero()
+    }
+
+    private fun awaitContinuationDispatched() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        fun dispatched() = outbox.findAllByOrganization(ORGANIZATION_ID)
+            .any { it.eventType == "session_continuation" && it.status == "dispatched" }
+        while (!dispatched() && System.nanoTime() < deadline) Thread.sleep(50)
     }
 
     // ---- a legitimate re-arm is never re-sealed by the cancellation of a previous attempt ----
