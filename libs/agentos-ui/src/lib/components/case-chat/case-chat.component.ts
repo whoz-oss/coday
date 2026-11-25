@@ -258,6 +258,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected readonly canAttach = this.exchangeState.canWriteCase
   /** Run cost of this case, polled once for the usage strip and the cost pause card (component-scoped, see providers). */
   private readonly runCost = inject(CaseRunCostStateService)
+  /** The run waits for its cost decision: the cost pause card then takes the place of the composer. */
+  protected readonly runCostPaused = this.runCost.paused
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef)
   /**
    * Files can be staged (picker + drop) only when the composer itself is usable: staging on
@@ -639,8 +641,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     effect(() => {
       const paused = this.runCost.paused()
       const appeared = paused && !wasPaused
+      const resolved = !paused && wasPaused
       wasPaused = paused
       if (appeared) afterNextRender(() => this.focusCostPauseControls(), { injector: this.injector })
+      // The textarea comes back with the draft it had: size it to that draft again.
+      if (resolved) afterNextRender(() => this.resizeComposer(), { injector: this.injector })
     })
 
     // Keep the composer sized to its current content, including after a message is sent

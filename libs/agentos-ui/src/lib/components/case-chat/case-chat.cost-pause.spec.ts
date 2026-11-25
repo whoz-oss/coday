@@ -17,6 +17,7 @@ import {
 import { of, Subject } from 'rxjs'
 import { CostPipe } from '../../pipes/cost.pipe'
 import { TokenCountPipe } from '../../pipes/token-count.pipe'
+import { AiModelStateService } from '../../services/ai-model-state.service'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
@@ -130,6 +131,9 @@ describe('CaseChatComponent — cost pause in the composer (rendered)', () => {
           },
         },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
+        // ngOnInit loads the models for the /model command: without this mock the real API client runs on the
+        // bare Configuration above and throws (selectHeaderAccept is not a function).
+        { provide: AiModelStateService, useValue: { listAvailable: jest.fn().mockReturnValue(of([])) } },
         { provide: UserStateService, useValue: { currentUser: signal<User | null>(null) } },
         {
           provide: USER_PREFERENCES_PORT,
@@ -186,7 +190,7 @@ describe('CaseChatComponent — cost pause in the composer (rendered)', () => {
 
   /** Answers the run-cost request in flight. */
   async function respond(state: RunCostDto): Promise<void> {
-    const request = requests[requests.length - 1]
+    const request = requests[requests.length - 1]!
     request.next(state)
     request.complete()
     await settle()
@@ -222,6 +226,30 @@ describe('CaseChatComponent — cost pause in the composer (rendered)', () => {
     expect((continueButton()?.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
       'Continue · double threshold to 20.00'
     )
+  })
+
+  it('replaces the input of the composer while the run is paused, and gives it back with its draft', async () => {
+    await openChat()
+    await respond(notPaused())
+    fixture.componentInstance['inputValue'].set('my draft')
+    await settle()
+    expect(root().querySelector('.case-chat__composer textarea')).not.toBeNull()
+
+    await refreshAfterAnswer('answer-1')
+    await respond(paused())
+
+    const composer = root().querySelector('.case-chat__composer')
+    expect(composer?.classList).toContain('case-chat__composer--paused')
+    expect(composer?.querySelector('textarea')).toBeNull()
+    expect(composer?.querySelector('.case-chat__actions')).toBeNull()
+
+    await refreshAfterAnswer('answer-2')
+    await respond(notPaused())
+
+    const input = root().querySelector<HTMLTextAreaElement>('.case-chat__composer textarea')
+    expect(root().querySelector('.case-chat__composer')?.classList).not.toContain('case-chat__composer--paused')
+    expect(input?.value).toBe('my draft')
+    expect(controls()).toBeNull()
   })
 
   it('shows no decision anywhere while the run is not paused', async () => {

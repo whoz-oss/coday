@@ -1,8 +1,11 @@
 @if (state.paused() && state.run(); as run) {
   <div class="cost-pause" data-cost-pause-controls>
-    <p class="cost-pause__lead" role="alert">
-      Cost threshold reached: {{ run.cost | agentosCost: run.unknownCostCount }} consumed. Continue?
-    </p>
+    <div class="cost-pause__head">
+      <span class="material-icons cost-pause__icon" aria-hidden="true">pause_circle</span>
+      <p class="cost-pause__lead" role="alert">
+        Cost threshold reached: {{ run.cost | agentosCost: run.unknownCostCount }} consumed. Continue?
+      </p>
+    </div>
     <p class="cost-pause__text">
       The next request is waiting for cost confirmation. Continuing keeps the current execution context.
     </p>

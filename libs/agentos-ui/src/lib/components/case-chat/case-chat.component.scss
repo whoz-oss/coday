@@ -1198,6 +1198,14 @@
     &:focus-within {
       border-color: var(--color-accent);
     }
+
+    // A run waiting for its cost decision: the card replaces the composer, which carries the warning on its own
+    // rounded frame (focus included: the focused button shows its own outline).
+    &--paused,
+    &--paused:focus-within {
+      border-color: color-mix(in srgb, var(--color-warning) 60%, var(--color-divider));
+      background: color-mix(in srgb, var(--color-warning) 8%, var(--color-bg));
+    }
   }
 
   &__autocomplete {
