@@ -32,6 +32,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.transaction.PlatformTransactionManager
 
 /**
  * Sequencer-level tests of the external polling of a `waiting_external` step: it is parked (not failed, no worker
@@ -45,6 +46,7 @@ class ExternalPollingSessionTest : Neo4jDomainIntegrationTest() {
     @Autowired private lateinit var evidenceRepository: WorkflowEvidenceRepository
     @Autowired private lateinit var interactionRepository: HumanInteractionRepository
     @Autowired private lateinit var sseHub: WorkflowSseHub
+    @Autowired private lateinit var transactionManager: PlatformTransactionManager
 
     @TempDir lateinit var repoRoot: Path
 
@@ -93,6 +95,7 @@ class ExternalPollingSessionTest : Neo4jDomainIntegrationTest() {
         val clock = MutableClock(Instant.parse("2026-06-01T10:00:00Z"))
         val service = SessionRunService(
             workflowRepository, evidenceRepository, interactionRepository, capability, sseHub,
+            transactionManager = transactionManager,
             outboxDrainService = drain, pollingProperties = properties, clock = clock,
         )
         return Fixture(service, capability, drain, clock)
@@ -111,7 +114,7 @@ class ExternalPollingSessionTest : Neo4jDomainIntegrationTest() {
         val f = fixture()
         every { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns pending()
         val notBefore = slot<Instant>()
-        every { f.drain.scheduleWake(any(), any(), any(), any(), any(), capture(notBefore)) } returns Unit
+        every { f.drain.scheduleWakeInCurrentTransaction(any(), any(), any(), any(), any(), capture(notBefore)) } returns Unit
 
         val result = f.service.runSession(scope, namespace, id, repoRoot)
 
@@ -219,7 +222,7 @@ class ExternalPollingSessionTest : Neo4jDomainIntegrationTest() {
         val f = fixture(ExternalPollingProperties(maxWaitSeconds = 90))
         every { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns pending()
         val notBefore = mutableListOf<Instant>()
-        every { f.drain.scheduleWake(any(), any(), any(), any(), any(), capture(notBefore)) } returns Unit
+        every { f.drain.scheduleWakeInCurrentTransaction(any(), any(), any(), any(), any(), capture(notBefore)) } returns Unit
         f.service.runSession(scope, namespace, id, repoRoot)
         f.clock.now = f.clock.now.plusSeconds(61)
         f.service.runSession(scope, namespace, id, repoRoot)
@@ -227,6 +230,26 @@ class ExternalPollingSessionTest : Neo4jDomainIntegrationTest() {
         // 60 s, then min(61 + 60, 90) = 90 s: the second wake lands exactly on the deadline.
         assertThat(notBefore).hasSize(2)
         assertThat(notBefore.last()).isEqualTo(Instant.parse("2026-06-01T10:00:00Z").plusSeconds(90))
+    }
+
+    @Test
+    fun `when the wake cannot be requested the park is rolled back and the step fails loudly`() {
+        val id = "poll-wake-failure"
+        start(id)
+        val f = fixture()
+        every { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns pending()
+        every { f.drain.scheduleWakeInCurrentTransaction(any(), any(), any(), any(), any(), any()) } throws IllegalStateException("outbox down")
+
+        val result = f.service.runSession(scope, namespace, id, repoRoot)
+
+        // Nothing was parked: no poll state, no waiting_external evidence, and no return/budget either.
+        assertThat(statusOf(id, "ci")).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(result.status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(workflowRepository.findStepStates(scope, namespace, id).first { it.stepId == "ci" }.payload).doesNotContainKey("poll")
+        assertThat(evidenceRepository.list(scope, namespace, id, "ci").filter { it.outcome == WorkflowStatuses.WAITING_EXTERNAL }).isEmpty()
+        val failure = evidenceRepository.list(scope, namespace, id, "ci").last { it.outcome == WorkflowStatuses.FAILED }
+        assertThat(failure.facts["code"]).isEqualTo("EXTERNAL_WAIT_SCHEDULING_FAILED")
+        assertThat(workflowRepository.findInstance(scope, namespace, id)!!.projection).doesNotContainKey("correctionCounts")
     }
 
     @Test

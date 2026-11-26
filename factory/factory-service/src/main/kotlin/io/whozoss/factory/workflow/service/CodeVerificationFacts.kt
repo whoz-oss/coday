@@ -2,6 +2,7 @@ package io.whozoss.factory.workflow.service
 
 import io.whozoss.factory.capability.CapabilityOutcome
 import io.whozoss.factory.capability.PREPARE_WORK_BRANCH
+import io.whozoss.factory.verification.redaction.SecretRedaction
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
@@ -91,11 +92,7 @@ private fun boundedStream(value: String): Map<String, Any?> {
     )
 }
 
-private fun redactAndBound(value: String, limit: Int): String {
-    var result = value
-    REDACTIONS.forEach { pattern -> result = pattern.replace(result, "$1=<redacted>") }
-    return result.take(limit)
-}
+private fun redactAndBound(value: String, limit: Int): String = SecretRedaction.redact(value).take(limit)
 
 private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray(StandardCharsets.UTF_8))
@@ -103,8 +100,3 @@ private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
 
 private const val MAX_OUTPUT_CHARS = 16_384
 private const val MAX_COMMAND_CHARS = 2_048
-private val REDACTIONS = listOf(
-    Regex("(?i)\\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY))\\s*=\\s*[^\\s]+"),
-    Regex("(?i)\\b(authorization)\\s*:\\s*[^\\r\\n]+"),
-    Regex("(?i)\\b(bearer)\\s+[^\\s]+"),
-)

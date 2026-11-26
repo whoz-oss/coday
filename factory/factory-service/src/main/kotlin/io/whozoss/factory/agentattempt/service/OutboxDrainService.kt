@@ -24,6 +24,9 @@ data class DrainReport(
     val failed: Int,
 )
 
+/** Status and due time of the continuation of a workflow, as stored. */
+data class ContinuationSnapshot(val status: String, val nextAttemptAt: Instant?)
+
 /**
  * Neo4j polling drain service for the former V4 `outbox_events` table.
  *
@@ -114,8 +117,47 @@ class OutboxDrainService(
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     fun scheduleWake(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String, workflowId: String,
         repoRoot: java.nio.file.Path, ticket: String?, notBefore: Instant) {
-        val payload = objectMapper.writeValueAsString(mapOf("namespaceId" to namespaceId, "workflowId" to workflowId,
+        requestWake(scope, namespaceId, workflowId, wakePayload(namespaceId, workflowId, repoRoot, ticket), notBefore)
+    }
+
+    /**
+     * Same delayed wake, but joined to the CALLER's transaction (propagation MANDATORY): the sequencer parks a
+     * step and requests its wake atomically, so a step is `waiting_external` if and only if a delayed wake exists.
+     * A failure here rolls the park back with it.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    fun scheduleWakeInCurrentTransaction(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String,
+        workflowId: String, repoRoot: java.nio.file.Path, ticket: String?, notBefore: Instant) {
+        requestWake(scope, namespaceId, workflowId, wakePayload(namespaceId, workflowId, repoRoot, ticket), notBefore)
+    }
+
+    /**
+     * Safety-net re-arm used by the sweeper of parked steps: the repo root and ticket come from the last
+     * `session_run_requested` submission of the workflow; without one the worker resolves the namespace repo root
+     * itself (`agentos-namespace`), exactly as for a result wake.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    fun rearmExternalWait(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String, workflowId: String,
+        notBefore: Instant) {
+        val payload = submissionContext(scope.organizationId, scope.workstreamId, namespaceId, workflowId)
+            ?: objectMapper.writeValueAsString(mapOf("namespaceId" to namespaceId, "workflowId" to workflowId,
+                "repoRootSource" to "agentos-namespace"))
+        requestWake(scope, namespaceId, workflowId, payload, notBefore)
+    }
+
+    /** Read-only view of the continuation of a workflow, or null when none exists. */
+    @Transactional(readOnly = true)
+    fun continuationSnapshot(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String,
+        workflowId: String): ContinuationSnapshot? =
+        outbox.findById(OutboxEventNode.compositeId(scope.organizationId, continuationId(scope.workstreamId, namespaceId, workflowId)))
+            .orElse(null)?.let { ContinuationSnapshot(it.status, it.nextAttemptAt) }
+
+    private fun wakePayload(namespaceId: String, workflowId: String, repoRoot: java.nio.file.Path, ticket: String?): String =
+        objectMapper.writeValueAsString(mapOf("namespaceId" to namespaceId, "workflowId" to workflowId,
             "repoRoot" to repoRoot.toString(), "ticket" to ticket))
+
+    private fun requestWake(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String, workflowId: String,
+        payload: String, notBefore: Instant) {
         val eventId = continuationId(scope.workstreamId, namespaceId, workflowId)
         outbox.requestDelayedWake(OutboxEventNode.compositeId(scope.organizationId, eventId), scope.organizationId,
             eventId, scope.workstreamId, payload, Instant.now(), notBefore)

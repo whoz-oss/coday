@@ -3142,6 +3142,9 @@ components:
             $ref: "#/components/schemas/StepSummary"
         truncated:
           type: boolean
+        waitingExternal:
+          type: integer
+          format: int32
       required:
       - blocked
       - items
@@ -3395,6 +3398,9 @@ components:
           type: integer
           format: int32
         environments:
+          type: integer
+          format: int32
+        waitingExternal:
           type: integer
           format: int32
       required:

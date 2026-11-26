@@ -16,6 +16,8 @@ data class ExternalPollingProperties(
     val maxIntervalSeconds: Int = 300,
     /** Maximum wait of one step execution (30 minutes). */
     val maxWaitSeconds: Int = 1800,
+    /** A parked step whose next poll is overdue by more than this is checked by the safety-net sweeper. */
+    val sweepGraceSeconds: Int = 120,
 ) {
     /** Effective interval in seconds for a requested one, kept within the configured bounds. */
     fun clampInterval(requestedSeconds: Int?): Int {

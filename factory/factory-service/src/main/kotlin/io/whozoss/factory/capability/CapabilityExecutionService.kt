@@ -265,6 +265,8 @@ class CapabilityExecutionService(
     /**
      * True when the latest attempt of [stepId] has an accepted PASS or FAIL result
      * (e.g. submitted after an out-of-band resumption of a NEEDS_RESEARCH step).
+     * NEEDS_RESEARCH and IN_PROGRESS are not final: the former is blocked on research, the latter is a poll
+     * the sequencer parks in `waiting_external`.
      */
     fun hasAcceptedFinalResult(
         scope: TenantScope,
@@ -274,7 +276,7 @@ class CapabilityExecutionService(
     ): Boolean {
         val latest = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
         val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, stepId, latest.attemptId) ?: return false
-        return accepted.status != AgentStepResultStatus.NEEDS_RESEARCH
+        return accepted.status == AgentStepResultStatus.PASS || accepted.status == AgentStepResultStatus.FAIL
     }
 
     /** A finalized durable attempt may be replayed without dispatching a second turn. */
@@ -327,7 +329,10 @@ class CapabilityExecutionService(
     ): CapabilityExecution {
         val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
         val parentRunId = parentRunIdOf(instance)
-        val occupancyService = if (parentRunId != null || hasAdoptedStandaloneWorkspace(scope, instance)) {
+        // The CI check only reads `.git` files and calls GitHub: it never writes the worktree, so it must not take
+        // the exclusive occupancy (a writer holding it would otherwise fail every poll).
+        val readOnlyCiCheck = step.responsibility.name == GITHUB_PR_CHECKS
+        val occupancyService = if (!readOnlyCiCheck && (parentRunId != null || hasAdoptedStandaloneWorkspace(scope, instance))) {
             worktreeExecutionOccupancyService
                 ?: error("Worktree execution occupancy service is required for parent Run code fragments")
         } else null
@@ -335,6 +340,15 @@ class CapabilityExecutionService(
         val occupancy = try {
             occupancyService?.acquireForWorkflow(scope, parentRunId ?: workflowId, "code", ownerId, repoRoot)
         } catch (_: WorktreeExecutionOccupancyConflict) {
+            // Second safeguard: a read-only CI poll never fails because of a writer, it just polls again.
+            if (readOnlyCiCheck) {
+                return CapabilityExecution(
+                    CapabilityOutcome.ExternalPending(
+                        stepId = step.id, source = "ci-checks", reason = "CI_WORKTREE_OCCUPIED",
+                        summary = "The run worktree is occupied by another writer; the CI check will be retried.",
+                    ),
+                )
+            }
             return CapabilityExecution(
                 CapabilityOutcome.CodeRefused(
                     stepId = step.id,
@@ -1859,7 +1873,8 @@ class CapabilityExecutionService(
         if (existing != null && existing.status.terminal) {
             if (existing.status == AgentAttemptStatus.INDETERMINATE && existing.failureCode == "AGENT_NEEDS_RESEARCH" && step.decision == null) {
                 val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, step.id, attemptId)
-                if (accepted != null && accepted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
+                // Only a final PASS/FAIL is replayed here: an accepted IN_PROGRESS is a poll, never an AgentFailed.
+                if (accepted != null && (accepted.status == AgentStepResultStatus.PASS || accepted.status == AgentStepResultStatus.FAIL)) {
                     val outcome = if (accepted.status == AgentStepResultStatus.PASS) {
                         CapabilityOutcome.AgentCompleted(
                             step.id,

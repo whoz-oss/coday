@@ -113,7 +113,7 @@ class PullRequestChecksCapabilityTest {
         git()
         val log = "header-dropped\n" + "x".repeat(40_000) + "\nGITHUB_TOKEN=ghs_supersecret\nAuthorization: Bearer abc123\nFAILED SomeTest"
         routes["/repos/acme/widgets/actions/jobs/2/logs"] = { reply(it, 200, log) }
-        serve(runs = listOf(run(1, "validate-ts", "completed", "success"), run(2, "validate-jvm", "completed", "failure"), run(3, "external", "completed", "cancelled", app = "circleci")))
+        serve(runs = listOf(run(1, "validate-ts", "completed", "success"), run(2, "validate-jvm", "completed", "failure"), run(3, "external", "completed", "timed_out", app = "circleci")))
         val outcome = check() as CapabilityOutcome.CiChecksCompleted
         assertThat(outcome.passed).isFalse()
         assertThat(outcome.failedChecks.map { it["name"] }).containsExactly("validate-jvm", "external")
@@ -124,6 +124,72 @@ class PullRequestChecksCapabilityTest {
         assertThat(excerpt.length).isLessThanOrEqualTo(16_384 + 64)
         // A non GitHub Actions failure keeps its summary but never triggers a log download.
         assertThat(outcome.failedChecks.last()).doesNotContainKey("logExcerpt")
+    }
+
+    @Test
+    fun `a cancelled or stale check is not a verdict and keeps polling`() {
+        git(); serve(runs = listOf(run(1, "validate-ts", "completed", "success"), run(2, "validate-jvm", "completed", "cancelled")))
+        assertThat(pendingReason(check())).isEqualTo("CI_CHECKS_NOT_CONCLUSIVE")
+        serve(runs = listOf(run(1, "validate-ts", "completed", "stale")))
+        assertThat(pendingReason(check())).isEqualTo("CI_CHECKS_NOT_CONCLUSIVE")
+        serve(runs = listOf(run(1, "validate-ts", "completed", "action_required")))
+        assertThat(pendingReason(check())).isEqualTo("CI_CHECKS_NOT_CONCLUSIVE")
+    }
+
+    @Test
+    fun `a cancelled run followed by a successful rerun of the same name passes`() {
+        git()
+        val cancelled = run(1, "validate-jvm", "completed", "cancelled").replace("\"name\"", "\"started_at\":\"2026-01-01T10:00:00Z\",\"name\"")
+        val rerun = run(2, "validate-jvm", "completed", "success").replace("\"name\"", "\"started_at\":\"2026-01-01T10:05:00Z\",\"name\"")
+        serve(runs = listOf(cancelled, rerun))
+        val outcome = check() as CapabilityOutcome.CiChecksCompleted
+        assertThat(outcome.passed).isTrue()
+        assertThat(outcome.checks).hasSize(1)
+    }
+
+    @Test
+    fun `a failing status deep in the status list is a red verdict`() {
+        git()
+        val statuses = (1..60).joinToString(",", "[", "]") { i ->
+            val state = if (i == 40) "failure" else "success"
+            """{"context":"ctx-$i","state":"$state","target_url":"","description":""}"""
+        }
+        serve(runs = listOf(run(1, "a", "completed", "success")), statuses = statuses)
+        val outcome = check() as CapabilityOutcome.CiChecksCompleted
+        assertThat(outcome.passed).isFalse()
+        assertThat(outcome.failedChecks.single()["name"]).isEqualTo("ctx-40")
+    }
+
+    @Test
+    fun `a rate limited GitHub is pending with the requested delay`() {
+        git()
+        val reset = System.currentTimeMillis() / 1000 + 120
+        routes["/repos/acme/widgets/pulls"] = {
+            reply(it, 403, """{"message":"API rate limit exceeded"}""", mapOf("x-ratelimit-remaining" to "0", "x-ratelimit-reset" to reset.toString()))
+        }
+        val outcome = check() as CapabilityOutcome.ExternalPending
+        assertThat(outcome.reason).startsWith("CI_GITHUB_TRANSIENT")
+        assertThat(outcome.retryAfterSeconds).isBetween(100, 125)
+
+        routes["/repos/acme/widgets/pulls"] = { reply(it, 403, """{"message":"You have exceeded a secondary rate limit."}""") }
+        assertThat(pendingReason(check())).startsWith("CI_GITHUB_TRANSIENT")
+
+        routes["/repos/acme/widgets/pulls"] = { reply(it, 403, """{"message":"Forbidden"}""") }
+        assertThat(refusedCode(check())).isEqualTo("CI_GITHUB_REFUSED")
+    }
+
+    @Test
+    fun `a repository outside the allow list is refused before any call`() {
+        git(origin = "https://github.com/evil/other.git"); serve()
+        val restricted = PullRequestChecksCapability(
+            GitHubChecksProperties(token = "t", apiBaseUrl = "http://127.0.0.1:${server.address.port}", allowedRepositories = listOf("Acme/Widgets")),
+            GitHubChecksClient(GitHubChecksProperties(token = "t", apiBaseUrl = "http://127.0.0.1:${server.address.port}")),
+        )
+        assertThat(refusedCode(restricted.check("ci", repo))).isEqualTo("CI_REPOSITORY_NOT_ALLOWED")
+        assertThat(requests).isEmpty()
+
+        git(); serve(runs = listOf(run(1, "a", "completed", "success")))
+        assertThat((restricted.check("ci", repo) as CapabilityOutcome.CiChecksCompleted).passed).isTrue()
     }
 
     @Test

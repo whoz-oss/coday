@@ -95,6 +95,10 @@ factory:
     min-interval-seconds: ${FACTORY_POLLING_MIN_INTERVAL_SECONDS:30}
     max-interval-seconds: ${FACTORY_POLLING_MAX_INTERVAL_SECONDS:300}
     max-wait-seconds: ${FACTORY_POLLING_MAX_WAIT_SECONDS:1800}
+    # Safety net: a parked step whose next poll is overdue by more than the grace, and whose delayed wake is
+    # missing, dead or later than expected, is re-woken (so a step always ends by its deadline + sweep + grace).
+    sweep-interval-ms: ${FACTORY_POLLING_SWEEP_INTERVAL_MS:60000}
+    sweep-grace-seconds: ${FACTORY_POLLING_SWEEP_GRACE_SECONDS:120}
   ci:
     github:
       # Deterministic GitHub PR checks step (`github-pr-checks`); never logged.
@@ -102,6 +106,10 @@ factory:
       api-base-url: ${FACTORY_GITHUB_API_URL:https://api.github.com}
       repository: ${FACTORY_GITHUB_REPOSITORY:}
       request-timeout-ms: ${FACTORY_GITHUB_REQUEST_TIMEOUT_MS:10000}
+      # owner/repo entries (comma separated) the token may be used for; empty = unrestricted unless `repository` is set.
+      allowed-repositories: ${FACTORY_GITHUB_ALLOWED_REPOSITORIES:}
+      max-log-download-bytes: ${FACTORY_GITHUB_MAX_LOG_DOWNLOAD_BYTES:20971520}
+      poll-budget-ms: ${FACTORY_GITHUB_POLL_BUDGET_MS:30000}
   workspace:
     # Lot F: read-only workspace pre-check + run-worktree binding of code steps.
     enabled: ${FACTORY_WORKSPACE_ENABLED:true}

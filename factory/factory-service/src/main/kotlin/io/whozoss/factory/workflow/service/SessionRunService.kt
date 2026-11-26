@@ -14,6 +14,7 @@ import io.whozoss.factory.oracle.registry.OracleDefinitionRegistry
 import io.whozoss.factory.oracle.service.OracleExecutionService
 import io.whozoss.factory.oracle.service.OracleRunCommand
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.verification.redaction.SecretRedaction
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
@@ -757,7 +758,15 @@ class SessionRunService(
         // External polling: a pending CI or an agent IN_PROGRESS parks the step (non-terminal, no worker held,
         // no correction budget consumed) or, once its window elapsed, fails it with POLL_TIMEOUT_EXCEEDED.
         if (execution.outcome is CapabilityOutcome.ExternalPending || execution.outcome is CapabilityOutcome.AgentInProgress) {
-            return parkExternalWait(scope, namespaceId, workflowId, step, execution, statuses, executionId, expectedRevision)
+            return try {
+                parkExternalWait(scope, namespaceId, workflowId, step, execution, statuses, executionId, expectedRevision, repoRoot, ticket)
+            } catch (schedulingFailure: ExternalWaitSchedulingException) {
+                // The park and its wake commit together: nothing was parked, so fail loud (technical failure,
+                // no return, no budget) instead of leaving a step that nobody will ever wake.
+                reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
+                recordStepFailure(scope, namespaceId, workflowId, step, schedulingFailure, expectedRevision, statuses)
+                WorkflowStatuses.FAILED
+            }
         }
         var terminal = classify(execution.outcome)
         // Lot E: an authoritative NEEDS_RESEARCH verdict BLOCKS the step (its
@@ -940,6 +949,8 @@ class SessionRunService(
         statuses: SessionProgress,
         executionId: String?,
         expectedRevision: Int,
+        repoRoot: Path,
+        ticket: String?,
     ): String {
         val now = clock.instant()
         val (source, reason, requestedInterval, attemptId) = when (val outcome = execution.outcome) {
@@ -982,10 +993,23 @@ class SessionRunService(
                 WorkflowStatuses.WAITING_EXTERNAL, execution.attemptId, execution.evidenceId)
             transition(scope, namespaceId, workflowId, step, WorkflowStatuses.WAITING_EXTERNAL, expectedRevision)
             recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.WAITING_EXTERNAL, execution, statuses, mapOf("poll" to poll))
+            // Same transaction as the park: the step is `waiting_external` if and only if a delayed wake exists.
+            outboxDrainService?.scheduleWakeInCurrentTransaction(scope, namespaceId, workflowId, repoRoot, ticket, nextPollAt)
+            Unit
         }
-        if (executionId != null) newTransaction { park() } else park()
+        try {
+            newTransaction { park() }
+        } catch (error: Exception) {
+            // The in-memory view was ahead of the rolled back store.
+            statuses.polls.remove(step.id)
+            throw ExternalWaitSchedulingException(error)
+        }
         return WorkflowStatuses.WAITING_EXTERNAL
     }
+
+    /** The park of a polling step could not be committed together with its wake: nothing was parked. */
+    private class ExternalWaitSchedulingException(cause: Throwable) :
+        RuntimeException("EXTERNAL_WAIT_SCHEDULING_FAILED: ${cause.message ?: cause.javaClass.simpleName}", cause)
 
     private data class PendingWait(val source: String, val reason: String, val retryAfterSeconds: Int?, val attemptId: String?)
 
@@ -1091,7 +1115,9 @@ class SessionRunService(
             .mapNotNull { (statuses.polls[it.id]?.get("nextPollAt") as? String)?.let(Instant::parse) }
             .minOrNull() ?: return
         runCatching { drain.scheduleWake(scope, namespaceId, workflowId, repoRoot, ticket, next) }
-            .onFailure { logger.warn(it) { "The next external poll of workflow '$workflowId' could not be scheduled" } }
+            // The park already requested this wake atomically; a failure here only loses the idempotent
+            // re-assertion, but it is still loud because the sweeper is then the only safety net.
+            .onFailure { logger.error(it) { "The next external poll of workflow '$workflowId' could not be re-asserted" } }
     }
 
     /**
@@ -1509,10 +1535,7 @@ class SessionRunService(
 
     private fun safeDiagnostic(error: Exception): String {
         val raw = error.message ?: error.javaClass.simpleName
-        return raw
-            .replace(Regex("(?i)\\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY))\\s*=\\s*[^\\s]+"), "$1=<redacted>")
-            .replace(Regex("(?i)\\b(bearer)\\s+[^\\s]+"), "$1 <redacted>")
-            .take(4_096)
+        return SecretRedaction.redact(raw).take(4_096)
     }
 
     private fun recordFailureEvidence(
@@ -1537,8 +1560,8 @@ class SessionRunService(
                 facts = mapOf(
                     "stepId" to step.id,
                     "status" to WorkflowStatuses.FAILED,
-                    "code" to "STEP_EXECUTION_ERROR",
-                    "message" to (error.message ?: error.toString()),
+                    "code" to if (error is ExternalWaitSchedulingException) "EXTERNAL_WAIT_SCHEDULING_FAILED" else "STEP_EXECUTION_ERROR",
+                    "message" to SecretRedaction.redact(error.message ?: error.toString()).take(4_096),
                 ),
                 idempotencyKey = null,
                 createdAt = null,
