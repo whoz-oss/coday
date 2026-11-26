@@ -39,12 +39,12 @@ class ChatClientProvider(
     private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) {
     fun getChatClient(
-        modelConfig: AiModel,
-        providerConfig: AiProvider,
-        caseId: String? = null,
-        accumulator: UsageAccumulator? = null,
-        maxToolRounds: Int? = null,
-        promptCacheTtl: PromptCacheTtl,
+      modelConfig: AiModel,
+      providerConfig: AiProvider,
+      caseId: String? = null,
+      accumulator: UsageAccumulator? = null,
+      maxToolRounds: Int? = null,
+      promptCacheTtl: PromptCacheTtl = PromptCacheTtl.STANDARD,
     ): ChatClient {
         val trackedAccumulator = accumulator?.takeIf { usageConfig.enabled }
         val providerCost = trackedAccumulator?.let { ProviderReportedCost() }
