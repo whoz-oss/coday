@@ -25,8 +25,6 @@ interface StoreStub {
   stop: jest.Mock
   remove: jest.Mock
   restore: jest.Mock
-  openSupervisorCase: jest.Mock
-  restoreSupervisorCase: jest.Mock
 }
 
 function createRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
@@ -90,8 +88,6 @@ function createStore(
     stop: jest.fn(),
     remove: jest.fn(),
     restore: jest.fn(),
-    openSupervisorCase: jest.fn().mockReturnValue(of(null)),
-    restoreSupervisorCase: jest.fn().mockReturnValue(undefined),
   }
 }
 

@@ -150,32 +150,6 @@
   padding-top: 2px;
 }
 
-// Supervisor button: keep icon and label side-by-side.
-.supervisor-btn {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 4px;
-}
-
-// Spin animation for the loading icon inside the supervisor button.
-.spin-icon {
-  font-size: 16px;
-  width: 16px;
-  height: 16px;
-  animation: sf-spin 1s linear infinite;
-}
-
-@keyframes sf-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-// Inline error message shown below the action bar when supervisor case creation fails.
-// Displayed as a visible block (not just a tooltip/title) so the user cannot miss it.
 @media (max-width: 760px) {
   .card {
     padding: 16px;
@@ -195,24 +169,5 @@
   .run-metrics {
     justify-content: flex-start;
     flex-wrap: wrap;
-  }
-}
-
-.supervisor-error {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 4px 0 0;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm, 0);
-  background: color-mix(in srgb, var(--color-error) 12%, transparent);
-  color: var(--sf-error-text);
-  font-size: 13px;
-
-  &__icon {
-    font-size: 16px;
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
   }
 }

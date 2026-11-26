@@ -1142,6 +1142,35 @@ describe('FactoryStore', () => {
     expect(session?.phase.attemptStatus).toBe('running')
   })
 
+  it('gives the card the run root case from the entry agent attempt when the snapshot has no controller case', () => {
+    flushInitialWorkflows([snapshot])
+    expect(store.runs()[0]?.mainCaseId).toBeUndefined()
+    expect(store.runs()[0]?.controllerCaseId).toBeUndefined()
+
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      {
+        workflowId: 'wf-1',
+        data: [
+          {
+            attemptId: 'a-1',
+            stepId: 'plan',
+            attemptNumber: 1,
+            agentName: 'planner',
+            status: 'completed',
+            caseId: 'case-root',
+          },
+        ],
+      }
+    )
+
+    expect(store.runs()[0]?.controllerCaseId).toBeUndefined()
+    expect(store.runs()[0]?.mainCaseId).toBe('case-root')
+    expect(store.runs()[0]?.run?.mainCaseId).toBe('case-root')
+    expect(store.session('wf-1')?.mainCaseId).toBe('case-root')
+  })
+
   it('degrades gracefully when the attempts fetch fails', () => {
     flushInitialWorkflows([snapshot])
     store.selectSession('wf-1')

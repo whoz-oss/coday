@@ -60,5 +60,6 @@ export {
   workflowIdOf,
   namespaceOf,
   controllerCaseIdOf,
+  resolveMainCaseId,
   deriveRunStatus,
 } from './workflow'
