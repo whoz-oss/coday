@@ -56,6 +56,14 @@ class OutcomeTransitionServiceTest {
         val history = instance.projection["stepExecutions"] as List<*>
         assertThat(history).hasSize(2)
         assertThat((history.last() as Map<*, *>)["executionId"]).isNotEqualTo("exec")
+        // AC1/AC2: the run stays active (ready), the rejected execution keeps its FAIL and attempt, the replay is pending.
+        assertThat(instance.instance["status"]).isEqualTo("ready")
+        assertThat(instance.projection["status"]).isEqualTo("ready")
+        val triggering = history.first() as Map<*, *>
+        assertThat(triggering["executionId"]).isEqualTo("exec")
+        assertThat(triggering["status"]).isEqualTo("failed")
+        assertThat(triggering["attemptId"]).isEqualTo("attempt")
+        assertThat((history.last() as Map<*, *>)["status"]).isEqualTo("pending")
         assertThat(service.advance(scope, "ns", "wf", listOf(step), "/repo", null)).isFalse()
         verify(exactly = 1) { submissions.submit(scope, "ns", "wf", "/repo", any(), null) }
     }

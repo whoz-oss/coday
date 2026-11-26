@@ -100,7 +100,16 @@
                     autocomplete="off"
                   />
                 </ds-form-field>
-                <ds-form-field label="Default value" [controlId]="'param-default-' + $index">
+                <ds-form-field
+                  label="Default value"
+                  [controlId]="'param-default-' + $index"
+                  required
+                  [error]="
+                    group.controls['defaultValue'].invalid && group.controls['defaultValue'].touched
+                      ? 'Default value is required.'
+                      : null
+                  "
+                >
                   <input
                     dsControl
                     [id]="'param-default-' + $index"
