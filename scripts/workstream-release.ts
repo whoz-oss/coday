@@ -6,6 +6,11 @@
  *   2. Never run releaseChangelog — it commits, tags, and pushes, all wrong on an integration branch.
  *   3. Never publish to the `latest` dist-tag — it would reach every consumer of the package.
  *
+ * Flow: stamp versions -> build ALL npm packages -> publish. The build is a separate, all-or-nothing
+ * step placed before the first publish: if any build fails the script exits 1 and nothing is published
+ * (otherwise releasePublish would publish each package as soon as its own build ends, leaving a
+ * partial set on npm).
+ *
  * CLI contract (fixed — another agent writes the workflow that calls this):
  *   npx tsx scripts/workstream-release.ts --version <exact-version> --slug <slug> [--dry-run]
  */
@@ -14,7 +19,9 @@
 // This omission must NEVER be "fixed" — it is the sole mechanism preventing
 // workstream builds from committing version bumps, creating tags, and pushing
 // to git, all of which would corrupt the master release baseline.
+import { execSync } from 'child_process'
 import { stampVersion, publishPackages } from './utils/release-steps'
+import { buildNpmPackages } from './utils/build-npm-packages'
 import { isValidSlug, isValidWorkstreamVersion } from './utils/workstream-validators'
 
 // Re-export validators so they are testable from the spec without pulling in the nx dependency chain.
@@ -75,9 +82,18 @@ async function main(): Promise<void> {
   // an explicit specifier bypasses conventional-commit resolution entirely.
   const { releaseGraph, projectsVersionData } = await stampVersion(version, dryRun)
 
-  // Step 2: Publish to the workstream-scoped dist-tag.
+  // Step 2: Build every npm package BEFORE publishing any of them. The stamp comes first because each
+  // build copies package.json into dist. execSync throws on a non-zero exit, so a failed build lands in
+  // the catch below (exit 1) and publishPackages is never reached. Also runs in dry-run: it publishes
+  // nothing and validates that the set builds.
+  buildNpmPackages((command) => execSync(command, { stdio: 'inherit' }))
+
+  // Step 3: Publish to the workstream-scoped dist-tag. Everything is already built, so skip the
+  // per-package `dependsOn: build` of the publish targets.
   // Rule 3: NEVER use 'latest' here — it would reach every consumer of the package.
-  await publishPackages(releaseGraph, projectsVersionData, `workstream-${slug}`, dryRun)
+  await publishPackages(releaseGraph, projectsVersionData, `workstream-${slug}`, dryRun, {
+    excludeTaskDependencies: true,
+  })
 
   console.log(`Workstream release complete: ${version} published to dist-tag workstream-${slug}`)
 }

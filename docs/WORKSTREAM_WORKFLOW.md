@@ -174,9 +174,15 @@ AgentOS/Factory JARs at startup from the GitHub prerelease of the **same version
 The dist-tag only moves once everything it depends on can be downloaded. Publishing npm first
 opened a window where a freshly published tag pointed at a version with no JARs yet.
 
+Inside `publish-npm`, `scripts/workstream-release.ts` stamps the version, then builds **all** the
+npm packages in one `nx run-many` step, and only then publishes. A single build failure exits
+non-zero with nothing published. Without this gate, `releasePublish` published each package as soon
+as its own build was done, which produced the partial sets `0.0.0-workstream-forge.310` and `.311`
+(`coday-web` on npm, `coday-client` missing).
+
 If an earlier job fails, npm is never published and the reserved tag is left dangling. If only
-`publish-npm` fails, re-running that job is safe: the nx publish executor treats an
-already-published version as success.
+`publish-npm` fails, re-running that job is safe: a build failure published nothing, and the nx
+publish executor treats an already-published version as success.
 
 ### The tag is a reservation, pushed *before* publishing
 
@@ -500,7 +506,7 @@ The no-commit / no-tag prerelease flow is a supported path, not a workaround:
 ### Script structure
 
 Extract a shared `scripts/utils/release-steps.ts` exposing `stampVersion(exactVersion, dryRun)`
-and `publishPackages(releaseGraph, versionData, distTag, dryRun)`. `stampVersion` owns the
+and `publishPackages(releaseGraph, versionData, distTag, dryRun, options?)`. `stampVersion` owns the
 `updateTomlVersions` call, which must run after version computation and before any publish.
 
 - `scripts/release.ts` (master) — keeps `releaseChangelog()`, which is **never shared**.
