@@ -32,11 +32,8 @@ class KtlintToolCancellationUnitSpec :
         /** Hard bound: a cancellation that does not interrupt would take the 60 s of the hanging file. */
         val cancelBoundMillis = 5_000L
 
-        /** Longer than the cancellation, shorter than the test timeout. */
-        val busyMillis = 2_000L
-
-        /** Time given to a worker that would wrongly go on with the next file, once it is done with the busy one. */
-        val graceMillis = 300L
+        /** Far longer than any test: a busy file only ends when the test releases it. */
+        val busyMillis = 60_000L
 
         fun CountDownLatch.awaitOpen(): Boolean = await(cancelBoundMillis, TimeUnit.MILLISECONDS)
 
@@ -77,8 +74,10 @@ class KtlintToolCancellationUnitSpec :
         "cancelling format while the engine is busy on a file lets that file finish but stops before the next one" {
             withProject { projectDir ->
                 listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
-                val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = busyMillis)
-                val tool = KtlintFormatTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner))
+                val pool = daemonPool(threads = 1)
+                val release = CountDownLatch(1)
+                val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = busyMillis, release = release)
+                val tool = KtlintFormatTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner, worker = pool))
                 val input = KtlintFormatTool.Input(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS)
 
                 runBlocking {
@@ -93,8 +92,9 @@ class KtlintToolCancellationUnitSpec :
                 }
 
                 // the file in progress is finished, then the worker sees the interruption before the next file
+                release.countDown()
                 runner.busyFinished.awaitOpen() shouldBe true
-                Thread.sleep(graceMillis)
+                pool.awaitIdle()
                 runner.processed shouldBe listOf("A.kt", "B.kt")
             }
         }
@@ -128,8 +128,10 @@ class KtlintToolCancellationUnitSpec :
         "cancelling check while the engine is busy on a file stops before the next one" {
             withProject { projectDir ->
                 listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
-                val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = busyMillis)
-                val tool = KtlintCheckTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner))
+                val pool = daemonPool(threads = 1)
+                val release = CountDownLatch(1)
+                val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = busyMillis, release = release)
+                val tool = KtlintCheckTool(bounded = isolatedRun(projectRoot = projectDir, runner = runner, worker = pool))
                 val input = KtlintCheckTool.Input(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS)
 
                 runBlocking {
@@ -142,8 +144,9 @@ class KtlintToolCancellationUnitSpec :
                     call.isCancelled shouldBe true
                 }
 
+                release.countDown()
                 runner.busyFinished.awaitOpen() shouldBe true
-                Thread.sleep(graceMillis)
+                pool.awaitIdle()
                 runner.processed shouldBe listOf("A.kt", "B.kt")
             }
         }

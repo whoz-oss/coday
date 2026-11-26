@@ -1,6 +1,7 @@
 package io.whozoss.agentos.plugins.ktlint
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldMatch
@@ -11,7 +12,7 @@ import io.whozoss.agentos.sdk.tool.ToolTimeout
 import java.nio.file.Files
 import java.time.Duration
 import java.util.UUID
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.CountDownLatch
 
 class KtlintFormatToolUnitSpec :
     StringSpec({
@@ -94,6 +95,55 @@ class KtlintFormatToolUnitSpec :
             }
         }
 
+        "format caps the remaining violations listed and says how many were left out, the counts staying the real ones" {
+            withProject { projectDir ->
+                projectDir.writeFile(relativePath = "Generated.kt")
+                val total = MAX_REPORTED_VIOLATIONS + 50
+                val tool = KtlintFormatTool(bounded = isolatedRun(projectRoot = projectDir, runner = ManyViolationsRunner(perFile = total)))
+
+                val report = tool.format(files = listOf("Generated.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText()
+
+                report shouldContain "$total remaining"
+                report shouldContain "Generated.kt:$MAX_REPORTED_VIOLATIONS:1 violation"
+                report shouldNotContain "Generated.kt:${MAX_REPORTED_VIOLATIONS + 1}:1 violation"
+                report shouldContain "... 50 more violation(s) not shown ($total total)"
+            }
+        }
+
+        "the description tells the agent that the remaining violations are capped" {
+            withProject { projectDir ->
+                KtlintFormatTool(projectRoot = projectDir).description shouldContain "At most $MAX_REPORTED_VIOLATIONS remaining violations"
+            }
+        }
+
+        "format lists the file it rewrote when a later file is not valid Kotlin, with the real engine" {
+            withProject { projectDir ->
+                val rewritten = projectDir.writeFile(relativePath = "A.kt", content = TRAILING_SPACE_SOURCE)
+                projectDir.writeFile(relativePath = "B.kt", content = NOT_KOTLIN_SOURCE)
+                val tool = KtlintFormatTool(projectRoot = projectDir)
+
+                val error = tool.format(files = listOf("A.kt", "B.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText()
+
+                error shouldContain "ktlint failed:"
+                error shouldContain "modified: A.kt"
+                error shouldContain "Failing file: B.kt"
+                Files.readString(rewritten) shouldBe CLEAN_SOURCE
+            }
+        }
+
+        "format lists nothing as modified when the file in progress is the first one and does not parse" {
+            withProject { projectDir ->
+                val broken = projectDir.writeFile(relativePath = "B.kt", content = NOT_KOTLIN_SOURCE)
+                val tool = KtlintFormatTool(projectRoot = projectDir)
+
+                val error = tool.format(files = listOf("B.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText()
+
+                error shouldContain "Failing file: B.kt"
+                error shouldNotContain "modified:"
+                Files.readString(broken) shouldBe NOT_KOTLIN_SOURCE
+            }
+        }
+
         "format stops at the timeout, does not process the next files and lists the files already modified" {
             withProject { projectDir ->
                 projectDir.writeFile(relativePath = "A.kt", content = CLEAN_SOURCE)
@@ -130,10 +180,13 @@ class KtlintFormatToolUnitSpec :
         "format names the file still in progress as possibly modified when its worker does not end in time" {
             withProject { projectDir ->
                 listOf("A.kt", "B.kt", "C.kt").forEach { projectDir.writeFile(relativePath = it) }
-                val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = 3_000)
+                val release = CountDownLatch(1)
+                val pool = daemonPool(threads = 1)
+                val runner = BusyRunner(busyOn = setOf("B.kt"), busyMillis = 60_000, release = release)
                 val tool =
                     KtlintFormatTool(
-                        bounded = isolatedRun(projectRoot = projectDir, runner = runner, settleTimeout = Duration.ofMillis(100)),
+                        bounded =
+                            isolatedRun(projectRoot = projectDir, runner = runner, settleTimeout = Duration.ofMillis(100), worker = pool),
                     )
 
                 val error = tool.format(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = 1).errorText()
@@ -141,7 +194,12 @@ class KtlintFormatToolUnitSpec :
                 error shouldContain "modified: A.kt"
                 error shouldContain "may be modified after this answer: B.kt"
                 error shouldContain "ktlint_format"
-                runner.busyFinished.await(10, TimeUnit.SECONDS) shouldBe true
+                // the worker was still on B.kt when the answer was given, and never goes on to C.kt once it is over
+                runner.busyFinished.count shouldBe 1L
+                release.countDown()
+                awaitSignal(latch = runner.busyFinished) shouldBe true
+                pool.awaitIdle()
+                runner.processed shouldNotContain "C.kt"
             }
         }
 

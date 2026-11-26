@@ -86,6 +86,30 @@ class KotlinSourceResolverUnitSpec :
             }
         }
 
+        "rejects a symbolic link to a file outside the project root" {
+            withProject { projectDir ->
+                withProject { outsideDir ->
+                    val secret = outsideDir.writeFile(relativePath = "Secret.kt")
+                    Files.createSymbolicLink(projectDir.resolve("Linked.kt"), secret)
+                    val resolver = KotlinSourceResolver(projectRoot = projectDir)
+
+                    val exception = shouldThrow<IllegalArgumentException> { resolver.resolve(relativePaths = listOf("Linked.kt")) }
+
+                    exception.message shouldContain "outside the project"
+                }
+            }
+        }
+
+        "accepts a symbolic link to a file that stays inside the project root, resolved to its real path" {
+            withProject { projectDir ->
+                val target = projectDir.writeFile(relativePath = "src/Target.kt")
+                Files.createSymbolicLink(projectDir.resolve("Linked.kt"), target)
+                val resolver = KotlinSourceResolver(projectRoot = projectDir)
+
+                resolver.resolve(relativePaths = listOf("Linked.kt")) shouldContainExactly listOf(target)
+            }
+        }
+
         "rejects a path that does not exist" {
             withProject { projectDir ->
                 val resolver = KotlinSourceResolver(projectRoot = projectDir)
