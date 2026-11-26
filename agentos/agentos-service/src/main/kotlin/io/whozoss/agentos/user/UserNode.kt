@@ -1,6 +1,8 @@
 package io.whozoss.agentos.user
 
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import mu.KLogging
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import java.time.Instant
@@ -17,6 +19,10 @@ import java.util.UUID
  *
  * Properties kept flat (no nested objects) to avoid SDN's limited support for
  * embedded value types in Community Edition.
+ *
+ * [promptCacheTtl] is stored as its enum name string. The former names `FIVE_MINUTES` and `ONE_HOUR` still read
+ * as [PromptCacheTtl.STANDARD] and [PromptCacheTtl.EXTENDED]; absent (users created before the field existed) or
+ * unknown values read as [PromptCacheTtl.STANDARD], so a bad value never makes the user unreadable.
  */
 @Node("User")
 data class UserNode(
@@ -29,6 +35,7 @@ data class UserNode(
     val bio: String? = null,
     val isAdmin: Boolean = false,
     val preferredLanguage: String? = null,
+    val promptCacheTtl: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -54,9 +61,22 @@ data class UserNode(
             bio = bio,
             isAdmin = isAdmin,
             preferredLanguage = preferredLanguage,
+            promptCacheTtl = decodePromptCacheTtl(),
         )
 
-    companion object {
+    private fun decodePromptCacheTtl(): PromptCacheTtl {
+        val stored = promptCacheTtl ?: return PromptCacheTtl.STANDARD
+        return PromptCacheTtl.entries.firstOrNull { it.name == stored } ?: LEGACY_PROMPT_CACHE_TTLS[stored] ?: run {
+            logger.warn { "User $id has an unknown promptCacheTtl '$stored', using ${PromptCacheTtl.STANDARD}" }
+            PromptCacheTtl.STANDARD
+        }
+    }
+
+    companion object : KLogging() {
+        /** The names stored before the values were renamed: existing databases hold both. */
+        private val LEGACY_PROMPT_CACHE_TTLS =
+            mapOf("FIVE_MINUTES" to PromptCacheTtl.STANDARD, "ONE_HOUR" to PromptCacheTtl.EXTENDED)
+
         fun fromDomain(user: User): UserNode =
             UserNode(
                 id = user.id.toString(),
@@ -67,6 +87,7 @@ data class UserNode(
                 bio = user.bio,
                 isAdmin = user.isAdmin,
                 preferredLanguage = user.preferredLanguage,
+                promptCacheTtl = user.promptCacheTtl.name,
                 created = user.metadata.created,
                 createdBy = user.metadata.createdBy,
                 modified = user.metadata.modified,

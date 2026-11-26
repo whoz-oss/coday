@@ -106,6 +106,23 @@
               }
             </select>
           </ds-form-field>
+          <ds-form-field
+            label="Prompt cache"
+            controlId="up-promptCacheTtl"
+            hintId="up-promptCacheTtl-hint"
+            hint="Extended keeps the conversation cached through longer pauses (Claude models via Requesty: 1 hour instead of 5 minutes; each cache write costs more). Other models keep their provider's default."
+          >
+            <select
+              dsControl
+              id="up-promptCacheTtl"
+              aria-describedby="up-promptCacheTtl-hint"
+              formControlName="promptCacheTtl"
+            >
+              @for (option of promptCacheTtlOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </ds-form-field>
         </ds-group>
 
         <ds-form-actions>
@@ -135,6 +152,8 @@
           <dd>{{ user.bio || '—' }}</dd>
           <dt>Language</dt>
           <dd>{{ user.preferredLanguage || '—' }}</dd>
+          <dt>Prompt cache</dt>
+          <dd>{{ promptCacheTtlLabel() }}</dd>
         </dl>
       </ds-group>
 
