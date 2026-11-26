@@ -577,6 +577,34 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `accepted IN_PROGRESS is recovered as indeterminate AGENT_IN_PROGRESS and never failed`() {
+        val id = "accepted-in-progress-recovery"
+        attempts.register(scope, attempt(id))
+        claimToRunning(id, "crashed", leaseTtlMs = 0)
+        val results = io.mockk.mockk<io.whozoss.factory.agentattempt.service.AgentStepResultService>()
+        io.mockk.every { results.acceptedResult(scope, namespace, "wf-recovery", "step-1", id) } returns io.mockk.mockk(relaxed = true) {
+            io.mockk.every { status } returns io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.IN_PROGRESS
+            io.mockk.every { selectedRoutes } returns null
+            io.mockk.every { retryAfterSeconds } returns 90
+        }
+        val adapter = FakeAdapter(
+            reconcileVerdict = { AgentOsExecutionVerdict.Indeterminate("OBSERVATION_TIMEOUT") },
+            observeVerdict = { error("an accepted result must avoid re-observation") },
+        )
+
+        val report = BridgeRecoveryWorker(attempts, adapter, evidenceRepository, resultService = results).recover()
+
+        assertThat(report.finalized).isEqualTo(1)
+        val recovered = attempts.find(scope, namespace, "wf-recovery", "step-1", id)!!
+        assertThat(recovered.status).isEqualTo(AgentAttemptStatus.INDETERMINATE)
+        assertThat(recovered.failureCode).isEqualTo("AGENT_IN_PROGRESS")
+        val evidence = evidenceRepository.list(scope, namespace, "wf-recovery", "step-1").single { it.facts["attemptId"] == id }
+        assertThat(evidence.outcome).isEqualTo("in_progress")
+        assertThat(adapter.observeCalls.get()).isZero()
+        assertThat(adapter.startTurns).isEmpty()
+    }
+
+    @Test
     fun `accepted PASS overrides stale runtime human wait during recovery`() {
         assertAcceptedRecovery(AgentOsExecutionVerdict.WaitingHuman("stale-question"))
     }
