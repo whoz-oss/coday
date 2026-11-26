@@ -661,11 +661,17 @@ jobs:
   #
   # If an earlier job fails, npm is never published and the reserved tag is left
   # dangling (see "Reserve workstream tag"). If only this job fails, re-running it is
-  # safe: the nx publish executor treats an already-published version as success.
+  # safe: the nx publish executor treats an already-published version as success, and a
+  # build failure published nothing at all (see below).
+  #
+  # Inside this job, ALL npm packages are built together BEFORE the first publish. A single
+  # build failure aborts the script with nothing published, so npm never holds a partial set
+  # (e.g. coday-web without coday-client). This is the intra-job counterpart of the `needs:`
+  # chain between jobs.
   #
   # workstream-release.ts stamps ALL package.json files and the Gradle catalogs with
   # the exact version (the stamp is needed here because the npm packages are built in
-  # this job), then publishes with dist-tag workstream-<slug>.
+  # this job), builds every npm package, then publishes with dist-tag workstream-<slug>.
   # It performs NO git operations -- version stamps live only in the working tree.
   # (Rule 2: never commit version bumps on a workstream branch.)
   # (Rule 3: npm packages are published with --tag workstream-<slug>, never latest.)
@@ -703,7 +709,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Stamp versions and publish npm packages
+      - name: Stamp versions, build and publish npm packages
         run: |
           npx tsx scripts/workstream-release.ts \
             --version "${{ needs.prepare.outputs.version }}" \
