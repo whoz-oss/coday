@@ -113,5 +113,6 @@
     "production": ["default", "!{projectRoot}/src/test/**/*"]
   },
   "analytics": false,
-  "nxCloudId_disable": "69faead76f99323de41d00d3"
+  "nxCloudId_disable": "69faead76f99323de41d00d3",
+  "nxCloudId": "6b080a1d9b05ce940092c9a0"
 }
