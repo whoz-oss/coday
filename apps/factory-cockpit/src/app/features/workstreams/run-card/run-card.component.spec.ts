@@ -1,9 +1,7 @@
 import { provideRouter } from '@angular/router'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { of, throwError, Subject } from 'rxjs'
 import { FactoryStore } from '../../../core/factory.store'
-import { AgentOsApiError } from '../../../core/agentos-api.service'
-import { FactoryRun, SupervisorCaseResult, SessionDetail } from '../../../core/models'
+import { FactoryRun, SessionDetail } from '../../../core/models'
 import { RunCardComponent } from './run-card.component'
 
 const run: FactoryRun = {
@@ -32,43 +30,23 @@ const run: FactoryRun = {
   },
 }
 
-const supervisorResult: SupervisorCaseResult = {
-  caseId: 'heimdall-case-1',
-  namespaceId: 'ns-uuid-1',
-  agentOsUrl: '/agentos/home?ns=ns-uuid-1&case=heimdall-case-1',
-}
-
 interface StoreStub {
   session: jest.Mock<SessionDetail | undefined, [string]>
-  openSupervisorCase: jest.Mock
-  restoreSupervisorCase: jest.Mock
 }
 
-function createStore(
-  activeAttemptId?: string,
-  supervisorResult$?: ReturnType<typeof of>,
-  restoredCase?: SupervisorCaseResult
-): StoreStub {
+function createStore(activeAttemptId?: string): StoreStub {
   const session: SessionDetail | undefined = activeAttemptId
     ? ({ id: 'wf-1', activeAttemptId } as SessionDetail)
     : undefined
-  return {
-    session: jest.fn().mockReturnValue(session),
-    openSupervisorCase: jest.fn().mockReturnValue(supervisorResult$ ?? of(supervisorResult)),
-    restoreSupervisorCase: jest.fn().mockReturnValue(restoredCase ?? undefined),
-  }
+  return { session: jest.fn().mockReturnValue(session) }
 }
 
 describe('RunCardComponent', () => {
   let fixture: ComponentFixture<RunCardComponent>
   let store: StoreStub
 
-  async function setup(
-    activeAttemptId?: string,
-    supervisorResult$?: ReturnType<typeof of>,
-    restoredCase?: SupervisorCaseResult
-  ): Promise<void> {
-    store = createStore(activeAttemptId, supervisorResult$, restoredCase)
+  async function setup(activeAttemptId?: string): Promise<void> {
+    store = createStore(activeAttemptId)
     await TestBed.configureTestingModule({
       imports: [RunCardComponent],
       providers: [provideRouter([]), { provide: FactoryStore, useValue: store }],
@@ -122,106 +100,68 @@ describe('RunCardComponent', () => {
     expect(host.textContent).toContain('waiting')
   })
 
-  describe('Ask supervisor', () => {
-    it('renders the supervisor button when a namespace is known', async () => {
+  describe('Ask supervisor removal', () => {
+    it.each([
+      ['a known namespace', run],
+      ['no namespace', { ...run, namespaceId: undefined }],
+    ])('renders no supervisor action for a run with %s', async (_label, value) => {
       await setup()
-      const host = render()
-      const btn = buttonByText(host, 'Ask supervisor')
-      expect(btn).not.toBeUndefined()
-      expect(btn?.disabled).toBe(false)
-    })
+      const host = render(value)
+      const actions = host.querySelector('.actions')
 
-    it('renders the supervisor button as disabled when namespace is unknown', async () => {
-      await setup()
-      const host = render({ ...run, namespaceId: undefined })
-      const btn = buttonByText(host, 'Ask supervisor')
-      expect(btn).not.toBeUndefined()
-      expect(btn?.disabled).toBe(true)
-    })
-
-    it('calls store.openSupervisorCase(run) on click and transitions to done state', async () => {
-      const openSpy = jest.spyOn(window, 'open').mockReturnValue(null)
-      await setup()
-      const host = render()
-
-      buttonByText(host, 'Ask supervisor')?.click()
-
-      expect(store.openSupervisorCase).toHaveBeenCalledWith(run)
-      fixture.detectChanges()
-      const link = host.querySelector<HTMLAnchorElement>('a[href*="heimdall-case-1"]')
-      expect(link).not.toBeNull()
-      expect(link?.textContent).toContain('View supervisor case')
-      openSpy.mockRestore()
-    })
-
-    it('closes the blank window and shows an inline error when openSupervisorCase fails', async () => {
-      const mockWindow = { closed: false, close: jest.fn() } as unknown as Window
-      const openSpy = jest.spyOn(window, 'open').mockReturnValue(mockWindow)
-      const err: AgentOsApiError = { code: 'HTTP_500', message: 'Internal error', status: 500, raw: null }
-      await setup(undefined, throwError(() => err) as ReturnType<typeof of>)
-      const host = render()
-
-      buttonByText(host, 'Ask supervisor')?.click()
-      fixture.detectChanges()
-
-      expect((mockWindow as unknown as { close: jest.Mock }).close).toHaveBeenCalled()
-      const errorEl = host.querySelector('.supervisor-error')
-      expect(errorEl).not.toBeNull()
-      expect(errorEl?.textContent).toContain('Internal error')
-      openSpy.mockRestore()
-    })
-
-    it('does not call openSupervisorCase a second time while loading (double-click guard)', async () => {
-      const subject = new Subject<SupervisorCaseResult>()
-      await setup(undefined, subject.asObservable() as unknown as ReturnType<typeof of>)
-      jest.spyOn(window, 'open').mockReturnValue(null)
-      const host = render()
-
-      buttonByText(host, 'Ask supervisor')?.click()
-      fixture.detectChanges()
-      buttonByText(host, 'Ask supervisor')?.click()
-
-      expect(store.openSupervisorCase).toHaveBeenCalledTimes(1)
-    })
-
-    it('restores a previously created supervisor case on init without calling openSupervisorCase', async () => {
-      const restored: SupervisorCaseResult = {
-        caseId: 'restored-case-1',
-        namespaceId: 'ns-uuid-1',
-        agentOsUrl: '/agentos/home?ns=ns-uuid-1&case=restored-case-1',
-      }
-      await setup(undefined, undefined, restored)
-      const host = render()
-
-      const link = host.querySelector<HTMLAnchorElement>('a[href*="restored-case-1"]')
-      expect(link).not.toBeNull()
-      expect(link?.textContent).toContain('View supervisor case')
-      expect(store.openSupervisorCase).not.toHaveBeenCalled()
+      expect(actions).not.toBeNull()
+      expect(actions?.textContent).not.toContain('Ask supervisor')
+      expect(actions?.textContent).not.toContain('View supervisor case')
+      expect(host.querySelector('.supervisor-error')).toBeNull()
     })
   })
 
   describe('Conversation link', () => {
-    it('renders Conversation as an external link when controllerCaseId is present', async () => {
+    it('opens the main case in a new tab with the exact label "Conversation"', async () => {
       await setup()
-      const host = render({ ...run, namespaceId: 'ns-1', controllerCaseId: 'case-42' })
-      const link = host.querySelector<HTMLAnchorElement>('a[href*="agentos"]')
+      const host = render({ ...run, namespaceId: 'ns-1', mainCaseId: 'case-main' })
+      const link = host.querySelector<HTMLAnchorElement>('.actions a[href*="agentos"]')
       expect(link).not.toBeNull()
-      expect(link?.getAttribute('href')).toBe('/agentos/home?ns=ns-1&case=case-42')
+      expect(link?.getAttribute('href')).toBe('/agentos/home?ns=ns-1&case=case-main')
+      expect(link?.getAttribute('target')).toBe('_blank')
       expect(link?.textContent?.trim()).toBe('Conversation')
     })
 
-    it('renders Conversation as a disabled button when controllerCaseId is absent', async () => {
+    it('is enabled from the main case alone, without any controller case', async () => {
       await setup()
-      const host = render({ ...run, controllerCaseId: undefined })
+      const host = render({ ...run, namespaceId: 'ns-1', mainCaseId: 'case-main', controllerCaseId: undefined })
+      expect(host.querySelector('.actions a[href*="case-main"]')).not.toBeNull()
+      expect(buttonByText(host, 'Conversation')).toBeUndefined()
+    })
+
+    it('prefers the main case over the controller case', async () => {
+      await setup()
+      const host = render({ ...run, namespaceId: 'ns-1', mainCaseId: 'case-main', controllerCaseId: 'case-controller' })
+      const link = host.querySelector<HTMLAnchorElement>('.actions a[href*="agentos"]')
+      expect(link?.getAttribute('href')).toBe('/agentos/home?ns=ns-1&case=case-main')
+    })
+
+    it('falls back to the controller case when no main case is known', async () => {
+      await setup()
+      const host = render({ ...run, namespaceId: 'ns-1', controllerCaseId: 'case-42' })
+      const link = host.querySelector<HTMLAnchorElement>('.actions a[href*="agentos"]')
+      expect(link?.getAttribute('href')).toBe('/agentos/home?ns=ns-1&case=case-42')
+    })
+
+    it('renders a disabled button labelled "Conversation" while no main case exists', async () => {
+      await setup()
+      const host = render({ ...run, mainCaseId: undefined, controllerCaseId: undefined })
       const disabledBtn = Array.from(host.querySelectorAll<HTMLButtonElement>('.actions button[disabled]')).find(
         (button) => button.textContent?.trim() === 'Conversation'
       )
       expect(disabledBtn).not.toBeUndefined()
+      expect(disabledBtn?.getAttribute('title')).toContain('Main AgentOS case not created yet')
+      expect(host.querySelector('.actions a[href*="agentos"]')).toBeNull()
     })
 
     it('omits the ns param when no namespace is known', async () => {
       await setup()
-      const host = render({ ...run, namespaceId: undefined, controllerCaseId: 'case-7' })
+      const host = render({ ...run, namespaceId: undefined, mainCaseId: 'case-7' })
       const link = host.querySelector<HTMLAnchorElement>('a[href*="agentos"][href*="case-7"]')
       expect(link?.getAttribute('href')).toBe('/agentos/home?case=case-7')
     })

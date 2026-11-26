@@ -1260,6 +1260,7 @@ export class FactoryStore implements OnDestroy {
 
 /** Attach an enriched card summary to a run; a destroyed run stays destroyed. */
 function withSummary(run: FactoryRun, summary: RunSummary): FactoryRun {
+  const mainCaseId = summary.mainCaseId ?? run.mainCaseId
   return {
     ...run,
     status:
@@ -1279,6 +1280,7 @@ function withSummary(run: FactoryRun, summary: RunSummary): FactoryRun {
     durationSec: summary.durationSec,
     tokens: summary.tokens,
     phases: summary.phases,
+    ...(mainCaseId ? { mainCaseId } : {}),
   }
 }
 
