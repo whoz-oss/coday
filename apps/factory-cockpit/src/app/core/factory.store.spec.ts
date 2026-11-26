@@ -1403,23 +1403,111 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([])
   })
 
-  it('retry opens a retry, then refetches the authoritative state', () => {
+  it('retryFailedStep posts the new command with a key and refetches the authoritative state', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment()
 
-    store.retry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+    store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7, additionalContext: '  Use staging  ' })
 
-    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/retries')
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/steps/build/failed-step-retries')
     expect(request.request.method).toBe('POST')
-    expect(request.request.body).toEqual({
-      stepId: 'build',
-      expectedRevision: 7,
-      reasonCode: 'human_retry',
-      namespaceId: 'ns-1',
-    })
+    expect(request.request.body).toEqual({ namespaceId: 'ns-1', expectedRevision: 7, additionalContext: 'Use staging' })
+    expect(request.request.headers.get('Idempotency-Key')).toBeTruthy()
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
-    request.flush({ data: { ok: true } })
+    expect(store.retryingStepId()).toBe('build')
+    request.flush({ data: { attemptId: 'a-2', previousAttemptId: 'a-1', attemptNumber: 2, queued: true } })
+    expect(store.retryingStepId()).toBeNull()
 
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('retryFailedStep never calls the legacy /retries route', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7 })
+
+    http.expectNone((r) => r.url === '/api/factory/workflows/wf-1/retries')
+    const request = http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries'))
+    // The text is optional: absent means an empty context.
+    expect(request.request.body).toEqual({ namespaceId: 'ns-1', expectedRevision: 7, additionalContext: '' })
+    request.flush({ data: {} })
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('retryFailedStep refuses over-long text locally and prevents a double submit', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7, additionalContext: 'x'.repeat(4001) })
+    http.expectNone((r) => r.url.endsWith('/failed-step-retries'))
+
+    store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7 })
+    store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7 })
+    const requests = http.match((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries'))
+    expect(requests).toHaveLength(1)
+    requests[0]!.flush({ data: {} })
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('retryFailedStep reuses the idempotency key after an ambiguous transport failure and renews it on a changed payload', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    const payload = { stepId: 'build', expectedRevision: 7, additionalContext: 'Use staging' }
+    store.retryFailedStep('wf-1', payload)
+    const first = http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries'))
+    const key = first.request.headers.get('Idempotency-Key')
+    first.error(new ProgressEvent('error'))
+    expect(store.retryFeedback()).toEqual(expect.objectContaining({ stepId: 'build', kind: 'error' }))
+
+    store.retryFailedStep('wf-1', payload)
+    const replay = http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries'))
+    expect(replay.request.headers.get('Idempotency-Key')).toBe(key)
+    replay.error(new ProgressEvent('error'))
+
+    store.retryFailedStep('wf-1', { ...payload, additionalContext: 'Use production' })
+    const changed = http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries'))
+    expect(changed.request.headers.get('Idempotency-Key')).not.toBe(key)
+    changed.error(new ProgressEvent('error'))
+  })
+
+  it('retryFailedStep reports a revision conflict and refetches the allowed actions', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries')).flush(
+      { error: { code: 'REVISION_CONFLICT', message: 'The expected revision is stale.' } },
+      { status: 409, statusText: 'Conflict' }
+    )
+
+    expect(store.retryFeedback()).toEqual(expect.objectContaining({ stepId: 'build', kind: 'conflict' }))
+    expect(store.retryFeedback()?.message).toBe(
+      'The workflow has changed. Allowed actions have been refreshed; review the new state.'
+    )
+    expect(store.retryingStepId()).toBeNull()
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('retryFailedStep reports an idempotency-key collision without refetching as a plain conflict', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7 })
+    http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries')).flush(
+      { error: { code: 'IDEMPOTENCY_KEY_COLLISION', message: 'The idempotency key was already used with a different request' } },
+      { status: 409, statusText: 'Conflict' }
+    )
+
+    expect(store.retryFeedback()).toEqual(expect.objectContaining({ stepId: 'build', kind: 'collision' }))
+    expect(store.retryFeedback()?.message).toBe(
+      'The submission key already exists with different content. The retry was not resent.'
+    )
     flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
