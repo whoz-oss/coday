@@ -104,12 +104,12 @@ function mapStepsToSessionSteps(steps: unknown[], blockedStepIds: ReadonlySet<st
             : state === 'waiting_external'
               ? 'waiting_external'
               : state === 'running'
-              ? 'running'
-              : state === 'failed'
-                ? 'failed'
-                : state === 'pending' || state === 'ready'
-                  ? 'pending'
-                  : 'done',
+                ? 'running'
+                : state === 'failed'
+                  ? 'failed'
+                  : state === 'pending' || state === 'ready'
+                    ? 'pending'
+                    : 'done',
     }
     const duration = stepDurationSec(obj)
     if (duration !== null) result.durationSec = Math.round(duration)
@@ -205,12 +205,12 @@ export function mapProjectionToSessionDetail(
     : waitingExternal
       ? 'waiting_external'
       : activelyRunning
-      ? 'running'
-      : status === 'succeeded'
-        ? 'completed'
-        : status === 'failed'
-          ? 'failed'
-          : 'pending'
+        ? 'running'
+        : status === 'succeeded'
+          ? 'completed'
+          : status === 'failed'
+            ? 'failed'
+            : 'pending'
 
   const enrichedSnapshot = { ...snapshot, projection: { ...projection, steps } }
   const timelineOriginMs = resolveTimelineOriginMs(enrichedSnapshot, timing, mappedAttempts, stepExecutions)
@@ -538,10 +538,10 @@ function mergeCodeEvidenceIntoSteps(steps: unknown[], evidenceItems: unknown[]):
         : recordedStatus === 'waiting_external'
           ? 'waiting_external'
           : recordedStatus === 'needs_research'
-          ? 'waiting_human'
-          : getNumber(facts, 'exitCode') === 0 && facts['timedOut'] !== true
-            ? 'completed'
-            : 'failed'
+            ? 'waiting_human'
+            : getNumber(facts, 'exitCode') === 0 && facts['timedOut'] !== true
+              ? 'completed'
+              : 'failed'
     return {
       ...step,
       ...(durationMs !== undefined ? { durationMs } : {}),
@@ -634,12 +634,12 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
         : detail.executionState === 'waiting_external'
           ? 'running'
           : blockedStepIds.size > 0
-          ? 'blocked'
-          : detail.activelyRunning
-            ? 'running'
-            : detail.status === 'succeeded'
-              ? 'succeeded'
-              : 'pending'
+            ? 'blocked'
+            : detail.activelyRunning
+              ? 'running'
+              : detail.status === 'succeeded'
+                ? 'succeeded'
+                : 'pending'
   summary.phases = detail.steps.map((step) => ({
     key: step.key,
     ratio: detail.durationSec > 0 ? (step.durationSec ?? 0) / detail.durationSec : 1 / Math.max(detail.steps.length, 1),

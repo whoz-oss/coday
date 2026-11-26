@@ -369,9 +369,7 @@ function terminalEndMs(step: Record<string, unknown>): number | null {
   const persisted = toEpochMs(step['finishedAt'] ?? step['completedAt'] ?? step['endedAt'])
   if (persisted !== null) return persisted
   // A polling step ends at its last observation, never at the wall clock.
-  return getString(step, 'status') === 'waiting_external'
-    ? toEpochMs(asObject(step['poll'])?.['lastPollAt'])
-    : null
+  return getString(step, 'status') === 'waiting_external' ? toEpochMs(asObject(step['poll'])?.['lastPollAt']) : null
 }
 
 function normalizeTicks(values: unknown, t0: number, startSec: number, endSec: number): number[] | undefined {

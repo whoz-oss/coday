@@ -2608,6 +2608,84 @@ describe('mappers', () => {
     })
   })
 
+  describe('ci-checks evidence (WZ-36393)', () => {
+    const stepOf = (status: string) => ({
+      id: 'ci',
+      name: 'CI checks',
+      status,
+      startedAt,
+      executionId: 'ci-1',
+      responsibility: { kind: 'code', name: 'github-pr-checks' },
+    })
+    const ciEvidence = (verdict: string, extra: Record<string, unknown> = {}) => ({
+      evidenceId: `ev-${verdict}`,
+      stepId: 'ci',
+      kind: 'ci-checks',
+      outcome: verdict === 'passed' ? 'pass' : verdict === 'failed' ? 'fail' : 'pending',
+      createdAt: startedAt,
+      facts: {
+        stepId: 'ci',
+        executionId: 'ci-1',
+        verdict,
+        prNumber: 7,
+        headSha: '0123456789abcdef0123456789abcdef01234567',
+        ...extra,
+      },
+    })
+    const detailOf = (item: unknown, status = 'completed') =>
+      mapProjectionToSessionDetail(
+        { workflowId: 'ci-run', projection: { status: 'running', steps: [stepOf(status)] } },
+        undefined,
+        { items: [item] }
+      )
+
+    it('renders a red verdict as an Outputs item with the failed check names and no log excerpt', () => {
+      const session = detailOf(
+        ciEvidence('failed', {
+          failedChecks: [
+            { name: 'validate-jvm', conclusion: 'failure', logExcerpt: 'SECRET-LOG-LINE' },
+            { name: 'merge-gate', conclusion: 'timed_out' },
+          ],
+        }),
+        'failed'
+      )
+      const outputs = session.phase.sections.find((section) => section.label === 'Outputs')
+      expect(outputs?.items).toEqual([
+        {
+          title: 'CI checks',
+          status: 'failed',
+          subtitle: 'PR #7 · 01234567',
+          details: 'validate-jvm: failure\nmerge-gate: timed_out',
+        },
+      ])
+      expect(JSON.stringify(outputs)).not.toContain('SECRET-LOG-LINE')
+    })
+
+    it('renders a green verdict without details', () => {
+      const outputs = detailOf(ciEvidence('passed')).phase.sections.find((section) => section.label === 'Outputs')
+      expect(outputs?.items).toEqual([{ title: 'CI checks', status: 'passed', subtitle: 'PR #7 · 01234567' }])
+    })
+
+    it('emits one log event per verdict, without inlining the log excerpt', () => {
+      const red = detailOf(
+        ciEvidence('failed', { failedChecks: [{ name: 'validate-jvm', conclusion: 'failure', logExcerpt: 'SECRET' }] }),
+        'failed'
+      )
+      expect(red.events).toEqual([
+        expect.objectContaining({ type: 'log', text: 'CI checks failed on PR #7: validate-jvm' }),
+      ])
+      expect(JSON.stringify(red.events)).not.toContain('SECRET')
+      const green = detailOf(ciEvidence('passed'))
+      expect(green.events).toEqual([expect.objectContaining({ type: 'log', text: 'CI checks passed on PR #7' })])
+    })
+
+    it('never overrides the projected step status with a ci-checks evidence', () => {
+      const session = detailOf(ciEvidence('failed'), 'waiting_external')
+      expect(session.steps[0]?.status).toBe('waiting_external')
+      expect(session.phase.stepStatus).toBe('waiting_external')
+    })
+  })
+
   describe('mapProjectionToFactoryRun', () => {
     const snapshot = {
       workflowId: 'wf-1',
