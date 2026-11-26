@@ -1,12 +1,15 @@
 name: Validate Coday on pull requests
 
-on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review]
-    branches:
-      - master
-      - 'hotfix/*'
-      - 'workstream/**'
+# Nx Cloud CI now runs CI for this repository, so this workflow no longer runs on its own.
+# To run it again on every change, restore the triggers below and remove `on: workflow_dispatch`.
+# on:
+#   pull_request:
+#     types: [opened, synchronize, ready_for_review]
+#     branches:
+#       - master
+#       - 'hotfix/*'
+#       - 'workstream/**'
+on: workflow_dispatch
 
 env:
   NX_MAX_WORKERS: 4
