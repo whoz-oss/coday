@@ -77,6 +77,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       useDefaultDelegationTimeout: () => void
       defaultDelegationTimeoutSeconds: () => number | null
       nameControl: { setValue: (v: string) => void }
+      enabledControl: { setValue: (v: boolean) => void; value: boolean }
       modelNameControl: { setValue: (v: string | null) => void; invalid: boolean; hasError: (e: string) => boolean }
       builtInRows: () => Array<{
         type: string
@@ -1195,6 +1196,39 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       expect(restriction?.textContent).toContain('readFile, ls')
     })
   })
+  describe('enabled', () => {
+    it('is ticked when the create form opens, and a new agent is sent enabled', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-agent')
+
+      expect(internals().enabledControl.value).toBe(true)
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].enabled).toBe(true)
+    })
+
+    it('lets the user create a disabled agent by unticking it', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('new-agent')
+      internals().enabledControl.setValue(false)
+
+      internals().submit()
+
+      expect(controller.createAgentConfig.mock.calls[0][0].enabled).toBe(false)
+    })
+
+    it('keeps a stored disabled agent disabled in edit mode', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ enabled: false })))
+
+      component.ngOnInit()
+      expect(internals().enabledControl.value).toBe(false)
+      internals().submit()
+
+      expect(controller.updateAgentConfig.mock.calls[0][1].enabled).toBe(false)
+    })
+  })
+
   describe('execution mode', () => {
     const modeControl = () =>
       (component as unknown as { executionModeControl: { value: string; setValue: (v: string) => void } })

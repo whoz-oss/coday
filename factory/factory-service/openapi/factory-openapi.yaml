@@ -127,6 +127,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/admin/settings/run-concurrency:
+    get:
+      tags:
+      - run-concurrency-admin-controller
+      operationId: getRunConcurrencyRunConcurrencyAdmin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+    put:
+      tags:
+      - run-concurrency-admin-controller
+      operationId: updateRunConcurrencyRunConcurrencyAdmin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
   /api/factory/workstreams:
     get:
       tags:

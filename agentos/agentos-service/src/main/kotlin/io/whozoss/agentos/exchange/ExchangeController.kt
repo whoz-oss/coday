@@ -31,6 +31,8 @@ import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.multipart.MultipartFile
@@ -151,6 +153,23 @@ class ExchangeController(
         @RequestParam path: String,
     ): ExchangeDeleteResponse = withFileMutation(caseId) { root -> deleteFrom(root, path, "case $caseId") }
 
+    /**
+     * Replace the text of an existing case file (the exchange editor's save).
+     *
+     * Additive, and deliberately not part of the [ExchangeApi] contract (same reasoning as
+     * [browseCaseFiles]). Not [HideOnAccessDenied]: like upload and delete, a denied write is a 403.
+     */
+    @PutMapping(
+        "/api/cases/{caseId}/files/content",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    fun updateCaseFileContent(
+        @PathVariable caseId: UUID,
+        @RequestBody request: ExchangeFileUpdateRequest,
+    ): ExchangeFileContent = withFileMutation(caseId) { root -> updateIn(root, request, "case $caseId") }
+
     // ========================================
     // Namespace scope (reads for any member; writes gated on Namespace WRITE = namespace admin / super-admin)
     // ========================================
@@ -236,6 +255,19 @@ class ExchangeController(
         @RequestParam path: String,
     ): ExchangeDeleteResponse =
         deleteFrom(exchangeStorageService.namespaceRoot(namespaceId), path, "namespace $namespaceId")
+
+    /** Replace the text of an existing namespace-shared file (the exchange editor's save). */
+    @PutMapping(
+        "/api/namespaces/{namespaceId}/files/content",
+        consumes = [MediaType.APPLICATION_JSON_VALUE],
+        produces = [MediaType.APPLICATION_JSON_VALUE],
+    )
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun updateNamespaceFileContent(
+        @PathVariable namespaceId: UUID,
+        @RequestBody request: ExchangeFileUpdateRequest,
+    ): ExchangeFileContent =
+        updateIn(exchangeStorageService.namespaceRoot(namespaceId), request, "namespace $namespaceId")
 
     // ========================================
     // Helpers
@@ -326,6 +358,18 @@ class ExchangeController(
         return ExchangeDeleteResponse(true, "Deleted $path")
     }
 
+    /** Overwrite a file's text under [root], mapping storage failures to HTTP statuses. */
+    private fun updateIn(
+        root: Path,
+        request: ExchangeFileUpdateRequest,
+        logTarget: String,
+    ): ExchangeFileContent {
+        logger.info { "Updating file '${request.path}' in $logTarget" }
+        return mapStorageErrors {
+            exchangeStorageService.writeContent(root, request.path, request.content, request.etag)
+        }
+    }
+
     /**
      * Where this case's files live; 404 when the case does not exist.
      *
@@ -376,6 +420,7 @@ class ExchangeController(
     /**
      * Translate storage-layer failures into the project's `@ResponseStatus` exceptions:
      * - [FileExistsException] / [FileAlreadyExistsException] (create-only collision) -> 409 [ConflictException]
+     * - [ExchangeEditConflictException] (the file changed since the editor opened it) -> 409 [ConflictException]
      * - a missing target -> 404 [ResourceNotFoundException] ([NoSuchFileException]).
      * - a non-UTF-8 file read -> 400 [BadRequestException] ([CharacterCodingException]).
      * - a file above the read limit -> 422 [UnprocessableEntityException] ([ExchangeFileTooLargeException]).
@@ -390,6 +435,9 @@ class ExchangeController(
         } catch (e: FileExistsException) {
             logger.info(e) { "Exchange conflict (FileExistsException): ${e.message}" }
             throw ConflictException(e.message ?: "File already exists", e)
+        } catch (e: ExchangeEditConflictException) {
+            logger.info(e) { "Exchange edit conflict: ${e.message}" }
+            throw ConflictException(e.message ?: "The file was modified since it was opened", e)
         } catch (e: FileAlreadyExistsException) {
             // Generic message on purpose: a raw FileAlreadyExistsException carries the absolute server
             // path and must not leak in the 409 body.

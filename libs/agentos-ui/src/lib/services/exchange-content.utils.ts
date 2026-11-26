@@ -174,6 +174,32 @@ export function isFormatViewable(filename: string): boolean {
   return !BINARY_EXTENSIONS.includes(extensionOf(filename))
 }
 
+/** Extensions of non-text files that the viewable list does not already exclude. */
+const NON_TEXT_EXTENSIONS = [
+  'ico',
+  'mp3',
+  'mp4',
+  'mov',
+  'avi',
+  'wav',
+  'woff',
+  'woff2',
+  'ttf',
+  'otf',
+  '7z',
+  'rar',
+  'jar',
+]
+
+/**
+ * True when a file is text the exchange can load and save back as UTF-8 (markdown, json, yaml, html
+ * source, csv, plain text...). Never an image, PDF or other binary: the editor only works on the text
+ * endpoint, where saving a binary would corrupt it.
+ */
+export function isEditableFormat(filename: string): boolean {
+  return isFormatViewable(filename) && !NON_TEXT_EXTENSIONS.includes(extensionOf(filename))
+}
+
 /** True when a file is small enough to preview inline (≤ 20 MB). */
 export function isViewable(fileSize: number): boolean {
   return fileSize <= MAX_VIEWABLE_SIZE
@@ -223,6 +249,17 @@ export function buildSandboxedHtmlDocument(content: string, title: string): stri
     '<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%;display:block}</style>' +
     `</head><body><iframe sandbox="${HTML_PREVIEW_SANDBOX}" srcdoc="${escapeHtml(content)}"></iframe></body></html>`
   )
+}
+
+/**
+ * 1-based first and last line covered by the selection `[start, end)` of [text].
+ *
+ * A selection that ends right after a line break (a full-line selection) does not count the next line.
+ */
+export function selectionLineRange(text: string, start: number, end: number): { startLine: number; endLine: number } {
+  const lineAt = (offset: number): number => text.slice(0, offset).split('\n').length
+  const last = end > start && text[end - 1] === '\n' ? end - 1 : end
+  return { startLine: lineAt(start), endLine: lineAt(last) }
 }
 
 /** Pretty-print JSON content with 2-space indentation; returns the input unchanged on parse error. */

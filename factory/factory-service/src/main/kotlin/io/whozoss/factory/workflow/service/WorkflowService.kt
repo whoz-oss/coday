@@ -4,6 +4,7 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.agentattempt.domain.toCheckedJsonObject
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
+import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.persistence.IdempotencyRepository
@@ -2016,6 +2017,18 @@ class WorkflowService(
         }
 
         // Durable attempts -> active attempts are cancellable, terminal ones are blockers.
+        val outcomeManaged = governedInstance?.projection?.containsKey("stepExecutions") == true
+        val currentExecutionIds = steps.mapNotNull { step ->
+            (step["id"] as? String)?.let { id -> (step["executionId"] as? String)?.let { id to it } }
+        }.toMap()
+        // Outcome-managed runs replay a region after an accepted FAIL: the rejected attempt stays the latest one
+        // until the replayed step is claimed again, but it belongs to a previous execution and is history, not a blocker.
+        fun pinnedToPreviousExecution(attempt: DurableAgentAttempt): Boolean {
+            val current = currentExecutionIds[attempt.stepId]
+            val pinned = attempt.contextEnvelope
+                ?.let { runCatching { AttemptContextEnvelope.fromJson(it).inputs["stepExecutionId"] }.getOrNull() }
+            return outcomeManaged && current != null && pinned != null && pinned != current
+        }
         attempts.forEach { attempt ->
             if (latestAttempts[attempt.stepId]?.attemptId != attempt.attemptId) return@forEach
             if (!attempt.status.terminal) {
@@ -2037,7 +2050,7 @@ class WorkflowService(
                     "The agent is waiting for a human answer on step '${attempt.stepId}'.",
                 )
 
-                AgentAttemptStatus.FAILED -> blocker(
+                AgentAttemptStatus.FAILED -> if (!pinnedToPreviousExecution(attempt)) blocker(
                     WorkflowBlockerCodes.ATTEMPT_FAILED,
                     attempt.stepId,
                     "Execution attempt '${attempt.attemptId}' failed (${attempt.failureCode ?: "unknown"}).",
@@ -2049,7 +2062,7 @@ class WorkflowService(
                         attempt.stepId,
                         "Execution attempt '${attempt.attemptId}' needs additional research or corrected repository access.",
                     )
-                } else blocker(
+                } else if (!pinnedToPreviousExecution(attempt)) blocker(
                     WorkflowBlockerCodes.UNKNOWN_RUNTIME,
                     attempt.stepId,
                     "Execution attempt '${attempt.attemptId}' has an indeterminate outcome.",

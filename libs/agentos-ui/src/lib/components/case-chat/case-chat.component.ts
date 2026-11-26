@@ -90,10 +90,13 @@ import {
 } from '../composer-autocomplete/file-mention'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
-import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
+import { ExchangeFileRef, ExchangeSelectionAction, ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
+import { buildSelectionMessage } from '../exchange-content-viewer/exchange-selection-message'
+import { parseProposal } from '../exchange-content-viewer/exchange-proposal'
+import { ExchangeSelectionRequestService } from '../../services/exchange-selection-request.service'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
 import {
@@ -225,6 +228,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly injector = inject(Injector)
   private readonly markdown = inject(MarkdownRendererService)
   private readonly exchangeState = inject(ExchangeStateService)
+  private readonly selectionRequests = inject(ExchangeSelectionRequestService)
+  /** Id of the selection request whose message was posted, while its first agent answer is awaited. */
+  private awaitedSelectionRequest: string | null = null
 
   private readonly config = inject(Configuration)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
@@ -1252,6 +1258,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
+          this.trackSelectionRequest(event)
 
           // The server's own re-run message replaces the one on screen: nothing is pending any more, and the
           // effective conversation takes it from here.
@@ -1711,6 +1718,72 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     // An attachment send in flight is not running yet: posting now would send two messages.
     if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.composerClosed()) return
     this.sendMessage('Continue')
+  }
+
+  /**
+   * The user asked an agent to act on a selection of an exchange document: send it right away when the
+   * composer could send now, so the agent runs on it directly. Otherwise (a turn is running, the case is
+   * over, an upload, a recording or a send is in flight) the message is put in the composer, never lost.
+   * The files drawer stays open either way.
+   */
+  protected onSelectionAction(action: ExchangeSelectionAction): void {
+    const request = this.selectionRequests.register({
+      ref: action.ref,
+      from: action.from ?? 0,
+      to: action.to ?? 0,
+      selection: action.selection,
+      ...(action.selectionMarkdown !== undefined ? { selectionMarkdown: action.selectionMarkdown } : {}),
+      ...(action.selectionHtml !== undefined ? { selectionHtml: action.selectionHtml } : {}),
+      instruction: action.instruction,
+    })
+    const message = buildSelectionMessage(action, request.id)
+    if (
+      !this.isRunning() &&
+      !this.composerClosed() &&
+      !this.attachments.isUploading() &&
+      !this.submitting &&
+      !this.voice.isBusy()
+    ) {
+      this.sendMessage(message)
+      return
+    }
+    const draft = this.inputValue().trim()
+    this.inputValue.set(draft ? `${draft}\n\n${message}` : message)
+    queueMicrotask(() => this.composerInput()?.nativeElement.focus())
+  }
+
+  /**
+   * Ties the answer of an agent to the selection request it belongs to, from the event stream: the USER message
+   * that carries the request marker starts the wait, and the FIRST agent message after it settles the request (the
+   * agent hand-offs and delegation details that follow are not looked at). An error, or a case that is killed,
+   * fails it. A marker unknown to the service (replayed history after a page reload) is ignored.
+   */
+  private trackSelectionRequest(event: CaseEvent): void {
+    if (event.type === 'MessageEvent') {
+      const message = event as CaseMessageEvent
+      const text = this.extractText(message)
+      if (message.actor.role === 'USER') {
+        const id = /\[selection-request:([\w-]+)\]/.exec(text)?.[1]
+        if (id && this.selectionRequests.get(id)?.status === 'waiting') this.awaitedSelectionRequest = id
+      } else if (message.actor.role === 'AGENT' && this.awaitedSelectionRequest) {
+        const id = this.awaitedSelectionRequest
+        this.awaitedSelectionRequest = null
+        const { explanation, proposal } = parseProposal(text)
+        if (proposal !== null) this.selectionRequests.propose(id, proposal, explanation)
+        else this.selectionRequests.answer(id, text.trim())
+      }
+    } else if (event.type === 'ErrorEvent') {
+      this.failSelectionRequests((event as ErrorEvent).message || 'The agent failed')
+    } else if (event.type === 'CaseStatusEvent') {
+      const status = (event as CaseStatusEvent).status as string
+      if (status === 'KILLED' || status === 'ERROR')
+        this.failSelectionRequests('The case ended before the agent answered')
+    }
+  }
+
+  private failSelectionRequests(error: string): void {
+    this.awaitedSelectionRequest = null
+    this.selectionRequests.failWaiting(error)
   }
 
   private postMessage(content: string): Promise<boolean> {

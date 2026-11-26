@@ -264,6 +264,12 @@ importers:
       glob:
         specifier: 'catalog:'
         version: 11.1.0
+      turndown:
+        specifier: 7.2.0
+        version: 7.2.0
+      turndown-plugin-gfm:
+        specifier: 1.0.2
+        version: 1.0.2
       yargs:
         specifier: 'catalog:'
         version: 18.0.0
@@ -346,6 +352,9 @@ importers:
       '@types/node':
         specifier: catalog:dev
         version: 24.7.2
+      '@types/turndown':
+        specifier: 5.0.5
+        version: 5.0.5
       '@typescript-eslint/eslint-plugin':
         specifier: catalog:dev
         version: 8.68.0(@typescript-eslint/parser@8.68.0(eslint@9.37.0(jiti@2.7.0))(typescript@6.0.3))(eslint@9.37.0(jiti@2.7.0))(typescript@6.0.3)
@@ -604,16 +613,6 @@ importers:
       nx:
         specifier: catalog:dev
         version: 23.1.1(@swc-node/register@1.11.1(@swc/core@1.15.8(@swc/helpers@0.5.20))(@swc/types@0.1.28)(typescript@6.0.3))(@swc/core@1.15.8(@swc/helpers@0.5.20))
-
-  libs/core/dist:
-    dependencies:
-      tslib:
-        specifier: 'catalog:'
-        version: 2.8.1
-    devDependencies:
-      typescript:
-        specifier: catalog:dev
-        version: 6.0.3
 
   libs/model/dist:
     dependencies:
@@ -2848,6 +2847,9 @@ packages:
     resolution: {integrity: sha512-9QOtNffcOF/c1seMCDnjckb3R9WHcG34tky+FHpNKKCW0wc/scYLwMtO+ptyGUfMW0/b/n4qRiALlaFHc9Oj7Q==}
     engines: {node: '>= 10.0.0'}
 
+  '@mixmark-io/domino@2.2.0':
+    resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
+
   '@modelcontextprotocol/sdk@1.30.0':
     resolution: {integrity: sha512-xKd8OIzlqNzcqcNumGAa6g+PW2kjD5vrpcKOnfldAUPP3j7lnqMPwlTXQm8gF+UwH72z0lqaRbjr9hqGz0eITA==}
     engines: {node: '>=18'}
@@ -4248,6 +4250,9 @@ packages:
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
+  '@types/turndown@5.0.5':
+    resolution: {integrity: sha512-TL2IgGgc7B5j78rIccBtlYAnkuv8nUQqhQc+DSYV5j9Be9XOcm/SKOVRuA47xAVI3680Tk9B1d8flK2GWT2+4w==}
 
   '@types/verror@1.10.11':
     resolution: {integrity: sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg==}
@@ -6767,6 +6772,7 @@ packages:
   image-size@0.5.5:
     resolution: {integrity: sha512-6TDAlDPZxUFCv+fuOkIoXT/V/f3Qbq8e37p+YOiYrUv3v9cc3/6x78VdfPgFVaB9dZYeLUfKgHRebpkm/oP2VQ==}
     engines: {node: '>=0.10.0'}
+    deprecated: Please migrate to image-size@2.x
     hasBin: true
 
   immutable@5.1.9:
@@ -9825,6 +9831,12 @@ packages:
     resolution: {integrity: sha512-ytQKuwgmrrkDTFP4LjR0ToE2nqgy886GpvRSpU0JAnrdBYppuY5rLkRUYPU1yCryb24SsKBTL/hlDQAEFVwtZg==}
     engines: {node: '>=18.0.0'}
     hasBin: true
+
+  turndown-plugin-gfm@1.0.2:
+    resolution: {integrity: sha512-vwz9tfvF7XN/jE0dGoBei3FXWuvll78ohzCZQuOb+ZjWrs3a0XhQVomJEb2Qh4VHTPNRO4GPZh0V7VRbiWwkRg==}
+
+  turndown@7.2.0:
+    resolution: {integrity: sha512-eCZGBN4nNNqM9Owkv9HAtWRYfLA4h909E/WGAWWBpmB275ehNhZyk87/Tpvjbp0jjNl9XwCsbe6bm6CqFsgD+A==}
 
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
@@ -12937,6 +12949,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@mixmark-io/domino@2.2.0': {}
+
   '@modelcontextprotocol/sdk@1.30.0(zod@4.4.3)':
     dependencies:
       '@hono/node-server': 2.1.1(hono@4.13.5)
@@ -14433,6 +14447,8 @@ snapshots:
   '@types/tough-cookie@4.0.5': {}
 
   '@types/trusted-types@2.0.7': {}
+
+  '@types/turndown@5.0.5': {}
 
   '@types/verror@1.10.11':
     optional: true
@@ -21328,6 +21344,12 @@ snapshots:
       get-tsconfig: 4.14.3
     optionalDependencies:
       fsevents: 2.3.3
+
+  turndown-plugin-gfm@1.0.2: {}
+
+  turndown@7.2.0:
+    dependencies:
+      '@mixmark-io/domino': 2.2.0
 
   type-check@0.4.0:
     dependencies:
