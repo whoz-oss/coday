@@ -106,7 +106,8 @@
   <button
     class="btn btn-primary btn-icon shell-topbar-mobile__new-btn"
     type="button"
-    title="New case"
+    [title]="newCaseDisabled() ? 'Already on a new case' : 'New case'"
+    [disabled]="newCaseDisabled()"
     (click)="createRequested.emit()"
   >
     <svg
