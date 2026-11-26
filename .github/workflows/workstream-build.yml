@@ -1,8 +1,8 @@
-# Workstream Build -- publishes a coherent prerelease artifact set on every push to integration/**.
+# Workstream Build -- publishes a coherent prerelease artifact set on every push to workstream/**.
 #
 # Triggered by:
-#   - promote-to-integration (validate.yml) pushing a merged work branch
-#   - integration-reset.yml force-resetting the branch after a workstream merge
+#   - automerge-to-target (validate.yml) merging a validated work branch into workstream/<slug>/<base>
+#   - any other push to a workstream/** branch
 #
 # Three inviolable rules this workflow enforces:
 #   1. NEVER create a release/* tag. Doing so corrupts the next real release's
@@ -31,7 +31,7 @@ name: Workstream Build
 on:
   push:
     branches:
-      - 'integration/**'
+      - 'workstream/**'
 
   workflow_dispatch:
 
@@ -39,14 +39,19 @@ on:
 # cancel-in-progress: false is mandatory -- cancelling mid-publish can leave a
 # partial artifact set that appears coherent but is missing packages.
 #
-# group resolves to e.g. "workstream-integration/talent-portal".
-# github.ref_name for an integration push is "integration/<slug>", unique per
-# workstream, so builds for the SAME integration branch serialise correctly.
+# group resolves to e.g. "workstream-build-workstream/talent-portal/master".
+# github.ref_name for a workstream push is "workstream/<slug>/<base>", unique per
+# workstream branch, so builds for the SAME workstream branch serialise correctly.
+#
+# The group is prefixed "workstream-build-" ON PURPOSE: validate.yml's automerge job uses
+# "workstream-<base_ref>", which would be the exact same string as "workstream-<ref_name>".
+# Sharing a group would let a long build and a quick automerge replace each other's
+# pending run (a group holds only one running and one pending run), silently dropping one.
 #
 # THIS GROUP IS NOW LOAD-BEARING FOR CORRECTNESS, not just artifact coherence.
 # The "Compute version" step performs a read-modify-write on the per-slug tag counter
 # (read refs/tags/workstream-<slug>-*, increment, push). Two concurrent builds on the
-# same integration branch would read the same <n>, and the second tag push would be
+# same workstream branch would read the same <n>, and the second tag push would be
 # rejected as already-existing. Serialising same-slug builds is what makes the
 # read-modify-write atomic in practice. Do not weaken this group or set
 # cancel-in-progress: true.
@@ -55,21 +60,11 @@ on:
 # namespaces, which is precisely the property a per-slug counter has and
 # GITHUB_RUN_NUMBER did not.
 #
-# KNOWN LIMITATION -- this group does NOT match validate.yml or
-# integration-reset.yml (both key on github.base_ref = "workstream/<slug>/master").
-# GitHub Actions expressions have no split/substring function (the available set is
-# contains, startsWith, endsWith, format, join, toJSON, fromJSON, hashFiles plus the
-# status checks), and `concurrency` is evaluated before any step runs, so a slug
-# buried mid-ref CANNOT be extracted for use as a shared key. A build is therefore
-# NOT serialised against a concurrent promote or reset.
-#
-# In practice this is tolerable: a promote/reset push simply triggers another build,
-# and this group ensures those builds queue rather than overlap. If true
-# cross-workflow serialisation is ever required, the options are (a) flatten the
-# taxonomy so the slug is the whole ref segment, or (b) route through workflow_call
-# passing the slug as an input, making inputs.slug usable in concurrency.group.
+# NOTE -- builds are not serialised against validate.yml's automerge job (different
+# group, see above). This is fine: an automerge simply pushes to the workstream branch,
+# which triggers another build, and this group makes those builds queue rather than overlap.
 concurrency:
-  group: workstream-${{ github.ref_name }}
+  group: workstream-build-${{ github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -122,13 +117,23 @@ jobs:
       # npm publishing happens in the LAST job (publish-npm), once every other
       # artifact is available.
 
-      # github.ref_name is the short branch name, e.g. "integration/talent-portal".
-      # Strip the "integration/" prefix to get the slug.
+      # github.ref_name is the short branch name, e.g. "workstream/talent-portal/master".
+      # The slug is its second path segment ("talent-portal").
+      #
+      # Validate slug: lowercase alphanumerics and single hyphens only. The slug is embedded
+      # in the version string, tag and npm dist-tag -- an invalid slug causes obscure
+      # publish failures later. (This check used to live in validate.yml's promote job.)
       - name: Derive slug
         id: slug
         run: |
           REF_NAME="${{ github.ref_name }}"
-          SLUG="${REF_NAME#integration/}"
+          SLUG=$(echo "$REF_NAME" | cut -d'/' -f2)
+
+          if ! echo "$SLUG" | grep -qE "^[a-z0-9]+(-[a-z0-9]+)*$"; then
+            echo "::error::Workstream slug '${SLUG}' (from '${REF_NAME}') is invalid. Slugs must match: lowercase alphanumerics and single hyphens only."
+            exit 1
+          fi
+
           echo "slug=${SLUG}" >> $GITHUB_OUTPUT
           echo "Workstream slug: ${SLUG}"
 
@@ -203,7 +208,7 @@ jobs:
           echo "| Version | ${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
           echo "| npm dist-tag | workstream-${{ steps.slug.outputs.slug }} |" >> $GITHUB_STEP_SUMMARY
           echo "| GitHub tag | ${{ steps.version.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Integration branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workstream branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
 
@@ -662,7 +667,7 @@ jobs:
   # the exact version (the stamp is needed here because the npm packages are built in
   # this job), then publishes with dist-tag workstream-<slug>.
   # It performs NO git operations -- version stamps live only in the working tree.
-  # (Rule 2: never commit version bumps on an integration branch.)
+  # (Rule 2: never commit version bumps on a workstream branch.)
   # (Rule 3: npm packages are published with --tag workstream-<slug>, never latest.)
   #
   # npm OIDC trusted publishing: id-token: write + registry-url on setup-node, exactly
