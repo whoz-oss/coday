@@ -42,7 +42,7 @@ class Neo4jPermissionRepository(
          *
          * Covers: [EntityType.PROMPT], [EntityType.AGENT_CONFIG],
          * [EntityType.INTEGRATION_CONFIG], [EntityType.AI_PROVIDER], [EntityType.AI_MODEL],
-         * [EntityType.SKILL].
+         * [EntityType.SKILL], [EntityType.AUTH_SETTING].
          */
         private val PLATFORM_SCOPABLE_ENTITY_TYPES: Set<EntityType> = setOf(
                 EntityType.PROMPT,
@@ -51,6 +51,7 @@ class Neo4jPermissionRepository(
                 EntityType.AI_PROVIDER,
                 EntityType.AI_MODEL,
                 EntityType.SKILL,
+                EntityType.AUTH_SETTING,
             )
     }
 
@@ -117,7 +118,7 @@ class Neo4jPermissionRepository(
                         )
                     } else {
                         // Shared entities (AgentConfig, IntegrationConfig, AiProvider,
-                        // AiModel, Prompt, Skill): namespace MEMBERs legitimately inherit READ
+                        // AiModel, Prompt, Skill, AuthSetting): namespace MEMBERs legitimately inherit READ
                         // through the namespace (FR21, FR27, FR32, FR35).
                         //
                         // For platform-scopable types (e.g. Prompt, Skill), also grant READ
@@ -423,6 +424,8 @@ class Neo4jPermissionRepository(
      * [EntityType.PROMPT] and [EntityType.SKILL] are included because namespace-scoped
      * entities carry a BELONGS_TO edge to their parent Namespace and must be readable
      * by namespace MEMBERs via transitive permission (the same rule as AgentConfig, etc.).
+     * [EntityType.AUTH_SETTING] follows the same rule: a namespace-shared setting is read by
+     * the namespace's members and written by its admins (#1773).
      */
     private fun isNamespaceChildEntity(entityType: EntityType): Boolean =
         entityType in
@@ -436,5 +439,6 @@ class Neo4jPermissionRepository(
                 EntityType.PROMPT,
                 EntityType.SCHEDULED_PROMPT,
                 EntityType.SKILL,
+                EntityType.AUTH_SETTING,
             )
 }
