@@ -84,6 +84,10 @@ object WorkflowStatuses {
      * with `WORKFLOW_SEALED`); resuming or re-running the requirement happens
      * via a NEW workflow linked to the sealed predecessor (see
      * `linkedWorkflowRelations` in `WorkflowInstance.kt`).
+     *
+     * One governed exception exists: a human-triggered retry of a FAILED agent step may reopen a run whose
+     * status is `failed` (never `completed` or `cancelled`). It is a dedicated command (fenced on the instance
+     * revision, idempotent, audited), not a transition: [TRANSITIONS] of `failed` stays empty.
      */
     val TERMINAL: Set<String> = setOf(COMPLETED, FAILED, CANCELLED)
 

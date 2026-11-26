@@ -151,20 +151,33 @@ class WorkflowActionsServiceTest {
 
     @Test
     fun `retry targets root failure and not blocked descendants`() {
+        val agent = mapOf("kind" to "agent", "name" to "builder")
         stubBaseline(
             revision = 4,
             steps = listOf(
-                mapOf("id" to "frontend-build", "status" to "failed"),
-                mapOf("id" to "frontend-tests", "status" to "blocked", "dependsOn" to listOf("frontend-build")),
-                mapOf("id" to "a11y-audit", "status" to "blocked", "dependsOn" to listOf("frontend-tests")),
+                mapOf("id" to "frontend-build", "status" to "failed", "responsibility" to agent),
+                mapOf("id" to "frontend-tests", "status" to "blocked", "dependsOn" to listOf("frontend-build"), "responsibility" to agent),
+                mapOf("id" to "a11y-audit", "status" to "blocked", "dependsOn" to listOf("frontend-tests"), "responsibility" to agent),
+            ),
+            // The retry command compares the INSTANCE revision (6 here), not the projection row revision (4).
+            instance = WorkflowInstanceRecord(
+                namespaceId = namespace, workflowId = workflowId, revision = 6, status = "active",
+                creationCommandHash = null, instance = mapOf("status" to "failed"), projection = emptyMap(),
+            ),
+            workflowAttempts = listOf(
+                DurableAgentAttempt(
+                    attemptId = "attempt-build", caseId = "case-build", namespaceId = namespace, workflowId = workflowId,
+                    stepId = "frontend-build", attemptNumber = 1, agentName = "builder", status = AgentAttemptStatus.FAILED,
+                ),
             ),
         )
+        every { proxy.getRunCost("case-build", reader) } returns null
 
         val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
 
         val retry = result.allowedActions.single { it.type == WorkflowActionTypes.RETRY }
         assertThat(retry.stepId).isEqualTo("frontend-build")
-        assertThat(retry.expectedRevision).isEqualTo(4)
+        assertThat(retry.expectedRevision).isEqualTo(6)
         assertThat(result.allowedActions.none { it.type == WorkflowActionTypes.RETRY && it.stepId != "frontend-build" }).isTrue()
         assertThat(result.blockers.filter { it.code == WorkflowBlockerCodes.STEP_BLOCKED }.map { it.stepId })
             .containsExactlyInAnyOrder("frontend-tests", "a11y-audit")

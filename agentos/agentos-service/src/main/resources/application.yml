@@ -201,11 +201,12 @@ agentos:
   integrations:
   # Comma-separated integration types that cannot be created or updated in a user scope
   # (user-global or user x namespace), because a user overlay of a network-reaching type could
-  # redirect a shared credential to a host the user controls, and a BASH or GRADLE overlay could run a
-  # command (or a build) that reads the secret of the bound Auth Setting or the environment of the service. Platform and namespace-shared
+  # redirect a shared credential to a host the user controls, a BASH or GRADLE overlay could run a
+  # command (or a build) that reads the secret of the bound Auth Setting or the environment of the service,
+  # and a KTLINT overlay could point projectDirectory at / to rewrite any Kotlin file the service can write. Platform and namespace-shared
   # configs are unaffected. Setting the list replaces the default entirely.
   # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
-  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE
+  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT
   # Comma-separated integration types that may set autoGrant, i.e. be handed to every agent within
   # a config's scope without any agent naming it. At platform scope that is every agent of the
   # environment at once, so the list starts closed and setting it replaces the default entirely.
@@ -372,6 +373,15 @@ agentos:
   # savings on multi-turn agent runs. Disable if prompt caching is not available on your plan.
   # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
   # prompt-caching-enabled: true
+  requesty:
+    prompt-cache:
+      # Models that get explicit 1-hour cache markers (cache_control ttl 1h, requesty.auto_cache false) when
+      # their user chose the Extended prompt cache and the provider's base URL is Requesty (requesty.ai).
+      # A regular expression searched in the API model name. The default matches every Claude model name;
+      # Requesty policy names do not always tell the backing model, so extend it for policies backed by Claude,
+      # e.g. "(?i)claude|^policy/sonnet-with-fallback$". Only Anthropic models accept these markers.
+      # Override with env var: AGENTOS_REQUESTY_PROMPT_CACHE_MODEL_PATTERN
+      model-pattern: "(?i)claude"
   plugins:
     # PF4J runtime directory, relative to the working directory. Coday (cwd = <configDir>/agentos),
     # the IntelliJ run configuration and bootRun (cwd = agentos/) all start from the AgentOS root,

@@ -90,6 +90,82 @@ class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
 
     init {
 
+        "two collaborative MVC readers receive passive messages and unavailable invocation is denied without AI" {
+            val ns = namespaceService.create(Namespace(name = "collaborative-two-readers"))
+            val case = caseService.create(Case(namespaceId = ns.id, title = "Team smoke"))
+            val readers = List(2) {
+                mockMvc.perform(get("/api/cases/${case.id}/events")
+                    .param("includePreviousEvents", "true")
+                    .param("collaborative", "true"))
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                    .andReturn()
+            }
+            try {
+                val runtime = caseService.getCaseRuntime(case.id)
+                kotlinx.coroutines.withTimeout(5_000) {
+                    while (runtime.subscriptionCount.value < 2) kotlinx.coroutines.delay(10)
+                }
+                listOf("first passive message", "second passive message").forEach { text ->
+                    mockMvc.perform(post("/api/cases/${case.id}/messages")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{"content":"$text","mode":"HUMAN"}"""))
+                        .andExpect(status().isOk)
+                }
+                kotlinx.coroutines.withTimeout(5_000) {
+                    while (readers.any { !it.response.contentAsString.contains("second passive message") }) {
+                        kotlinx.coroutines.delay(10)
+                    }
+                }
+                readers.forEach { reader ->
+                    val frames = reader.response.contentAsString
+                    frames.contains("event:case-event") shouldBe true
+                    frames.contains("first passive message") shouldBe true
+                    frames.contains("\"startsAgentTurn\":false") shouldBe true
+                    reader.request.isAsyncStarted shouldBe true
+                }
+                mockMvc.perform(post("/api/cases/${case.id}/messages")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"content":"invoke","mode":"AGENT","agentName":"unavailable-smoke-agent"}"""))
+                    .andExpect(status().isBadRequest)
+                val stored = caseEventService.findByParent(case.id)
+                stored.filterIsInstance<io.whozoss.agentos.sdk.caseEvent.MessageEvent>().size shouldBe 2
+                stored.filterIsInstance<io.whozoss.agentos.sdk.caseEvent.MessageEvent>().all { !it.startsAgentTurn } shouldBe true
+                stored.filterIsInstance<io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent>().size shouldBe 0
+                caseService.getById(case.id).status shouldBe io.whozoss.agentos.sdk.caseFlow.CaseStatus.CREATED
+            } finally {
+                readers.forEach { it.request.asyncContext?.complete() }
+            }
+        }
+
+        "HUMAN JSON request persists passive message in embedded Neo4j without AI" {
+            val ns = namespaceService.create(Namespace(name = "collaborative-json"))
+            val case = caseService.create(Case(namespaceId = ns.id, title = "Team discussion"))
+            mockMvc.perform(post("/api/cases/${case.id}/messages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"content":"@helper does not trigger AI","mode":"HUMAN"}"""))
+                .andExpect(status().isOk)
+            val events = caseEventService.findByParent(case.id)
+            val message = events.filterIsInstance<io.whozoss.agentos.sdk.caseEvent.MessageEvent>().single()
+            message.startsAgentTurn shouldBe false
+            message.actor.id shouldBe userService.getCurrentUser().id.toString()
+            events.filterIsInstance<io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent>().size shouldBe 0
+            caseService.getById(case.id).status shouldBe io.whozoss.agentos.sdk.caseFlow.CaseStatus.CREATED
+        }
+
+        "invalid explicit mode payload is rejected through MVC before message persistence" {
+            val ns = namespaceService.create(Namespace(name = "collaborative-invalid"))
+            val case = caseService.create(Case(namespaceId = ns.id, title = "Team discussion"))
+            listOf(
+                """{"content":"hello","mode":"AGENT"}""",
+                """{"content":"hello","mode":"HUMAN","agentName":"helper"}""",
+                """{"content":"hello","mode":"UNKNOWN"}""",
+            ).forEach { body ->
+                mockMvc.perform(post("/api/cases/${case.id}/messages").contentType(MediaType.APPLICATION_JSON).content(body))
+                    .andExpect(status().isBadRequest)
+            }
+            caseEventService.findByParent(case.id).size shouldBe 0
+        }
+
         "POST /api/cases with missing namespaceId returns 400" {
             mockMvc.perform(
                 post("/api/cases")

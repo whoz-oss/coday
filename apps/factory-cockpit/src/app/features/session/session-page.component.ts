@@ -245,11 +245,15 @@ export class SessionPageComponent implements OnDestroy {
   protected onRetry(intent: RetryIntent): void {
     const id = this.effectiveRunId()
     if (!id) return
-    this.store.retry(id, {
-      stepId: intent.stepId,
-      expectedRevision: intent.expectedRevision,
-      reasonCode: intent.reasonCode,
-    })
+    this.store.retryFailedStep(
+      id,
+      {
+        stepId: intent.stepId,
+        expectedRevision: intent.expectedRevision,
+        additionalContext: intent.additionalContext,
+      },
+      this.currentNamespaceId()
+    )
   }
 
   protected onResearchResumption(intent: ResearchResumptionIntent): void {

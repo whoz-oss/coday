@@ -228,8 +228,8 @@ The tools are granted in `AgentServiceImpl.resolveAgentDefinition` only:
   scope, which wins at resolution.
 - Group deployment is not covered, nor deleting a namespace, an AI provider or an AI model.
 - Auth settings are not copied: their secrets are typed again in the card.
-- A namespace-shared auth setting is read and changed by id by super-admins only: `AUTH_SETTING` does
-  not inherit the namespace's rights in the permission model, for the REST API as for this tool.
+- A namespace-shared auth setting follows the namespace's rights, for the REST API as for this tool:
+  its members read it by id, its admins change it.
 - In local mode (`LocalSecurityService`) every request to the service acts as the OS user, so an
   agent with a shell can still reach the REST API directly. The tool's description asks it not to;
   only a dedicated configuration agent without shell, terminal or browser tools guarantees it.

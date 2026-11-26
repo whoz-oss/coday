@@ -179,7 +179,7 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `get_workflow exposes blockers and advertises the retry of a failed step`() {
+    fun `get_workflow exposes blockers and advertises no retry for a failed non-agent step`() {
         publish("wf-svc-failed", namespace, stepStatus = "failed")
 
         val response = get("$base/workflows/wf-svc-failed")
@@ -188,13 +188,8 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         val payload = data(response.body)
         assertThat(payload["state"]).isEqualTo("existing")
         assertThat(payload.toString()).contains("ATTEMPT_FAILED")
-        // The domain allows a retry of a root failure: the facade advertises it (and only it).
-        @Suppress("UNCHECKED_CAST")
-        val actions = payload["allowedActions"] as List<Map<String, Any?>>
-        assertThat(actions).hasSize(1)
-        assertThat(actions.single()["type"]).isEqualTo("retry")
-        assertThat(actions.single()["stepId"]).isEqualTo("gate")
-        assertThat(actions.single()["expectedRevision"]).isEqualTo(1)
+        // The failed `gate` step is a human step: retry is offered for failed AGENT steps only.
+        assertThat(payload["allowedActions"] as List<*>).isEmpty()
     }
 
     @Test

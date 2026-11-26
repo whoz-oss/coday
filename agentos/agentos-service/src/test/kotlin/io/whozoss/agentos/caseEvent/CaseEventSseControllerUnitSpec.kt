@@ -65,6 +65,23 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
         )
 
     init {
+        "collaborative subscription rehydrates an idle case for subsequent team messages" {
+            val caseId = UUID.randomUUID()
+            val runtime = mockk<CaseRuntime> {
+                every { events } returns MutableSharedFlow<CaseEvent>()
+                every { deliveryFailureCount } returns MutableStateFlow(0L)
+            }
+            val service = mockk<CaseService> {
+                every { findById(caseId, any()) } returns mockk<Case>()
+                every { findActiveRuntime(caseId) } returns null
+                every { getCaseRuntime(caseId) } returns runtime
+            }
+            val events = mockk<CaseEventService> { every { findByParent(caseId) } returns emptyList() }
+            val controller = CaseEventSseController(service, events, CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE))
+            controller.streamEvents(caseId, includePreviousEvents = true, collaborative = true)
+            verify(exactly = 1) { service.getCaseRuntime(caseId) }
+        }
+
         "SSE protocol uses stable case-event channel" {
             CaseEventSseController.CASE_EVENT_CHANNEL shouldBe "case-event"
         }

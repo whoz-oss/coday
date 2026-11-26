@@ -101,6 +101,17 @@ function mockFileRef(): WritableSignal<FileAutocompleteComponent | undefined> {
 describe('ComposerAutocompleteService', () => {
   afterEach(() => TestBed.resetTestingModule())
 
+  it('completes a hyphenated agent address without leaving the typed prefix behind', fakeAsync(() => {
+    const { service, agentState } = setup()
+    agentState.listEffective.mockReturnValue(of([makeAgent('code-review')]))
+    const draft = signal('@code-r')
+    service.onInput(draft(), draft)
+    tick(60)
+    expect(service.atSuggestions().map((agent) => agent.name)).toEqual(['code-review'])
+    service.onAgentSelected(makeAgent('code-review'), refSignal(), refSignal(), draft)
+    expect(draft()).toBe('@code-review ')
+  }))
+
   // -------------------------------------------------------------------------
   // init / reset
   // -------------------------------------------------------------------------
@@ -1066,6 +1077,100 @@ describe('ComposerAutocompleteService', () => {
   // -------------------------------------------------------------------------
   // onAgentSelected
   // -------------------------------------------------------------------------
+
+  describe('member @-mention', () => {
+    const members = [
+      { id: 'u-1', handle: 'alice', label: 'Alice Smith', email: 'alice@example.com' },
+      { id: 'u-2', handle: 'bob', label: 'Bob', email: 'bob@example.com' },
+    ]
+
+    it('is not offered until the host enables it', fakeAsync(() => {
+      const { service } = setup()
+
+      service.onInput('@', { set: jest.fn() })
+      tick(60)
+
+      expect(service.memberSuggestions()).toEqual([])
+    }))
+
+    it('lists the matching people next to the agents', fakeAsync(() => {
+      const { service, agentState } = setup()
+      agentState.listEffective.mockReturnValue(of([makeAgent('alice-bot')]))
+      service.enableMemberMentions(() => members)
+
+      service.onInput('@ali', { set: jest.fn() })
+      tick(60)
+
+      expect(service.memberSuggestions().map((m) => m.id)).toEqual(['u-1'])
+      expect(service.atSuggestions().map((a) => a.name)).toEqual(['alice-bot'])
+    }))
+
+    it('lists the people at once, without waiting for the agents', fakeAsync(() => {
+      const { service } = setup()
+      service.enableMemberMentions(() => members)
+
+      service.onInput('@b', { set: jest.fn() })
+
+      expect(service.memberSuggestions().map((m) => m.id)).toEqual(['u-2'])
+      tick(60)
+    }))
+
+    it('closes when the word stops being a mention, or a command takes over', fakeAsync(() => {
+      const { service } = setup()
+      service.enableMemberMentions(() => members)
+      service.onInput('@al', { set: jest.fn() })
+      expect(service.memberSuggestions()).toHaveLength(1)
+
+      service.onInput('@al ', { set: jest.fn() })
+      expect(service.memberSuggestions()).toEqual([])
+
+      service.onInput('@al', { set: jest.fn() })
+      service.onInput('/x', { set: jest.fn() })
+      expect(service.memberSuggestions()).toEqual([])
+      tick(60)
+    }))
+
+    it('takes the keyboard like the agents: Enter delegates to the dropdown, Escape closes the people too', fakeAsync(() => {
+      const { service } = setup()
+      service.enableMemberMentions(() => members)
+      service.onInput('@bo', { set: jest.fn() })
+      const agentRef = mockAgentRef()
+
+      const enter = new KeyboardEvent('keydown', { key: 'Enter' })
+      expect(service.onKeydown(enter, mockPromptRef(), agentRef)).toBe(true)
+      expect(agentRef()!.navigate).toHaveBeenCalledWith('Enter')
+
+      const escape = new KeyboardEvent('keydown', { key: 'Escape' })
+      expect(service.onKeydown(escape, mockPromptRef(), agentRef)).toBe(true)
+      expect(service.memberSuggestions()).toEqual([])
+      tick(60)
+    }))
+
+    it('replaces the trailing @prefix with the handle of the person, and closes the dropdown', fakeAsync(() => {
+      const { service } = setup()
+      service.enableMemberMentions(() => members)
+      service.onInput('ping @bo', { set: jest.fn() })
+      const inputValue = Object.assign(jest.fn().mockReturnValue('ping @bo'), { set: jest.fn() })
+
+      service.onMemberSelected(members[1]!, refSignal(undefined), inputValue)
+
+      expect(inputValue.set).toHaveBeenCalledWith('ping @bob ')
+      expect(service.memberSuggestions()).toEqual([])
+      expect(service.atSuggestions()).toEqual([])
+      tick(60)
+    }))
+
+    it('reset() closes the people', fakeAsync(() => {
+      const { service } = setup()
+      service.enableMemberMentions(() => members)
+      service.onInput('@a', { set: jest.fn() })
+
+      service.reset()
+
+      expect(service.memberSuggestions()).toEqual([])
+      tick(60)
+    }))
+  })
 
   describe('onAgentSelected()', () => {
     it('replaces the trailing @prefix with the full completion and closes atSuggestions', fakeAsync(() => {

@@ -14,7 +14,8 @@ import java.util.UUID
  * it in responses but it is never written from the request body.
  *
  * [isAdmin] follows PUT replace-semantics: clients are expected to send the full state
- * on update. Omitting the field on PUT will reset it to `false`.
+ * on update. Omitting the field on PUT will reset it to `false`. [promptCacheTtl] is the exception: null keeps
+ * the stored value.
  */
 @Schema(name = "User")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -38,4 +39,19 @@ data class UserDto(
         message = "preferredLanguage must be a valid BCP 47 language tag (e.g. \"en\", \"fr\", \"en-US\")",
     )
     val preferredLanguage: String? = null,
+    /**
+     * Whether the user's conversation prompt should stay cached through longer pauses between two LLM calls
+     * (see [PromptCacheTtl]). Responses always carry the effective value ([PromptCacheTtl.STANDARD] when never
+     * set). On create, null means [PromptCacheTtl.STANDARD].
+     *
+     * The exception to PUT replace-semantics: on update, null (or an omitted field) keeps the stored value, so
+     * clients that do not know this field cannot reset it.
+     */
+    @field:Schema(
+        nullable = true,
+        description =
+            "Prompt cache choice; EXTENDED only changes Claude models via Requesty. On update, null keeps the " +
+                "stored value.",
+    )
+    val promptCacheTtl: PromptCacheTtl? = null,
 )

@@ -169,14 +169,81 @@ describe('ActionBarComponent', () => {
     expect(buttons(host)).toHaveLength(0)
   })
 
-  it('emits a RetryIntent carrying the step and the expected revision', () => {
+  it('emits a RetryIntent with an empty context when the optional text is left blank', () => {
     const emitted: RetryIntent[] = []
     fixture.componentInstance.retryRequested.subscribe((intent) => emitted.push(intent))
     const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7 }])
+    const submit = host.querySelector('.failed-step-retry button[type="submit"]') as HTMLButtonElement
 
-    buttons(host)[0]?.click()
+    // No `required`: retrying without any information is valid.
+    expect(submit.disabled).toBe(false)
+    submit.click()
 
-    expect(emitted).toEqual([{ stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' }])
+    expect(emitted).toEqual([{ stepId: 'build', expectedRevision: 7, additionalContext: '' }])
+  })
+
+  it('emits a RetryIntent carrying the trimmed operator text and the expected revision', () => {
+    const emitted: RetryIntent[] = []
+    fixture.componentInstance.retryRequested.subscribe((intent) => emitted.push(intent))
+    const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7 }])
+    const textarea = host.querySelector('.failed-step-retry textarea') as HTMLTextAreaElement
+
+    expect(textarea.maxLength).toBe(4000)
+    expect(textarea.required).toBe(false)
+    textarea.value = '  Use the staging database  '
+    textarea.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+    ;(host.querySelector('.failed-step-retry button[type="submit"]') as HTMLButtonElement).click()
+
+    expect(emitted).toEqual([{ stepId: 'build', expectedRevision: 7, additionalContext: 'Use the staging database' }])
+  })
+
+  it('shows the retry form in English with a character counter', () => {
+    const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7, label: "Retry failed step 'build'" }])
+    const text = host.textContent ?? ''
+
+    expect(text).toContain("Retry failed step 'build'")
+    expect(text).toContain('Starts a new attempt of the same step in the same case.')
+    expect(text).toContain('0 / 4000 characters')
+    expect(text).not.toMatch(/Relancer|caractères|facultatif/)
+  })
+
+  it('disables the retry form while a retry is in flight and relabels the button', () => {
+    fixture.componentRef.setInput('retryingStepId', 'build')
+    const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7 }])
+    const emitted: RetryIntent[] = []
+    fixture.componentInstance.retryRequested.subscribe((intent) => emitted.push(intent))
+    const submit = host.querySelector('.failed-step-retry button[type="submit"]') as HTMLButtonElement
+
+    expect((host.querySelector('.failed-step-retry textarea') as HTMLTextAreaElement).disabled).toBe(true)
+    expect(submit.disabled).toBe(true)
+    expect(submit.textContent).toContain('Retrying')
+    host.querySelector('.failed-step-retry')?.dispatchEvent(new Event('submit'))
+    expect(emitted).toEqual([])
+  })
+
+  it('shows the retry feedback only on the matching step', () => {
+    fixture.componentRef.setInput('retryFeedback', {
+      stepId: 'build',
+      kind: 'conflict',
+      message: 'The workflow has changed.',
+    })
+    const host = render([
+      { type: 'retry', stepId: 'build', expectedRevision: 7 },
+      { type: 'retry', stepId: 'deploy', expectedRevision: 7 },
+    ])
+
+    const forms = Array.from(host.querySelectorAll('.failed-step-retry'))
+    expect(forms).toHaveLength(2)
+    expect(forms[0]?.textContent).toContain('The workflow has changed.')
+    expect(forms[1]?.textContent).not.toContain('The workflow has changed.')
+  })
+
+  it('renders no retry form without the allowed action, even for a failed-step blocker', () => {
+    const host = render([], [{ code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Step failed' }])
+
+    expect(host.querySelector('.failed-step-retry')).toBeNull()
+    expect(host.querySelector('button[type="submit"]')).toBeNull()
   })
 
   it('renders NEEDS_RESEARCH as information/access needed, not as a failure or unknown runtime', () => {

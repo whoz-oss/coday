@@ -9,6 +9,7 @@ import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -46,6 +47,12 @@ class CaseEventSseController(
     private val caseService: CaseService,
     private val caseEventService: CaseEventService,
     private val caseConfig: CaseConfigProperties,
+    /**
+     * Who has a collaborative stream open on which case. Optional, like the other late additions of the services: a
+     * controller built without it simply serves no presence.
+     */
+    private val presenceRegistry: CasePresenceRegistry? = null,
+    private val userService: UserService? = null,
 ) {
     private val heartbeatIntervalMs get() = caseConfig.sseHeartbeatIntervalMs
 
@@ -70,7 +77,7 @@ class CaseEventSseController(
         description =
             "Every SSE frame uses the stable event name 'case-event'. " +
                 "Its JSON CaseEvent payload carries the subtype in its 'type' discriminant. " +
-                "includePreviousEvents defaults to true.",
+                "includePreviousEvents defaults to true. collaborative=true keeps inactive cases subscribed without running an agent.",
         responses = [
             ApiResponse(
                 responseCode = "200",
@@ -87,6 +94,7 @@ class CaseEventSseController(
     fun streamEvents(
         @PathVariable caseId: UUID,
         @RequestParam(defaultValue = "true") includePreviousEvents: Boolean = true,
+        @RequestParam(defaultValue = "false") collaborative: Boolean = false,
     ): SseEmitter {
         logger.info { "Client connecting to event stream for case: $caseId" }
 
@@ -106,6 +114,7 @@ class CaseEventSseController(
             includePreviousEvents = includePreviousEvents,
             caseId = caseId,
             emitter = emitter,
+            collaborative = collaborative,
         )
 
          // Heartbeat: periodically send an SSE comment frame so that a client
@@ -113,6 +122,9 @@ class CaseEventSseController(
          // Without this, the collector coroutine above stays suspended on collect()
          // indefinitely, keeping the SharedFlow subscriber alive and blocking eviction.
         startHeartbeatJob(scope = scope, emitter = emitter, caseId = caseId)
+
+        // Presence: a viewer of a shared case is told who else is there, and told again whenever that changes.
+        if (collaborative) startPresenceJob(scope = scope, caseId = caseId, emitter = emitter)
 
         emitter.onCompletion {
             logger.debug { "SSE emitter completed for case $caseId" }
@@ -142,8 +154,12 @@ class CaseEventSseController(
         includePreviousEvents: Boolean,
         caseId: UUID,
         emitter: SseEmitter,
+        collaborative: Boolean,
     ) {
-        val activeCase = caseService.findActiveRuntime(caseId)
+        val activeCase = when {
+            collaborative -> caseService.getCaseRuntime(caseId)
+            else -> caseService.findActiveRuntime(caseId)
+        }
         val liveEvents = Channel<CaseEvent>(LIVE_BUFFER_CAPACITY)
         val invalidated = AtomicBoolean(false)
 
@@ -214,6 +230,42 @@ class CaseEventSseController(
         }
     }
 
+    /**
+     * Registers this connection as a viewer of the case, and sends the people present, now and on each change, as a
+     * `case-presence` frame: `{"userIds": [...]}`, every user once whatever the number of tabs they have open.
+     *
+     * Subscribed before the registration (UNDISPATCHED), so that the viewer receives the frame their own arrival
+     * triggers, which is also the snapshot of who was already there. The connection leaves when its scope ends, which
+     * every way of closing the emitter (completion, timeout, error, a failed heartbeat) does.
+     */
+    private fun startPresenceJob(scope: CoroutineScope, caseId: UUID, emitter: SseEmitter) {
+        val registry = presenceRegistry
+        val users = userService
+        if (registry != null && users != null) {
+            val userId = users.getCurrentUser().id
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    registry.changes(caseId).collect {
+                        emitter.send(
+                            SseEmitter
+                                .event()
+                                .name(CASE_PRESENCE_CHANNEL)
+                                .data(mapOf("userIds" to registry.usersOf(caseId).map { it.toString() })),
+                        )
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.debug { "Failed to send the presence of case $caseId: ${e.message}" }
+                    emitter.completeWithError(e)
+                    scope.cancel()
+                }
+            }
+            val connectionId = registry.join(caseId, userId)
+            scope.coroutineContext[Job]?.invokeOnCompletion { registry.leave(caseId, connectionId) }
+        }
+    }
+
     private fun sendIfNew(event: CaseEvent, emittedEventIds: MutableSet<UUID>, emitter: SseEmitter) {
         if (emittedEventIds.add(event.id)) sendEvent(event, emitter)
     }
@@ -245,6 +297,9 @@ class CaseEventSseController(
 
     companion object : KLogging() {
         const val CASE_EVENT_CHANNEL = "case-event"
+
+        /** The frame naming the people present on a shared case, next to the case events. */
+        const val CASE_PRESENCE_CHANNEL = "case-presence"
         private const val LIVE_BUFFER_CAPACITY = 100
     }
 }

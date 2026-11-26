@@ -86,6 +86,31 @@ describe('GlobalStreamService', () => {
     expect(invalidated).toEqual(['ns-1'])
   })
 
+  it('exposes the mentions of the user apart from the case events and the invalidations', () => {
+    configure(false)
+    const mentions: string[] = []
+    const events: CaseEvent[] = []
+    service.mentions$.subscribe((mention) => mentions.push(mention.id))
+    service.caseEvents$.subscribe((event) => events.push(event))
+    service.start()
+
+    messages$.next({
+      kind: 'case-mention',
+      mention: {
+        id: 'm-1',
+        caseId: 'case-1',
+        namespaceId: 'ns-1',
+        byUserId: 'u-2',
+        byName: 'Bob',
+        snippet: 'hello @alice',
+        timestamp: '2026-01-01T00:00:00Z',
+      },
+    })
+
+    expect(mentions).toEqual(['m-1'])
+    expect(events).toEqual([])
+  })
+
   it('relays what it reads to the other tabs', async () => {
     configure(true)
     service.start()

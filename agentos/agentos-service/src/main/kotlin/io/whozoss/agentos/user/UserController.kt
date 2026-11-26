@@ -7,6 +7,7 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.user.GroupsByExternalIdsRequest
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.api.user.UserApi
 import io.whozoss.agentos.sdk.api.user.UserDto
 import io.whozoss.agentos.sdk.api.userGroup.UserGroupSummary
@@ -66,6 +67,7 @@ class UserController(
                     bio = resource.bio,
                     isAdmin = resource.isAdmin,
                     preferredLanguage = resource.preferredLanguage,
+                    promptCacheTtl = resource.promptCacheTtl ?: PromptCacheTtl.STANDARD,
                 )
             },
         )
@@ -119,6 +121,8 @@ class UserController(
                     bio = resource.bio,
                     isAdmin = if (isSelfEdit) existing.isAdmin else resource.isAdmin,
                     preferredLanguage = resource.preferredLanguage,
+                    // Null keeps the stored value: a client unaware of the field must not reset it.
+                    promptCacheTtl = resource.promptCacheTtl ?: existing.promptCacheTtl,
                 ),
             ).let(::toDto)
     }
@@ -192,4 +196,5 @@ internal fun toDto(entity: User) =
         bio = entity.bio,
         isAdmin = entity.isAdmin,
         preferredLanguage = entity.preferredLanguage,
+        promptCacheTtl = entity.promptCacheTtl,
     )

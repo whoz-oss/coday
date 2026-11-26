@@ -657,7 +657,7 @@ class ConfigAgentFlowIntegrationSpec : StringSpec() {
         }
 
         "removing a field of an auth setting clears it, since the REST API reads a missing one as keep" {
-            // A namespace-shared auth setting is read and written by id by its super-admins only.
+            // A namespace-shared auth setting is read by id by the namespace's members and written by its admins.
             val root = superAdmin()
             actAs(root)
             val creation =

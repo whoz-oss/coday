@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
@@ -17,8 +18,10 @@ import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
@@ -269,6 +272,65 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
             ).andExpect(status().isOk)
 
             captured.captured.preferredLanguage shouldBe null
+        }
+
+        // -----------------------------------------------------------------
+        // PUT — promptCacheTtl (a non-admin edits their own preference)
+        // -----------------------------------------------------------------
+
+        "PUT self with promptCacheTtl=EXTENDED (caller=non-admin) persists it and returns it" {
+            val captured = slot<User>()
+            every { userService.getCurrentUser() } returns regularUser
+            every { userService.findByIds(listOf(regularUserId), false) } returns listOf(regularUser)
+            every { userService.update(capture(captured)) } answers { firstArg() }
+
+            mockMvc
+                .perform(
+                    put("/api/users/$regularUserId")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "$regularUserId", "email": "alice@example.com", "promptCacheTtl": "EXTENDED" }"""),
+                ).andExpect(status().isOk)
+                .andExpect(jsonPath("$.promptCacheTtl").value("EXTENDED"))
+
+            captured.captured.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
+        }
+
+        "PUT self with an explicit null promptCacheTtl keeps the stored value" {
+            val captured = slot<User>()
+            val oneHourUser = regularUser.copy(promptCacheTtl = PromptCacheTtl.EXTENDED)
+            every { userService.getCurrentUser() } returns oneHourUser
+            every { userService.findByIds(listOf(regularUserId), false) } returns listOf(oneHourUser)
+            every { userService.update(capture(captured)) } answers { firstArg() }
+
+            mockMvc
+                .perform(
+                    put("/api/users/$regularUserId")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "$regularUserId", "email": "alice@example.com", "promptCacheTtl": null }"""),
+                ).andExpect(status().isOk)
+                .andExpect(jsonPath("$.promptCacheTtl").value("EXTENDED"))
+
+            captured.captured.promptCacheTtl shouldBe PromptCacheTtl.EXTENDED
+        }
+
+        "PUT with an unknown promptCacheTtl returns 400" {
+            every { userService.getCurrentUser() } returns regularUser
+
+            mockMvc
+                .perform(
+                    put("/api/users/$regularUserId")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "id": "$regularUserId", "email": "alice@example.com", "promptCacheTtl": "ONE_DAY" }"""),
+                ).andExpect(status().isBadRequest)
+        }
+
+        "GET /me returns STANDARD for a user who never chose a prompt cache option" {
+            every { userService.getCurrentUser() } returns regularUser
+
+            mockMvc
+                .perform(get("/api/users/me"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.promptCacheTtl").value("STANDARD"))
         }
 
         // -----------------------------------------------------------------

@@ -9,6 +9,8 @@ import { CaseEvent, Configuration, NAMESPACE_CASE_LIST_UPDATED_EVENT } from '@wh
 export type GlobalStreamMessage =
   | { kind: 'case-event'; event: CaseEvent }
   | { kind: 'case-list-invalidated'; namespaceId: string }
+  /** A teammate mentioned the user with `@handle` in a message of a shared case. */
+  | { kind: 'case-mention'; mention: CaseMention }
   /**
    * The stream opened, which EventSource reports on the first connection and on every one of
    * its own reconnections. Nothing is replayed on this stream, so whatever was published while
@@ -16,6 +18,26 @@ export type GlobalStreamMessage =
    * event it may never get.
    */
   | { kind: 'connected' }
+
+/**
+ * What the `case-mention` frame carries. Not a CaseEvent: it is addressed to one person, belongs to no case history and
+ * is never persisted (`CaseMentionBroadcaster` server-side). Written by hand, like the frame itself, which the
+ * generated client does not describe.
+ */
+export interface CaseMention {
+  id: string
+  caseId: string
+  namespaceId: string
+  /** User id of the author of the message. */
+  byUserId: string
+  byName: string
+  /** The start of the message. */
+  snippet: string
+  timestamp: string
+}
+
+/** The SSE event name of a mention, as `GlobalCaseEventSseController.CASE_MENTION_CHANNEL` sends it. */
+export const CASE_MENTION_EVENT = 'case-mention'
 
 /**
  * Fan-in SSE client for GET /api/cases/events/mine — the global, cross-case event stream.
@@ -73,9 +95,19 @@ export class GlobalCaseEventSseService {
         }
       }
 
+      const onCaseMention = (msg: globalThis.MessageEvent<string>) => {
+        try {
+          const mention = JSON.parse(msg.data) as CaseMention
+          if (mention?.id && mention.caseId) this.zone.run(() => subscriber.next({ kind: 'case-mention', mention }))
+        } catch (err) {
+          console.warn('[GlobalStream] failed to parse mention', err)
+        }
+      }
+
       for (const name of GlobalCaseEventSseService.EVENT_NAMES) {
         eventSource.addEventListener(name, onCaseEvent)
       }
+      eventSource.addEventListener(CASE_MENTION_EVENT, onCaseMention)
       // The per-namespace stream's frame, the namespace now in its payload (GlobalCaseEventSseController).
       eventSource.addEventListener(NAMESPACE_CASE_LIST_UPDATED_EVENT, onCaseListUpdated)
 

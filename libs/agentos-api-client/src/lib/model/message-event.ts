@@ -27,4 +27,5 @@ export interface MessageEvent {
   requestedReasoningEffort?: ReasoningEffort
   rerunOf?: string
   sessionContext?: { [key: string]: any }
+  startsAgentTurn: boolean
 }
