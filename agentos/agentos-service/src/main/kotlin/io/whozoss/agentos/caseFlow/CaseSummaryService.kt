@@ -8,6 +8,7 @@ import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
@@ -140,7 +141,12 @@ class CaseSummaryService(
         return coRunCatching {
             withContext(Dispatchers.IO) {
                 chatClientProvider
-                    .getChatClient(model.forUtilityCall(), provider, caseId.toString())
+                    .getChatClient(
+                        model.forUtilityCall(),
+                        provider,
+                        caseId.toString(),
+                        promptCacheTtl = PromptCacheTtl.STANDARD,
+                    )
                     .prompt(Prompt(UserMessage(prompt)))
                     .call()
                     .content()

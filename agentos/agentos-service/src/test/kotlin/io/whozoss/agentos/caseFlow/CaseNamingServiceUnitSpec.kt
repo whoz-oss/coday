@@ -15,6 +15,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -127,7 +128,7 @@ class CaseNamingServiceUnitSpec :
          * Stubs [ChatClientProvider.getChatClient] to return the given [chatClient].
          */
         fun ChatClientProvider.stub(chatClient: ChatClient) {
-            every { getChatClient(any(), any(), any()) } returns chatClient
+            every { getChatClient(any(), any(), any(), promptCacheTtl = PromptCacheTtl.STANDARD) } returns chatClient
         }
 
         // -------------------------------------------------------------------------
@@ -269,7 +270,7 @@ class CaseNamingServiceUnitSpec :
             service.nameCase(case, listOf(messageEvent("Plan the migration", case.id))) {}
 
             verify(exactly = 1) {
-                chatClientProvider.getChatClient(effortModel.copy(reasoningEffort = ReasoningEffort.LOW), provider, case.id.toString())
+                chatClientProvider.getChatClient(effortModel.copy(reasoningEffort = ReasoningEffort.LOW), provider, case.id.toString(), promptCacheTtl = PromptCacheTtl.STANDARD)
             }
         }
 

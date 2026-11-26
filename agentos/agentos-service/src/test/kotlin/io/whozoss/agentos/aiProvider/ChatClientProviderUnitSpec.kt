@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.aiProvider.ReasoningEffort
+import io.whozoss.agentos.sdk.api.user.PromptCacheTtl
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
@@ -76,10 +77,11 @@ class ChatClientProviderUnitSpec :
                     modelName = "claude-sonnet-4-5",
                     temperature = 0.3,
                     maxCompletionTokens = 8192,
+                    promptCacheTtl = PromptCacheTtl.STANDARD,
                 )
             } returns chatModel
 
-            val client = chatClientProvider.getChatClient(m, p)
+            val client = chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.STANDARD)
 
             client.shouldNotBeNull()
             verify(exactly = 1) {
@@ -110,7 +112,7 @@ class ChatClientProviderUnitSpec :
                 )
             } returns chatModel
 
-            chatClientProvider.getChatClient(m, p).shouldNotBeNull()
+            chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.STANDARD).shouldNotBeNull()
         }
 
         "getChatClient forwards the model reasoning effort to ChatModelFactory" {
@@ -130,7 +132,7 @@ class ChatClientProviderUnitSpec :
                 )
             } returns chatModel
 
-            chatClientProvider.getChatClient(m, p).shouldNotBeNull()
+            chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.STANDARD).shouldNotBeNull()
             verify(exactly = 1) {
                 chatModelFactory.createChatModel(
                     apiType = AiApiType.OpenAI,
@@ -140,6 +142,31 @@ class ChatClientProviderUnitSpec :
                     temperature = null,
                     maxCompletionTokens = null,
                     reasoningEffort = ReasoningEffort.XHIGH,
+                )
+            }
+        }
+
+        "getChatClient forwards the user's prompt cache choice to ChatModelFactory" {
+            val m = model(apiName = "anthropic/claude-sonnet-4-5", temperature = null)
+            val p = provider(apiType = AiApiType.OpenAI, baseUrl = "https://router.eu.requesty.ai")
+            val chatModel = mockk<ChatModel>(relaxed = true)
+
+            every {
+                chatModelFactory.createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+            } returns chatModel
+
+            chatClientProvider.getChatClient(m, p, promptCacheTtl = PromptCacheTtl.EXTENDED).shouldNotBeNull()
+            verify(exactly = 1) {
+                chatModelFactory.createChatModel(
+                    apiType = AiApiType.OpenAI,
+                    baseUrl = "https://router.eu.requesty.ai",
+                    apiKey = "sk-test",
+                    modelName = "anthropic/claude-sonnet-4-5",
+                    temperature = null,
+                    maxCompletionTokens = null,
+                    headers = any(),
+                    reasoningEffort = null,
+                    promptCacheTtl = PromptCacheTtl.EXTENDED,
                 )
             }
         }
@@ -178,7 +205,7 @@ class ChatClientProviderUnitSpec :
             every { nativeModel.call(any<Prompt>()) } returns ChatResponse(listOf(Generation(toolCall)))
             val factory =
                 mockk<ChatModelFactory> {
-                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                    every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
                 }
             val client =
                 ChatClientProvider(factory, limits, UsageConfigProperties(enabled = true))
@@ -187,6 +214,7 @@ class ChatClientProviderUnitSpec :
                         provider(),
                         accumulator = UsageAccumulator(),
                         maxToolRounds = namespaceMaxToolRounds,
+                        promptCacheTtl = PromptCacheTtl.STANDARD,
                     )
 
             val response = client.prompt("Hello").toolCallbacks(callback).call().chatResponse()
@@ -213,10 +241,10 @@ class ChatClientProviderUnitSpec :
                 ChatResponse(listOf(Generation(AssistantMessage("Done"))))
             }
             val factory = mockk<ChatModelFactory> {
-                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
             }
             val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
-            val client = clientProvider.getChatClient(model(), provider())
+            val client = clientProvider.getChatClient(model(), provider(), promptCacheTtl = PromptCacheTtl.STANDARD)
 
             client.prompt("Hello").call().content() shouldBe "Done"
             verify(exactly = 1) { nativeModel.call(any<Prompt>()) }

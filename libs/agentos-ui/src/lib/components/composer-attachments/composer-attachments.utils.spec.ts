@@ -5,6 +5,7 @@ import {
   buildAttachmentMention,
   joinAttachmentMentions,
   joinMentionLines,
+  isEditableTarget,
   kindLabel,
   middleTruncate,
   pastedImageName,
@@ -335,5 +336,24 @@ describe('the lines of a message for its files', () => {
       )
       expect(joinAttachmentMentions('', mentions)).toBe(mentions)
     })
+  })
+})
+
+describe('isEditableTarget', () => {
+  it('is true for input and textarea elements', () => {
+    expect(isEditableTarget(document.createElement('input'))).toBe(true)
+    expect(isEditableTarget(document.createElement('textarea'))).toBe(true)
+  })
+
+  it('is true for contenteditable elements', () => {
+    const editable = document.createElement('div')
+    Object.defineProperty(editable, 'isContentEditable', { value: true })
+    expect(isEditableTarget(editable)).toBe(true)
+  })
+
+  it('is false for the page body, plain elements and missing targets', () => {
+    expect(isEditableTarget(document.body)).toBe(false)
+    expect(isEditableTarget(document.createElement('button'))).toBe(false)
+    expect(isEditableTarget(null)).toBe(false)
   })
 })

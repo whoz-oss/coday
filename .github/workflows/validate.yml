@@ -124,6 +124,9 @@ jobs:
     needs: [validate-ts, validate-jvm, merge-gate]
     # Conditions for this job to run:
     #   - validation must have passed (no failure/cancel in any needed job)
+    #   - the PR must not carry the 'skip-automerge' label (opt-out: validation still runs,
+    #     but the PR is left for a manual merge). The label is also re-checked live in the
+    #     first step, since the event payload is a snapshot taken when the run started.
     #   - the PR target must be a workstream branch
     #   - the PR must come from the same repository (not a fork)
     #
@@ -134,6 +137,7 @@ jobs:
     if: |
       always() &&
       !github.event.pull_request.draft &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-automerge') &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       startsWith(github.base_ref, 'workstream/') &&
@@ -155,10 +159,25 @@ jobs:
       BASE_REF: ${{ github.base_ref }}
       HEAD_REF: ${{ github.head_ref }}
     steps:
+      # Opt-out check on the LIVE labels. The job-level `if` only sees the labels as they
+      # were when the run started; a label added during the (long) validation would be
+      # missed. If the label is present, stop here and merge nothing.
+      - name: Check skip-automerge label
+        id: optout
+        run: |
+          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
+          if echo "$LABELS" | grep -qx 'skip-automerge'; then
+            echo "::notice::PR #${PR_NUMBER} has the 'skip-automerge' label: not merging automatically."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       # Cross-check the slug of head_ref against the slug of base_ref.
       # A mismatch means a work/foo/* PR is targeting workstream/bar/* -- user error,
       # do not merge it automatically.
       - name: Validate workstream slug
+        if: steps.optout.outputs.skip != 'true'
         run: |
           SLUG=$(echo "$BASE_REF" | cut -d'/' -f2)
           HEAD_SLUG=$(echo "$HEAD_REF" | cut -d'/' -f2)
@@ -177,6 +196,7 @@ jobs:
       # If auto-merge cannot be enabled (e.g. the PR is already in a clean state, or
       # auto-merge is disabled on the repository), fall back to an immediate merge.
       - name: Merge PR into target branch
+        if: steps.optout.outputs.skip != 'true'
         run: |
           echo "Merging PR #${PR_NUMBER} (${HEAD_REF} @ ${PR_HEAD_SHA}) into ${BASE_REF}..."
 

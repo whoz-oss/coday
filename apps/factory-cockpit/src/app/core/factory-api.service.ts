@@ -208,6 +208,26 @@ export interface ResearchResumptionResponse {
   queued: boolean
 }
 
+/** Body of a governed failed-step retry command. `additionalContext` is optional (0 to 4000 characters). */
+export interface FailedStepRetryRequest {
+  namespaceId: string
+  expectedRevision: number
+  additionalContext?: string
+}
+
+/** Accepted durable submission for attempt N+1 of the same failed step, in the same run and case. */
+export interface FailedStepRetryResponse {
+  workflowId: string
+  stepId: string
+  attemptId: string
+  previousAttemptId: string
+  attemptNumber: number
+  revision: number
+  idempotent: boolean
+  submissionId: string
+  queued: boolean
+}
+
 /** @deprecated Compatibility request for callers still using the old start route. */
 export interface StartWorkflowRequest {
   workflow: { workflowId: string; workflowType: string; title: string; ticket?: string }
@@ -510,16 +530,24 @@ export class FactoryApiService {
     )
   }
 
-  /** POST `/api/factory/workflows/:id/retries` (opens a retry for a blocked step). */
-  openRetry(
+  /**
+   * POST `/api/factory/workflows/:workflowId/steps/:stepId/failed-step-retries`.
+   * Reruns a FAILED agent step as a new attempt of the same run and case. The idempotency key
+   * is caller-owned so an ambiguous transport failure can be retried without a second attempt.
+   */
+  retryFailedStep(
     workflowId: string,
-    payload: { stepId: string; expectedRevision?: number; reasonCode?: string },
-    namespaceId?: string
-  ): Observable<unknown> {
-    return this.post<unknown>(
-      `/api/factory/workflows/${encodeURIComponent(workflowId)}/retries`,
-      { ...payload, namespaceId: requireNamespaceId(namespaceId ?? '') },
-      namespaceId
+    stepId: string,
+    payload: FailedStepRetryRequest,
+    idempotencyKey: string
+  ): Observable<FailedStepRetryResponse> {
+    const namespaceId = requireNamespaceId(payload.namespaceId)
+    return this.post<FailedStepRetryResponse>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/steps/${encodeURIComponent(stepId)}/failed-step-retries`,
+      { ...payload, namespaceId },
+      namespaceId,
+      undefined,
+      idempotencyKey
     )
   }
 

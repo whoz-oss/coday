@@ -10,6 +10,9 @@ integrations:
   GITHUB:
     - gh
   GIT:
+  GRADLE:
+  KTLINT:
+    - ktlint_format
   CHROME:
     # Navigate and manage tabs
     - navigate_page

@@ -3,6 +3,9 @@ package io.whozoss.agentos.plugins.gradle
 import io.whozoss.agentos.sdk.tool.BlockingTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.sdk.tool.ToolSchema
+import io.whozoss.agentos.sdk.tool.ToolTimeout
+import io.whozoss.agentos.sdk.tool.prefixedToolName
 import mu.KLogging
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
@@ -106,7 +109,7 @@ To check again, re-run this tool."""
                         ),
                     "timeoutSeconds" to
                         ToolSchema.integer(
-                            ToolTimeout.PARAM_DESCRIPTION +
+                            TIMEOUT_PARAM_DESCRIPTION +
                                 "Size it to the scope: about 60 for one suite, 180 for one module, " +
                                 "${ToolTimeout.MAX_SECONDS} for the whole project.",
                         ),
