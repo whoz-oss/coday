@@ -1,0 +1,20 @@
+# KOTLIN integration (agentos-kotlin-plugin): exposes the JetBrains Kotlin language server (LSP) as
+# kotlin_lsp_* tools (navigation, search, diagnostics, rename...) on the Kotlin code of the configured project.
+#
+# The server binary (intellij-server, over 1 GB, not shipped) is looked for, first match wins:
+#   1. the serverBinary parameter below;
+#   2. the environment variable AGENTOS_KOTLIN_LSP_BINARY of the AgentOS process;
+#   3. ~/kotlin-lsp/server/bin/intellij-server.
+# It is a path of the machine that runs AgentOS, so it is best set once on a platform-level KOTLIN integration (admin UI,
+# Platform integrations, same name KOTLIN, serverBinary only): it is merged with this file by name, and a key set in
+# this file wins over the platform one. Set it here only on a
+# deployment where it is the same everywhere. The service runs this file with its own rights: it cannot be inside
+# projectDirectory.
+#
+# {{NAMESPACE_CONFIG_PATH}} resolves to the namespace configPath (the repository root),
+# so this file stays portable across developer machines.
+name: "KOTLIN"
+integrationType: "KOTLIN"
+parameters:
+  projectDirectory: "{{NAMESPACE_CONFIG_PATH}}"
+  # serverBinary: /opt/kotlin-lsp/server/bin/intellij-server
