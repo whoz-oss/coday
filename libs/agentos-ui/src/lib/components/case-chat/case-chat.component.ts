@@ -74,12 +74,6 @@ import { buildDelegations, isCorrelatedDelegateTool } from '../delegation/models
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { EffortOption, messageEffortLabel, parseEffortCommand } from '../composer-autocomplete/effort-command'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
-import { CaseSettingsComponent } from '../case-settings/case-settings.component'
-import { findModelChoice, ModelChoice, modelChoices, parseModelCommand } from '../composer-autocomplete/model-command'
-import { stripSettingsCommand } from '../composer-autocomplete/settings-command'
-import { AiModelStateService } from '../../services/ai-model-state.service'
-import { chatModelOptions } from '../../services/chat-model.utils'
-import { ModelOption } from '../agent-config-form/model-options'
 import { parseBtwCommand } from '../composer-autocomplete/btw-command'
 import { SideQuestionStateService } from '../../services/side-question-state.service'
 import { CaseSettingsComponent } from '../case-settings/case-settings.component'
@@ -1780,18 +1774,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       } else {
         // Missing or unknown level: show the levels instead of doing nothing.
         this.autocomplete.showEffortLevels()
-      }
-      return
-    }
-    // Same for "/model <name>": a command for the case, never a message for the agent. The name must be one of
-    // the models the picker lists; anything else reopens the picker.
-    const modelName = parseModelCommand(content)
-    if (modelName !== undefined) {
-      const choice = modelName === null ? undefined : findModelChoice(this.modelChoiceList(), modelName)
-      if (choice) {
-        this.onModelSelected(choice)
-      } else {
-        this.autocomplete.showModelChoices()
       }
       return
     }

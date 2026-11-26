@@ -127,9 +127,6 @@ export class ComposerAutocompleteService {
   /** Null until the host enables /btw; then tells whether it is the only command offered right now. */
   private btwOnly: (() => boolean) | null = null
 
-  /** Null until the host enables /model; then tells whether the model can be changed now, and what it can be. */
-  private modelCommand: { available: () => boolean; choices: () => ModelChoice[] } | null = null
-
   /** Null until the host enables `#` file mentions; then tells where the composer is. */
   private fileScopes: (() => FileMentionScopes) | null = null
   /** True while the word being typed is a `#` mention: a late answer must not open another dropdown then. */
@@ -238,14 +235,6 @@ export class ComposerAutocompleteService {
    */
   enableBtwCommand(onlyCommand: () => boolean): void {
     this.btwOnly = onlyCommand
-  }
-
-  /**
-   * Offer the /model command in this composer. [available] is checked on each keystroke, like the /effort one;
-   * [choices] is read when the picker opens, so a host whose models load late always lists the current ones.
-   */
-  enableModelCommand(available: () => boolean, choices: () => ModelChoice[]): void {
-    this.modelCommand = { available, choices }
   }
 
   /**
