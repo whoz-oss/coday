@@ -89,11 +89,21 @@ New non-terminal step status `waiting_external` (never sealed as failed or compl
 A code capability (`github-pr-checks`) or an agent (`status: IN_PROGRESS`, attempt closed `indeterminate` with
 `failureCode=AGENT_IN_PROGRESS`) reports "still pending"; `SessionRunService` stores the poll state under the step
 payload `poll` (`executionId`, `firstPollStartedAt`, `lastPollAt`, `nextPollAt`, `deadlineAt`, `pollCount`,
-`intervalSeconds`, `reason`), asks `OutboxDrainService.scheduleWake` for a delayed continuation (outbox property
-`wakeNotBefore`) and returns, so no worker thread is held. Defaults: `factory.polling.default-interval-seconds=60`
-(clamped to 30–300) and `max-wait-seconds=1800`, measured per step execution; a correction replay starts a fresh window.
+`intervalSeconds`, `reason`) and requests the delayed continuation wake (outbox property `wakeNotBefore`) IN THE SAME
+transaction as the park (`OutboxDrainService.scheduleWakeInCurrentTransaction`, propagation MANDATORY): a step is
+`waiting_external` if and only if its delayed wake exists. If the wake cannot be requested the park is rolled back and
+the step fails loudly with evidence code `EXTERNAL_WAIT_SCHEDULING_FAILED` (technical failure, no return, no budget).
+The end-of-run `scheduleWake` only re-asserts the same wake idempotently. No worker thread is held while waiting.
+Defaults: `factory.polling.default-interval-seconds=60` (clamped to 30–300) and `max-wait-seconds=1800`, measured per step execution; a correction replay starts a fresh window.
 After the window the step fails with evidence code `POLL_TIMEOUT_EXCEEDED`; this is a technical failure, never
 eligible for `fail.return`, and polls never consume `maxCycles`.
+
+Safety net: `ExternalWaitSweeper` (same condition as the outbox drain worker, every `factory.polling.sweep-interval-ms`,
+default 60 s) reads the steps parked in `waiting_external`. A step whose `nextPollAt` (or `deadlineAt`) is overdue by more
+than `factory.polling.sweep-grace-seconds` (default 120) and whose continuation is absent, `dead`, `dispatched` or pending
+later than the step expects is re-woken (logged at `warn`). A Factory restart or a continuation that died therefore ends
+the step by its deadline plus the sweep interval plus the grace (about 33 min), never leaves it parked for ever.
+The sweeper only re-arms the wake; the sequencer still decides poll or `POLL_TIMEOUT_EXCEEDED`.
 
 `github-pr-checks` calls no LLM and spawns no process. It reads the `origin` remote and the attached branch from the
 run worktree, finds the open PR through the GitHub REST API (`FACTORY_GITHUB_TOKEN`, optional
@@ -103,10 +113,28 @@ GitHub answers 5xx/429/network errors. A draft PR is refused (`CI_PR_IS_DRAFT`):
 drafts. A red verdict records `ci-checks` evidence (`verdict=failed`, failed checks with redacted log tails) bound to the
 current `executionId`; only that evidence lets the `github-pr-checks` step use `outcomeTransitions.fail.return`.
 
-Verification run for this feature: `./gradlew :factory-service:test` (embedded Neo4j integration tests
-`OutboxDelayedWakeIntegrationTest`, `ExternalPollingSessionTest`, `OutcomeTransitionCiTest`, `PullRequestChecksCapabilityTest`)
-and `pnpm nx run-many -t lint test -p factory-cockpit`. Not verified: a run against a real GitHub PR and a Factory
-restart while a step is `waiting_external`.
+Verdict rules: the latest run of each check name counts (a rerun replaces an older run). Red: `failure`, `timed_out`,
+`startup_failure`, commit status `failure`/`error`. `cancelled`, `stale` and `action_required` are NOT a verdict: the step keeps
+polling (`CI_CHECKS_NOT_CONCLUSIVE`) so a rerun or a push can settle it, otherwise it ends with `POLL_TIMEOUT_EXCEEDED`.
+Green: `success`, `neutral`, `skipped`, status `success`. HTTP 403/429 rate limits are transient and honour `Retry-After` /
+`x-ratelimit-reset` (clamped to 30–300 s); any other 401/403/404 is a refusal (`CI_GITHUB_REFUSED`). The step is read-only: it
+does not take the worktree occupancy (a writer holding it never fails a poll).
+
+Token confinement: `FACTORY_GITHUB_TOKEN` is sent only to URLs with the scheme, host, port and path prefix of
+`factory.ci.github.api-base-url`; a `Link` header or any other absolute URL outside it is refused without a request
+(`CI_GITHUB_UNTRUSTED_URL`). The pre-signed log redirect never receives the token and must be https. `GitHubChecksProperties.toString()`
+redacts the token. `factory.ci.github.allowed-repositories` (comma separated `owner/repo`, case-insensitive) restricts the
+repositories the token may be used for (`CI_REPOSITORY_NOT_ALLOWED`); when it is empty and `repository` is set, `repository` is the
+only allowed one; when both are empty the repository resolved from the worktree `origin` is not restricted (unchanged behaviour,
+set the allow-list in shared deployments). Job logs are streamed into a bounded ring buffer (`max-log-download-bytes`, default
+20 MiB; `log-excerpt-bytes` kept), cut at a line boundary and redacted afterwards by the shared `SecretRedaction`
+(`factory-verification-core`), within `poll-budget-ms` per poll.
+
+Verification: the checks run by the CI of the pull request (`validate.yml`): `OutboxDelayedWakeIntegrationTest`,
+`ExternalWaitSweeperTest`, `ExternalPollingSessionTest`, `OutcomeTransitionCiTest`, `PullRequestChecksCapabilityTest`,
+`GitHubChecksClientTest`, `CapabilityExecutionInProgressTest`, `SecretRedactionTest`, the cockpit `mappers.spec.ts`. The restart
+and lost-wake cases are covered by `ExternalWaitSweeperTest` and by the atomic park in `ExternalPollingSessionTest`. Not verified:
+a run against a real GitHub PR, and a real Factory process restart while a step is `waiting_external`.
 
 ## Workspace contract
 
