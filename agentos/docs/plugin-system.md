@@ -36,6 +36,7 @@ The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlug
 | `agentos-http-plugin` | `HTTP_API` | Operations of an OpenAPI-described HTTP API (see [http-api-integration.md](http-api-integration.md)) |
 | `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
 | `agentos-gradle-plugin` | `GRADLE` | Structured Gradle tools (`gradle_compile`, `gradle_tests`, `gradle_dependency_insight`) run through the `gradlew` of a configured directory (see [GRADLE integration](#gradle-integration)) |
+| `agentos-ktlint-plugin` | `KTLINT` | `ktlint_check` / `ktlint_format` on Kotlin files under `projectDirectory` (see below) |
 
 `./gradlew deployPlugins` must be re-run after changing any plugin (it cleans, rebuilds and
 copies every plugin JAR into `plugins/`). For a one-shot local run, `./gradlew bootRunWithPlugins`
@@ -75,6 +76,32 @@ The tools run the build of the repository (`gradlew`, `build.gradle.kts`, `build
 URL, init scripts) with the rights of the AgentOS service. An agent that can write to the repository can
 therefore get code executed through them, as with the `BASH` integration: the confinement and the environment
 filter reduce the blast radius, they are not a sandbox. Give the integration only to agents you trust with that.
+
+## Ktlint Plugin
+
+`agentos-ktlint-plugin` runs the ktlint engine (standard ruleset) inside the service: nothing has to be
+installed on the machine, and the ktlint version is pinned by `gradle/libs.versions.toml`. The rule engine,
+the standard ruleset and `kotlin-compiler-embeddable` are bundled into the plugin JAR; the Kotlin stdlib,
+coroutines, Jackson and the SDK come from the service.
+
+```yaml
+name: KTLINT
+integrationType: KTLINT
+parameters:
+  projectDirectory: "{{NAMESPACE_CONFIG_PATH}}"   # absolute; {{CASE_EXCHANGE}} also accepted
+```
+
+- `ktlint_check` reports the violations of the given `.kt` / `.kts` files (`file:line:column message (rule-id)`,
+  flagged `[auto-correctable]`). It never modifies files.
+- `ktlint_format` autocorrects the files in place, then lists the modified files and the violations left to fix
+  by hand.
+
+Both tools take files only (directories are refused), every path must stay under `projectDirectory`, and
+`timeoutSeconds` (1 to 270) is mandatory. A report lists at most 200 violations, then says how many were left out
+(`... N more violation(s) not shown (X total)`), the counts of its header staying the real totals. A run that leaves violations is answered as a `KTLINT_FAILURE` whose text
+is the report; `KTLINT_ERROR` means the tool itself could not run (bad path, timeout, interruption). The `.editorconfig`
+of the target project applies. A missing,
+relative or nonexistent `projectDirectory` registers no tool and logs an error.
 
 ## Filesystem Plugin
 
@@ -227,21 +254,21 @@ can still encode the value, so do not bind a secret to a BASH integration whose 
 to read it. Like the other plugins, this works per user only for settings where each user holds their own
 credential.
 
-BASH and GRADLE integrations can only be created at platform or namespace-shared scope (`BASH` and `GRADLE` are in
-`agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
-to their own commands.
+BASH, GRADLE and KTLINT integrations can only be created at platform or namespace-shared scope (`BASH`, `GRADLE` and
+`KTLINT` are in `agentos.integrations.user-scope-denied-types` by default), so a user cannot attach a shared credential
+to their own commands, nor widen the `projectDirectory` of a shared build or style tool.
 
 ### User-scope denial for network-reaching types
 
 A user-scoped `IntegrationConfig` with the same name as a platform or namespace-shared one is
 deep-merged over it and inherits its `authSettingName`. For types whose parameters name a network
 endpoint or a command, that overlay would let any authenticated user point a shared credential at a
-host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`), so those types are refused in both user scopes at the API edge (`POST` -> 403,
+host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`; for `KTLINT`, point `projectDirectory` at `/` so that `ktlint_format` rewrites any Kotlin file the service can write), so those types are refused in both user scopes at the API edge (`POST` -> 403,
 `PUT` -> 404 because the endpoint hides existence). Shared scopes are unaffected.
 
 | Property | Env var | Default | Purpose |
 |---|---|---|---|
-| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
+| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
 
 ## Tool Registration
 
