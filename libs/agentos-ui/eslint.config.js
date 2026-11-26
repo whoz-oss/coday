@@ -8,7 +8,7 @@ export default [
   {
     files: ['**/*.ts'],
     rules: {
-      // Angular 22 made OnPush the default, so components that need eager change
+      // Angular 22 made OnPush the default, so components that need eager change!
       // detection must opt out explicitly via ChangeDetectionStrategy.Eager.
       '@angular-eslint/prefer-on-push-component-change-detection': 'off',
       '@angular-eslint/directive-selector': [
