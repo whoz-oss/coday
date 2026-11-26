@@ -44,6 +44,12 @@ export function validateDraft(draft: StepDraft): string | null {
 }
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
+/** The deterministic CI-check code step is the only non-agent step allowed to return on FAIL (real red CI only). */
+export function isCiCheckStep(step: FullWorkflowStep): boolean {
+  return step.responsibility?.kind === 'code' && step.responsibility.name === 'github-pr-checks'
+}
+
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 
 /** Helpful early feedback only: registration always uses the canonical backend validator. */
@@ -128,7 +134,8 @@ export function validateStructure(
     )
       return `${step.id}: PASS activation must target a non-conditional direct successor of a non-decision step.`
     if (fail?.action !== 'return') continue
-    if (step.responsibility?.kind !== 'agent') return `${step.id}: FAIL return requires an agent step.`
+    if (step.responsibility?.kind !== 'agent' && !isCiCheckStep(step))
+      return `${step.id}: FAIL return requires an agent step.`
     const isSelfOrAncestor = (target: string): boolean => {
       if (target === step.id) return true
       const visited = new Set<string>()
@@ -444,7 +451,7 @@ export class WorkflowStepEditorState {
   }
 
   canConfigureFailReturn(step: FullWorkflowStep | null = this.selected()): boolean {
-    return step?.responsibility?.kind === 'agent'
+    return step?.responsibility?.kind === 'agent' || (!!step && isCiCheckStep(step))
   }
 
   canConfigurePassActivate(step: FullWorkflowStep | null = this.selected()): boolean {

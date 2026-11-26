@@ -36,6 +36,7 @@ class CapabilityResolver(
     private val agentTurnCapability: AgentTurnCapability = NoOpAgentTurnCapability(),
     private val frontVerificationRegistry: FactoryFrontVerificationRegistry? = null,
     private val branchPreparation: FactoryBranchPreparation? = null,
+    private val pullRequestChecks: io.whozoss.factory.ci.PullRequestChecksCapability? = null,
 ) {
 
     fun resolve(
@@ -87,6 +88,11 @@ class CapabilityResolver(
                     facts.providerId, facts.environmentId, facts.environmentRevision,
                 ) }
             }
+        }
+        if (step.responsibility.name == GITHUB_PR_CHECKS) {
+            // Deterministic CI check: reads the GitHub checks of the run PR, spawns no process, calls no LLM.
+            return pullRequestChecks?.check(step.id, repoRoot)
+                ?: CapabilityOutcome.CodeRefused(step.id, GITHUB_PR_CHECKS, "CI_GITHUB_NOT_CONFIGURED", "The GitHub PR checks capability is unavailable.")
         }
         val headBefore = observedGitHead(repoRoot)
         val branchBefore = observedGitBranch(repoRoot)

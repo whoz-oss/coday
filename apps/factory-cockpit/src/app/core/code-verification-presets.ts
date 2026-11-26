@@ -5,7 +5,7 @@
  * Factory remains the authority for whether a verifier can run for a definition.
  */
 export interface CodeVerificationPreset {
-  id: 'build' | 'frontend-build' | 'frontend-tests'
+  id: 'build' | 'frontend-build' | 'frontend-tests' | 'github-pr-checks'
   label: string
   hint: string
 }
@@ -25,6 +25,11 @@ export const CODE_VERIFICATION_PRESETS: readonly CodeVerificationPreset[] = [
     id: 'frontend-tests',
     label: 'Frontend tests',
     hint: 'Factory-owned Nx frontend-test verifier. It needs PASS-agent ancestor claims.modifiedFiles plus specific server/project configuration and is not ready by default for Coday; use Build.',
+  },
+  {
+    id: 'github-pr-checks',
+    label: 'GitHub PR checks',
+    hint: 'Waits for the GitHub checks of the run branch pull request (polls every 60 s, max 30 min, no LLM). Requires FACTORY_GITHUB_TOKEN on Factory and a non-draft PR. A red CI can return for correction.',
   },
 ] as const
 

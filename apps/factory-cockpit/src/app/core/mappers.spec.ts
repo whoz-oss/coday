@@ -2501,6 +2501,113 @@ describe('mappers', () => {
     })
   })
 
+  describe('external polling (WZ-36393)', () => {
+    const pollingStep = (status: string, poll?: Record<string, unknown>) => ({
+      id: 'ci',
+      name: 'CI checks',
+      status,
+      startedAt,
+      executionId: 'ci-1',
+      responsibility: { kind: 'code', name: 'github-pr-checks' },
+      ...(poll ? { poll } : {}),
+    })
+    const poll = {
+      executionId: 'ci-1',
+      source: 'ci-checks',
+      pollCount: 3,
+      lastPollAt: isoOffset(120),
+      nextPollAt: isoOffset(180),
+      deadlineAt: isoOffset(1_800),
+      reason: 'CI_CHECKS_PENDING',
+    }
+
+    it('shows a waiting_external run as running, never failed nor waiting for a human', () => {
+      expect(mapWorkflowStateToRunStatus('waiting_external')).toBe('running')
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'poll-run',
+        projection: { status: 'waiting_external', steps: [pollingStep('waiting_external', poll)] },
+      })
+      expect(session.status).toBe('running')
+      expect(session.executionState).toBe('waiting_external')
+      expect(session.activelyRunning).toBe(false)
+      expect(session.steps[0]?.status).toBe('waiting_external')
+      expect(mapSessionDetailToRunSummary({ workflowId: 'poll-run' }, session).cardState).toBe('running')
+    })
+
+    it('renders an AGENT_IN_PROGRESS attempt as a poll and never as a failure', () => {
+      const lanes = mapProjectionToLanes(
+        {
+          projection: {
+            steps: [
+              { id: 'wait', name: 'Wait', status: 'waiting_external', responsibility: { kind: 'agent', name: 'Dev' } },
+            ],
+          },
+        },
+        { startedAt },
+        [
+          {
+            attemptId: 'a-1',
+            stepId: 'wait',
+            attemptNumber: 1,
+            agentName: 'Dev',
+            status: 'indeterminate',
+            caseId: 'c-1',
+            failureCode: 'AGENT_IN_PROGRESS',
+            startedAt,
+            completedAt: isoOffset(30),
+          },
+        ]
+      )
+      expect(lanes[0]?.blocks[0]).toMatchObject({ failureCode: 'AGENT_IN_PROGRESS', status: 'waiting_external' })
+    })
+
+    it('renders the External wait section from the poll state', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'poll-run',
+        projection: { status: 'waiting_external', steps: [pollingStep('waiting_external', poll)] },
+      })
+      const section = session.phase.sections.find((candidate) => candidate.label === 'External wait')
+      expect(section?.items).toEqual(
+        expect.arrayContaining([
+          { title: 'Poll', subtitle: '#3' },
+          { title: 'Last check', subtitle: isoOffset(120) },
+          { title: 'Next check', subtitle: isoOffset(180) },
+          { title: 'Deadline', subtitle: isoOffset(1_800) },
+          { title: 'Reason', subtitle: 'CI_CHECKS_PENDING' },
+        ])
+      )
+    })
+
+    it('has no External wait section for an ordinary step', () => {
+      const session = mapProjectionToSessionDetail(snapshot)
+      expect(session.phase.sections.some((candidate) => candidate.label === 'External wait')).toBe(false)
+    })
+
+    it('ends a polling block at its last observation instead of the wall clock', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(5_000)))
+      try {
+        const lanes = mapProjectionToLanes({
+          projection: { steps: [pollingStep('waiting_external', poll)] },
+        })
+        expect(lanes.find((lane) => lane.id === 'code')?.blocks[0]).toMatchObject({
+          status: 'waiting_external',
+          startSec: 0,
+          endSec: 120,
+        })
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('a CI timeout still ends the run as failed', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'poll-timeout',
+        projection: { status: 'failed', steps: [pollingStep('failed')] },
+      })
+      expect(session.status).toBe('failed')
+    })
+  })
+
   describe('mapProjectionToFactoryRun', () => {
     const snapshot = {
       workflowId: 'wf-1',

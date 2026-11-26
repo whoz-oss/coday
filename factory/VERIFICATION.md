@@ -83,6 +83,31 @@ are refused at execution initialization); the generic generated
 HTTP spec uses map payloads and has no new controller DTO to regenerate in this patch.
 
 
+## External polling and CI checks (WZ-36393)
+
+New non-terminal step status `waiting_external` (never sealed as failed or completed; the run is shown active).
+A code capability (`github-pr-checks`) or an agent (`status: IN_PROGRESS`, attempt closed `indeterminate` with
+`failureCode=AGENT_IN_PROGRESS`) reports "still pending"; `SessionRunService` stores the poll state under the step
+payload `poll` (`executionId`, `firstPollStartedAt`, `lastPollAt`, `nextPollAt`, `deadlineAt`, `pollCount`,
+`intervalSeconds`, `reason`), asks `OutboxDrainService.scheduleWake` for a delayed continuation (outbox property
+`wakeNotBefore`) and returns, so no worker thread is held. Defaults: `factory.polling.default-interval-seconds=60`
+(clamped to 30–300) and `max-wait-seconds=1800`, measured per step execution; a correction replay starts a fresh window.
+After the window the step fails with evidence code `POLL_TIMEOUT_EXCEEDED`; this is a technical failure, never
+eligible for `fail.return`, and polls never consume `maxCycles`.
+
+`github-pr-checks` calls no LLM and spawns no process. It reads the `origin` remote and the attached branch from the
+run worktree, finds the open PR through the GitHub REST API (`FACTORY_GITHUB_TOKEN`, optional
+`factory.ci.github.repository` fallback) and evaluates the check runs and commit statuses of the PR head SHA. Pending
+when a check is not completed, no check exists yet, the worktree HEAD is not the PR head (`CI_HEAD_NOT_PUSHED`) or
+GitHub answers 5xx/429/network errors. A draft PR is refused (`CI_PR_IS_DRAFT`): `validate.yml` skips every job on
+drafts. A red verdict records `ci-checks` evidence (`verdict=failed`, failed checks with redacted log tails) bound to the
+current `executionId`; only that evidence lets the `github-pr-checks` step use `outcomeTransitions.fail.return`.
+
+Verification run for this feature: `./gradlew :factory-service:test` (embedded Neo4j integration tests
+`OutboxDelayedWakeIntegrationTest`, `ExternalPollingSessionTest`, `OutcomeTransitionCiTest`, `PullRequestChecksCapabilityTest`)
+and `pnpm nx run-many -t lint test -p factory-cockpit`. Not verified: a run against a real GitHub PR and a Factory
+restart while a step is `waiting_external`.
+
 ## Workspace contract
 
 With `factory.workspace.enabled=true` (default), **every code step**, including

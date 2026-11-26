@@ -88,6 +88,20 @@ factory:
     # Maximum workflow continuations run in parallel. This default applies until an admin
     # persists a value in the cockpit Admin page; hard ceiling 20, minimum 1 (serialized).
     max-parallel-runs: ${FACTORY_OUTBOX_MAX_PARALLEL_RUNS:5}
+  polling:
+    # Steps parked in `waiting_external` (CI checks, agent IN_PROGRESS) are re-polled through a delayed
+    # outbox continuation; polls never hold a worker slot and never consume the correction budget.
+    default-interval-seconds: ${FACTORY_POLLING_DEFAULT_INTERVAL_SECONDS:60}
+    min-interval-seconds: ${FACTORY_POLLING_MIN_INTERVAL_SECONDS:30}
+    max-interval-seconds: ${FACTORY_POLLING_MAX_INTERVAL_SECONDS:300}
+    max-wait-seconds: ${FACTORY_POLLING_MAX_WAIT_SECONDS:1800}
+  ci:
+    github:
+      # Deterministic GitHub PR checks step (`github-pr-checks`); never logged.
+      token: ${FACTORY_GITHUB_TOKEN:}
+      api-base-url: ${FACTORY_GITHUB_API_URL:https://api.github.com}
+      repository: ${FACTORY_GITHUB_REPOSITORY:}
+      request-timeout-ms: ${FACTORY_GITHUB_REQUEST_TIMEOUT_MS:10000}
   workspace:
     # Lot F: read-only workspace pre-check + run-worktree binding of code steps.
     enabled: ${FACTORY_WORKSPACE_ENABLED:true}

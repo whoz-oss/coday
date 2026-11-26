@@ -94,6 +94,9 @@ object SessionSequencer {
         if (values.all { it == WorkflowStatuses.COMPLETED || it == WorkflowStatuses.SKIPPED }) return WorkflowStatuses.COMPLETED
         if (values.any { it == WorkflowStatuses.RUNNING }) return WorkflowStatuses.RUNNING
         if (readySteps(steps, statuses).isNotEmpty()) return WorkflowStatuses.READY
+        // A step polling an external condition keeps the session non-terminal: it is neither a failure
+        // nor a success, and its dependants simply stay pending until a later poll settles it.
+        if (values.any { it == WorkflowStatuses.WAITING_EXTERNAL }) return WorkflowStatuses.WAITING_EXTERNAL
         if (values.any { it == WorkflowStatuses.NEEDS_RESEARCH } && values.none { it == WorkflowStatuses.FAILED }) {
             return WorkflowStatuses.NEEDS_RESEARCH
         }

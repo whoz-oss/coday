@@ -228,6 +228,11 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
     }
 
     @Test
+    fun `public capability IN_PROGRESS closes the attempt as indeterminate AGENT_IN_PROGRESS and releases worktree occupancy`() {
+        assertAcceptedAfterTimeout(AgentStepResultStatus.IN_PROGRESS)
+    }
+
+    @Test
     fun `public capability timeout without accepted result retains worktree occupancy`() {
         assertAcceptedAfterTimeout(null)
     }
@@ -452,6 +457,12 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
                 assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentNeedsResearch::class.java)
                 AgentAttemptStatus.INDETERMINATE
             }
+            AgentStepResultStatus.IN_PROGRESS -> {
+                // Waiting for an external condition: neither a success nor a failure.
+                assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentInProgress::class.java)
+                assertThat((execution.outcome as CapabilityOutcome.AgentInProgress).attemptId).isEqualTo(attemptId)
+                AgentAttemptStatus.INDETERMINATE
+            }
         }
         val evidence = evidenceRepository.list(scope, namespace, testWorkflowId).single { it.kind == "agent-result" }
         assertThat(evidence.outcome).isEqualTo(when (resultStatus) {
@@ -459,10 +470,14 @@ class CapabilityValidationFinalizationRollbackIntegrationTest : Neo4jDomainInteg
             AgentStepResultStatus.PASS -> "pass"
             AgentStepResultStatus.FAIL -> "fail"
             AgentStepResultStatus.NEEDS_RESEARCH -> "needs_research"
+            AgentStepResultStatus.IN_PROGRESS -> "in_progress"
         })
         assertThat(evidence.facts).doesNotContainKey("runtimeCaseTerminationProof")
         val terminal = attempts.find(scope, namespace, testWorkflowId, step.id, attemptId)!!
         assertThat(terminal.status).isEqualTo(expectedStatus)
+        if (resultStatus == AgentStepResultStatus.IN_PROGRESS) {
+            assertThat(terminal.failureCode).isEqualTo(CapabilityExecutionService.AGENT_IN_PROGRESS_CODE)
+        }
         assertThat(occupancyRepository.find(terminal.occupancyResourceIdentity!!)!!.status)
             .isEqualTo(if (resultStatus == null) io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStatus.ACTIVE else io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStatus.RELEASED)
         verify(exactly = if (resultStatus == null) 2 else 1) { adapter.observeTurnResult(any(), any(), any(), any()) }

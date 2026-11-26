@@ -22,6 +22,13 @@ enum class AgentStepResultStatus {
      * same worktree.
      */
     NEEDS_RESEARCH,
+
+    /**
+     * Non-terminal: the external condition the step waits for (a CI, a deployment, ...) is still pending. The
+     * attempt is closed as indeterminate (never failed), the step is parked in `waiting_external` and Factory calls
+     * the agent again later as attempt N+1. It is never converted into a [FAIL] and never consumes a correction cycle.
+     */
+    IN_PROGRESS,
     ;
 
     companion object {
@@ -49,6 +56,8 @@ object AgentStepResultLimits {
     const val FINDING_CODE = 128
     const val FINDING_SUMMARY = 1000
     const val FINDING_FILE = 1024
+    const val RETRY_AFTER_MIN_SECONDS = 30
+    const val RETRY_AFTER_MAX_SECONDS = 300
     const val DELIVERY_ANALYSIS_TITLE = 200
     const val DELIVERY_ANALYSIS_BASE_BRANCH = 255
 
@@ -123,6 +132,9 @@ data class AgentStepResultBusiness(
     val expectedAmendmentSeq: Long? = null,
     @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val selectedRoutes: List<String>? = null,
+    /** Optional delay (seconds) before Factory polls the step again; only meaningful with `IN_PROGRESS`. */
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    val retryAfterSeconds: Int? = null,
 )
 
 /** Identity a result store issues a submission capability for. */
@@ -205,6 +217,8 @@ data class AgentStepResultSubmitted(
     val expectedAmendmentSeq: Long? = null,
     @get:JsonInclude(JsonInclude.Include.NON_NULL)
     val selectedRoutes: List<String>? = null,
+    @get:JsonInclude(JsonInclude.Include.NON_NULL)
+    val retryAfterSeconds: Int? = null,
 )
 
 /** Stored attempt row projection. */

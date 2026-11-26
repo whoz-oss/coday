@@ -271,6 +271,35 @@ class WorkflowActionsServiceTest {
     }
 
     @Test
+    fun `a waiting_external step and its AGENT_IN_PROGRESS attempt are history while polling and yield no blocker`() {
+        stubBaseline(
+            steps = listOf(mapOf("id" to "code-review", "status" to "waiting_external", "executionId" to "exec-2")),
+            workflowAttempts = listOf(
+                attempt("case-p", AgentAttemptStatus.INDETERMINATE).copy(stepId = "code-review", failureCode = "AGENT_IN_PROGRESS"),
+            ),
+            instance = outcomeManagedInstance(),
+        )
+        every { proxy.getRunCost(any(), reader) } returns null
+
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
+
+        assertThat(result.blockers).isEmpty()
+        assertThat(result.allowedActions).isEmpty()
+    }
+
+    @Test
+    fun `an indeterminate attempt of another kind still blocks as an unknown runtime`() {
+        stubBaseline(
+            workflowAttempts = listOf(attempt("case-q", AgentAttemptStatus.INDETERMINATE).copy(failureCode = "AGENT_INDETERMINATE")),
+        )
+        every { proxy.getRunCost(any(), reader) } returns null
+
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
+
+        assertThat(result.blockers.map { it.code }).contains(WorkflowBlockerCodes.UNKNOWN_RUNTIME)
+    }
+
+    @Test
     fun `a paused real cost yields continue and stop actions fenced on the workflow revision`() {
         stubBaseline(
             revision = 5,

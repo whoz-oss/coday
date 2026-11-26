@@ -104,6 +104,23 @@ class OutboxDrainService(
         enqueue(scope, namespaceId, workflowId, payload, Instant.now(), true)
     }
 
+    /**
+     * Parks the continuation of a run whose step waits for an external condition: it becomes due again at
+     * [notBefore] (external polling), without holding a worker slot in between. Idempotent: the earliest
+     * requested instant wins, an immediate wake (result submission) always wins over a delayed one, and an
+     * adoption backoff is never touched. Runs in its own short transaction so it also works when the
+     * sequencer is called outside any transaction.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    fun scheduleWake(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String, workflowId: String,
+        repoRoot: java.nio.file.Path, ticket: String?, notBefore: Instant) {
+        val payload = objectMapper.writeValueAsString(mapOf("namespaceId" to namespaceId, "workflowId" to workflowId,
+            "repoRoot" to repoRoot.toString(), "ticket" to ticket))
+        val eventId = continuationId(scope.workstreamId, namespaceId, workflowId)
+        outbox.requestDelayedWake(OutboxEventNode.compositeId(scope.organizationId, eventId), scope.organizationId,
+            eventId, scope.workstreamId, payload, Instant.now(), notBefore)
+    }
+
     private fun enqueue(scope: io.whozoss.factory.persistence.TenantScope, namespaceId: String, workflowId: String,
         payload: String, now: Instant, deferred: Boolean, sourceId: String? = null) {
         val eventId = continuationId(scope.workstreamId, namespaceId, workflowId)

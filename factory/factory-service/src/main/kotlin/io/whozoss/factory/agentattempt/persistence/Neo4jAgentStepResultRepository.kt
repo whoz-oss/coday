@@ -254,6 +254,7 @@ class Neo4jAgentStepResultRepository(
             resultHash = resultHash,
             expectedAmendmentSeq = parsed.expectedAmendmentSeq,
             selectedRoutes = parsed.selectedRoutes,
+            retryAfterSeconds = parsed.retryAfterSeconds,
         )
         val payload = serialize(submitted)
         val resultStatus = DB_RESULT_STATUS.getValue(parsed.status)
@@ -293,8 +294,8 @@ class Neo4jAgentStepResultRepository(
             }
         } else {
             logger.info {
-                "NEEDS_RESEARCH result '${submitted.resultId}' for attempt '${capability.attemptId}' " +
-                    "is blocked (not terminal); the step stays open for Searcher re-arm"
+                "${parsed.status} result '${submitted.resultId}' for attempt '${capability.attemptId}' " +
+                    "is not terminal; the step stays open (research re-arm or external poll)"
             }
         }
         insertOutbox(scope, submitted, now)
@@ -599,6 +600,7 @@ class Neo4jAgentStepResultRepository(
             AgentStepResultStatus.PASS to "success",
             AgentStepResultStatus.FAIL to "failure",
             AgentStepResultStatus.NEEDS_RESEARCH to "needs_research",
+            AgentStepResultStatus.IN_PROGRESS to "in_progress",
         )
         val ATTEMPT_TERMINAL_STATUS: Map<AgentStepResultStatus, String> = mapOf(
             AgentStepResultStatus.PASS to "completed",

@@ -101,7 +101,9 @@ function mapStepsToSessionSteps(steps: unknown[], blockedStepIds: ReadonlySet<st
           ? 'skipped'
           : state === 'waiting_human'
             ? 'waiting_human'
-            : state === 'running'
+            : state === 'waiting_external'
+              ? 'waiting_external'
+              : state === 'running'
               ? 'running'
               : state === 'failed'
                 ? 'failed'
@@ -182,6 +184,8 @@ export function mapProjectionToSessionDetail(
   const outcomeManaged = stepExecutions.length > 0
   const stepsForceFailedStatus = derivedStatus === 'failed' && (!outcomeManaged || projectedStatus === 'failed')
   const isActivelyRunning = stepStates.includes('running') || hasRunningAttempt
+  // A step polling an external condition (CI checks, agent IN_PROGRESS) is active, not failed and not waiting for a human.
+  const waitingExternal = !isActivelyRunning && stepStates.includes('waiting_external')
   const waitingHuman =
     !isActivelyRunning &&
     (correction?.status === 'waiting_human' ||
@@ -190,11 +194,17 @@ export function mapProjectionToSessionDetail(
       latestAttempts.some((attempt) => attempt.status === 'waiting_human') ||
       (agentQuestions ?? []).some((q) => !q.answered))
   const status: RunStatus =
-    isActivelyRunning || waitingHuman ? 'running' : stepsForceFailedStatus ? 'failed' : projectedStatus
+    isActivelyRunning || waitingHuman || waitingExternal
+      ? 'running'
+      : stepsForceFailedStatus
+        ? 'failed'
+        : projectedStatus
   const activelyRunning = isActivelyRunning
   const executionState: import('../models').TimelineStepStatus = waitingHuman
     ? 'waiting_human'
-    : activelyRunning
+    : waitingExternal
+      ? 'waiting_external'
+      : activelyRunning
       ? 'running'
       : status === 'succeeded'
         ? 'completed'
@@ -525,7 +535,9 @@ function mergeCodeEvidenceIntoSteps(steps: unknown[], evidenceItems: unknown[]):
     const evidenceStatus =
       recordedStatus === 'running'
         ? 'running'
-        : recordedStatus === 'needs_research'
+        : recordedStatus === 'waiting_external'
+          ? 'waiting_external'
+          : recordedStatus === 'needs_research'
           ? 'waiting_human'
           : getNumber(facts, 'exitCode') === 0 && facts['timedOut'] !== true
             ? 'completed'
@@ -619,7 +631,9 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
       ? 'waiting_human'
       : detail.status === 'failed'
         ? 'failed'
-        : blockedStepIds.size > 0
+        : detail.executionState === 'waiting_external'
+          ? 'running'
+          : blockedStepIds.size > 0
           ? 'blocked'
           : detail.activelyRunning
             ? 'running'

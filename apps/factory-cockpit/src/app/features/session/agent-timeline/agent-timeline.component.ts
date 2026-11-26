@@ -114,6 +114,8 @@ export class AgentTimelineComponent {
         return 'help'
       case 'cancelled':
         return 'cancel'
+      case 'waiting_external':
+        return 'schedule'
       case 'waiting_human':
         return 'person_alert'
       default:
@@ -131,6 +133,8 @@ export class AgentTimelineComponent {
         return 'running'
       case 'waiting_human':
         return 'waiting for human intervention'
+      case 'waiting_external':
+        return 'polling an external condition'
       case 'completed':
         return 'completed'
       case 'failed':

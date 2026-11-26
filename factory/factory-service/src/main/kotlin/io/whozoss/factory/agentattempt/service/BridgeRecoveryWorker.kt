@@ -264,7 +264,7 @@ class BridgeRecoveryWorker(
         val attempt = candidate.attempt
         val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
         val target = when (verdict) {
-            is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict)) AgentAttemptStatus.INDETERMINATE else AgentAttemptStatus.SUCCEEDED
+            is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict) || inProgress(verdict)) AgentAttemptStatus.INDETERMINATE else AgentAttemptStatus.SUCCEEDED
             is AgentOsExecutionVerdict.Interrupted -> AgentAttemptStatus.INTERRUPTED
             else -> AgentAttemptStatus.FAILED
         }
@@ -509,7 +509,7 @@ class BridgeRecoveryWorker(
             )
             else -> {
                 val target = when (verdict) {
-                    is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict)) AgentAttemptStatus.INDETERMINATE else AgentAttemptStatus.SUCCEEDED
+                    is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict) || inProgress(verdict)) AgentAttemptStatus.INDETERMINATE else AgentAttemptStatus.SUCCEEDED
                     is AgentOsExecutionVerdict.Interrupted -> AgentAttemptStatus.INTERRUPTED
                     is AgentOsExecutionVerdict.Failed -> AgentAttemptStatus.FAILED
                     is AgentOsExecutionVerdict.Indeterminate -> AgentAttemptStatus.INDETERMINATE
@@ -537,8 +537,8 @@ class BridgeRecoveryWorker(
         val attempt = candidate.attempt
         val (outcome, facts) = when (verdict) {
             is AgentOsExecutionVerdict.Succeeded ->
-                (if (needsResearch(verdict)) "needs_research" else "pass") to mapOf(
-                    "status" to if (needsResearch(verdict)) "NEEDS_RESEARCH" else "PASS",
+                (if (needsResearch(verdict)) "needs_research" else if (inProgress(verdict)) "in_progress" else "pass") to mapOf(
+                    "status" to if (needsResearch(verdict)) "NEEDS_RESEARCH" else if (inProgress(verdict)) "IN_PROGRESS" else "PASS",
                     "outputs" to verdict.outputs, "evidence" to verdict.evidence,
                 )
             is AgentOsExecutionVerdict.Interrupted ->
@@ -574,6 +574,8 @@ class BridgeRecoveryWorker(
 
     private fun needsResearch(verdict: AgentOsExecutionVerdict.Succeeded) = verdict.evidence["status"] == "NEEDS_RESEARCH"
 
+    private fun inProgress(verdict: AgentOsExecutionVerdict.Succeeded) = verdict.evidence["status"] == "IN_PROGRESS"
+
     private fun resolveAuthoritativeObservation(
         candidate: ScopedDurableAgentAttempt,
         raw: AgentOsObservationResult,
@@ -589,14 +591,18 @@ class BridgeRecoveryWorker(
             )
             AgentStepResultStatus.PASS,
             AgentStepResultStatus.NEEDS_RESEARCH,
+            AgentStepResultStatus.IN_PROGRESS,
             -> AgentOsExecutionVerdict.Succeeded(
                 outputs = mapOf(
                     "summary" to accepted.summary, "claims" to accepted.claims,
                     "findings" to accepted.findings, "artifacts" to accepted.artifacts,
-                ).let { outputs -> accepted.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs },
-                evidence = evidence + if (accepted.status == AgentStepResultStatus.NEEDS_RESEARCH) {
-                    mapOf("status" to "NEEDS_RESEARCH")
-                } else emptyMap(),
+                ).let { outputs -> accepted.selectedRoutes?.let { outputs + ("selectedRoutes" to it) } ?: outputs }
+                    .let { outputs -> accepted.retryAfterSeconds?.let { outputs + ("retryAfterSeconds" to it) } ?: outputs },
+                evidence = evidence + when (accepted.status) {
+                    AgentStepResultStatus.NEEDS_RESEARCH -> mapOf("status" to "NEEDS_RESEARCH")
+                    AgentStepResultStatus.IN_PROGRESS -> mapOf("status" to "IN_PROGRESS")
+                    else -> emptyMap()
+                },
             )
         }
         return AgentOsObservationResult(verdict, raw.runtimeProof)
@@ -637,7 +643,7 @@ class BridgeRecoveryWorker(
     }
 
     private fun failureCodeFor(verdict: AgentOsExecutionVerdict): String? = when (verdict) {
-        is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict)) "AGENT_NEEDS_RESEARCH" else null
+        is AgentOsExecutionVerdict.Succeeded -> if (needsResearch(verdict)) "AGENT_NEEDS_RESEARCH" else if (inProgress(verdict)) "AGENT_IN_PROGRESS" else null
         is AgentOsExecutionVerdict.WaitingHuman -> null
         is AgentOsExecutionVerdict.Failed -> verdict.code
         is AgentOsExecutionVerdict.Interrupted -> "AGENT_INTERRUPTED"

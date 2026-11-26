@@ -17,6 +17,7 @@ export interface PhaseSegment {
     | 'indeterminate'
     | 'running'
     | 'waiting_human'
+    | 'waiting_external'
     | 'pending'
     | 'skipped'
 }
@@ -155,7 +156,15 @@ export interface CostSummary {
 export interface SessionStep {
   key: string
   tone: Tone
-  status: 'done' | 'running' | 'failed' | 'blocked' | 'waiting_human' | 'pending' | 'skipped'
+  status:
+    | 'done'
+    | 'running'
+    | 'failed'
+    | 'blocked'
+    | 'waiting_human'
+    | 'waiting_external'
+    | 'pending'
+    | 'skipped'
   durationSec?: number
 }
 
@@ -164,6 +173,7 @@ export type TimelineStepStatus =
   | 'ready'
   | 'running'
   | 'waiting_human'
+  | 'waiting_external'
   | 'completed'
   | 'failed'
   | 'indeterminate'

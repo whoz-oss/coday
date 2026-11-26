@@ -169,6 +169,7 @@ describe('WorkflowDetailPageComponent', () => {
       'build',
       'frontend-build',
       'frontend-tests',
+      'github-pr-checks',
     ])
     expect(host.querySelector('input[type="text"][data-command], textarea[data-command]')).toBeNull()
     expect(query<HTMLButtonElement>(host, '[data-save-contract]').disabled).toBe(true)

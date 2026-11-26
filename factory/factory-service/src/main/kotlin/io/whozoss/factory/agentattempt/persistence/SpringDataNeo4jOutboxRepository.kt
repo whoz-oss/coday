@@ -135,9 +135,9 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
             e.payload = CASE WHEN e.wakeRequested = true THEN coalesce(e.wakePayload, e.payload) ELSE e.payload END,
             e.attempts = CASE WHEN e.wakeRequested = true THEN 0 ELSE e.attempts END,
             e.retryDeadline = CASE WHEN e.wakeRequested = true THEN null ELSE e.retryDeadline END,
-            e.nextAttemptAt = CASE WHEN e.wakeRequested = true THEN null ELSE e.nextAttemptAt END,
+            e.nextAttemptAt = CASE WHEN e.wakeRequested = true THEN e.wakeNotBefore ELSE e.nextAttemptAt END,
             e.diagnostic = CASE WHEN e.wakeRequested = true THEN null ELSE e.diagnostic END
-        REMOVE e.wakeRequested, e.wakePayload, e.claimToken, e.leaseUntil
+        REMOVE e.wakeRequested, e.wakePayload, e.wakeNotBefore, e.claimToken, e.leaseUntil
         RETURN count(e)
     """)
     fun acknowledgeContinuation(id: String, token: String, now: Instant): Long
@@ -151,11 +151,11 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
         SET e.status = CASE WHEN wake OR retry THEN 'pending' ELSE 'dead' END,
             e.payload = CASE WHEN wake THEN coalesce(e.wakePayload, e.payload) ELSE e.payload END,
             e.retryDeadline = CASE WHEN wake THEN null WHEN ${'$'}transient THEN deadline ELSE e.retryDeadline END,
-            e.nextAttemptAt = CASE WHEN wake THEN null WHEN retry THEN ${'$'}next ELSE null END,
+            e.nextAttemptAt = CASE WHEN wake THEN e.wakeNotBefore WHEN retry THEN ${'$'}next ELSE null END,
             e.attempts = CASE WHEN wake THEN 0 ELSE e.attempts + 1 END,
             e.diagnostic = CASE WHEN wake THEN null WHEN retry THEN 'WORKSPACE_ADOPTION_DEFERRED'
                 WHEN ${'$'}transient THEN 'WORKSPACE_ADOPTION_RETRY_EXHAUSTED' ELSE 'CONTINUATION_FAILED' END
-        REMOVE e.wakeRequested, e.wakePayload, e.claimToken, e.leaseUntil
+        REMOVE e.wakeRequested, e.wakePayload, e.wakeNotBefore, e.claimToken, e.leaseUntil
         RETURN count(e)
     """)
     fun deferClaimedContinuation(id: String, token: String, now: Instant, next: Instant, deadline: Instant, transient: Boolean): Long
@@ -169,17 +169,57 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
         WITH e, ${'$'}wake AND (e.lastWakeSource IS NULL OR e.lastWakeSource <> ${'$'}sourceId) AS fresh
         SET e.wakeRequested = CASE WHEN e.status = 'claimed' AND fresh THEN true ELSE e.wakeRequested END,
             e.wakePayload = CASE WHEN e.status = 'claimed' AND fresh THEN ${'$'}payload ELSE e.wakePayload END,
+            e.wakeNotBefore = CASE WHEN e.status = 'claimed' AND fresh THEN null ELSE e.wakeNotBefore END,
             e.lastWakeSource = CASE WHEN fresh THEN ${'$'}sourceId ELSE e.lastWakeSource END
         WITH e, fresh WHERE (e.status IN ['dead', 'dispatched'] AND (fresh OR NOT ${'$'}wake))
             OR (e.status = 'pending' AND fresh)
         SET e.status = 'pending', e.payload = ${'$'}payload, e.attempts = 0,
             e.retryDeadline = ${'$'}deadline, e.nextAttemptAt = ${'$'}next,
             e.diagnostic = CASE WHEN ${'$'}deadline IS NULL THEN null ELSE 'WORKSPACE_ADOPTION_DEFERRED' END
-        REMOVE e.wakeRequested, e.wakePayload, e.claimToken, e.leaseUntil, e.dispatchedAt
+        REMOVE e.wakeRequested, e.wakePayload, e.wakeNotBefore, e.claimToken, e.leaseUntil, e.dispatchedAt
         RETURN count(e)
     """)
     fun enqueueContinuation(id: String, organizationId: String, eventId: String, workstreamId: String,
         payload: String, now: Instant, deadline: Instant?, next: Instant?, wake: Boolean, sourceId: String?): Long
+
+    /**
+     * Requests a DELAYED wake of the continuation (external polling): the continuation becomes due again
+     * at [notBefore] instead of immediately.
+     *  - claimed: the wake is remembered and applied on acknowledgement, with `nextAttemptAt = notBefore`.
+     *    An immediate wake already requested always wins over a delayed one, and the earliest delay wins;
+     *  - pending: `nextAttemptAt` is lowered to [notBefore] when later; an adoption backoff (a retry
+     *    deadline is set) and an immediately-due row are never touched;
+     *  - dispatched / dead: re-pended with `nextAttemptAt = notBefore`.
+     * The previous values are captured first: Cypher SET items must not depend on each other.
+     */
+    @Query("""
+        MERGE (e:OutboxEvent {id: ${'$'}id})
+        ON CREATE SET e.organizationId = ${'$'}organizationId, e.eventId = ${'$'}eventId,
+            e.workstreamId = ${'$'}workstreamId, e.eventType = 'session_continuation',
+            e.status = 'dispatched', e.createdAt = ${'$'}now, e.attempts = 0
+        SET e.casVersion = coalesce(e.casVersion, 0) + 1
+        WITH e, e.status AS st, coalesce(e.wakeRequested, false) AS hadWake, e.wakeNotBefore AS previousNotBefore,
+            e.nextAttemptAt AS previousNext, e.retryDeadline AS previousDeadline
+        SET e.wakeRequested = CASE WHEN st = 'claimed' THEN true ELSE e.wakeRequested END,
+            e.wakePayload = CASE WHEN st = 'claimed' THEN coalesce(e.wakePayload, ${'$'}payload) ELSE e.wakePayload END,
+            e.wakeNotBefore = CASE WHEN st <> 'claimed' THEN e.wakeNotBefore
+                WHEN hadWake AND previousNotBefore IS NULL THEN null
+                WHEN previousNotBefore IS NULL OR previousNotBefore > ${'$'}notBefore THEN ${'$'}notBefore
+                ELSE previousNotBefore END,
+            e.status = CASE WHEN st IN ['dispatched', 'dead'] THEN 'pending' ELSE e.status END,
+            e.payload = CASE WHEN st IN ['dispatched', 'dead'] THEN ${'$'}payload ELSE e.payload END,
+            e.attempts = CASE WHEN st IN ['dispatched', 'dead'] THEN 0 ELSE e.attempts END,
+            e.retryDeadline = CASE WHEN st IN ['dispatched', 'dead'] THEN null ELSE previousDeadline END,
+            e.dispatchedAt = CASE WHEN st IN ['dispatched', 'dead'] THEN null ELSE e.dispatchedAt END,
+            e.diagnostic = CASE WHEN st IN ['dispatched', 'dead'] THEN 'EXTERNAL_POLL_SCHEDULED' ELSE e.diagnostic END,
+            e.nextAttemptAt = CASE WHEN st IN ['dispatched', 'dead'] THEN ${'$'}notBefore
+                WHEN st = 'pending' AND previousDeadline IS NULL AND previousNext IS NOT NULL AND previousNext > ${'$'}notBefore
+                    THEN ${'$'}notBefore
+                ELSE previousNext END
+        RETURN count(e)
+    """)
+    fun requestDelayedWake(id: String, organizationId: String, eventId: String, workstreamId: String,
+        payload: String, now: Instant, notBefore: Instant): Long
 
     @Query("""
         MATCH (e:OutboxEvent {id: ${'$'}id})
@@ -189,9 +229,9 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
             e.payload = coalesce(e.wakePayload, e.payload),
             e.attempts = CASE WHEN e.wakeRequested = true THEN 0 ELSE e.attempts END,
             e.retryDeadline = CASE WHEN e.wakeRequested = true THEN null ELSE e.retryDeadline END,
-            e.nextAttemptAt = CASE WHEN e.wakeRequested = true THEN null ELSE e.nextAttemptAt END,
+            e.nextAttemptAt = CASE WHEN e.wakeRequested = true THEN e.wakeNotBefore ELSE e.nextAttemptAt END,
             e.diagnostic = CASE WHEN e.wakeRequested = true THEN null ELSE e.diagnostic END
-        REMOVE e.wakeRequested, e.wakePayload, e.claimToken, e.leaseUntil
+        REMOVE e.wakeRequested, e.wakePayload, e.wakeNotBefore, e.claimToken, e.leaseUntil
         RETURN count(e)
     """)
     fun releaseContinuation(id: String, token: String): Long

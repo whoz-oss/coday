@@ -6,12 +6,12 @@ import io.whozoss.factory.workflow.domain.WorkflowTicket
 /** Strict validation of the structured business result schema. */
 object AgentStepResultValidation {
 
-    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq", "selectedRoutes")
+    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq", "selectedRoutes", "retryAfterSeconds")
     private val ARTIFACT_FIELDS = setOf("kind", "encoding", "content")
     private val CLAIM_FIELDS = setOf("modifiedFiles", "deliveryAnalysis")
     private val DELIVERY_ANALYSIS_FIELDS = setOf("changeType", "ticket", "title", "baseBranch")
     private val FINDING_FIELDS = setOf("severity", "code", "summary", "file", "line")
-    private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH")
+    private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH", "IN_PROGRESS")
     private val CHANGE_TYPES = setOf("feature", "bugfix")
     /** GitHub issue reference (#123, 123, owner/repo#123) or a generic Jira-style project key (ABC-123). */
     private val TICKET = WorkflowTicket.PATTERN
@@ -43,7 +43,14 @@ object AgentStepResultValidation {
         when {
             status == null -> add("result.status", "REQUIRED", "is required")
             !status.isTextual -> add("result.status", "TYPE_STRING", "must be a string")
-            status.asText() !in STATUSES -> add("result.status", "ENUM", "must be PASS, FAIL, or NEEDS_RESEARCH")
+            status.asText() !in STATUSES -> add("result.status", "ENUM", "must be PASS, FAIL, NEEDS_RESEARCH, or IN_PROGRESS")
+        }
+        value.get("retryAfterSeconds")?.let { retry ->
+            if (status?.asText() != "IN_PROGRESS") add("result.retryAfterSeconds", "ONLY_WITH_IN_PROGRESS", "is only allowed with IN_PROGRESS")
+            else if (!retry.isIntegralNumber || retry.asLong() !in
+                AgentStepResultLimits.RETRY_AFTER_MIN_SECONDS.toLong()..AgentStepResultLimits.RETRY_AFTER_MAX_SECONDS.toLong()
+            ) add("result.retryAfterSeconds", "INVALID_RETRY_AFTER",
+                "must be an integer between ${AgentStepResultLimits.RETRY_AFTER_MIN_SECONDS} and ${AgentStepResultLimits.RETRY_AFTER_MAX_SECONDS}")
         }
         value.get("selectedRoutes")?.let { routes ->
             val safe = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
@@ -182,6 +189,7 @@ object AgentStepResultValidation {
             findings = findings,
             expectedAmendmentSeq = value.get("expected_amendment_seq")?.asLong() ?: value.get("expectedAmendmentSeq")?.asLong(),
             selectedRoutes = value.get("selectedRoutes")?.map { it.asText() },
+            retryAfterSeconds = value.get("retryAfterSeconds")?.asInt(),
         )
     }
 }

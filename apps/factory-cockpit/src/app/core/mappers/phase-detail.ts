@@ -50,6 +50,26 @@ function evidenceToItems(evidenceItems: unknown[]): PhaseSectionItem[] {
   })
 }
 
+/** Polling state of a step parked in `waiting_external` (CI checks, agent IN_PROGRESS). */
+export function buildExternalWaitSection(obj: Record<string, unknown>): PhaseSection | null {
+  const poll = asObject(obj['poll'])
+  if (!poll) return null
+  const items: PhaseSectionItem[] = []
+  const count = poll['pollCount']
+  if (typeof count === 'number') items.push({ title: 'Poll', subtitle: `#${count}` })
+  const lastPollAt = getString(poll, 'lastPollAt')
+  if (lastPollAt) items.push({ title: 'Last check', subtitle: lastPollAt })
+  const nextPollAt = getString(poll, 'nextPollAt')
+  if (nextPollAt) items.push({ title: 'Next check', subtitle: nextPollAt })
+  const deadlineAt = getString(poll, 'deadlineAt')
+  if (deadlineAt) items.push({ title: 'Deadline', subtitle: deadlineAt })
+  const reason = getString(poll, 'reason')
+  if (reason) items.push({ title: 'Reason', subtitle: reason })
+  const source = getString(poll, 'source')
+  if (source) items.push({ title: 'Source', subtitle: source })
+  return { label: 'External wait', items }
+}
+
 /** Presentation of routing facts; status codes remain machine-readable. */
 export function buildRoutingSection(obj: Record<string, unknown>): PhaseSection | null {
   const decision = asObject(obj['decision'])
@@ -261,6 +281,8 @@ export function buildPhaseDetail(
   if (agentItems.length === 0) agentConfig.body = 'No agent configuration recorded.'
 
   detail.sections = [...stepContractSections(obj), gates, outputs, agentConfig]
+  const externalWait = buildExternalWaitSection(obj)
+  if (externalWait) detail.sections.unshift(externalWait)
   const routing = buildRoutingSection(obj)
   if (routing) detail.sections.unshift(routing)
   if (description) detail.sections.push({ label: 'Description', body: description })

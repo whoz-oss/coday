@@ -38,6 +38,11 @@ data class OutboxEventNode(
     val wakeRequested: Boolean? = null,
     val wakePayload: String? = null,
     val lastWakeSource: String? = null,
+    /**
+     * Earliest instant at which a wake requested while the continuation was claimed becomes due
+     * (external polling). `null` with `wakeRequested = true` means an immediate wake.
+     */
+    val wakeNotBefore: Instant? = null,
 ) {
     companion object {
         fun compositeId(organizationId: String, eventId: String): String = "$organizationId|$eventId"

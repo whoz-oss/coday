@@ -95,6 +95,12 @@ import { PhaseSegment } from '../../core/models'
     .dot--waiting-human {
       background: var(--color-warning);
     }
+    /* waiting_external: neutral accent outline, fixed (a poll is neither running work nor a failure) */
+    .dot--waiting-external {
+      box-sizing: border-box;
+      border: 2px solid var(--color-accent);
+      background: transparent;
+    }
     .dot--pending {
       background: var(--color-divider);
     }
@@ -144,6 +150,8 @@ export class StepDotsComponent {
         return 'dot--running'
       case 'waiting_human':
         return 'dot--waiting-human'
+      case 'waiting_external':
+        return 'dot--waiting-external'
       case 'pending':
         return 'dot--pending'
       case 'skipped':
@@ -160,6 +168,7 @@ export class StepDotsComponent {
       cancelled: 'cancelled',
       running: 'running',
       waiting_human: 'waiting for human',
+      waiting_external: 'polling an external condition',
       pending: 'waiting',
       skipped: 'skipped, not executed',
     }

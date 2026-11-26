@@ -68,6 +68,17 @@ internal fun codeVerificationFacts(outcome: CapabilityOutcome): Map<String, Any?
             else -> "Verification exited with code ${outcome.exitCode}."
         },
     )
+    is CapabilityOutcome.CiChecksCompleted -> mapOf(
+        "verification" to "github-pr-checks",
+        "executed" to true,
+        "code" to if (outcome.passed) "CI_CHECKS_PASSED" else "CI_CHECKS_FAILED",
+        "prNumber" to outcome.prNumber,
+        "prUrl" to outcome.prUrl,
+        "headSha" to outcome.headSha,
+        "failedCheckNames" to outcome.failedChecks.mapNotNull { it["name"] },
+        "message" to if (outcome.passed) "All checks of pull request #${outcome.prNumber} passed."
+        else "Checks failed on pull request #${outcome.prNumber}: ${outcome.failedChecks.mapNotNull { it["name"] }.joinToString()}",
+    )
     else -> emptyMap()
 }
 

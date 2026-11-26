@@ -45,7 +45,8 @@ function deriveStatusFromSteps(steps: unknown[]): RunStatus {
   if (steps.length === 0) return 'queued'
   const states = steps.map((step) => resolveStepState(step))
   if (states.some((state) => state === 'failed' || state === 'indeterminate' || state === 'cancelled')) return 'failed'
-  if (states.some((state) => state === 'running' || state === 'waiting_human')) return 'running'
+  if (states.some((state) => state === 'running' || state === 'waiting_human' || state === 'waiting_external'))
+    return 'running'
   if (states.every((state) => state === 'completed' || state === 'skipped')) return 'succeeded'
   return 'queued'
 }
@@ -58,6 +59,7 @@ export function mapWorkflowStateToRunStatus(state?: string, steps?: unknown[]): 
   switch (normalized) {
     case 'running':
     case 'waiting_human':
+    case 'waiting_external':
     case 'needs_research':
       return 'running'
     case 'ready':
@@ -138,6 +140,8 @@ function compareAttempts(left: AgentAttempt, right: AgentAttempt): number {
 function attemptStepStatus(attempt: AgentAttempt): TimelineStepStatus {
   const status = attempt.status.toLowerCase()
   if (attempt.failureCode?.toUpperCase() === 'AGENT_NEEDS_RESEARCH') return 'waiting_human'
+  // An accepted IN_PROGRESS closes the attempt as indeterminate but is a poll, never a failure.
+  if (attempt.failureCode?.toUpperCase() === 'AGENT_IN_PROGRESS') return 'waiting_external'
   if (status === 'succeeded' || status === 'completed' || status === 'superseded') return 'completed'
   if (status === 'starting' || status === 'running') return 'running'
   if (status === 'interrupted' || status === 'cancelled') return 'cancelled'
@@ -274,6 +278,7 @@ function phaseSegmentStatus(step: unknown): PhaseSegment['status'] {
   const state = resolveStepState(step)
   if (state === 'skipped') return 'skipped'
   if (state === 'waiting_human') return 'waiting_human'
+  if (state === 'waiting_external') return 'waiting_external'
   if (state === 'running') return 'running'
   if (state === 'pending' || state === 'ready') return 'pending'
   if (state === 'failed') return 'failed'
@@ -320,7 +325,9 @@ function stepBadgeLabel(step: unknown): string | undefined {
 }
 
 export function currentPhaseName(steps: unknown[]): string | undefined {
-  const active = steps.find((step) => ['running', 'waiting_human', 'ready'].includes(resolveStepState(step)))
+  const active = steps.find((step) =>
+    ['running', 'waiting_human', 'waiting_external', 'ready'].includes(resolveStepState(step))
+  )
   if (active) return stepBadgeLabel(active)
   const last = steps[steps.length - 1]
   return last ? stepBadgeLabel(last) : undefined
@@ -359,7 +366,12 @@ function workflowCreationMs(snapshot: Record<string, unknown>, projection: Recor
 
 /** Persisted terminal end priority: finishedAt → completedAt → endedAt. */
 function terminalEndMs(step: Record<string, unknown>): number | null {
-  return toEpochMs(step['finishedAt'] ?? step['completedAt'] ?? step['endedAt'])
+  const persisted = toEpochMs(step['finishedAt'] ?? step['completedAt'] ?? step['endedAt'])
+  if (persisted !== null) return persisted
+  // A polling step ends at its last observation, never at the wall clock.
+  return getString(step, 'status') === 'waiting_external'
+    ? toEpochMs(asObject(step['poll'])?.['lastPollAt'])
+    : null
 }
 
 function normalizeTicks(values: unknown, t0: number, startSec: number, endSec: number): number[] | undefined {
@@ -458,6 +470,7 @@ export function mapProjectionToLanes(
       status === 'indeterminate' ||
       status === 'cancelled' ||
       (status === 'waiting_human' && entry.start !== null) ||
+      (status === 'waiting_external' && entry.start !== null) ||
       (status === 'pending' && (isAttempt || isLedgerExecution)) ||
       (status === 'ready' && isLedgerExecution)
     if (!isVisibleExecution) continue

@@ -10,6 +10,9 @@ import io.whozoss.factory.persistence.TenantScope
 import org.springframework.stereotype.Component
 
 const val PREPARE_WORK_BRANCH = "prepare-work-branch"
+
+/** Step name (`responsibility.name`) of the deterministic GitHub PR checks code step. */
+const val GITHUB_PR_CHECKS = "github-pr-checks"
 const val BRANCH_PREPARATION_FAILED = "BRANCH_PREPARATION_FAILED"
 
 sealed interface BranchPreparationResult {

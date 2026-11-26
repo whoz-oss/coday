@@ -141,6 +141,41 @@ class SessionSequencerTest {
     }
 
     @Test
+    fun `a waiting_external step keeps the session non terminal and never failed`() {
+        val steps = listOf(step("a"), step("b", "a"))
+        val status = SessionSequencer.terminalStatus(
+            steps,
+            statuses("a" to WorkflowStatuses.WAITING_EXTERNAL, "b" to WorkflowStatuses.PENDING),
+        )
+        assertThat(status).isEqualTo(WorkflowStatuses.WAITING_EXTERNAL)
+        assertThat(SessionSequencer.isTerminal(status)).isFalse()
+        assertThat(WorkflowStatuses.isTerminal(WorkflowStatuses.WAITING_EXTERNAL)).isFalse()
+        assertThat(WorkflowStatuses.isKnown(WorkflowStatuses.WAITING_EXTERNAL)).isTrue()
+    }
+
+    @Test
+    fun `dependants of a waiting_external step stay pending`() {
+        val steps = listOf(step("a"), step("b", "a"))
+        val evaluation = SessionSequencer.evaluate(
+            steps,
+            statuses("a" to WorkflowStatuses.WAITING_EXTERNAL, "b" to WorkflowStatuses.PENDING),
+        )
+        assertThat(evaluation.ready).isEmpty()
+        assertThat(evaluation.blocked).isEmpty()
+    }
+
+    @Test
+    fun `a genuine failure wins over waiting_external`() {
+        val steps = listOf(step("a"), step("b"))
+        val status = SessionSequencer.terminalStatus(
+            steps,
+            statuses("a" to WorkflowStatuses.WAITING_EXTERNAL, "b" to WorkflowStatuses.FAILED),
+        )
+        // Non terminal while a poll is pending: the failure is evaluated once the poll settles.
+        assertThat(status).isEqualTo(WorkflowStatuses.WAITING_EXTERNAL)
+    }
+
+    @Test
     fun `a needs_research step blocks its dependants and never launches them`() {
         val steps = listOf(step("a"), step("b", "a"))
 

@@ -65,6 +65,7 @@ export function resolveStepState(step: unknown): StepState {
       'ready',
       'running',
       'waiting_human',
+      'waiting_external',
       'completed',
       'failed',
       'indeterminate',

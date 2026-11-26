@@ -67,6 +67,26 @@ class OutcomeTransitionsTest {
     }
 
     @Test
+    fun `return is accepted on the github-pr-checks code step only`() {
+        val ci = step("ci", "a").copy(
+            responsibility = WorkflowStepResponsibility(ResponsibilityKind.CODE, "github-pr-checks"),
+            outcomeTransitions = returning("a"),
+        )
+        assertThat(OutcomeReplayPlan.error(listOf(step("a"), ci))).isNull()
+        // Any other code step keeps the explicit rejection.
+        val build = ci.copy(responsibility = WorkflowStepResponsibility(ResponsibilityKind.CODE, "build"))
+        assertThat(OutcomeReplayPlan.error(listOf(step("a"), build))).isEqualTo("return_requires_agent_result")
+        // A human step named like the CI capability is still refused.
+        val human = ci.copy(responsibility = WorkflowStepResponsibility(ResponsibilityKind.HUMAN, "github-pr-checks"))
+        assertThat(OutcomeReplayPlan.error(listOf(step("a"), human))).isEqualTo("return_requires_agent_result")
+    }
+
+    @Test
+    fun `the domain CI constant equals the capability step name`() {
+        assertThat(OutcomeReplayPlan.CI_RETURN_CAPABLE).isEqualTo(io.whozoss.factory.capability.GITHUB_PR_CHECKS)
+    }
+
+    @Test
     fun `canonical serialization is opt in and survives policy reconstruction`() {
         val legacyStep = mapOf("id" to "a", "name" to "a", "responsibility" to mapOf("kind" to "agent", "name" to "Executor"), "dependsOn" to emptyList<String>())
         val raw = mapOf("schemaVersion" to "1", "workflowType" to "test", "version" to "1.0.0", "title" to "Test", "steps" to listOf(legacyStep))
