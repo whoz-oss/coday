@@ -19,6 +19,8 @@ describe('ExchangeStateService', () => {
     deleteCaseFileExchange: jest.Mock
     uploadNamespaceFileExchange: jest.Mock
     deleteNamespaceFileExchange: jest.Mock
+    updateCaseFileContentExchange: jest.Mock
+    updateNamespaceFileContentExchange: jest.Mock
     downloadCaseFileExchange: jest.Mock
     downloadNamespaceFileExchange: jest.Mock
     getCaseFilesManifestExchange: jest.Mock
@@ -65,6 +67,8 @@ describe('ExchangeStateService', () => {
       deleteCaseFileExchange: jest.fn(),
       uploadNamespaceFileExchange: jest.fn(),
       deleteNamespaceFileExchange: jest.fn(),
+      updateCaseFileContentExchange: jest.fn(),
+      updateNamespaceFileContentExchange: jest.fn(),
       downloadCaseFileExchange: jest.fn(),
       downloadNamespaceFileExchange: jest.fn(),
       getCaseFilesManifestExchange: jest.fn(),
@@ -107,9 +111,10 @@ describe('ExchangeStateService', () => {
         init()
         const old = new Subject<{ capability: string; files: { path: string }[] }>()
         const fresh = new Subject<{ capability: string; files: { path: string }[] }>()
-        const get = scope === ExchangeFileEntryScopeEnum.CASE
-          ? controller.getCaseFilesManifestExchange
-          : controller.getNamespaceFilesManifestExchange
+        const get =
+          scope === ExchangeFileEntryScopeEnum.CASE
+            ? controller.getCaseFilesManifestExchange
+            : controller.getNamespaceFilesManifestExchange
         get.mockReturnValueOnce(old).mockReturnValueOnce(fresh)
         const first = firstValueFrom(service.fileManifest(scope))
         const second = firstValueFrom(service.fileManifest(scope))
@@ -165,13 +170,16 @@ describe('ExchangeStateService', () => {
 
     it('fails closed when the recursive manifest has no capability', async () => {
       init()
-      controller.getCaseFilesManifestExchange.mockReturnValue(of({ capability: 'NONE', files: [{ path: 'private.txt' }] }))
+      controller.getCaseFilesManifestExchange.mockReturnValue(
+        of({ capability: 'NONE', files: [{ path: 'private.txt' }] })
+      )
       expect(await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))).toEqual([])
     })
 
     it('retries a failed manifest', async () => {
       init()
-      controller.getCaseFilesManifestExchange.mockReturnValueOnce(throwError(() => new Error('failure')))
+      controller.getCaseFilesManifestExchange
+        .mockReturnValueOnce(throwError(() => new Error('failure')))
         .mockReturnValueOnce(of({ files: [] }))
       await expect(firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))).rejects.toThrow('failure')
       expect(await firstValueFrom(service.fileManifest(ExchangeFileEntryScopeEnum.CASE))).toEqual([])
@@ -535,6 +543,91 @@ describe('ExchangeStateService', () => {
       expect(result.success).toBe(true)
       expect(controller.deleteCaseFileExchange).toHaveBeenCalledWith('c-1', 'a.txt')
       expect(controller.browseCaseFilesExchange).toHaveBeenCalledWith('c-1', '', 0)
+    })
+  })
+
+  describe('saveContent (editing a text file)', () => {
+    it('case success: sends path, content and etag, returns the new etag and refreshes only the case scope', async () => {
+      init()
+      controller.updateCaseFileContentExchange.mockReturnValue(of({ content: 'new', etag: 'e2', size: 3 }))
+      controller.browseCaseFilesExchange.mockClear()
+      controller.browseNamespaceFilesExchange.mockClear()
+
+      const result = await service.saveContent(ExchangeFileEntryScopeEnum.CASE, 'a.txt', 'new', 'e1')
+
+      expect(result).toEqual({ success: true, etag: 'e2' })
+      expect(controller.updateCaseFileContentExchange).toHaveBeenCalledWith('c-1', {
+        path: 'a.txt',
+        content: 'new',
+        etag: 'e1',
+      })
+      expect(controller.browseCaseFilesExchange).toHaveBeenCalledWith('c-1', '', 0)
+      expect(controller.browseNamespaceFilesExchange).not.toHaveBeenCalled()
+    })
+
+    it('namespace success: calls the namespace endpoint, without an etag when none is known', async () => {
+      init()
+      controller.updateNamespaceFileContentExchange.mockReturnValue(of({ content: 'new', etag: 'e2', size: 3 }))
+      controller.browseCaseFilesExchange.mockClear()
+      controller.browseNamespaceFilesExchange.mockClear()
+
+      const result = await service.saveContent(ExchangeFileEntryScopeEnum.NAMESPACE, 'shared.md', 'new')
+
+      expect(result.success).toBe(true)
+      expect(controller.updateNamespaceFileContentExchange).toHaveBeenCalledWith('ns-1', {
+        path: 'shared.md',
+        content: 'new',
+      })
+      expect(controller.browseNamespaceFilesExchange).toHaveBeenCalledWith('ns-1', '', 0)
+      expect(controller.browseCaseFilesExchange).not.toHaveBeenCalled()
+    })
+
+    it('409 is a conflict, with no refresh', async () => {
+      init()
+      controller.updateCaseFileContentExchange.mockReturnValue(throwError(() => ({ status: 409 })))
+      controller.browseCaseFilesExchange.mockClear()
+
+      const result = await service.saveContent(ExchangeFileEntryScopeEnum.CASE, 'a.txt', 'new', 'stale')
+
+      expect(result).toEqual({
+        success: false,
+        conflict: true,
+        error: 'The file was modified since it was opened.',
+      })
+      expect(controller.browseCaseFilesExchange).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      [403, 'You do not have permission to edit this file.'],
+      [404, 'This file no longer exists.'],
+    ])('%s gives a clear message, not a conflict', async (status, message) => {
+      init()
+      controller.updateCaseFileContentExchange.mockReturnValue(throwError(() => ({ status })))
+
+      const result = await service.saveContent(ExchangeFileEntryScopeEnum.CASE, 'a.txt', 'new')
+
+      expect(result).toEqual({ success: false, conflict: false, error: message })
+    })
+
+    it('does not refresh a scope the user left while the save was in flight', async () => {
+      init()
+      const pending = new Subject<{ content: string; etag: string; size: number }>()
+      controller.updateCaseFileContentExchange.mockReturnValue(pending)
+      const result = service.saveContent(ExchangeFileEntryScopeEnum.CASE, 'a.txt', 'new')
+      service.initializeForCase('ns-1', 'c-2')
+      controller.browseCaseFilesExchange.mockClear()
+
+      pending.next({ content: 'new', etag: 'e2', size: 3 })
+      pending.complete()
+
+      expect((await result).success).toBe(true)
+      expect(controller.browseCaseFilesExchange).not.toHaveBeenCalled()
+    })
+
+    it('fails without a request when no scope is active', async () => {
+      const result = await service.saveContent(ExchangeFileEntryScopeEnum.CASE, 'a.txt', 'new')
+      expect(result).toEqual({ success: false, error: 'No active scope' })
+      expect(controller.updateCaseFileContentExchange).not.toHaveBeenCalled()
     })
   })
 

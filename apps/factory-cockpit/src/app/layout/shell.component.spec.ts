@@ -31,6 +31,7 @@ describe('Factory navigation simplification', () => {
     fixture.detectChanges()
     const host = fixture.nativeElement as HTMLElement
     expect(host.querySelector('a[href="/workflows"]')).not.toBeNull()
+    expect(host.querySelector('a[href="/admin"]')).not.toBeNull()
     expect(host.querySelector('a[href="/reglages"]')).toBeNull()
     expect(host.textContent).not.toContain('Settings')
   })

@@ -85,15 +85,42 @@
           }
         </ds-form-field>
 
-        <ds-form-field label="Instructions" controlId="agent-config-instructions">
-          <textarea
-            dsControl
-            id="agent-config-instructions"
-            rows="6"
-            placeholder="Optional — system instructions for this agent"
-            [formControl]="instructionsControl"
-          ></textarea>
-        </ds-form-field>
+        <div class="agent-config-instructions" [class.agent-config-instructions--fullscreen]="instructionsFullscreen()">
+          <!-- Escape is bound on the focusable children, not on this wrapper: a div is not focusable. -->
+          <div class="agent-config-instructions__toolbar">
+            <button
+              dsButton
+              variant="ghost"
+              type="button"
+              [attr.aria-pressed]="instructionsFullscreen()"
+              (click)="toggleInstructionsFullscreen()"
+              (keydown.escape)="closeInstructionsFullscreen()"
+            >
+              {{ instructionsFullscreen() ? 'Exit full screen' : 'Full screen' }}
+            </button>
+          </div>
+          <ds-form-field
+            label="Instructions"
+            controlId="agent-config-instructions"
+            [hint]="instructionsCounter()"
+            hintId="agent-config-instructions-hint"
+            [error]="instructionsError()"
+            errorId="agent-config-instructions-error"
+          >
+            <!-- No native maxlength: it would silently cut a paste instead of showing the error. -->
+            <textarea
+              #instructionsTextarea
+              dsControl
+              id="agent-config-instructions"
+              rows="20"
+              placeholder="Optional — system instructions for this agent"
+              aria-describedby="agent-config-instructions-hint agent-config-instructions-error"
+              [attr.aria-invalid]="instructionsControl.invalid"
+              [formControl]="instructionsControl"
+              (keydown.escape)="closeInstructionsFullscreen()"
+            ></textarea>
+          </ds-form-field>
+        </div>
       </ds-fieldset>
 
       <!-- Integrations section: shown when the namespace has integration configs or built-ins -->

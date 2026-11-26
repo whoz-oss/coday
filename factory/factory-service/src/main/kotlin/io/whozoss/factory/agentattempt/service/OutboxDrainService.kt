@@ -158,9 +158,9 @@ class OutboxDrainService(
 
     companion object {
         const val RETRY_SECONDS = 90L * 60
-        // Full sequencer turns still run on the existing scheduler. After an ungraceful crash,
+        // Full sequencer turns run on the bounded run pool of OutboxDrainWorker. After an ungraceful crash,
         // recovery may wait up to two hours; intentional interruption releases the claim.
-        // No heartbeat/executor framework or automatic agent retry is introduced.
+        // No heartbeat/lease-renewal framework or automatic agent retry is introduced.
         const val LEASE_SECONDS = 2L * 60 * 60
         fun continuationId(workstreamId: String, namespaceId: String, workflowId: String): String =
             "continuation:" + java.util.UUID.nameUUIDFromBytes(

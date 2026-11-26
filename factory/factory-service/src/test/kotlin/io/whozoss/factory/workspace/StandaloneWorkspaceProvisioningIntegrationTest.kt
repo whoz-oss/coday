@@ -138,7 +138,8 @@ class StandaloneWorkspaceProvisioningIntegrationTest : Neo4jDomainIntegrationTes
                 } else resume()
             } else {
                 val previousNotifications = notifications
-                io.whozoss.factory.agentattempt.service.OutboxDrainWorker(drain, session, proxy, com.fasterxml.jackson.databind.ObjectMapper(), clock).drain()
+                io.whozoss.factory.agentattempt.service.OutboxDrainWorker(drain, session, proxy, com.fasterxml.jackson.databind.ObjectMapper(), clock,
+                    continuationExecutor = io.whozoss.factory.agentattempt.service.ContinuationExecutor { it.run() }).drain()
                 if (status() == "READY" && workflowRepository.findInstance(scope, "ns", "workflow")!!.status == "active" &&
                     outbox.findAllByOrganization(scope.organizationId).any { it.eventType == "session_continuation" && it.status == "dispatched" }) {
                     assertThat(notifications).isGreaterThan(previousNotifications)
