@@ -159,6 +159,122 @@ class KtlintCheckToolUnitSpec :
             }
         }
 
+        "check lists at most the first violations and says how many were left out, the header keeping the real total" {
+            withProject { projectDir ->
+                projectDir.writeFile(relativePath = "Generated.kt")
+                val total = MAX_REPORTED_VIOLATIONS + 50
+                val tool = KtlintCheckTool(bounded = isolatedRun(projectRoot = projectDir, runner = ManyViolationsRunner(perFile = total)))
+
+                val report = tool.check(files = listOf("Generated.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText()
+
+                report shouldContain "Checked 1 file(s): $total violation(s)"
+                report shouldContain "Generated.kt:$MAX_REPORTED_VIOLATIONS:1 violation"
+                report shouldNotContain "Generated.kt:${MAX_REPORTED_VIOLATIONS + 1}:1 violation"
+                report shouldContain "... 50 more violation(s) not shown ($total total)"
+            }
+        }
+
+        "check does not mention any cut when the violations fit in the report" {
+            withProject { projectDir ->
+                projectDir.writeFile(relativePath = "Generated.kt")
+                val tool =
+                    KtlintCheckTool(
+                        bounded = isolatedRun(projectRoot = projectDir, runner = ManyViolationsRunner(perFile = MAX_REPORTED_VIOLATIONS)),
+                    )
+
+                val report = tool.check(files = listOf("Generated.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText()
+
+                report shouldContain "Generated.kt:$MAX_REPORTED_VIOLATIONS:1 violation"
+                report shouldNotContain "not shown"
+            }
+        }
+
+        "check caps the violations listed with a failure too, and still names the failing file" {
+            withProject { projectDir ->
+                listOf("A.kt", "B.kt").forEach { projectDir.writeFile(relativePath = it) }
+                val total = MAX_REPORTED_VIOLATIONS + 50
+                val tool =
+                    KtlintCheckTool(
+                        bounded =
+                            BoundedKtlintRun(
+                                projectRoot = projectDir,
+                                runner = ManyViolationsRunner(perFile = total, failingOn = setOf("B.kt")),
+                            ),
+                    )
+
+                val error = tool.check(files = listOf("A.kt", "B.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText()
+
+                error shouldContain "... 50 more violation(s) not shown ($total total)"
+                error shouldNotContain "A.kt:${MAX_REPORTED_VIOLATIONS + 1}:1 violation"
+                error shouldContain "Failing file: B.kt"
+            }
+        }
+
+        "check follows the editorconfig of the project: the same file is clean without it and has a violation with it" {
+            val longLine = "val aVeryLongVariableNameThatGoesBeyondFortyCharacters = 42\n"
+            withProject { withoutConfig ->
+                withoutConfig.writeFile(relativePath = "Sample.kt", content = longLine)
+
+                KtlintCheckTool(projectRoot = withoutConfig)
+                    .check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                    .successText() shouldContain "no violation"
+            }
+            withProject { withConfig ->
+                withConfig.writeFile(relativePath = ".editorconfig", content = "root = true\n\n[*.{kt,kts}]\nmax_line_length = 40\n")
+                withConfig.writeFile(relativePath = "Sample.kt", content = longLine)
+
+                val report =
+                    KtlintCheckTool(projectRoot = withConfig)
+                        .check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                        .failureText()
+
+                report shouldContain "max-line-length"
+            }
+        }
+
+        "check follows a different value of the editorconfig: a line that is too long for 40 is fine for 200" {
+            val longLine = "val aVeryLongVariableNameThatGoesBeyondFortyCharacters = 42\n"
+            withProject { projectDir ->
+                projectDir.writeFile(relativePath = ".editorconfig", content = "root = true\n\n[*.{kt,kts}]\nmax_line_length = 200\n")
+                projectDir.writeFile(relativePath = "Sample.kt", content = longLine)
+
+                KtlintCheckTool(projectRoot = projectDir)
+                    .check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS)
+                    .successText() shouldContain "no violation"
+            }
+        }
+
+        "check on a file that is not valid Kotlin answers an error that names the file and lets the earlier files be reported" {
+            withProject { projectDir ->
+                projectDir.writeFile(relativePath = "A.kt", content = WILDCARD_IMPORT_SOURCE)
+                projectDir.writeFile(relativePath = "B.kt", content = NOT_KOTLIN_SOURCE)
+                projectDir.writeFile(relativePath = "C.kt", content = WILDCARD_IMPORT_SOURCE)
+                val tool = KtlintCheckTool(projectRoot = projectDir)
+
+                val error = tool.check(files = listOf("A.kt", "B.kt", "C.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText()
+
+                error shouldContain "ktlint failed:"
+                error shouldContain "Failing file: B.kt"
+                error shouldContain "A.kt:1:"
+                error shouldNotContain "C.kt:1:"
+            }
+        }
+
+        "check names the class of the failure when the engine throws without a message" {
+            withProject { projectDir ->
+                projectDir.writeFile(relativePath = "A.kt")
+                val tool =
+                    KtlintCheckTool(
+                        bounded = isolatedRun(projectRoot = projectDir, runner = ThrowingRunner(failure = { StackOverflowError() })),
+                    )
+
+                val error = tool.check(files = listOf("A.kt"), timeoutSeconds = TIMEOUT_SECONDS).errorText()
+
+                error shouldContain "ktlint failed: StackOverflowError"
+                error shouldNotContain "null"
+            }
+        }
+
         "tool schema marks files and timeoutSeconds as required so the agent must always provide them" {
             withProject { projectDir ->
                 val tool = KtlintCheckTool(projectRoot = projectDir)
@@ -167,6 +283,12 @@ class KtlintCheckToolUnitSpec :
                 tool.version shouldBe "1.0.0"
                 tool.inputSchema shouldMatch Regex("""(?s).*"required"\s*:\s*\[[^\]]*"timeoutSeconds".*""")
                 tool.inputSchema shouldMatch Regex("""(?s).*"required"\s*:\s*\[[^\]]*"files".*""")
+            }
+        }
+
+        "the description tells the agent that the report is capped" {
+            withProject { projectDir ->
+                KtlintCheckTool(projectRoot = projectDir).description shouldContain "At most $MAX_REPORTED_VIOLATIONS violations"
             }
         }
 

@@ -120,6 +120,48 @@ class KtlintToolProviderUnitSpec :
 
         // --- the tools share one runner on the configured project ---
 
+        "two provideTools calls on the same project use the very same ktlint runner" {
+            withTempProject { dir ->
+                val first = provider.provideTools(json("""{"projectDirectory": "$dir"}"""), "ONE")
+                val second = provider.provideTools(json("""{"projectDirectory": "$dir/."}"""), "TWO")
+
+                val firstRunner =
+                    first
+                        .filterIsInstance<KtlintCheckTool>()
+                        .single()
+                        .bounded.runner
+                val secondRunner =
+                    second
+                        .filterIsInstance<KtlintFormatTool>()
+                        .single()
+                        .bounded.runner
+
+                (firstRunner === secondRunner) shouldBe true
+            }
+        }
+
+        "provideTools on two different projects uses two ktlint runners" {
+            withTempProject { dir ->
+                withTempProject { otherDir ->
+                    val first = provider.provideTools(json("""{"projectDirectory": "$dir"}"""), null)
+                    val second = provider.provideTools(json("""{"projectDirectory": "$otherDir"}"""), null)
+
+                    val firstRunner =
+                        first
+                            .filterIsInstance<KtlintCheckTool>()
+                            .single()
+                            .bounded.runner
+                    val secondRunner =
+                        second
+                            .filterIsInstance<KtlintCheckTool>()
+                            .single()
+                            .bounded.runner
+
+                    (firstRunner === secondRunner) shouldBe false
+                }
+            }
+        }
+
         "tools of a valid config should work on the files of the configured project" {
             withTempProject { dir ->
                 java.io.File(dir, "Sample.kt").writeText(WILDCARD_IMPORT_SOURCE)

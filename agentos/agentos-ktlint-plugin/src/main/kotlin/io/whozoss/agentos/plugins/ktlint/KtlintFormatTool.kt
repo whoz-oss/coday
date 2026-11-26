@@ -8,7 +8,6 @@ import io.whozoss.agentos.sdk.tool.ToolTimeout
 import io.whozoss.agentos.sdk.tool.prefixedToolName
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Tool that autocorrects the ktlint violations of Kotlin files, REWRITING them in place.
@@ -24,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference
  * dispatcher, so that cancelling the case releases the caller and the worker, is the job of [BlockingTool].
  */
 class KtlintFormatTool internal constructor(
-    private val bounded: BoundedKtlintRun,
+    internal val bounded: BoundedKtlintRun,
     configName: String? = null,
 ) : BlockingTool<KtlintFormatTool.Input>() {
     /** Run on the real ktlint engine, for the Kotlin files of [projectRoot]. */
@@ -48,6 +47,7 @@ Works on files only, never on a directory or a whole project: pass the .kt / .kt
 the files already rewritten stay modified and are listed.
 Returns how many violations were fixed, which files were modified,
 and the violations ktlint cannot autocorrect, which must be fixed by hand.
+At most $MAX_REPORTED_VIOLATIONS remaining violations are listed, the rest is counted.
 A run that leaves violations is answered as a KTLINT_FAILURE whose text is the report (the files it fixed are still rewritten);
 KTLINT_ERROR means the formatting itself could not run."""
 
@@ -86,31 +86,32 @@ KTLINT_ERROR means the formatting itself could not run."""
         timeoutSeconds: Int,
     ): KtlintToolResult {
         val done = CopyOnWriteArrayList<FormatResult>()
-        val inProgress = AtomicReference<Path?>(null)
         return bounded.execute(
             files = files,
             timeoutSeconds = timeoutSeconds,
-            onAbort = { end -> abortDetails(end = end, done = done, current = inProgress.get()) },
-        ) { resolved ->
-            resolved.forEach { file ->
-                BoundedKtlintRun.ensureRunning()
-                inProgress.set(file)
-                done += bounded.runner.format(file = file)
-                inProgress.set(null)
+            onAbort = { end, current -> abortDetails(end = end, done = done, current = current) },
+            onFile = { file -> done += bounded.runner.format(file = file) },
+            report = { fileCount -> reportOf(done = done, fileCount = fileCount) },
+        )
+    }
+
+    /** The final answer: counts (always the real totals), the modified files, and the remaining violations, capped. */
+    private fun reportOf(
+        done: List<FormatResult>,
+        fileCount: Int,
+    ): KtlintToolResult {
+        val modifiedFiles = done.filter { it.modified }.map { it.file }
+        val remaining = done.flatMap { it.remaining }
+        val text =
+            buildString {
+                append("Formatted $fileCount file(s): ")
+                append("${done.sumOf { it.correctedCount }} violation(s) fixed, ")
+                append("${remaining.size} remaining, ")
+                append("${modifiedFiles.size} file(s) modified")
+                modifiedFiles.forEach { append("\n  modified: $it") }
+                if (remaining.isNotEmpty()) append("\n${remaining.describeCapped()}")
             }
-            val modifiedFiles = done.filter { it.modified }.map { it.file }
-            val remaining = done.flatMap { it.remaining }
-            val report =
-                buildString {
-                    append("Formatted ${resolved.size} file(s): ")
-                    append("${done.sumOf { it.correctedCount }} violation(s) fixed, ")
-                    append("${remaining.size} remaining, ")
-                    append("${modifiedFiles.size} file(s) modified")
-                    modifiedFiles.forEach { append("\n  modified: $it") }
-                    remaining.forEach { append("\n${it.describe()}") }
-                }
-            KtlintToolResult.ofViolations(remaining = remaining.size, text = report)
-        }
+        return KtlintToolResult.ofViolations(remaining = remaining.size, text = text)
     }
 
     /**

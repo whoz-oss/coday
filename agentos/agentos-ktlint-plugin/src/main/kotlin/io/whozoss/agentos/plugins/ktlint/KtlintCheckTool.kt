@@ -8,7 +8,6 @@ import io.whozoss.agentos.sdk.tool.ToolTimeout
 import io.whozoss.agentos.sdk.tool.prefixedToolName
 import java.nio.file.Path
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Tool that reports the ktlint violations of Kotlin files, without ever modifying them.
@@ -22,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference
  * dispatcher, so that cancelling the case releases the caller and the worker, is the job of [BlockingTool].
  */
 class KtlintCheckTool internal constructor(
-    private val bounded: BoundedKtlintRun,
+    internal val bounded: BoundedKtlintRun,
     configName: String? = null,
 ) : BlockingTool<KtlintCheckTool.Input>() {
     /** Run on the real ktlint engine, for the Kotlin files of [projectRoot]. */
@@ -44,6 +43,7 @@ class KtlintCheckTool internal constructor(
 Works on files only, never on a directory or a whole project: pass the .kt / .kts files one by one.
 'timeoutSeconds' is mandatory (1 to ${ToolTimeout.MAX_SECONDS}): the check stops when it is exceeded.
 Returns one line per violation: file:line:column message (rule-id), flagged [auto-correctable] when ktlint_format can fix it.
+At most $MAX_REPORTED_VIOLATIONS violations are listed, the rest is counted: fix them, then check again.
 A run that finds violations is answered as a KTLINT_FAILURE whose text is the report; KTLINT_ERROR means the check itself could not run."""
 
     override val version: String = "1.0.0"
@@ -80,28 +80,25 @@ A run that finds violations is answered as a KTLINT_FAILURE whose text is the re
         timeoutSeconds: Int,
     ): KtlintToolResult {
         val found = CopyOnWriteArrayList<KtlintViolation>()
-        val inProgress = AtomicReference<Path?>(null)
         return bounded.execute(
             files = files,
             timeoutSeconds = timeoutSeconds,
-            onAbort = { end -> abortDetails(end = end, found = found, current = inProgress.get()) },
-        ) { resolved ->
-            resolved.forEach { file ->
-                BoundedKtlintRun.ensureRunning()
-                inProgress.set(file)
-                found += bounded.runner.lint(file = file)
-                inProgress.set(null)
-            }
-            if (found.isEmpty()) {
-                KtlintToolResult.Success(text = "Checked ${resolved.size} file(s): no violation")
-            } else {
-                KtlintToolResult.Failure(
-                    text =
-                        "Checked ${resolved.size} file(s): ${found.size} violation(s)\n" +
-                            found.joinToString(separator = "\n") { it.describe() },
-                )
-            }
-        }
+            onAbort = { end, current -> abortDetails(end = end, found = found, current = current) },
+            onFile = { file -> found += bounded.runner.lint(file = file) },
+            report = { fileCount ->
+                when {
+                    found.isEmpty() -> {
+                        KtlintToolResult.Success(text = "Checked $fileCount file(s): no violation")
+                    }
+
+                    else -> {
+                        KtlintToolResult.Failure(
+                            text = "Checked $fileCount file(s): ${found.size} violation(s)\n${found.describeCapped()}",
+                        )
+                    }
+                }
+            },
+        )
     }
 
     /**
@@ -114,9 +111,10 @@ A run that finds violations is answered as a KTLINT_FAILURE whose text is the re
         current: Path?,
     ): String {
         val violations =
-            found
-                .joinToString(separator = "") { "\n${it.describe()}" }
-                .let { lines -> if (lines.isEmpty()) "" else "\nViolations found in the files checked before the ${end.moment}:$lines" }
+            when {
+                found.isEmpty() -> ""
+                else -> "\nViolations found in the files checked before the ${end.moment}:\n${found.describeCapped()}"
+            }
         val failing =
             current
                 ?.takeIf { end == RunEnd.FAILED }
@@ -128,20 +126,4 @@ A run that finds violations is answered as a KTLINT_FAILURE whose text is the re
     companion object {
         const val TOOL_NAME = "ktlint_check"
     }
-}
-
-/** Parameter descriptions shared by the two ktlint tools. */
-internal object KtlintToolTexts {
-    const val FILES_PARAM_DESCRIPTION =
-        "Relative paths of .kt / .kts files, never directories, e.g. [\"engine/src/main/Foo.kt\", \"cli/src/Main.kt\"]. " +
-            "Directories are refused."
-
-    private const val ON_EXPIRY = "the ktlint run stops"
-
-    /** Message returned when the agent did not provide `timeoutSeconds` at all. */
-    val MISSING_TIMEOUT_MESSAGE: String = ToolTimeout.missingMessage(onExpiry = ON_EXPIRY)
-
-    val TIMEOUT_PARAM_DESCRIPTION: String =
-        ToolTimeout.paramDescription(onExpiry = ON_EXPIRY) +
-            "Size it to the number of files: ktlint needs a few seconds per file, about 60 is enough for a handful."
 }

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.plugins.ktlint
 
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.sdk.tool.ToolTimeout
 
 /** Error type of a ktlint run that found violations still to fix. */
 internal const val KTLINT_FAILURE = "KTLINT_FAILURE"
@@ -50,3 +51,19 @@ internal fun KtlintToolResult.toToolExecutionResult(): ToolExecutionResult =
 /** The agent did not provide the mandatory `timeoutSeconds`: nothing is run, the answer names the parameter. */
 internal fun missingTimeoutResult(): ToolExecutionResult =
     KtlintToolResult.Error(text = KtlintToolTexts.MISSING_TIMEOUT_MESSAGE).toToolExecutionResult()
+
+/** Parameter descriptions shared by the two ktlint tools. */
+internal object KtlintToolTexts {
+    const val FILES_PARAM_DESCRIPTION =
+        "Relative paths of .kt / .kts files, never directories, e.g. [\"engine/src/main/Foo.kt\", \"cli/src/Main.kt\"]. " +
+            "Directories are refused."
+
+    private const val ON_EXPIRY = "the ktlint run stops"
+
+    /** Message returned when the agent did not provide `timeoutSeconds` at all. */
+    val MISSING_TIMEOUT_MESSAGE: String = ToolTimeout.missingMessage(onExpiry = ON_EXPIRY)
+
+    val TIMEOUT_PARAM_DESCRIPTION: String =
+        ToolTimeout.paramDescription(onExpiry = ON_EXPIRY) +
+            "Size it to the number of files: ktlint needs a few seconds per file, about 60 is enough for a handful."
+}

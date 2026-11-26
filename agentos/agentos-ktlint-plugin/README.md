@@ -22,6 +22,18 @@ Both tools take files only (directories are refused) and a mandatory `timeoutSec
 `ktlint_format` lists the files it already rewrote. Cancelling the call (stopping the case) stops the run between two files.
 The file in progress is finished first, since the engine does not check interruption while parsing.
 
+A report lists at most 200 violations (`MAX_REPORTED_VIOLATIONS`), so that a generated file cannot flood the context of
+the agent: the others are replaced by a line `... N more violation(s) not shown (X total)`. The counts of the header
+(`Checked N file(s): M violation(s)`, `K remaining`) stay the real totals. The cap applies to `ktlint_check`, to the violations
+left by `ktlint_format` and to the violations listed when a run stops on a timeout or a failure.
+
+`ktlint_format` writes each file to a temporary file in the same directory and moves it over the original, so that a full
+disk or a killed service never leaves a half-written source (the permissions of the file are kept).
+
+The ktlint runs share a small pool of 2 to 4 platform threads (half of the processors). It is created again if the plugin is
+stopped then started, and a run that finds it unavailable answers a `KTLINT_ERROR` instead of failing. One ktlint engine is
+built per project and shared by all the tool calls on it.
+
 ## Results
 
 The outcome of a call is decided where it is known (`KtlintToolResult`), never guessed from the text:

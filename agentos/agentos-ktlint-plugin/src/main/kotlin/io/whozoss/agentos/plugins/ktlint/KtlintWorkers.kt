@@ -18,23 +18,41 @@ import java.util.concurrent.atomic.AtomicInteger
  * A timed-out run still keeps its thread until its file ends, nothing can kill it: the bound limits that to [size]
  * files at a time. A run that gives up before a worker took it stays in the queue as a cancelled task, which the
  * worker skips when it reaches it.
+ *
+ * The pool is created on first use and created again after [shutdown]: PF4J keeps the classloader (hence this
+ * object) when it stops then starts the plugin again, and the tools built before the stop keep working.
  */
 internal object KtlintWorkers {
+    private const val MIN_THREADS = 2
     private const val MAX_THREADS = 4
     private const val KEEP_ALIVE_SECONDS = 60L
 
-    /** Half of the processors, between 1 and [MAX_THREADS]: ktlint must not take the machine of the service. */
-    val size: Int = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, MAX_THREADS)
+    private val lock = Any()
 
-    val executor: ExecutorService =
+    private var current: ExecutorService? = null
+
+    /**
+     * Half of the processors, between [MIN_THREADS] and [MAX_THREADS]: ktlint must not take the machine of the
+     * service, and one stuck file must not stop every other run (hence at least two workers).
+     */
+    val size: Int = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(MIN_THREADS, MAX_THREADS)
+
+    /** The pool of workers: the one in use, or a new one when none was created yet or the last one was shut down. */
+    val executor: ExecutorService
+        get() = synchronized(lock) { current?.takeUnless { it.isShutdown } ?: createPool().also { current = it } }
+
+    /** Stops the threads; called when the plugin stops. The next [executor] is a new pool. */
+    fun shutdown() {
+        synchronized(lock) {
+            current?.shutdownNow()
+            current = null
+        }
+    }
+
+    private fun createPool(): ExecutorService =
         ThreadPoolExecutor(size, size, KEEP_ALIVE_SECONDS, TimeUnit.SECONDS, LinkedBlockingQueue(), threadFactory()).apply {
             allowCoreThreadTimeOut(true)
         }
-
-    /** Stops the threads; called when the plugin stops. */
-    fun shutdown() {
-        executor.shutdownNow()
-    }
 
     private fun threadFactory(): ThreadFactory {
         val count = AtomicInteger()

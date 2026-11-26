@@ -4,13 +4,22 @@ import com.pinterest.ktlint.rule.engine.api.Code
 import com.pinterest.ktlint.rule.engine.api.KtLintRuleEngine
 import com.pinterest.ktlint.rule.engine.api.LintError
 import com.pinterest.ktlint.ruleset.standard.StandardRuleSetProvider
+import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.PosixFileAttributeView
 
 /**
  * Runs the embedded ktlint engine (standard ruleset) on single files.
  *
  * `.editorconfig` files are discovered by the engine from each file's location, so the target project's
  * own style configuration applies. Reported file names are relative to [projectRoot].
+ *
+ * One instance serves every run on its project, from several threads at once (see [KtlintRunnerCache]): the
+ * [KtLintRuleEngine] keeps no state of a run (each call builds its own rule instances and context, the `.editorconfig`
+ * cache it uses is a thread-safe one).
  *
  * @property projectRoot real path of the project root, used to relativize the reported file names.
  */
@@ -34,7 +43,8 @@ class KtlintRunner(
      * The file is read and written with non-interruptible I/O ([java.io.File.readText] and [java.io.File.writeText],
      * plain streams): the worker thread may already be interrupted when it gets here (cancellation or timeout, the
      * engine does not look at interruption while it parses), and an interruptible channel would then fail after
-     * having truncated the file, leaving it empty.
+     * having truncated the file, leaving it empty. The new content is written to a temporary file next to the original,
+     * then moved over it in one step, so that a full disk or a killed service never leaves a half-written file.
      */
     override fun format(file: Path): FormatResult {
         val original = file.toFile().readText(charset = Charsets.UTF_8)
@@ -44,17 +54,58 @@ class KtlintRunner(
                 findings += lintError.toViolation(file = file) to corrected
             }
         val modified = formatted != original
-        if (modified) {
-            // Not Files.writeString: it truncates the file, then writes through an interruptible FileChannel; on an
-            // interrupted thread the write fails with ClosedByInterruptException and the file stays empty.
-            file.toFile().writeText(text = formatted, charset = Charsets.UTF_8)
-        }
+        if (modified) writeAtomically(file = file, text = formatted)
         return FormatResult(
             file = relativeName(file = file),
             modified = modified,
             correctedCount = findings.count { (_, corrected) -> corrected },
             remaining = findings.filterNot { (_, corrected) -> corrected }.map { (violation, _) -> violation },
         )
+    }
+
+    /**
+     * Replaces [file] by [text] without ever leaving it truncated: the text goes to a temporary file in the same
+     * directory (same filesystem, so the move is a rename), whose name does not end in `.kt` / `.kts` so that it is
+     * never taken for a source, then the temporary file is moved over [file]. The permissions of [file] are kept when
+     * the filesystem has POSIX ones; the temporary file is deleted whatever happens.
+     *
+     * Only non-interruptible I/O is used on purpose (see [format]): [File.createTempFile] and [File.writeText] are
+     * plain streams, [Files.move] is a rename, none of them goes through an interruptible channel (which would fail on
+     * an interrupted thread, as [Files.writeString] does with a `ClosedByInterruptException`).
+     */
+    private fun writeAtomically(
+        file: Path,
+        text: String,
+    ) {
+        val temporary = File.createTempFile(TEMP_PREFIX, TEMP_SUFFIX, file.parent.toFile())
+        try {
+            temporary.writeText(text = text, charset = Charsets.UTF_8)
+            copyPermissions(from = file, to = temporary.toPath())
+            moveOver(source = temporary.toPath(), target = file)
+        } finally {
+            Files.deleteIfExists(temporary.toPath())
+        }
+    }
+
+    private fun copyPermissions(
+        from: Path,
+        to: Path,
+    ) {
+        Files.getFileAttributeView(from, PosixFileAttributeView::class.java)?.let { view ->
+            Files.setPosixFilePermissions(to, view.readAttributes().permissions())
+        }
+    }
+
+    /** Atomic move when the filesystem can, a plain replacing move otherwise. */
+    private fun moveOver(
+        source: Path,
+        target: Path,
+    ) {
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING)
+        }
     }
 
     /**
@@ -74,4 +125,9 @@ class KtlintRunner(
         )
 
     private fun relativeName(file: Path): String = projectRoot.relativize(file).toString()
+
+    private companion object {
+        const val TEMP_PREFIX = ".ktlint-"
+        const val TEMP_SUFFIX = ".tmp"
+    }
 }
