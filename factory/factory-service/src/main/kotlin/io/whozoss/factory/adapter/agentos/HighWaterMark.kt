@@ -105,7 +105,19 @@ class EventCheckpoint(
             val markTs = mark.timestamp ?: return false
             val markId = mark.lastEventId ?: return false
             val eventTs = event.timestamp ?: return false
-            return eventTs < markTs || (eventTs == markTs && event.eventId <= markId)
+            val order = compareTimestamps(eventTs, markTs)
+            return order < 0 || (order == 0 && event.eventId <= markId)
+        }
+
+        /**
+         * Chronological comparison of two ISO-8601 instants. Lexicographic comparison is wrong for
+         * differing fractional-second precision (`...00Z` sorts after `...00.5Z`), so both sides are
+         * parsed as [java.time.Instant]; an unparseable side falls back to the textual order.
+         */
+        fun compareTimestamps(left: String, right: String): Int {
+            val a = runCatching { java.time.Instant.parse(left) }.getOrNull()
+            val b = runCatching { java.time.Instant.parse(right) }.getOrNull()
+            return if (a != null && b != null) a.compareTo(b) else left.compareTo(right)
         }
 
         /** Monotone advance: the mark only moves forward in `(timestamp, id)` order. */
@@ -113,7 +125,8 @@ class EventCheckpoint(
             val eventTs = event.timestamp ?: return mark
             val markTs = mark.timestamp
             val markId = mark.lastEventId
-            return if (markTs == null || eventTs > markTs || (eventTs == markTs && (markId == null || event.eventId > markId))) {
+            val order = if (markTs == null) 1 else compareTimestamps(eventTs, markTs)
+            return if (markTs == null || order > 0 || (order == 0 && (markId == null || event.eventId > markId))) {
                 HighWaterMark(eventTs, event.eventId)
             } else {
                 mark

@@ -13,6 +13,7 @@ describe('CaseStateService', () => {
     unstarCase: jest.Mock
     updateCase: jest.Mock
     setReasoningEffortCase: jest.Mock
+    setModelCase: jest.Mock
   }
 
   function makeService(listMineMock?: jest.Mock): CaseStateService {
@@ -27,6 +28,11 @@ describe('CaseStateService', () => {
         .fn()
         .mockImplementation((id: string, body: { reasoningEffort?: string }) =>
           of({ id, namespaceId: 'ns', favorite: false, reasoningEffort: body.reasoningEffort } as unknown as Case)
+        ),
+      setModelCase: jest
+        .fn()
+        .mockImplementation((id: string, body: { modelName?: string }) =>
+          of({ id, namespaceId: 'ns', favorite: false, modelName: body.modelName } as unknown as Case)
         ),
     }
     TestBed.configureTestingModule({
@@ -539,6 +545,71 @@ describe('CaseStateService', () => {
       expect(controllerMock.updateCase).not.toHaveBeenCalled()
     })
   })
+  describe('setModel', () => {
+    const modelCase = (id: string, extra: Partial<Case> = {}): Case =>
+      ({ id, namespaceId: 'ns', favorite: false, title: 't', ...extra }) as unknown as Case
+
+    it('patches the model optimistically and sends the name to the dedicated endpoint', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([modelCase('a')])))
+      svc.loadCases('ns')
+
+      svc.setModel('a', 'BIG').subscribe()
+
+      expect(controllerMock.setModelCase).toHaveBeenCalledWith('a', { modelName: 'BIG' })
+      expect(controllerMock.updateCase).not.toHaveBeenCalled()
+      expect(svc.cases()[0].modelName).toBe('BIG')
+    })
+
+    it('removes the override with null by omitting the name', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([modelCase('a', { modelName: 'SMALL' })])))
+      svc.loadCases('ns')
+
+      svc.setModel('a', null).subscribe()
+
+      expect(controllerMock.setModelCase).toHaveBeenCalledWith('a', { modelName: undefined })
+      expect(svc.cases()[0].modelName).toBeUndefined()
+    })
+
+    it('reverts the optimistic model when the request fails, an unknown model included', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([modelCase('a', { modelName: 'SMALL' })])))
+      svc.loadCases('ns')
+      controllerMock.setModelCase.mockReturnValue(throwError(() => ({ status: 400 })))
+
+      svc.setModel('a', 'nope').subscribe({ error: () => undefined })
+
+      expect(svc.cases()[0].modelName).toBe('SMALL')
+    })
+
+    it('keeps the model when a rename follows, and the new title when the model follows a rename', () => {
+      const rename = new Subject<Case>()
+      const svc = makeService(jest.fn().mockReturnValue(of([modelCase('a')])))
+      svc.loadCases('ns')
+      controllerMock.updateCase.mockReturnValueOnce(rename)
+
+      svc.renameCase('a', 'renamed').subscribe()
+      svc.setModel('a', 'BIG').subscribe()
+      expect(controllerMock.setModelCase).not.toHaveBeenCalled()
+
+      rename.next(modelCase('a', { title: 'renamed' }))
+      rename.complete()
+
+      expect(controllerMock.setModelCase).toHaveBeenCalledTimes(1)
+      expect(svc.cases()[0].title).toBe('renamed')
+      expect(svc.cases()[0].modelName).toBe('BIG')
+    })
+
+    it('errors without calling the controller when the case is not in the list', () => {
+      const svc = makeService(jest.fn().mockReturnValue(of([modelCase('a')])))
+      svc.loadCases('ns')
+      let failed = false
+
+      svc.setModel('gone', 'BIG').subscribe({ error: () => (failed = true) })
+
+      expect(failed).toBe(true)
+      expect(controllerMock.setModelCase).not.toHaveBeenCalled()
+    })
+  })
+
   describe('setReasoningEffort', () => {
     const effortCase = (id: string, extra: Partial<Case> = {}): Case =>
       ({ id, namespaceId: 'ns', favorite: false, title: 't', ...extra }) as unknown as Case

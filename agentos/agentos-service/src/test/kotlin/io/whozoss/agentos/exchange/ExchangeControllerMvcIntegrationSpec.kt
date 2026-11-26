@@ -24,11 +24,13 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.mock.web.MockMultipartFile
+import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -400,6 +402,117 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isBadRequest)
                 .andReturn()
             result.resolvedException?.message shouldBe "Invalid file operation"
+        }
+
+        // -------------------------------------------------------------------------
+        // Edit content (PUT) — write gate + 409 / 404 mapping
+        // -------------------------------------------------------------------------
+
+        "PUT case file content saves the text and returns the new content metadata" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.writeContent(any(), "doc.md", "edited", "abc") } returns
+                ExchangeFileContent(content = "edited", etag = "def", mimeType = "text/plain", size = 6L)
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/files/content")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"path":"doc.md","content":"edited","etag":"abc"}"""),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.content").value("edited"))
+                .andExpect(jsonPath("$.etag").value("def"))
+            verify { exchangeStorageService.writeContent(any(), "doc.md", "edited", "abc") }
+        }
+
+        "PUT case file content returns 403 when WRITE is denied" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns false
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/files/content")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"path":"doc.md","content":"edited"}"""),
+            )
+                .andExpect(status().isForbidden)
+            verify(exactly = 0) { exchangeStorageService.writeContent(any(), any(), any(), any()) }
+        }
+
+        "PUT case file content returns 409 when the file changed since it was opened" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.writeContent(any(), "doc.md", "edited", "stale") } throws
+                ExchangeEditConflictException("The file was modified since it was opened")
+
+            val result = mockMvc.perform(
+                put("/api/cases/$caseId/files/content")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"path":"doc.md","content":"edited","etag":"stale"}"""),
+            )
+                .andExpect(status().isConflict)
+                .andReturn()
+            result.resolvedException?.message shouldBe "The file was modified since it was opened"
+        }
+
+        "PUT case file content returns 404 when the file is missing" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.writeContent(any(), "gone.md", "x", null) } throws NoSuchFileException("gone.md")
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/files/content")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"path":"gone.md","content":"x"}"""),
+            )
+                .andExpect(status().isNotFound)
+        }
+
+        "PUT case file content returns 422 when the content is too large" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.writeContent(any(), "doc.md", "x", null) } throws
+                ExchangeFileTooLargeException("Content is too large to save")
+
+            mockMvc.perform(
+                put("/api/cases/$caseId/files/content")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"path":"doc.md","content":"x"}"""),
+            )
+                .andExpect(status().isUnprocessableEntity)
+        }
+
+        "PUT namespace file content saves the text for an admin" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns true
+            every { exchangeStorageService.writeContent(any(), "shared.md", "edited", null) } returns
+                ExchangeFileContent(content = "edited", etag = "def", mimeType = "text/plain", size = 6L)
+
+            mockMvc.perform(
+                put("/api/namespaces/$namespaceId/files/content")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"path":"shared.md","content":"edited"}"""),
+            )
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.etag").value("def"))
+        }
+
+        "PUT namespace file content returns 403 for a namespace member (WRITE denied)" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns false
+
+            mockMvc.perform(
+                put("/api/namespaces/$namespaceId/files/content")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{"path":"shared.md","content":"edited"}"""),
+            )
+                .andExpect(status().isForbidden)
         }
 
         // -------------------------------------------------------------------------

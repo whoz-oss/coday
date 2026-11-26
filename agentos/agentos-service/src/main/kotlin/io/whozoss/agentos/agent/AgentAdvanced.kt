@@ -66,6 +66,11 @@ class AgentAdvanced(
     override val requestedReasoningEffort: ReasoningEffort? = null,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
+    /**
+     * Whether a provider HTTP error shown to the case carries the provider response body
+     * (`agentos.ai-provider-errors.expose-response-body`, see [io.whozoss.agentos.chat.AiProviderErrorProperties]).
+     */
+    private val exposeProviderResponseBody: Boolean = true,
 ) : Agent {
     override fun run(
         events: List<CaseEvent>,
@@ -272,7 +277,14 @@ class AgentAdvanced(
                 // If the case was stopped, this exception is a side effect of the stop, not a real failure:
                 // ensureActive() then throws a CancellationException so the run ends without reporting an error.
                 currentCoroutineContext().ensureActive()
-                handleGenericAgentException(this@AgentAdvanced, e, namespaceId, caseId, logger)
+                handleGenericAgentException(
+                    this@AgentAdvanced,
+                    e,
+                    namespaceId,
+                    caseId,
+                    logger,
+                    exposeResponseBody = exposeProviderResponseBody,
+                )
             }
         }
 

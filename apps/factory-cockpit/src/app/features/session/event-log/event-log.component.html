@@ -28,7 +28,7 @@
             "
           >
             <span class="metric-icon">paid</span>
-            {{ m.runCost | usd: 4 : (m.runCostPartial ? 1 : 0) }}
+            {{ m.runCost | usd: 4 : (m.runCostPartial === null ? null : m.runCostPartial ? 1 : 0) }}
           </span>
         }
         @if (m.attemptDurationSec !== null) {

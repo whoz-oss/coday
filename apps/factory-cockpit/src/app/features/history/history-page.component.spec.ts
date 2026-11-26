@@ -9,7 +9,7 @@ import { FactoryStore } from '../../core/factory.store'
 import { FactoryRun } from '../../core/models'
 import { HistoryPageComponent } from './history-page.component'
 
-type Row = FactoryRun & { cost: number }
+type Row = FactoryRun & { cost: number | null; unknownCostCount: number | null }
 type StatusFilter = 'all' | 'working' | 'destroyed'
 
 /** Accessor for the component's protected members, exercised directly by the tests. */
@@ -23,14 +23,16 @@ interface HistoryInternals {
   rows: () => Row[]
   filtered: () => Row[]
   counts: () => { all: number; working: number; destroyed: number }
-  totalCost: () => number
-  costBars: () => Array<{ name: string; cost: number; active: boolean; pct: number }>
+  totalCost: () => number | null
+  totalUnknownCostCount: () => number | null
+  costBars: () => Array<{ name: string; cost: number; unknownCostCount: number | null; active: boolean; pct: number }>
   dataSource: MatTableDataSource<Row>
   exportCsv: () => void
 }
 
 interface StoreStub {
   runs: WritableSignal<FactoryRun[]>
+  enrichRemovedRunsUsage: jest.Mock
 }
 
 interface ApiStub {
@@ -126,7 +128,7 @@ const defaultNamespaces: NamespaceOption[] = [
 ]
 
 function createStore(runs: FactoryRun[] = [activeRun, destroyedWithRun, destroyedWithoutRun]): StoreStub {
-  return { runs: signal<FactoryRun[]>([...runs]) }
+  return { runs: signal<FactoryRun[]>([...runs]), enrichRemovedRunsUsage: jest.fn() }
 }
 
 function createApi(namespaces: NamespaceOption[] = defaultNamespaces): ApiStub {
@@ -328,6 +330,21 @@ describe('HistoryPageComponent', () => {
     expect(c.totalCost()).toBe(10)
   })
 
+  it('keeps unavailable analytics unknown instead of treating it as zero or using a legacy cost', async () => {
+    const unavailable = {
+      ...activeRun,
+      id: 'wf-unavailable',
+      title: 'wf-unavailable',
+      costUsd: null,
+      run: { ...activeRun.run!, costUsd: null, unknownCostCount: null },
+    }
+    const { c } = await setup([unavailable])
+
+    expect(c.rows()[0]).toMatchObject({ cost: null, unknownCostCount: null })
+    expect(c.totalCost()).toBeNull()
+    expect(c.costBars()).toEqual([])
+  })
+
   it('builds cost bars sorted from the most expensive, with relative percentages', async () => {
     const { c } = await setup()
 
@@ -335,6 +352,56 @@ describe('HistoryPageComponent', () => {
     expect(bars.map((b) => b.name)).toEqual(['wf-teardown', 'wf-active', 'wf-done'])
     expect(bars.map((b) => b.pct)).toEqual([100, 60, 40])
     expect(bars.map((b) => b.active)).toEqual([false, true, false])
+  })
+
+  it('marks a lower-bound cost in the rows, the bars and the footer total', async () => {
+    const partial: FactoryRun = {
+      ...activeRun,
+      id: 'wf-partial',
+      title: 'wf-partial',
+      costUsd: 4,
+      run: { ...activeRun.run!, costUsd: 4, unknownCostCount: 2 },
+    }
+    const exact: FactoryRun = {
+      ...otherNamespaceRun,
+      run: { ...otherNamespaceRun.run!, unknownCostCount: 0 },
+    }
+    const { host, c } = await setup([partial, exact])
+
+    expect(c.rows().map((r) => r.unknownCostCount)).toEqual([2, 0])
+    expect(c.totalCost()).toBe(5)
+    expect(c.totalUnknownCostCount()).toBe(2)
+    expect(c.costBars().map((b) => b.unknownCostCount)).toEqual([2, 0])
+
+    const footer = host.querySelector('.table-foot')?.textContent ?? ''
+    expect(footer).toContain('≥ $5.00')
+    const barValues = Array.from(host.querySelectorAll('.bar-val')).map((el) => el.textContent?.trim())
+    expect(barValues).toEqual(['≥ $4.00', '$1.00'])
+    const costCells = Array.from(host.querySelectorAll('tr[mat-row] td.num')).map((el) => el.textContent?.trim())
+    expect(costCells).toEqual(['≥ $4.0000', '$1.0000'])
+  })
+
+  it('keeps the footer total completeness unknown when a row cannot establish its own', async () => {
+    const unknown: FactoryRun = {
+      ...activeRun,
+      id: 'wf-unknown',
+      title: 'wf-unknown',
+      run: { ...activeRun.run!, costUsd: 3, unknownCostCount: null },
+    }
+    const { host, c } = await setup([unknown])
+
+    expect(c.totalCost()).toBe(3)
+    expect(c.totalUnknownCostCount()).toBeNull()
+    expect(host.querySelector('.table-foot')?.textContent).toContain('? $3.00')
+  })
+
+  it('does not give a removed run an invented cost when no durable final cost exists', async () => {
+    const removed: FactoryRun = { ...destroyedWithoutRun, finalCostUsd: undefined, costUsd: null }
+    const { c } = await setup([removed])
+
+    expect(c.rows()[0]).toMatchObject({ cost: null, unknownCostCount: null })
+    expect(c.totalCost()).toBeNull()
+    expect(c.costBars()).toEqual([])
   })
 
   // -- Table wiring ------------------------------------------------------------

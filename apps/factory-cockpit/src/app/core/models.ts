@@ -37,15 +37,15 @@ export interface RunSummary {
    */
   waitingHuman?: boolean
   goal: string
-  costUsd: number
+  /** Run-wide real cost; null when analytics are unavailable. */
+  costUsd: number | null
   /**
-   * Number of cost-incurring units whose price is unknown. When > 0 the
-   * displayed `costUsd` is only a LOWER BOUND: it must never be shown as an
-   * exact figure. Absent/0 means the cost is considered complete.
+   * Number of cost-incurring units whose price is unknown. Null means the
+   * analytics service could not determine completeness, so cost is not exact.
    */
-  unknownCostCount?: number
+  unknownCostCount?: number | null
   durationSec: number
-  tokens: number
+  tokens: number | null
   phases: PhaseSegment[]
 }
 
@@ -86,12 +86,12 @@ export interface FactoryRun {
    * declarative projections). An unparseable value is dropped at mapping time.
    */
   createdAt?: string
-  /** Real cost of the run (USD). */
-  costUsd: number
+  /** Real run cost (USD), null when analytics are unavailable. */
+  costUsd: number | null
   /** Total run duration in seconds. */
   durationSec: number
   /** Total tokens consumed by the run. */
-  tokens: number
+  tokens: number | null
   /** Phase-bar segments of the run. */
   phases: PhaseSegment[]
   /**
@@ -134,19 +134,20 @@ export interface RecentTask {
 export interface CostSummary {
   /** Number of active workflows (= number of derived sandbox cards). */
   active: number
-  /** Sum of the real workflow costs (`RunSummary.costUsd`). */
-  workflowsUsd: number
+  /** Sum of real workflow costs; null when any active run is unavailable. */
+  workflowsUsd: number | null
   /** Real total: currently equal to `workflowsUsd` (no other real source). */
-  totalUsd: number
+  totalUsd: number | null
   /** @deprecated no real source: was a mocked Archay orchestrator cost. */
   archayUsd?: number
   /** @deprecated no real source: was a mocked destroyed-sandbox total. */
   destroyedUsd?: number
   /**
    * Sum of the {@link RunSummary.unknownCostCount} of the active runs. When
-   * > 0 the aggregated `workflowsUsd`/`totalUsd` are lower bounds.
+   * > 0 the aggregated `workflowsUsd`/`totalUsd` are lower bounds; null means
+   * completeness cannot be established because analytics are unavailable.
    */
-  unknownCostCount?: number
+  unknownCostCount?: number | null
 }
 
 /* ───── Session ───── */
@@ -250,8 +251,10 @@ export interface RunEvent {
  * `GET /api/factory/workflows/:id/attempts`.
  */
 export interface AgentAttempt {
-  /** Frozen mandate dispatched for this exact attempt, absent when not available. */
+  /** Frozen mandate dispatched for this exact attempt, absent when not recorded. */
   effectiveMandate?: string
+  /** Model resolved by Factory for this exact attempt, when the backend records it. */
+  resolvedModel?: { provider: string; model: string }
   attemptId: string
   stepId: string
   attemptNumber: number
@@ -379,6 +382,8 @@ export interface PhaseDetail {
   caseId?: string
   /** Failure code of the current attempt, when it failed. */
   failureCode?: string
+  /** The attempts read failed; retained attempts may therefore be stale. */
+  attemptsLoadError?: string
   sections: PhaseSection[]
 }
 
@@ -565,16 +570,19 @@ export interface SessionDetail {
   /** Canonical absolute origin used for every relative timeline coordinate. */
   timelineOriginAt?: string
   workflow: string
-  costUsd: number
-  /**
-   * Number of cost-incurring units whose price is unknown (see
-   * {@link RunSummary.unknownCostCount}). When > 0 `costUsd` is a lower bound.
-   */
-  unknownCostCount?: number
+  /** Run-wide real cost; null when analytics are unavailable. */
+  costUsd: number | null
+  /** Null means analytics cannot establish whether this cost is complete. */
+  unknownCostCount?: number | null
   durationSec: number
-  tokens: number
-  tokensRead: number
-  tokensWritten: number
+  /** Run-wide cumulative token total, undefined when not provided by realCost. */
+  tokens: number | null
+  /** Run-wide input tokens, undefined when not provided by realCost. */
+  tokensRead: number | null
+  /** Run-wide output tokens, undefined when not provided by realCost. */
+  tokensWritten: number | null
+  cacheReadTokens?: number | null
+  cacheWriteTokens?: number | null
   steps: SessionStep[]
   lanes: TimelineLane[]
   nowSec: number
@@ -593,6 +601,8 @@ export interface SessionDetail {
    * Absent when the backend exposes none (or when the enrichment failed).
    */
   attempts?: AgentAttempt[]
+  /** Attempts could not be refreshed. Existing attempts, if any, may be stale. */
+  attemptsLoadError?: string
   /** Historical executions supplied by the projection, including code/human work. */
   stepExecutions?: StepExecution[]
   /** Current bounded correction cycle, when Factory exposes one. */

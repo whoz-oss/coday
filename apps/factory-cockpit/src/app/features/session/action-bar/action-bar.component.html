@@ -47,7 +47,7 @@
       <div class="blocker blocker--research">
         <mat-icon aria-hidden="true">info</mat-icon>
         <div class="blocker-body">
-          <span class="blocker-label">Informations ou accès nécessaires</span>
+          <span class="blocker-label">Information or access needed</span>
           @if (blocker.stepId) {
             <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
           }
@@ -260,10 +260,10 @@
               <span>{{ action.label ?? 'Complete and resume' }}</span>
             </div>
             <p class="action-prompt sf-muted">
-              Décrivez les informations ou accès que vous avez corrigés hors bande. Cette action relance une nouvelle
-              tentative de la même étape; elle ne répare pas automatiquement les outils.
+              Describe the information or access you corrected out of band. This action starts a new attempt of the same
+              step; it does not repair tools automatically.
             </p>
-            <label class="research-label" [for]="'research-context-' + action.stepId">Contexte complémentaire</label>
+            <label class="research-label" [for]="'research-context-' + action.stepId">Additional context</label>
             <textarea
               class="research-context"
               [id]="'research-context-' + action.stepId"
@@ -278,10 +278,10 @@
               (blur)="markResearchTouched(action.stepId!)"
             ></textarea>
             <span class="research-help" [id]="'research-help-' + action.stepId">
-              {{ draftFor(action.stepId).length }} / 4000 caractères
+              {{ draftFor(action.stepId).length }} / 4000 characters
             </span>
             @if (researchTouched()[action.stepId] && !researchContextValid(action.stepId)) {
-              <p class="action-feedback action-feedback--error" role="alert">Saisissez entre 1 et 4000 caractères.</p>
+              <p class="action-feedback action-feedback--error" role="alert">Enter between 1 and 4000 characters.</p>
             }
             @if (researchResumptionFeedback(); as feedback) {
               @if (feedback.stepId === action.stepId) {
@@ -302,7 +302,7 @@
                 type="submit"
                 [disabled]="resumingResearchStepId() !== null || !researchContextValid(action.stepId)"
               >
-                {{ resumingResearchStepId() === action.stepId ? 'Send…' : 'Complete and resume' }}
+                {{ resumingResearchStepId() === action.stepId ? 'Sending…' : 'Complete and resume' }}
               </button>
             </div>
           </form>

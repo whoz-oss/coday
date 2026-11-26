@@ -81,6 +81,7 @@ summary {
 p {
   margin: 0.45rem 0;
 }
+/* Only the settings-failure retry is a button here: the cost decision lives in the composer. */
 button {
   font: inherit;
   color: inherit;
@@ -90,10 +91,6 @@ button {
   padding: 0.5rem 0.75rem;
   margin: 0.3rem 0.5rem 0 0;
   cursor: pointer;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .usage--paused {
   border-left: 3px solid #c68a24;

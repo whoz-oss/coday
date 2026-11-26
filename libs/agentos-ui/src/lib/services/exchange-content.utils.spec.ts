@@ -12,9 +12,11 @@ import {
   formatSize,
   getFileIcon,
   isFormatViewable,
+  isEditableFormat,
   isViewable,
   MAX_VIEWABLE_SIZE,
   reindentJson,
+  selectionLineRange,
 } from './exchange-content.utils'
 
 describe('exchange-content.utils', () => {
@@ -93,6 +95,19 @@ describe('exchange-content.utils', () => {
       expect(isFormatViewable('a.md')).toBe(true)
       expect(isFormatViewable('a.json')).toBe(true)
       expect(isFormatViewable('a.txt')).toBe(true)
+    })
+  })
+
+  describe('isEditableFormat', () => {
+    it('accepts the text formats served by the text endpoint', () => {
+      for (const name of ['a.md', 'a.json', 'a.yaml', 'a.yml', 'a.txt', 'a.csv', 'a.html', 'a.log', 'Makefile']) {
+        expect(isEditableFormat(name)).toBe(true)
+      }
+    })
+    it('never accepts images, PDF or other binaries', () => {
+      for (const name of ['a.png', 'a.pdf', 'a.zip', 'a.xlsx', 'a.docx', 'a.mp3', 'a.ico', 'A.PNG']) {
+        expect(isEditableFormat(name)).toBe(false)
+      }
     })
   })
 
@@ -176,6 +191,18 @@ describe('exchange-content.utils', () => {
     it('pretty-prints valid JSON and leaves invalid JSON untouched', () => {
       expect(reindentJson('{"a":1}')).toBe('{\n  "a": 1\n}')
       expect(reindentJson('not json')).toBe('not json')
+    })
+  })
+
+  describe('selectionLineRange', () => {
+    const text = 'one\ntwo\nthree\nfour'
+    it('computes 1-based lines of a selection', () => {
+      expect(selectionLineRange(text, 0, 3)).toEqual({ startLine: 1, endLine: 1 })
+      expect(selectionLineRange(text, 4, 13)).toEqual({ startLine: 2, endLine: 3 })
+      expect(selectionLineRange(text, 14, 18)).toEqual({ startLine: 4, endLine: 4 })
+    })
+    it('does not count the next line for a selection ending on a line break', () => {
+      expect(selectionLineRange(text, 4, 8)).toEqual({ startLine: 2, endLine: 2 })
     })
   })
 

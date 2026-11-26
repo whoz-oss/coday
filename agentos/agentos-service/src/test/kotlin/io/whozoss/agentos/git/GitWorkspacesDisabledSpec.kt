@@ -1,6 +1,7 @@
 package io.whozoss.agentos.git
 
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.whozoss.agentos.agent.RunIntegrationCustomizer
@@ -9,6 +10,7 @@ import io.whozoss.agentos.caseFlow.CaseWorkspaceProvisioning
 import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangePathRunIntegration
 import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.integrationConfig.EnvironmentTokenRunIntegration
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.agentos.security.SuperAdminCallerSpec
 import org.springframework.beans.factory.annotation.Autowired
@@ -82,16 +84,22 @@ class GitWorkspacesDisabledSpec : SuperAdminCallerSpec() {
             context.getBeanNamesForType(GitToolsRunIntegration::class.java).toList().shouldBeEmpty()
         }
 
-        "without agentos.git.workspaces.enabled the exchange path tokens still resolve, and nothing else" {
+        "without agentos.git.workspaces.enabled the exchange path and environment tokens still resolve, and nothing else" {
             // {{CASE_EXCHANGE}} answers through ExchangeRootResolver, which DefaultExchangeRootResolver
             // serves on an instance without Git workspaces. Pointing a BASH integration at the case's
             // own directory must not require equipping anything.
             context.getBeanNamesForType(ExchangePathRunIntegration::class.java).toList().shouldHaveSize(1)
+            // The environment tokens ({{FACTORY_URL}}...) are operator-declared values with no relation
+            // to Git, so they resolve on such an instance too.
             // The assertion this replaced was shouldBeEmpty() on every RunIntegrationCustomizer.
-            // Pinning the whole set, and not only the two classes named here, is what notices a third
-            // unconditional customizer rewriting integration parameters on an instance that
-            // deliberately runs without Git workspaces.
-            context.getBeanNamesForType(RunIntegrationCustomizer::class.java).toList().shouldHaveSize(1)
+            // Pinning the whole set, by class, is what notices another unconditional customizer
+            // rewriting integration parameters on an instance that deliberately runs without Git
+            // workspaces.
+            context
+                .getBeansOfType(RunIntegrationCustomizer::class.java)
+                .values
+                .map { it::class } shouldContainExactlyInAnyOrder
+                listOf(ExchangePathRunIntegration::class, EnvironmentTokenRunIntegration::class)
         }
 
         "without agentos.git.workspaces.enabled the workspace routes answer 404" {

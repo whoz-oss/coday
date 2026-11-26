@@ -25,6 +25,52 @@
   padding: 0.5rem 0.5rem 0.5rem 0.75rem;
   border-bottom: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
   flex-shrink: 0;
+  // The formatting toolbar of an editable markdown file takes a row of its own under the buttons.
+  flex-wrap: wrap;
+}
+
+.exchange-content-viewer__toolbar {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.exchange-content-viewer__toolbar-button {
+  display: inline-flex;
+}
+
+.exchange-content-viewer__link-bar {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.exchange-content-viewer__link-input {
+  flex: 1;
+  min-width: 8rem;
+  box-sizing: border-box;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text, #1d1d1f);
+  background: var(--color-bg, #ffffff);
+  border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-md, 0);
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-accent, var(--color-primary, #007aff));
+  }
+}
+
+.exchange-content-viewer__link-error {
+  flex: 1 0 100%;
+  font-size: 0.75rem;
+  color: var(--color-error, #ff3b30);
 }
 
 .exchange-content-viewer__filename {
@@ -52,10 +98,240 @@
 }
 
 .exchange-content-viewer__body {
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 0.75rem;
+
+  // A plain textarea fills the pane and scrolls itself.
+  &--editing {
+    display: flex;
+    padding: 0.75rem;
+    overflow: hidden;
+  }
+}
+
+.exchange-content-viewer__state {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #6e6e73);
+}
+
+// The textarea of a plain text format, edited in place: it is the document, with no inner box. A mirror layer
+// behind it, with the same text and metrics, paints the highlight of the frozen selection.
+.exchange-content-viewer__editor-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.exchange-content-viewer__editor,
+.exchange-content-viewer__mirror {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-family: var(--font-mono, ui-monospace, 'SF Mono', 'Menlo', monospace);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  tab-size: 2;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.exchange-content-viewer__editor {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  background: transparent;
+  color: var(--color-text, #1d1d1f);
+  outline: none;
+}
+
+.exchange-content-viewer__mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: transparent;
+  pointer-events: none;
+}
+
+.exchange-content-viewer__save-error {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--color-error, #ff3b30);
+  background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+  flex-shrink: 0;
+}
+
+.exchange-content-viewer__link {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 0.5rem;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  color: var(--color-primary, #007aff);
+}
+
+// Floating popover anchored under the selection: composer, waiting line, then the proposal card.
+// Absolutely placed in the body (it moves with the content, it is not fixed on screen) and inside the viewer: no
+// global overlay. Opaque, with the chat-composer tokens; the caret points at the start of the selection.
+.exchange-content-viewer__popover {
+  --caret-left: 16px;
+  position: absolute;
+  z-index: 30;
+  box-sizing: border-box;
+  max-width: calc(100% - 1rem);
+
+  &--hidden {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  // Small caret between the popover and the selection: on top when below the passage, at the bottom otherwise.
+  &::before {
+    content: '';
+    position: absolute;
+    left: var(--caret-left);
+    width: 10px;
+    height: 10px;
+    margin-left: -5px;
+    background: var(--color-bg, #ffffff);
+    border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
+    border-right: none;
+    border-bottom: none;
+    transform: rotate(45deg);
+    top: -6px;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  &--above::before {
+    top: auto;
+    bottom: -6px;
+    border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
+    border-left: none;
+    border-top: none;
+  }
+}
+
+// Slim line shown while the agent works: spinner, who is awaited, dismiss.
+.exchange-content-viewer__waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary, #6e6e73);
+  background: var(--color-bg, #ffffff);
+  border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-lg, 0);
+  box-shadow: var(--shadow-md, 0 4px 14px rgba(0, 0, 0, 0.14));
+}
+
+.exchange-content-viewer__waiting-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The composer inside the popover gets a subtle shadow of its own (the shared component keeps its chat look).
+.exchange-content-viewer__popover agentos-selection-composer {
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.14));
+}
+
+.exchange-content-viewer__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 0.625rem 0.75rem;
+  background: var(--color-bg, #ffffff);
+  border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
+  border-left: 3px solid var(--color-accent, var(--color-primary, #007aff));
+  border-radius: var(--radius-lg, 0);
+  box-shadow: var(--shadow-lg, 0 4px 16px rgba(0, 0, 0, 0.18));
+  font-size: 0.8125rem;
+  color: var(--color-text, #1d1d1f);
+}
+
+.exchange-content-viewer__card-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.exchange-content-viewer__card-error {
+  margin: 0;
+  color: var(--color-error, #ff3b30);
+}
+
+.exchange-content-viewer__card-note {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #6e6e73);
+}
+
+.exchange-content-viewer__card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.exchange-content-viewer__diff {
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+  background: var(--color-surface, var(--color-bg, #ffffff));
+  border: 1px solid var(--color-divider, rgba(0, 0, 0, 0.1));
+  border-radius: var(--radius-md, 0);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.exchange-content-viewer__del {
+  text-decoration: line-through;
+  color: var(--color-error, #d95050);
+  background: color-mix(in srgb, var(--color-error, #d95050) 14%, var(--color-bg, #ffffff));
+}
+
+.exchange-content-viewer__ins {
+  text-decoration: none;
+  color: var(--color-success, #249349);
+  background: color-mix(in srgb, var(--color-success, #249349) 14%, var(--color-bg, #ffffff));
+}
+
+.exchange-content-viewer__secondary {
+  appearance: none;
+  cursor: pointer;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border, rgba(0, 0, 0, 0.1));
+  background: transparent;
+  color: var(--color-text, #1d1d1f);
+  font-size: 0.8125rem;
+
+  &:hover {
+    background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary, #007aff);
+    outline-offset: 2px;
+  }
 }
 
 .exchange-content-viewer__iframe {
@@ -80,6 +356,11 @@
 
   &:hover {
     background: var(--color-primary-hover, #0066d6);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   &:focus-visible {
@@ -141,5 +422,16 @@
 
   :where(pre) {
     overflow-x: auto;
+  }
+
+  // Edited in place: it is the document itself, only the caret and the focus ring tell it can be typed in.
+  &--editable {
+    min-height: 100%;
+    outline: none;
+    cursor: text;
+
+    &:focus-visible {
+      outline: none;
+    }
   }
 }

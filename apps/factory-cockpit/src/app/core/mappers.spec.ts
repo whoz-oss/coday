@@ -13,6 +13,7 @@ import {
   mapProjectionToPhaseByAttemptId,
   mapProjectionToRunSummary,
   mapProjectionToSessionDetail,
+  mapSessionDetailToRunSummary,
   mapStepsToPhaseSegments,
   mapWorkflowStateToRunStatus,
 } from './mappers'
@@ -184,11 +185,60 @@ describe('mappers', () => {
       expect(run.workflow).toBe('Deliver the AgentOS adapter')
       expect(run.id).toBe('wf-1')
       expect(run.status).toBe('running')
-      expect(run.currentPhase).toBe('build')
+      // Active step is `build`, whose responsibility name is `builder`.
+      expect(run.currentPhase).toBe('builder')
       expect(run.goal).toBe('Deliver the AgentOS adapter')
       expect(run.durationSec).toBe(180)
       expect(run.phases.map((phase) => phase.key)).toEqual(['request', 'plan', 'build'])
-      expect(run.unknownCostCount).toBe(0)
+      expect(run.unknownCostCount).toBeNull()
+    })
+
+    it('uses the actor name, not a long step name, as currentPhase', () => {
+      const longName =
+        'Archay checks the worktree, moves the ticket to In Progress, reads the issue and prepares the plan'
+      const run = mapProjectionToRunSummary({
+        workflowId: 'wf-long',
+        projection: {
+          status: 'running',
+          steps: [
+            {
+              id: 'kickoff',
+              name: longName,
+              status: 'running',
+              responsibility: { kind: 'agent', name: 'Archay' },
+            },
+          ],
+        },
+      })
+      expect(run.currentPhase).toBe('Archay')
+    })
+
+    it('resolves currentPhase from agentName, then facts.agentName, then falls back to step name/id', () => {
+      const phase = (step: Record<string, unknown>) =>
+        mapProjectionToRunSummary({ workflowId: 'w', projection: { status: 'running', steps: [step] } }).currentPhase
+      expect(phase({ id: 's', name: 'Long name', status: 'running', agentName: 'Thor' })).toBe('Thor')
+      expect(phase({ id: 's', name: 'Long name', status: 'running', facts: { agentName: 'Loki' } })).toBe('Loki')
+      expect(phase({ id: 's', name: 'Long name', status: 'running' })).toBe('Long name')
+      expect(phase({ id: 's', status: 'running' })).toBe('s')
+    })
+
+    it('uses the actor name of the last step when no step is active', () => {
+      const run = mapProjectionToRunSummary({
+        workflowId: 'wf-done',
+        projection: {
+          status: 'completed',
+          steps: [
+            { id: 'a', name: 'First', status: 'completed', responsibility: { kind: 'agent', name: 'Planner' } },
+            {
+              id: 'b',
+              name: 'Last long sentence',
+              status: 'completed',
+              responsibility: { kind: 'agent', name: 'Archay' },
+            },
+          ],
+        },
+      })
+      expect(run.currentPhase).toBe('Archay')
     })
 
     it('uses workflow id as the display fallback for legacy records without title', () => {
@@ -223,19 +273,19 @@ describe('mappers', () => {
       expect(run.unknownCostCount).toBe(3)
     })
 
-    it('falls back to the projection cost when metrics carry no realCost', () => {
+    it('keeps cost unavailable when metrics carry no realCost', () => {
       const run = mapProjectionToRunSummary(
         { ...snapshot, projection: { ...projection, costUsd: 9.99 } },
         { tokens: 10 }
       )
-      expect(run.costUsd).toBe(9.99)
-      expect(run.unknownCostCount).toBe(0)
+      expect(run.costUsd).toBeNull()
+      expect(run.unknownCostCount).toBeNull()
     })
 
-    it('injects a synthetic Demande utilisateur segment first when controllerRequest is present and no request step exists', () => {
+    it('injects a synthetic user request segment first when controllerRequest is present and no request step exists', () => {
       const run = mapProjectionToRunSummary(snapshotWithControllerRequest)
       expect(run.phases[0]?.key).toBe('user-request')
-      expect(run.phases[0]?.label).toBe('Demande utilisateur')
+      expect(run.phases[0]?.label).toBe('User request')
       expect(run.phases[0]?.tone).toBe('amber')
       // At least one step has startedAt → status should be 'done'
       expect(run.phases[0]?.status).toBe('done')
@@ -243,24 +293,52 @@ describe('mappers', () => {
       expect(run.phases.slice(1).map((p) => p.key)).toEqual(['plan', 'build'])
     })
 
-    it('does not inject a Demande utilisateur segment when a request step already exists in phases', () => {
+    it('does not inject a user request segment when a request step already exists in phases', () => {
       // snapshot already contains a step with id='request'
       const run = mapProjectionToRunSummary({ ...snapshot, controllerRequest })
       expect(run.phases.map((p) => p.key)).toEqual(['request', 'plan', 'build'])
       expect(run.phases.some((p) => p.key === 'user-request')).toBe(false)
     })
 
-    it('does not inject a Demande utilisateur segment when there is no controllerRequest', () => {
+    it('does not inject a user request segment when there is no controllerRequest', () => {
       const run = mapProjectionToRunSummary(snapshot)
       expect(run.phases.map((p) => p.key)).toEqual(['request', 'plan', 'build'])
     })
   })
 
   describe('extractRealCost', () => {
-    it('extracts a nested realCost block', () => {
-      expect(extractRealCost({ realCost: { cost: 1, unknownCostCount: 2, liveTokens: 3 } })).toEqual(
-        expect.objectContaining({ cost: 1, unknownCostCount: 2, liveTokens: 3 })
+    it('extracts nested cost and optional run-wide token counters', () => {
+      expect(
+        extractRealCost({
+          realCost: { cost: 1, unknownCostCount: 2, liveTokens: 3, totalTokens: 0, inputTokens: 0, outputTokens: 0 },
+        })
+      ).toEqual(
+        expect.objectContaining({
+          cost: 1,
+          unknownCostCount: 2,
+          liveTokens: 3,
+          totalTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+        })
       )
+    })
+
+    it('preserves explicit unavailable analytics as nulls', () => {
+      expect(
+        extractRealCost({
+          realCost: {
+            cost: null,
+            unknownCostCount: null,
+            totalTokens: null,
+            inputTokens: null,
+            outputTokens: null,
+            cacheReadTokens: null,
+            cacheWriteTokens: null,
+            liveTokens: null,
+          },
+        })
+      ).toEqual(expect.objectContaining({ cost: null, unknownCostCount: null }))
     })
 
     it('falls back to a flattened metrics payload', () => {
@@ -938,7 +1016,7 @@ describe('mappers', () => {
       expect(session.phaseByStepId?.get('back')?.stepStatus).toBe('skipped')
       const routing = session.phaseByStepId
         ?.get('architect')
-        ?.sections.find((section) => section.label === 'Routage conditionnel')
+        ?.sections.find((section) => section.label === 'Conditional routing')
       expect(routing?.items).toContainEqual({ title: 'backend', subtitle: 'back', status: 'not_selected' })
     })
     it('builds a complete session from projection + enrichment payloads', () => {
@@ -963,9 +1041,9 @@ describe('mappers', () => {
       expect(session.executionState).toBe('running')
       expect(session.activelyRunning).toBe(true)
       expect(session.startedAt).toBe(startedAt)
-      expect(session.tokens).toBe(1234)
-      expect(session.tokensRead).toBe(1200)
-      expect(session.tokensWritten).toBe(30)
+      expect(session.tokens).toBeNull()
+      expect(session.tokensRead).toBeNull()
+      expect(session.tokensWritten).toBeNull()
       expect(session.steps.map((step) => step.key)).toEqual(['request', 'plan', 'build'])
       expect(session.events[0]).toMatchObject({ type: 'tool_call', tool: 'read', durationSec: 0.5 })
       expect(session.phase.kind).toBe('code')
@@ -982,24 +1060,24 @@ describe('mappers', () => {
 
       expect(session.launchRequest).toMatchObject({
         name: 'Deliver the AgentOS adapter',
-        kind: 'demande lancement',
+        kind: 'launch request',
         owner: 'benjamin',
         stepStatus: 'completed',
       })
       expect(session.launchRequest?.caseId).toBeUndefined()
       expect(session.launchRequest?.sections).toEqual([
         {
-          label: 'Demande de lancement',
+          label: 'Launch request',
           items: expect.arrayContaining([
-            { title: 'Type', subtitle: 'demande lancement' },
+            { title: 'Type', subtitle: 'launch request' },
             { title: 'Run', subtitle: 'Deliver the AgentOS adapter' },
-            { title: 'Créée le', subtitle: isoOffset(-5) },
+            { title: 'Created', subtitle: isoOffset(-5) },
             { title: 'Namespace', subtitle: 'ns-1' },
             { title: 'Workflow', subtitle: 'delivery' },
-            { title: 'Auteur', subtitle: 'benjamin' },
+            { title: 'Author', subtitle: 'benjamin' },
           ]),
         },
-        { label: 'Commentaire initial', body: 'Ship the feature safely' },
+        { label: 'Initial comment', body: 'Ship the feature safely' },
       ])
     })
 
@@ -1013,20 +1091,20 @@ describe('mappers', () => {
 
       expect(session.launchRequest).toMatchObject({
         name: 'Created run',
-        kind: 'demande lancement',
-        owner: 'non renseigné',
+        kind: 'launch request',
+        owner: 'Not recorded',
       })
       expect(session.launchRequest?.sections).toEqual([
         {
-          label: 'Demande de lancement',
+          label: 'Launch request',
           items: expect.arrayContaining([
-            { title: 'Créée le', subtitle: startedAt },
+            { title: 'Created', subtitle: startedAt },
             { title: 'Namespace', subtitle: 'ns-created' },
             { title: 'Workflow', subtitle: 'delivery' },
-            { title: 'Auteur', subtitle: 'non renseigné' },
+            { title: 'Author', subtitle: 'Not recorded' },
           ]),
         },
-        { label: 'Commentaire initial', body: 'Aucun commentaire initial' },
+        { label: 'Initial comment', body: 'No initial comment recorded.' },
       ])
     })
 
@@ -1246,16 +1324,21 @@ describe('mappers', () => {
       expect(session.id).toBe('unknown')
       expect(session.lanes).toEqual([])
       expect(session.events).toEqual([])
-      expect(session.costUsd).toBe(0)
-      expect(session.unknownCostCount).toBe(0)
+      expect(session.costUsd).toBeNull()
+      expect(session.unknownCostCount).toBeNull()
     })
 
-    it('maps the real cost and live tokens from metrics', () => {
+    it('maps run-wide real-cost counters and never presents liveTokens as cumulative usage', () => {
       const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, {
         realCost: {
           cost: 1.0723,
           unknownCostCount: 0,
           liveTokens: 150,
+          totalTokens: 1000,
+          inputTokens: 600,
+          outputTokens: 400,
+          cacheReadTokens: 50,
+          cacheWriteTokens: 5,
           paused: false,
           active: true,
           runCostThreshold: 10,
@@ -1263,7 +1346,11 @@ describe('mappers', () => {
       })
       expect(session.costUsd).toBe(1.0723)
       expect(session.unknownCostCount).toBe(0)
-      expect(session.tokens).toBe(150)
+      expect(session.tokens).toBe(1000)
+      expect(session.tokensRead).toBe(600)
+      expect(session.tokensWritten).toBe(400)
+      expect(session.cacheReadTokens).toBe(50)
+      expect(session.cacheWriteTokens).toBe(5)
     })
 
     it('keeps a partially unknown cost as a stored lower bound', () => {
@@ -1274,16 +1361,28 @@ describe('mappers', () => {
       expect(session.unknownCostCount).toBe(4)
     })
 
-    it('falls back to the projection cost and metrics tokens without realCost', () => {
+    it('does not fall back to projection or budget cost when analytics is explicitly unavailable', () => {
+      const session = mapProjectionToSessionDetail(
+        { ...snapshot, costUsd: 99, projection: { ...projection, costUsd: 88 } },
+        undefined,
+        undefined,
+        { realCost: { cost: null, unknownCostCount: null, totalTokens: null, inputTokens: null, outputTokens: null } }
+      )
+      expect(session.costUsd).toBeNull()
+      expect(session.unknownCostCount).toBeNull()
+      expect(session.tokens).toBeNull()
+    })
+
+    it('keeps tokens unknown when run-wide counters are absent', () => {
       const session = mapProjectionToSessionDetail(
         { ...snapshot, projection: { ...projection, costUsd: 2.5 } },
         undefined,
         undefined,
         { tokens: 99 }
       )
-      expect(session.costUsd).toBe(2.5)
-      expect(session.unknownCostCount).toBe(0)
-      expect(session.tokens).toBe(99)
+      expect(session.costUsd).toBeNull()
+      expect(session.unknownCostCount).toBeNull()
+      expect(session.tokens).toBeNull()
     })
 
     it('surfaces read-only interactions in the session (list, Gates count and events)', () => {
@@ -1307,6 +1406,7 @@ describe('mappers', () => {
       const interactionEvents = session.events.filter((event) => event.text.includes('Approve the deploy?'))
       expect(interactionEvents).toHaveLength(1)
       expect(interactionEvents[0]).toMatchObject({ time: '16:00:00', type: 'agent_message' })
+      expect(interactionEvents[0]?.text).toContain('Human validation')
       // The interaction event is additive: the projection step events survive.
       expect(session.events.some((event) => event.type === 'phase_start')).toBe(true)
     })
@@ -1373,19 +1473,19 @@ describe('mappers', () => {
       }
       const session = mapProjectionToSessionDetail(snapshot, undefined, evidence, undefined, undefined, attempts)
 
-      const outputs = session.phase.sections.find((section) => section.label === 'Sorties')
+      const outputs = session.phase.sections.find((section) => section.label === 'Outputs')
       expect(outputs?.count).toBe(2)
       expect(outputs?.body).toBeUndefined()
       expect(outputs?.items?.[0]).toMatchObject({ title: 'oracle', status: 'pass', subtitle: 'all tests pass' })
       expect(outputs?.items?.[1]).toMatchObject({ title: 'result', subtitle: 'result summary' })
     })
 
-    it('reports an explicit empty message for Gates and Sorties when nothing is known', () => {
+    it('reports an explicit empty message for validations and outputs when nothing is known', () => {
       const session = mapProjectionToSessionDetail(snapshot)
       const gates = session.phase.sections.find((section) => section.label === 'Validations')
-      const outputs = session.phase.sections.find((section) => section.label === 'Sorties')
-      expect(gates?.body).toBe("Aucune validation d'interaction pour cette phase.")
-      expect(outputs?.body).toBe('Aucune sortie enregistrée pour cette phase.')
+      const outputs = session.phase.sections.find((section) => section.label === 'Outputs')
+      expect(gates?.body).toBe('No interaction validation recorded for this phase.')
+      expect(outputs?.body).toBe('No output recorded for this phase.')
     })
 
     it('exposes the real agent configuration and honestly marks prompts/model unavailable', () => {
@@ -1401,24 +1501,49 @@ describe('mappers', () => {
       ]
       const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, undefined, attempts)
 
-      const config = session.phase.sections.find((section) => section.label === "Configuration de l'agent")
+      const config = session.phase.sections.find((section) => section.label === 'Agent configuration')
       expect(config?.items).toEqual(
         expect.arrayContaining([
           { title: 'Agent', subtitle: 'builder' },
           { title: 'Case', subtitle: 'case-7' },
-          { title: 'Tentatives', subtitle: '2/1' },
+          { title: 'Attempts', subtitle: '2/1' },
         ])
       )
 
-      const prompts = session.phase.sections.find((section) => section.label === 'Mandat effectif de la tentative')
+      const prompts = session.phase.sections.find((section) => section.label === 'Attempt mandate')
       expect(prompts).toMatchObject({ notAvailable: true })
       expect(prompts?.count).toBeUndefined()
 
-      const model = session.phase.sections.find((section) => section.label === 'Modèle LLM résolu')
-      expect(model).toMatchObject({
-        notAvailable: true,
-        body: 'Non disponible (nécessite une exposition par le serveur)',
-      })
+      const model = session.phase.sections.find((section) => section.label === 'Resolved LLM model')
+      expect(model).toMatchObject({ notAvailable: true, body: 'Not recorded for this attempt.' })
+    })
+
+    it('uses the resolved model of the exact selected attempt', () => {
+      const attempts = [
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'first',
+          status: 'failed',
+          caseId: 'case-1',
+          resolvedModel: { provider: 'openai', model: 'gpt-4.1' },
+        },
+        {
+          attemptId: 'a-2',
+          stepId: 'build',
+          attemptNumber: 2,
+          agentName: 'second',
+          status: 'running',
+          caseId: 'case-2',
+          resolvedModel: { provider: 'anthropic', model: 'claude-sonnet' },
+        },
+      ]
+      const details = mapProjectionToPhaseByAttemptId(projection.steps, 'running', [], attempts)
+      const selectedModel = (attemptId: string) =>
+        details.get(attemptId)?.sections.find((section) => section.label === 'Resolved LLM model')?.body
+      expect(selectedModel('a-1')).toBe('openai / gpt-4.1')
+      expect(selectedModel('a-2')).toBe('anthropic / claude-sonnet')
     })
 
     it('surfaces the real attempts of the active step and a dynamic attempt string', () => {
@@ -1456,14 +1581,34 @@ describe('mappers', () => {
       expect(session.phase.caseId).toBe('case-2')
     })
 
-    it('never emits an impossible empty attempt string when there is no attempt', () => {
+    it('distinguishes a missing attempt, a non-dispatched step, and a failed attempt read', () => {
       const noAttempts = mapProjectionToSessionDetail(snapshot)
-      expect(noAttempts.phase.attempt).toBe('1/1')
+      expect(noAttempts.phase.attempt).toBe('No attempt recorded')
       expect(noAttempts.phase.attempts).toBeUndefined()
 
       const emptyAttempts = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, undefined, [])
-      expect(emptyAttempts.phase.attempt).toBe('1/1')
+      expect(emptyAttempts.phase.attempt).toBe('No attempt recorded')
       expect(emptyAttempts.attempts).toEqual([])
+
+      const pending = mapProjectionToSessionDetail({
+        workflowId: 'pending',
+        projection: { steps: [{ id: 'agent', status: 'pending', responsibility: { kind: 'agent', name: 'Dev' } }] },
+      })
+      expect(pending.phase.attempt).toBe('Not dispatched')
+
+      const unavailable = mapProjectionToSessionDetail(
+        snapshot,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        'Attempts service unavailable'
+      )
+      expect(unavailable.phase.attempt).toBe('Attempts unavailable')
+      expect(unavailable.phase.attemptsLoadError).toBe('Attempts service unavailable')
     })
 
     it('exposes the failure code of the current attempt when it failed', () => {
@@ -2005,27 +2150,270 @@ describe('mappers', () => {
         workflowId: 'correction-run',
         projection: {
           status: 'running',
-          correction: { cycleId: 'cycle-1', cycleNumber: 1, maxCycles: 2, status: 'active', triggeringStepId: 'review', returnTargetStepId: 'implement' },
+          correction: {
+            cycleId: 'cycle-1',
+            cycleNumber: 1,
+            maxCycles: 2,
+            status: 'active',
+            triggeringStepId: 'review',
+            returnTargetStepId: 'implement',
+          },
           stepExecutions: [
-            { executionId: 'exec-implement-1', stepId: 'implement', executionNumber: 1, status: 'completed', startedAt, completedAt: isoOffset(10) },
-            { executionId: 'exec-implement-2', stepId: 'implement', executionNumber: 2, cycleNumber: 1, status: 'running', startedAt: isoOffset(20), triggeringExecutionId: 'exec-review-1' },
+            {
+              executionId: 'exec-implement-1',
+              stepId: 'implement',
+              executionNumber: 1,
+              status: 'completed',
+              startedAt,
+              completedAt: isoOffset(10),
+            },
+            {
+              executionId: 'exec-implement-2',
+              stepId: 'implement',
+              executionNumber: 2,
+              cycleNumber: 1,
+              status: 'running',
+              startedAt: isoOffset(20),
+              triggeringExecutionId: 'exec-review-1',
+            },
           ],
-          steps: [{ id: 'implement', name: 'Implement', status: 'running', responsibility: { kind: 'code', name: 'check' } }],
+          steps: [
+            { id: 'implement', name: 'Implement', status: 'running', responsibility: { kind: 'code', name: 'check' } },
+          ],
         },
       }
-      const evidence = { items: [
-        { evidenceId: 'e-1', executionId: 'exec-implement-1', kind: 'log', facts: { text: 'old execution' }, createdAt: startedAt },
-        { evidenceId: 'e-2', executionId: 'exec-implement-2', kind: 'log', facts: { text: 'new execution' }, createdAt: isoOffset(20) },
-      ] }
+      const evidence = {
+        items: [
+          {
+            evidenceId: 'e-1',
+            executionId: 'exec-implement-1',
+            kind: 'log',
+            facts: { text: 'old execution' },
+            createdAt: startedAt,
+          },
+          {
+            evidenceId: 'e-2',
+            executionId: 'exec-implement-2',
+            kind: 'log',
+            facts: { text: 'new execution' },
+            createdAt: isoOffset(20),
+          },
+        ],
+      }
       const session = mapProjectionToSessionDetail(workflow, undefined, evidence)
       expect(session.correction).toMatchObject({ cycleNumber: 1, maxCycles: 2, returnTargetStepId: 'implement' })
-      expect(session.lanes.flatMap((lane) => lane.blocks)).toEqual(expect.arrayContaining([
-        expect.objectContaining({ executionId: 'exec-implement-1', executionNumber: 1 }),
-        expect.objectContaining({ executionId: 'exec-implement-2', cycleNumber: 1, triggeringExecutionId: 'exec-review-1' }),
-      ]))
-      expect(session.eventsByExecutionId?.get('exec-implement-1')?.map((event) => event.text)).toEqual(['old execution'])
-      expect(session.eventsByExecutionId?.get('exec-implement-2')?.map((event) => event.text)).toEqual(['new execution'])
-      expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(2)
+      expect(session.lanes.flatMap((lane) => lane.blocks)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ executionId: 'exec-implement-1', executionNumber: 1 }),
+          expect.objectContaining({
+            executionId: 'exec-implement-2',
+            cycleNumber: 1,
+            triggeringExecutionId: 'exec-review-1',
+          }),
+        ])
+      )
+      expect(session.eventsByExecutionId?.get('exec-implement-1')?.map((event) => event.text)).toEqual([
+        'old execution',
+      ])
+      expect(session.eventsByExecutionId?.get('exec-implement-2')?.map((event) => event.text)).toEqual([
+        'new execution',
+      ])
+      expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(
+        2
+      )
+    })
+  })
+
+  describe('outcome transition with return and budget left (WZ-36374)', () => {
+    const reviewStep = (executionId: string, status: string) => ({
+      id: 'code-review',
+      name: 'Code review',
+      status,
+      executionId,
+      dependsOn: ['implement'],
+      responsibility: { kind: 'agent', name: 'Reviewer' },
+    })
+    const replayedSteps = (reviewStatus: string, reviewExecutionId: string, others: string, suffix: string) => [
+      {
+        id: 'tech-assessment',
+        name: 'Tech assessment',
+        status: others,
+        executionId: `ta-${suffix}`,
+        responsibility: { kind: 'agent', name: 'Architect' },
+      },
+      {
+        id: 'implement',
+        name: 'Implement',
+        status: others,
+        executionId: `im-${suffix}`,
+        dependsOn: ['tech-assessment'],
+        responsibility: { kind: 'agent', name: 'Builder' },
+      },
+      reviewStep(reviewExecutionId, reviewStatus),
+    ]
+    const ledger = [
+      { executionId: 'ta-1', stepId: 'tech-assessment', executionNumber: 1, cycleNumber: 0, status: 'completed' },
+      { executionId: 'im-1', stepId: 'implement', executionNumber: 1, cycleNumber: 0, status: 'completed' },
+      {
+        executionId: 'cr-1',
+        stepId: 'code-review',
+        executionNumber: 1,
+        cycleNumber: 0,
+        status: 'failed',
+        attemptId: 'attempt-cr-1',
+      },
+    ]
+    const replayedLedger = [
+      ...ledger,
+      {
+        executionId: 'ta-2',
+        stepId: 'tech-assessment',
+        executionNumber: 2,
+        cycleNumber: 1,
+        status: 'pending',
+        triggeringExecutionId: 'cr-1',
+      },
+      {
+        executionId: 'im-2',
+        stepId: 'implement',
+        executionNumber: 2,
+        cycleNumber: 1,
+        status: 'pending',
+        triggeringExecutionId: 'cr-1',
+      },
+      {
+        executionId: 'cr-2',
+        stepId: 'code-review',
+        executionNumber: 2,
+        cycleNumber: 1,
+        status: 'pending',
+        triggeringExecutionId: 'cr-1',
+      },
+    ]
+    const correction = {
+      cycleId: 'cycle-1',
+      cycleNumber: 1,
+      maxCycles: 2,
+      status: 'active',
+      triggeringStepId: 'code-review',
+      returnTargetStepId: 'tech-assessment',
+    }
+    const evidenceOf = (executionId: string, stepId: string, status: string, offset: number) => ({
+      evidenceId: `ev-${executionId}`,
+      stepId,
+      kind: 'session-step',
+      facts: { stepId, executionId, status, startedAt: isoOffset(offset), durationMs: 5_000 },
+    })
+    const previousExecutionEvidence = {
+      items: [
+        evidenceOf('ta-1', 'tech-assessment', 'completed', 0),
+        evidenceOf('im-1', 'implement', 'completed', 10),
+        evidenceOf('cr-1', 'code-review', 'failed', 20),
+      ],
+    }
+
+    it('keeps the run active and the replayed steps pending after an accepted FAIL with return', () => {
+      const session = mapProjectionToSessionDetail(
+        {
+          workflowId: 'wz-36374',
+          projection: {
+            status: 'ready',
+            correction,
+            stepExecutions: replayedLedger,
+            steps: replayedSteps('pending', 'cr-2', 'pending', '2'),
+          },
+        },
+        undefined,
+        previousExecutionEvidence
+      )
+
+      expect(session.status).not.toBe('failed')
+      expect(session.status).toBe('queued')
+      expect(session.executionState).toBe('pending')
+      expect(session.steps.map((step) => step.status)).toEqual(['pending', 'pending', 'pending'])
+      // AC2: the rejected attempt stays visible, with its FAIL, in the execution history.
+      const rejected = session.lanes.flatMap((lane) => lane.blocks).find((block) => block.executionId === 'cr-1')
+      expect(rejected).toMatchObject({ stepId: 'code-review', status: 'failed' })
+      expect(mapSessionDetailToRunSummary({ workflowId: 'wz-36374' }, session).cardState).toBe('pending')
+    })
+
+    it('keeps evidence of the current execution on the step', () => {
+      const session = mapProjectionToSessionDetail(
+        {
+          workflowId: 'wz-36374',
+          projection: {
+            status: 'running',
+            correction,
+            stepExecutions: replayedLedger,
+            steps: replayedSteps('pending', 'cr-2', 'completed', '2'),
+          },
+        },
+        undefined,
+        {
+          items: [...previousExecutionEvidence.items, evidenceOf('cr-2', 'code-review', 'running', 30)],
+        }
+      )
+
+      expect(session.steps.find((step) => step.key === 'code-review')?.status).toBe('running')
+      expect(session.status).toBe('running')
+    })
+
+    it('does not flip the run to failed in the window between the FAIL and the replay', () => {
+      const session = mapProjectionToSessionDetail(
+        {
+          workflowId: 'wz-36374',
+          projection: {
+            status: 'running',
+            stepExecutions: ledger,
+            steps: replayedSteps('failed', 'cr-1', 'completed', '1'),
+          },
+        },
+        undefined,
+        previousExecutionEvidence
+      )
+
+      expect(session.status).toBe('running')
+    })
+
+    it('waits for a human when the correction budget is exhausted', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'wz-36374',
+        projection: {
+          status: 'waiting_human',
+          correction: { ...correction, cycleNumber: 2, status: 'waiting_human' },
+          stepExecutions: ledger,
+          steps: replayedSteps('failed', 'cr-1', 'completed', '1'),
+        },
+      })
+
+      expect(session.executionState).toBe('waiting_human')
+      expect(session.status).toBe('running')
+    })
+
+    it('still ends as failed when the backend publishes a terminal failed status (technical failure)', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'wz-36374',
+        projection: {
+          status: 'failed',
+          stepExecutions: ledger,
+          steps: replayedSteps('failed', 'cr-1', 'completed', '1'),
+        },
+      })
+
+      expect(session.status).toBe('failed')
+      expect(session.executionState).toBe('failed')
+    })
+
+    it('keeps a legacy run without execution ledger failed when a step failed', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'legacy',
+        projection: {
+          status: 'running',
+          steps: [{ id: 'build', status: 'failed', responsibility: { kind: 'code', name: 'build' } }],
+        },
+      })
+
+      expect(session.status).toBe('failed')
     })
   })
 
@@ -2036,26 +2424,80 @@ describe('mappers', () => {
         projection: {
           status: 'running',
           stepExecutions: [
-            { executionId: 'exec-1', stepId: 'implement', executionNumber: 1, cycleNumber: 0, status: 'completed', startedAt, completedAt: isoOffset(5), resultEvidenceId: 'e-1' },
-            { executionId: 'exec-2', stepId: 'implement', executionNumber: 2, cycleNumber: 1, status: 'running', startedAt: isoOffset(10), triggeringExecutionId: 'review-1', resultEvidenceId: 'e-2' },
+            {
+              executionId: 'exec-1',
+              stepId: 'implement',
+              executionNumber: 1,
+              cycleNumber: 0,
+              status: 'completed',
+              startedAt,
+              completedAt: isoOffset(5),
+              resultEvidenceId: 'e-1',
+            },
+            {
+              executionId: 'exec-2',
+              stepId: 'implement',
+              executionNumber: 2,
+              cycleNumber: 1,
+              status: 'running',
+              startedAt: isoOffset(10),
+              triggeringExecutionId: 'review-1',
+              resultEvidenceId: 'e-2',
+            },
           ],
-          correction: { cycleId: 'cycle-1', cycleNumber: 1, maxCycles: 2, status: 'active', triggeringStepId: 'review', triggeringExecutionId: 'review-1', returnTargetStepId: 'implement' },
-          steps: [{ id: 'implement', name: 'Implement', status: 'running', responsibility: { kind: 'code', name: 'build' } }],
+          correction: {
+            cycleId: 'cycle-1',
+            cycleNumber: 1,
+            maxCycles: 2,
+            status: 'active',
+            triggeringStepId: 'review',
+            triggeringExecutionId: 'review-1',
+            returnTargetStepId: 'implement',
+          },
+          steps: [
+            { id: 'implement', name: 'Implement', status: 'running', responsibility: { kind: 'code', name: 'build' } },
+          ],
         },
       }
-      const session = mapProjectionToSessionDetail(workflow, undefined, { items: [
-        { evidenceId: 'e-1', stepId: 'implement', kind: 'session-step', facts: { executionId: 'exec-1', text: 'first proof' } },
-        { evidenceId: 'e-2', stepId: 'implement', kind: 'session-step', facts: { executionId: 'exec-2', text: 'second proof' } },
-      ] })
+      const session = mapProjectionToSessionDetail(workflow, undefined, {
+        items: [
+          {
+            evidenceId: 'e-1',
+            stepId: 'implement',
+            kind: 'session-step',
+            facts: { executionId: 'exec-1', text: 'first proof' },
+          },
+          {
+            evidenceId: 'e-2',
+            stepId: 'implement',
+            kind: 'session-step',
+            facts: { executionId: 'exec-2', text: 'second proof' },
+          },
+        ],
+      })
       expect(session.correction).toMatchObject({ cycleNumber: 1, maxCycles: 2, status: 'active' })
-      expect(session.lanes.flatMap((lane) => lane.blocks)).toEqual(expect.arrayContaining([
-        expect.objectContaining({ executionId: 'exec-1', executionNumber: 1, cycleNumber: 0 }),
-        expect.objectContaining({ executionId: 'exec-2', executionNumber: 2, cycleNumber: 1, triggeringExecutionId: 'review-1' }),
-      ]))
+      expect(session.lanes.flatMap((lane) => lane.blocks)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ executionId: 'exec-1', executionNumber: 1, cycleNumber: 0 }),
+          expect.objectContaining({
+            executionId: 'exec-2',
+            executionNumber: 2,
+            cycleNumber: 1,
+            triggeringExecutionId: 'review-1',
+          }),
+        ])
+      )
       expect(session.eventsByExecutionId?.get('exec-1')?.map((event) => event.text)).toEqual(['first proof'])
       expect(session.eventsByExecutionId?.get('exec-2')?.map((event) => event.text)).toEqual(['second proof'])
-      expect(session.phaseByExecutionId?.get('exec-1')?.sections.find((section) => section.label === 'Sorties')?.items?.map((item) => item.subtitle)).toEqual(['first proof'])
-      expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(2)
+      expect(
+        session.phaseByExecutionId
+          ?.get('exec-1')
+          ?.sections.find((section) => section.label === 'Outputs')
+          ?.items?.map((item) => item.subtitle)
+      ).toEqual(['first proof'])
+      expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(
+        2
+      )
     })
   })
 

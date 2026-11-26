@@ -125,7 +125,8 @@ export function validateStructure(
         pass.target === step.id ||
         !steps.find((candidate) => candidate.id === pass.target)?.dependsOn?.includes(step.id) ||
         steps.some((candidate) => candidate.decision?.routes.some((route) => route.target === pass.target)))
-    ) return `${step.id}: PASS activation must target a non-conditional direct successor of a non-decision step.`
+    )
+      return `${step.id}: PASS activation must target a non-conditional direct successor of a non-decision step.`
     if (fail?.action !== 'return') continue
     if (step.responsibility?.kind !== 'agent') return `${step.id}: FAIL return requires an agent step.`
     const isSelfOrAncestor = (target: string): boolean => {
@@ -140,7 +141,10 @@ export function validateStructure(
     }
     if (!fail.target || !ids.has(fail.target) || !isSelfOrAncestor(fail.target))
       return `${step.id}: FAIL return must target this step or an ancestor.`
-    if (fail.maxCycles !== undefined && (!Number.isInteger(fail.maxCycles) || fail.maxCycles < 1 || fail.maxCycles > 10))
+    if (
+      fail.maxCycles !== undefined &&
+      (!Number.isInteger(fail.maxCycles) || fail.maxCycles < 1 || fail.maxCycles > 10)
+    )
       return `${step.id}: correction budget must be an integer from 1 to 10.`
     const scope = replayScope(fail.target)
     for (const decision of steps.filter((candidate) => candidate.decision)) {
@@ -152,11 +156,23 @@ export function validateStructure(
       if ([...region].some((id) => scope.has(id)) && ![...region].every((id) => scope.has(id)))
         return `${step.id}: FAIL return cannot split a conditional-routing region.`
     }
-    if (steps.some((candidate) => scope.has(candidate.id) && ['Gitay', 'prepare-work-branch'].includes(candidate.responsibility?.name ?? '')))
+    if (
+      steps.some(
+        (candidate) =>
+          scope.has(candidate.id) && ['Gitay', 'prepare-work-branch'].includes(candidate.responsibility?.name ?? '')
+      )
+    )
       return `${step.id}: FAIL return cannot replay branch initialization.`
     const maxCycles = fail.maxCycles ?? 2
-    if (returnRegions.some((other) => [...other.scope].some((id) => scope.has(id)) &&
-      (![...other.scope].every((id) => scope.has(id)) || ![...scope].every((id) => other.scope.has(id)) || other.maxCycles !== maxCycles)))
+    if (
+      returnRegions.some(
+        (other) =>
+          [...other.scope].some((id) => scope.has(id)) &&
+          (![...other.scope].every((id) => scope.has(id)) ||
+            ![...scope].every((id) => other.scope.has(id)) ||
+            other.maxCycles !== maxCycles)
+      )
+    )
       return `${step.id}: FAIL return overlaps an incompatible correction scope.`
     returnRegions.push({ scope, maxCycles })
   }
@@ -440,7 +456,9 @@ export class WorkflowStepEditorState {
     return (this.definition()?.steps ?? []).filter(
       (candidate) =>
         candidate.dependsOn?.includes(step.id) &&
-        !(this.definition()?.steps ?? []).some((source) => source.decision?.routes.some((route) => route.target === candidate.id))
+        !(this.definition()?.steps ?? []).some((source) =>
+          source.decision?.routes.some((route) => route.target === candidate.id)
+        )
     )
   }
 
@@ -450,12 +468,23 @@ export class WorkflowStepEditorState {
       !step ||
       (action === 'fail' && value === 'return' && !this.canConfigureFailReturn(step)) ||
       (action === 'pass' && value === 'activate' && !this.canConfigurePassActivate(step))
-    ) return
+    )
+      return
     const current = step.outcomeTransitions ?? {}
     if (action === 'pass') {
-      this.updateBlock({ outcomeTransitions: { ...current, pass: value === 'activate' ? { action: 'activate' } : { action: 'continue' } } })
+      this.updateBlock({
+        outcomeTransitions: {
+          ...current,
+          pass: value === 'activate' ? { action: 'activate' } : { action: 'continue' },
+        },
+      })
     } else {
-      this.updateBlock({ outcomeTransitions: { ...current, fail: value === 'return' ? { action: 'return', maxCycles: 2 } : { action: 'block' } } })
+      this.updateBlock({
+        outcomeTransitions: {
+          ...current,
+          fail: value === 'return' ? { action: 'return', maxCycles: 2 } : { action: 'block' },
+        },
+      })
     }
   }
 
@@ -547,7 +576,12 @@ export class WorkflowStepEditorState {
           ...step,
           dependsOn: step.dependsOn?.filter((id) => id !== selected.id),
           ...(step.decision
-            ? { decision: { ...step.decision, routes: step.decision.routes.filter((route) => route.target !== selected.id) } }
+            ? {
+                decision: {
+                  ...step.decision,
+                  routes: step.decision.routes.filter((route) => route.target !== selected.id),
+                },
+              }
             : {}),
           ...(step.join === selected.id ? { join: undefined } : {}),
           ...(step.outcomeTransitions
@@ -555,10 +589,14 @@ export class WorkflowStepEditorState {
                 outcomeTransitions: {
                   ...(step.outcomeTransitions.pass?.target === selected.id
                     ? { pass: { action: 'continue' as const } }
-                    : step.outcomeTransitions.pass ? { pass: step.outcomeTransitions.pass } : {}),
+                    : step.outcomeTransitions.pass
+                      ? { pass: step.outcomeTransitions.pass }
+                      : {}),
                   ...(step.outcomeTransitions.fail?.target === selected.id
                     ? { fail: { action: 'block' as const } }
-                    : step.outcomeTransitions.fail ? { fail: step.outcomeTransitions.fail } : {}),
+                    : step.outcomeTransitions.fail
+                      ? { fail: step.outcomeTransitions.fail }
+                      : {}),
                 },
               }
             : {}),

@@ -53,6 +53,16 @@ export interface LegalHoldResult {
   [key: string]: unknown
 }
 
+/** Instance-wide limit of parallel workflow runs (`/api/factory/admin/settings/run-concurrency`). */
+export interface RunConcurrencySettings {
+  maxParallelRuns: number
+  defaultMaxParallelRuns: number
+  min: number
+  max: number
+  updatedAt?: string | null
+  updatedBy?: string | null
+}
+
 /** One registered workflow definition. */
 export interface WorkflowDefinition {
   workflowType?: string
@@ -136,6 +146,25 @@ export function extractNamespaceOptions(payload: unknown): NamespaceOption[] {
   }
   return Array.from(options.values()).sort((left, right) => left.name.localeCompare(right.name))
 }
+
+/**
+ * Lifetime usage of the UNION of AgentOS case trees (AgentOS
+ * `GET /api/usage-records/aggregate/case-trees`). The cost is a USD lower bound
+ * when `unknownCostCount > 0`.
+ */
+export interface CumulativeUsage {
+  cost: number
+  unknownCostCount: number
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  liveTokens: number
+}
+
+/** Max case ids AgentOS accepts in one cumulative-usage read. */
+export const MAX_CUMULATIVE_USAGE_CASE_IDS = 200
 
 /** Bounded caller-owned input of the canonical create-run use case. */
 export interface CreateWorkflowRunRequest {
@@ -298,6 +327,18 @@ export class FactoryApiService {
   /** GET `/api/factory/workflows/:id/metrics[?namespaceId=…]`. */
   getMetrics(workflowId: string, namespaceId?: string): Observable<unknown> {
     return this.request<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/metrics`, {}, namespaceId)
+  }
+
+  /**
+   * GET AgentOS `usage-records/aggregate/case-trees` through the same-origin gateway: the lifetime
+   * usage of the union of the given case trees (retries, failed turns and live work included).
+   * Used for REMOVED runs, whose Factory `/metrics` read is refused. At most
+   * {@link MAX_CUMULATIVE_USAGE_CASE_IDS} ids are accepted.
+   */
+  getCumulativeUsage(caseIds: string[]): Observable<CumulativeUsage> {
+    return this.request<CumulativeUsage>('/api/agentos/api/usage-records/aggregate/case-trees', {
+      caseIds: caseIds.join(','),
+    })
   }
 
   /**
@@ -550,6 +591,16 @@ export class FactoryApiService {
     return this.post<unknown>(path, body, namespaceId)
   }
 
+  /** GET `/api/factory/admin/settings/run-concurrency` — the maximum number of parallel workflow runs. */
+  getRunConcurrency(): Observable<RunConcurrencySettings> {
+    return this.request<RunConcurrencySettings>('/api/factory/admin/settings/run-concurrency', {})
+  }
+
+  /** PUT `/api/factory/admin/settings/run-concurrency` — changes the limit at runtime (400 `INVALID_MAX_PARALLEL_RUNS` when out of range). */
+  updateRunConcurrency(maxParallelRuns: number): Observable<RunConcurrencySettings> {
+    return this.put<RunConcurrencySettings>('/api/factory/admin/settings/run-concurrency', { maxParallelRuns })
+  }
+
   /** Existing AgentOS discovery through the same-origin gateway, scoped by namespace. */
   getAgents(namespaceId: string): Observable<{ name: string; enabled?: boolean }[]> {
     return this.request<unknown>(
@@ -680,6 +731,17 @@ export class FactoryApiService {
     }
 
     return this.http.post<unknown>(path, body, { params, headers }).pipe(
+      map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
+      catchError((error: unknown) => throwError(() => normalizeError(error)))
+    )
+  }
+
+  /** Issue a PUT request and unwrap the response. Mirrors {@link post} without the namespace scoping. */
+  private put<T>(path: string, body: unknown): Observable<T> {
+    const headers = new HttpHeaders()
+      .set('X-Correlation-Id', generateCorrelationId())
+      .set('Content-Type', 'application/json')
+    return this.http.put<unknown>(path, body, { headers }).pipe(
       map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
       catchError((error: unknown) => throwError(() => normalizeError(error)))
     )

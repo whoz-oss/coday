@@ -102,6 +102,13 @@
   display: flex;
   align-items: center;
   min-width: 0;
+
+  // Defensive: a long label must be truncated, never overflow the card.
+  sf-status-chip {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 .run-details {
   display: flex;

@@ -39,12 +39,12 @@ describe('SessionPageState', () => {
     const event = { id: 'event-1' }
     sessions.update((current) =>
       new Map(current).set('run-1', {
-      phase: { stepId: 'current-step', name: 'Old agent phase' },
-      phaseByAttemptId: new Map([['attempt-1', { stepId: 'step-1', name: 'Engineer attempt', caseId: 'case-1' }]]),
-      events: [],
-      eventsByAttemptId: new Map([['attempt-1', [event]]]),
-      eventsByStepId: new Map(),
-      attempts: [{ attemptId: 'attempt-1', caseId: 'case-1' }],
+        phase: { stepId: 'current-step', name: 'Old agent phase' },
+        phaseByAttemptId: new Map([['attempt-1', { stepId: 'step-1', name: 'Engineer attempt', caseId: 'case-1' }]]),
+        events: [],
+        eventsByAttemptId: new Map([['attempt-1', [event]]]),
+        eventsByStepId: new Map(),
+        attempts: [{ attemptId: 'attempt-1', caseId: 'case-1' }],
       })
     )
     const state = TestBed.inject(SessionPageState)
@@ -60,11 +60,16 @@ describe('SessionPageState', () => {
 
   it('keeps a projected non-agent execution scoped to its own evidence', () => {
     const executionEvent = { id: 'execution-event' }
-    sessions.update((current) => new Map(current).set('run-1', {
-      phase: { stepId: 'current' }, events: [], attempts: [], lanes: [],
-      phaseByExecutionId: new Map([['execution-1', { stepId: 'build', name: 'Build execution' }]]),
-      eventsByExecutionId: new Map([['execution-1', [executionEvent]]]),
-    }))
+    sessions.update((current) =>
+      new Map(current).set('run-1', {
+        phase: { stepId: 'current' },
+        events: [],
+        attempts: [],
+        lanes: [],
+        phaseByExecutionId: new Map([['execution-1', { stepId: 'build', name: 'Build execution' }]]),
+        eventsByExecutionId: new Map([['execution-1', [executionEvent]]]),
+      })
+    )
     const state = TestBed.inject(SessionPageState)
     state.selectSession('run-1')
     state.selectBlock({ label: 'Build execution', stepId: 'build', executionId: 'execution-1' } as any)
@@ -74,10 +79,14 @@ describe('SessionPageState', () => {
 
   it('does not preserve a vanished execution merely because its linked attempt remains', () => {
     const session: any = {
-      phase: { stepId: 'build' }, events: [], attempts: [{ attemptId: 'attempt-1' }],
+      phase: { stepId: 'build' },
+      events: [],
+      attempts: [{ attemptId: 'attempt-1' }],
       phaseByExecutionId: new Map([['execution-1', { stepId: 'build' }]]),
       eventsByExecutionId: new Map([['execution-1', []]]),
-      lanes: [{ blocks: [{ label: 'Execution', stepId: 'build', executionId: 'execution-1', attemptId: 'attempt-1' }] }],
+      lanes: [
+        { blocks: [{ label: 'Execution', stepId: 'build', executionId: 'execution-1', attemptId: 'attempt-1' }] },
+      ],
     }
     sessions.update((current) => new Map(current).set('run-1', session))
     const state = TestBed.inject(SessionPageState)
@@ -98,16 +107,16 @@ describe('SessionPageState', () => {
     }
     sessions.update((current) =>
       new Map(current).set('run-1', {
-      phase: { stepId: 'agent', name: 'Architect analyses bug' },
-      launchRequest,
-      phaseByStepId: new Map([['code', { stepId: 'code', name: 'Code workspace' }]]),
-      events: [{ id: 'old-agent-event' }],
-      eventsByStepId: new Map([
-        ['launch request', []],
-        ['code', [{ id: 'code-event' }]],
-      ]),
-      attempts: [],
-      lanes: [],
+        phase: { stepId: 'agent', name: 'Architect analyses bug' },
+        launchRequest,
+        phaseByStepId: new Map([['code', { stepId: 'code', name: 'Code workspace' }]]),
+        events: [{ id: 'old-agent-event' }],
+        eventsByStepId: new Map([
+          ['launch request', []],
+          ['code', [{ id: 'code-event' }]],
+        ]),
+        attempts: [],
+        lanes: [],
       })
     )
     const state = TestBed.inject(SessionPageState)
@@ -126,12 +135,12 @@ describe('SessionPageState', () => {
   it('retains an inactive routing step selection without inventing a timeline execution', () => {
     sessions.update((current) =>
       new Map(current).set('run-1', {
-      phase: { stepId: 'architect' },
-      lanes: [],
-      events: [],
-      routingSteps: [{ id: 'backend', status: 'skipped', activation: 'not_selected', executed: false }],
-      phaseByStepId: new Map([['backend', { stepId: 'backend', stepStatus: 'skipped' }]]),
-      eventsByStepId: new Map([['backend', []]]),
+        phase: { stepId: 'architect' },
+        lanes: [],
+        events: [],
+        routingSteps: [{ id: 'backend', status: 'skipped', activation: 'not_selected', executed: false }],
+        phaseByStepId: new Map([['backend', { stepId: 'backend', stepStatus: 'skipped' }]]),
+        eventsByStepId: new Map([['backend', []]]),
       })
     )
     const state = TestBed.inject(SessionPageState)
@@ -202,7 +211,14 @@ describe('SessionPageState', () => {
     const transitioned = {
       ...initial,
       phase: { stepId: 'build' },
-      lanes: [{ blocks: [{ label: 'Frontend', stepId: 'frontend' }, { label: 'Build', stepId: 'build' }] }],
+      lanes: [
+        {
+          blocks: [
+            { label: 'Frontend', stepId: 'frontend' },
+            { label: 'Build', stepId: 'build' },
+          ],
+        },
+      ],
     }
     // This signal update represents the fresh workflow projection received via SSE.
     sessions.update((current) => new Map(current).set('run-1', transitioned))

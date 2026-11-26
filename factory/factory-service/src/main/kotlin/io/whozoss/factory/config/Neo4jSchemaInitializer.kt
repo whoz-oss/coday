@@ -226,6 +226,14 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.debug { "[Neo4jSchemaInitializer] Index outbox_event_pending ensured" }
 
+        // ── Instance-wide settings (e.g. max parallel workflow runs) ───────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT factory_setting_id_unique IF NOT EXISTS " +
+                    "FOR (s:FactorySetting) REQUIRE s.id IS UNIQUE",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Constraint factory_setting_id_unique ensured" }
+
         // ── Idempotency records ────────────────────────────────────────────
         neo4jClient
             .query(

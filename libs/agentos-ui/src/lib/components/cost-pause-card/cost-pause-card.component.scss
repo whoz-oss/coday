@@ -1,0 +1,114 @@
+:host {
+  display: block;
+}
+
+// The card takes the place of the composer: the frame, its rounded corners and the warning tint belong to the
+// composer (`case-chat__composer--paused`), so nothing here paints an edge that could leak out of the corners.
+.cost-pause {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 14px 16px;
+  color: var(--color-text, #1d1d1f);
+  animation: cost-pause-in 0.2s ease;
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  &__icon {
+    flex: none;
+    font-size: 20px;
+    color: var(--status-pending-text, var(--color-warning, #b06f1e));
+  }
+
+  &__lead {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  &__text {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-text-secondary, #6e6e73);
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-error, #b3261e);
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  &__btn {
+    min-height: 32px;
+    padding: 0.45rem 1rem;
+    border-radius: var(--radius-md, 8px);
+    border: 1px solid transparent;
+    font-size: 0.875rem;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: normal;
+    text-align: left;
+    transition:
+      opacity 0.15s ease,
+      background 0.15s ease;
+
+    &:focus-visible {
+      outline: 2px solid var(--color-accent, var(--color-primary, #0071e3));
+      outline-offset: 2px;
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    &--primary {
+      background: var(--color-accent, var(--color-primary, #0071e3));
+      color: var(--color-text-inverse, #ffffff);
+
+      &:not(:disabled):hover {
+        opacity: 0.88;
+      }
+    }
+
+    &--secondary {
+      background: transparent;
+      border-color: var(--color-divider, rgba(0, 0, 0, 0.2));
+      color: var(--color-text, #1d1d1f);
+
+      &:not(:disabled):hover {
+        background: var(--color-bg-hover, rgba(0, 0, 0, 0.06));
+      }
+    }
+  }
+}
+
+@keyframes cost-pause-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cost-pause {
+    animation: none;
+  }
+}

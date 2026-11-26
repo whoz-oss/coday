@@ -77,6 +77,21 @@ interface CaseApi : EntityCrudApi<CaseDto> {
     fun reopenCase(caseId: UUID): CaseDto
 
     @Operation(
+        summary = "Rewind a case to a user message",
+        description =
+            "POST /api/cases/{caseId}/rewind — soft-delete the user message identified by eventId and every " +
+                "event after it, and put the case back to IDLE. The case must be IDLE (or CREATED): it is refused " +
+                "with 409 while the case is RUNNING or PENDING, or terminated (KILLED or ERROR). " +
+                "404 when the event is unknown, already removed or belongs to another case; 400 when it is not " +
+                "a user message. Sub-cases, exchange files and usage records are left as they are. " +
+                "Returns the updated Case DTO.",
+    )
+    fun rewindCase(
+        caseId: UUID,
+        request: RewindCaseRequest,
+    ): CaseDto
+
+    @Operation(
         summary = "Mark case as read",
         description =
             "POST /api/cases/{caseId}/read — record that the current user has read this case. " +
@@ -122,5 +137,18 @@ interface CaseApi : EntityCrudApi<CaseDto> {
     fun setReasoningEffort(
         id: UUID,
         request: CaseReasoningEffortRequest,
+    ): CaseDto
+
+    @Operation(
+        summary = "Set the AI model of a case",
+        description =
+            "PUT /api/cases/{id}/model — set the case-level override of the AI model (an alias or an API model " +
+                "name) of the agents running in the case, or remove it with a null value so each agent uses its own " +
+                "model again. An unknown name is refused with 400. Read at the start of each agent run. Replaces the " +
+                "model of every agent of the case; sub-cases do not inherit it. Returns the updated Case DTO.",
+    )
+    fun setModel(
+        id: UUID,
+        request: CaseModelRequest,
     ): CaseDto
 }
