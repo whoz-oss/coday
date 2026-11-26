@@ -28,12 +28,15 @@
 #
 name: Workstream Build
 
-on:
-  push:
-    branches:
-      - 'integration/**'
+# Nx Cloud CI now runs CI for this repository, so this workflow no longer runs on its own.
+# To run it again on every change, restore the triggers below and remove `on: workflow_dispatch`.
+# on:
+#   push:
+#     branches:
+#       - 'integration/**'
 
-  workflow_dispatch:
+#   workflow_dispatch:
+on: workflow_dispatch
 
 # Serialise builds per workstream slug.
 # cancel-in-progress: false is mandatory -- cancelling mid-publish can leave a

@@ -1,21 +1,24 @@
 name: Release and Publish
 
-on:
-  push:
-    branches:
-      - master
-      - 'hotfix/*'
-  workflow_dispatch:
-    inputs:
-      specifier:
-        description: 'Force a version bump — bypasses conventional commits. Use to advance master past a hotfix line before cutting a hotfix branch.'
-        required: false
-        type: choice
-        options:
-          - ''
-          - minor
-          - major
-          - patch
+# Nx Cloud CI now runs CI for this repository, so this workflow no longer runs on its own.
+# To run it again on every change, restore the triggers below and remove `on: workflow_dispatch`.
+# on:
+#   push:
+#     branches:
+#       - master
+#       - 'hotfix/*'
+#   workflow_dispatch:
+#     inputs:
+#       specifier:
+#         description: 'Force a version bump — bypasses conventional commits. Use to advance master past a hotfix line before cutting a hotfix branch.'
+#         required: false
+#         type: choice
+#         options:
+#           - ''
+#           - minor
+#           - major
+#           - patch
+on: workflow_dispatch
 
 concurrency:
   group: release
