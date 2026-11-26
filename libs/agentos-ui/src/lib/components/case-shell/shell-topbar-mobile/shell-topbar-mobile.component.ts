@@ -20,6 +20,10 @@ export class ShellTopbarMobileComponent {
   /** Whether the current user may open the settings of the selected namespace. */
   readonly canConfigureNamespace = input(false)
 
+  // ── Cases ────────────────────────────────────────────────
+  /** Disables the New case button: the shell already shows the new case composer. */
+  readonly newCaseDisabled = input(false)
+
   // ── Outputs ──────────────────────────────────────────────
   /** Ouvre/ferme le drawer mobile (liste des cases) */
   readonly drawerToggled = output<void>()
