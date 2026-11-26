@@ -35,6 +35,7 @@ internal class GatedRunLauncher(
 
     /** Turns held back in this process. */
     private val deferredRuns = ConcurrentHashMap.newKeySet<UUID>()
+    private val explicitOwners = ConcurrentHashMap<UUID, CaseRuntime.Admission>()
 
     /** Launches admitted that have not finished yet. Exposed for lifecycle tests. */
     val trackedExecutionCount: Int
@@ -51,8 +52,12 @@ internal class GatedRunLauncher(
      * concurrent Stop or Kill cannot fall between the two. Persistence via [publishStatus]
      * runs outside the lock — no blocking I/O under the monitor.
      */
-    fun launch(runtime: CaseRuntime) {
+    fun launch(runtime: CaseRuntime, owner: CaseRuntime.Admission? = null) {
         val claimed = synchronized(runtime) {
+            if (owner != null) {
+                if (!isCurrent(runtime) || !runtime.ownsAdmission(owner)) return
+                explicitOwners[runtime.id] = owner
+            }
             runtime.claimPending().also { deferredRuns.add(runtime.id) }
         }
         // A failed PENDING write must not leave the turn deferred with nothing to admit it.
@@ -90,6 +95,7 @@ internal class GatedRunLauncher(
      */
     fun interrupt(runtime: CaseRuntime) {
         val claimed = synchronized(runtime) {
+            explicitOwners.remove(runtime.id)
             deferredRuns.remove(runtime.id)
             if (!runtime.isRunning()) {
                 executionJobs[runtime.id]?.cancel()
@@ -103,6 +109,7 @@ internal class GatedRunLauncher(
         caseId: UUID,
         runtime: CaseRuntime?,
     ) {
+        explicitOwners.remove(caseId)
         if (runtime == null) {
             deferredRuns.remove(caseId)
         } else {
@@ -123,6 +130,7 @@ internal class GatedRunLauncher(
      */
     fun stopForShutdown(runtime: CaseRuntime): Unit =
         synchronized(runtime) {
+            explicitOwners.remove(runtime.id)
             deferredRuns.remove(runtime.id)
             // Not a Kill: a turn still running would end as KILLED and close the case for good.
             runtime.requestShutdownStop()
@@ -173,7 +181,9 @@ internal class GatedRunLauncher(
             is LaunchDecision.Admit -> {
                 synchronized(runtime) {
                     // A worker completion and a lock callback can both try: only one consumes the turn.
-                    if (isCurrent(runtime) && deferredRuns.remove(runtime.id)) startAdmittedJob(runtime)
+                    val owner = explicitOwners[runtime.id]
+                    if (isCurrent(runtime) && (owner == null || runtime.ownsAdmission(owner)) &&
+                        deferredRuns.remove(runtime.id)) startAdmittedJob(runtime, owner)
                 }
                 null
             }
@@ -188,7 +198,7 @@ internal class GatedRunLauncher(
      * The job is published while the lifecycle lock is still held, so a cleanup that checks running
      * executions under that lock sees it before the runtime starts.
      */
-    private fun startAdmittedJob(runtime: CaseRuntime) {
+    private fun startAdmittedJob(runtime: CaseRuntime, owner: CaseRuntime.Admission? = null) {
         var admittedJob: Job? = null
         var finishingJob: Job? = null
         executionJobs.compute(runtime.id) { _, previous ->
@@ -199,12 +209,15 @@ internal class GatedRunLauncher(
                 previous
             } else {
                 // Lazy, so the job is published before it can complete and clean up.
-                scope.launch(start = CoroutineStart.LAZY) { runtime.run() }.also { admittedJob = it }
+                scope.launch(start = CoroutineStart.LAZY) { runtime.run(owner) }.also { admittedJob = it }
             }
         }
         finishingJob?.invokeOnCompletion { scope.launch { resumeIfPending(runtime.id) } }
         admittedJob?.let { job ->
-            job.invokeOnCompletion { executionJobs.remove(runtime.id, job) }
+            job.invokeOnCompletion {
+                executionJobs.remove(runtime.id, job)
+                if (owner != null) explicitOwners.remove(runtime.id, owner)
+            }
             job.start()
         }
     }
@@ -252,6 +265,7 @@ internal class GatedRunLauncher(
         val dropped =
             synchronized(runtime) {
                 if (isCurrent(runtime) && deferredRuns.remove(runtime.id)) {
+                    explicitOwners.remove(runtime.id)
                     val launchActive = executionJobs[runtime.id]?.isActive == true
                     DroppedTurn(idle = if (launchActive) null else runtime.claimCancelPending())
                 } else {

@@ -178,15 +178,17 @@ export class SseService extends BaseService {
 
   /**
    * Stream case events via SSE
-   * Every SSE frame uses the stable event name \&#39;case-event\&#39;. Its JSON CaseEvent payload carries the subtype in its \&#39;type\&#39; discriminant. includePreviousEvents defaults to true.
+   * Every SSE frame uses the stable event name \&#39;case-event\&#39;. Its JSON CaseEvent payload carries the subtype in its \&#39;type\&#39; discriminant. includePreviousEvents defaults to true. collaborative&#x3D;true keeps inactive cases subscribed without running an agent.
    * @param caseId
    * @param includePreviousEvents
+   * @param collaborative
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.
    * @param reportProgress flag to report request and response progress.
    */
   public streamEventsCaseEventSse(
     caseId: string,
     includePreviousEvents?: boolean,
+    collaborative?: boolean,
     observe?: 'body',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
@@ -194,6 +196,7 @@ export class SseService extends BaseService {
   public streamEventsCaseEventSse(
     caseId: string,
     includePreviousEvents?: boolean,
+    collaborative?: boolean,
     observe?: 'response',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
@@ -201,6 +204,7 @@ export class SseService extends BaseService {
   public streamEventsCaseEventSse(
     caseId: string,
     includePreviousEvents?: boolean,
+    collaborative?: boolean,
     observe?: 'events',
     reportProgress?: boolean,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
@@ -208,6 +212,7 @@ export class SseService extends BaseService {
   public streamEventsCaseEventSse(
     caseId: string,
     includePreviousEvents?: boolean,
+    collaborative?: boolean,
     observe: any = 'body',
     reportProgress: boolean = false,
     options?: { httpHeaderAccept?: 'text/event-stream'; context?: HttpContext; transferCache?: boolean }
@@ -222,6 +227,7 @@ export class SseService extends BaseService {
       <any>includePreviousEvents,
       'includePreviousEvents'
     )
+    localVarQueryParameters = this.addToHttpParams(localVarQueryParameters, <any>collaborative, 'collaborative')
 
     let localVarHeaders = this.defaultHeaders
 

@@ -1,0 +1,22 @@
+@if (url(); as src) {
+  <button
+    type="button"
+    class="message-image__thumb"
+    [title]="'Open ' + name()"
+    [attr.aria-label]="'Open image ' + name()"
+    (click)="opened.set(true)"
+  >
+    <img [src]="src" [alt]="name()" />
+  </button>
+  @if (opened()) {
+    <div class="message-image__overlay" role="dialog" aria-modal="true" [attr.aria-label]="name()">
+      <button type="button" class="message-image__backdrop" aria-label="Close image" (click)="close()"></button>
+      <img class="message-image__full" [src]="src" [alt]="name()" />
+      <ds-icon-button class="message-image__close" icon="close" title="Close (Esc)" (action)="close()" />
+    </div>
+  }
+} @else if (failed()) {
+  <agentos-file-chip [name]="name()" [path]="path()" [scope]="scope()" />
+} @else {
+  <span class="message-image__placeholder" role="status" aria-label="Loading image"></span>
+}

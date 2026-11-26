@@ -450,6 +450,21 @@ class AgentAdvancedContextSpec :
         // sessionContext injection
         // -------------------------------------------------------------------------
 
+        listOf<Map<String, Any?>?>(null, mapOf("entityId" to "bob-entity")).forEach { passiveContext ->
+            "passive discussion preserves invoking session context passiveContext=$passiveContext" {
+                val invoking = userMessage("Alice invokes").copy(
+                    sessionContext = mapOf("entityId" to "alice-entity"))
+                val passive = userMessage("Bob discusses").copy(startsAgentTurn = false,
+                    sessionContext = passiveContext)
+                val messages = context.convertEventsToMessages(listOf(invoking, passive))
+                val text = messages.joinToString("\n") { it.text }
+                text shouldContain "entityId: alice-entity"
+                text.shouldNotContain("entityId: bob-entity")
+                text shouldContain "Alice invokes"
+                text shouldContain "Bob discusses"
+            }
+        }
+
         "session context on last user message is merged into that user message" {
             val events =
                 listOf(

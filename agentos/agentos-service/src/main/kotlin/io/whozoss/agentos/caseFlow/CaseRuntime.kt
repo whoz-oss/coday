@@ -242,6 +242,7 @@ class CaseRuntime(
      * mark alone. The runtime stays alive and the SSE flow stays open for the next user message.
      */
     fun requestInterrupt() {
+        cancelAdmission()
         commandQueue.clear()
         raiseStopRequest(StopRequest.INTERRUPT)
     }
@@ -260,6 +261,7 @@ class CaseRuntime(
      * the command queue so no orphaned commands are left behind.
      */
     fun requestKill() {
+        cancelAdmission()
         raiseStopRequest(StopRequest.KILL)
         commandQueue.clear()
         cancelTurn()
@@ -270,6 +272,7 @@ class CaseRuntime(
      * as with [requestKill], but ends as [CaseStatus.IDLE].
      */
     fun requestShutdownStop() {
+        cancelAdmission()
         raiseStopRequest(StopRequest.SHUTDOWN)
         commandQueue.clear()
         cancelTurn()
@@ -307,6 +310,37 @@ class CaseRuntime(
         commandQueue.add(PendingCommand(content))
     }
 
+    /** Process-local ownership of an explicit turn, including blocking message persistence. */
+    class Admission internal constructor() {
+        @Volatile internal var cancelled = false
+    }
+
+    private var admission: Admission? = null
+    private var admissionWriting = false
+
+    fun pendingStatusMayPublish(): Boolean = synchronized(this) { admission?.cancelled != true }
+
+    fun claimAdmission(): Admission? = synchronized(this) {
+        // A cancelled writer retains its reservation until it leaves persistence.
+        if (admissionWriting || claimPending() == null) null
+        else Admission().also { admission = it; admissionWriting = true }
+    }
+
+    fun ownsAdmission(owner: Admission): Boolean = synchronized(this) {
+        admission === owner && !owner.cancelled && !_statusFlow.value.isTerminal()
+    }
+
+    fun releaseAdmission(owner: Admission) = synchronized(this) {
+        if (admission === owner) {
+            admissionWriting = false
+            if (owner.cancelled || _statusFlow.value != CaseStatus.PENDING && !isRunning()) admission = null
+        }
+    }
+
+    private fun cancelAdmission() = synchronized(this) {
+        admission?.cancelled = true
+    }
+
     fun isRunning(): Boolean = runInFlight.get()
 
     /**
@@ -338,7 +372,7 @@ class CaseRuntime(
      * calling [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
      */
     fun claimPending(): CaseStatus? = synchronized(this) {
-        if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) {
+        if (!isRunning() && !_statusFlow.value.isTerminal() && _statusFlow.value != CaseStatus.PENDING) {
             _statusFlow.value = CaseStatus.PENDING
             CaseStatus.PENDING
         } else null
@@ -496,6 +530,24 @@ class CaseRuntime(
     // Main execution loop
     // -------------------------------------------------------------------------
 
+    /** An explicit authorized selection bypasses legacy mention/default resolution. */
+    fun addAddressedMessage(actor: Actor, content: List<MessageContent>, sessionContext: Map<String, Any?>?, selection: AgentSelectedEvent,
+        owner: Admission? = null): Boolean {
+        storeAndEmitEvent(MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor,
+            content = content, sessionContext = sessionContext))
+        if (owner != null && !ownsAdmission(owner)) return false
+        storeAndEmitEvent(selection.copy(timestamp = Instant.now()))
+        return owner == null || ownsAdmission(owner)
+    }
+
+    /** Persist and broadcast team discussion without changing execution state. */
+    fun addHumanMessage(actor: Actor, content: List<MessageContent>, sessionContext: Map<String, Any?>? = null) {
+        storeAndEmitEvent(
+            MessageEvent(caseId = id, namespaceId = namespaceId, actor = actor, content = content,
+                sessionContext = sessionContext, startsAgentTurn = false),
+        )
+    }
+
     /**
      * Run the execution loop for one agent turn.
      *
@@ -511,13 +563,14 @@ class CaseRuntime(
      *   Terminal — the service evicts the runtime.
      * - Max iterations reached: transitions to [CaseStatus.ERROR]. Terminal.
      */
-    suspend fun run() {
+    suspend fun run(owner: Admission? = null) {
         val context = currentCoroutineContext()
         val claimed =
             synchronized(this) {
                 // A launch admitted by a CaseLaunchGate can be cancelled by Stop or Kill before it
                 // starts. Claiming the runtime and resetting the stop request must be atomic with that.
                 context.ensureActive()
+                if (owner != null && !ownsAdmission(owner)) return
                 if (!runInFlight.compareAndSet(false, true)) {
                     false
                 } else {
@@ -547,6 +600,9 @@ class CaseRuntime(
         } finally {
             turnJob.set(null)
             runInFlight.set(false)
+            synchronized(this) {
+                if (owner != null && admission === owner && !admissionWriting) admission = null
+            }
         }
     }
 
@@ -635,7 +691,7 @@ class CaseRuntime(
      */
     private fun closeAgentLeftOpenByCurrentTurn() {
         val events = conversation()
-        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER && it.startsAgentTurn }
         val lastOrchestration =
             events
                 .drop(lastUserMessageIndex + 1)
@@ -721,7 +777,7 @@ class CaseRuntime(
         val events = conversation()
         logger.debug { "[CaseRuntime $id] processNextStep - total events: ${events.size}" }
 
-        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER && it.startsAgentTurn }
 
         for (i in events.lastIndex downTo 0) {
             val event = events[i]
@@ -958,7 +1014,7 @@ class CaseRuntime(
     private fun resolveLastUserActor(events: List<CaseEvent>): Actor? =
         events
             .filterIsInstance<MessageEvent>()
-            .lastOrNull { it.actor.role == ActorRole.USER }
+            .lastOrNull { it.actor.role == ActorRole.USER && it.startsAgentTurn }
             ?.actor
 
     companion object : KLogging() {

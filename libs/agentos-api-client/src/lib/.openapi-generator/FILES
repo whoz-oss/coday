@@ -15,6 +15,7 @@ api/case-membership-controller.service.ts
 api/case-side-question-controller.service.ts
 api/case-workspace-controller.service.ts
 api/config-change-controller.service.ts
+api/cumulative-usage-controller.service.ts
 api/effective-configuration-controller.service.ts
 api/exchange-controller.service.ts
 api/feedback-controller.service.ts
@@ -44,6 +45,7 @@ git_push.sh
 index.ts
 model/actor.ts
 model/add-message-request.ts
+model/admin-case-listing.ts
 model/agent-config-defaults-dto.ts
 model/agent-config-search-request.ts
 model/agent-config.ts
@@ -80,6 +82,7 @@ model/config-secret-input-dto.ts
 model/configuration-entry.ts
 model/confirmation-resolved-event.ts
 model/continue-cost-request.ts
+model/cumulative-usage-dto.ts
 model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts

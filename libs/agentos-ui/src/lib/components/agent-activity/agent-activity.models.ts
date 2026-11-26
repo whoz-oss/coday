@@ -207,7 +207,9 @@ export function describeAgentActivity(
       case 'AgentRunningEvent':
       case 'AgentSelectedEvent':
       case 'AnswerEvent':
+        return THINKING
       case 'MessageEvent':
+        if (event.startsAgentTurn === false) continue
         return THINKING
       case 'AgentFinishedEvent':
       case 'CaseStatusEvent':

@@ -991,6 +991,19 @@ class AgentAdvancedSpec :
             guidelines shouldContain "hard constraint"
         }
 
+        "preferred language follows latest invoking participant not passive context" {
+            val invoking = MessageEvent(namespaceId = UUID.randomUUID(), caseId = UUID.randomUUID(),
+                actor = Actor("alice", "Alice", ActorRole.USER), content = emptyList(),
+                sessionContext = mapOf("preferredLanguage" to "alice-language"))
+            val earlier = invoking.copy(sessionContext = mapOf("preferredLanguage" to "earlier-language"))
+            val passive = invoking.copy(actor = Actor("bob", "Bob", ActorRole.USER), startsAgentTurn = false,
+                sessionContext = mapOf("preferredLanguage" to "bob-language"))
+            val guidelines = makeParserAgent().buildUserFacingGuidelines(listOf(earlier, invoking, passive))!!
+            guidelines shouldContain "alice-language"
+            guidelines.contains("bob-language") shouldBe false
+            guidelines.contains("earlier-language") shouldBe false
+        }
+
         "buildUserFacingGuidelines prefers detected language over preferredLanguage in sessionContext" {
             // Interactive case where the user writes in Spanish but has preferredLanguage=fr stored.
             // The detected language (Spanish) must win — priority 1.
@@ -2073,6 +2086,94 @@ class AgentAdvancedSpec :
             val events = agent.run(initialUserMsg + pending).toList()
 
             events.filterIsInstance<ConfirmationResolvedEvent>() shouldHaveSize 0
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+            target.exists() shouldBe true
+        }
+
+        "passive team yes does not resolve a pending destructive confirmation" {
+            val tempDir = Files.createTempDirectory("agentadvanced-ac7-").also { it.toFile().deleteOnExit() }
+            val target = tempDir.resolve("old.txt").also { it.writeText("data") }
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val tool = TestRemoveTool(tempDir)
+            val initialUserMsg = makeInitialEvents(namespaceId, caseId)
+            val pending =
+                PendingConfirmationEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = "orig-req-7",
+                    toolName = "FILES__remove",
+                    inputJson = """{"path":"old.txt"}""",
+                )
+            val confirmation = mockk<ConfirmationManager>(relaxed = true)
+            every { confirmation.analyzeConfirmation(any(), any(), any(), any()) } returns ConfirmationDecision.CONFIRMED
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmation)
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockk(),
+                    objectMapper = testObjectMapper,
+                    maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+            val discussion = MessageEvent(namespaceId = namespaceId, caseId = caseId,
+                actor = Actor("bob", "Bob", ActorRole.USER), content = listOf(MessageContent.Text("yes")), startsAgentTurn = false)
+            val events = agent.run(initialUserMsg + pending + discussion).toList()
+
+            events.filterIsInstance<ConfirmationResolvedEvent>() shouldHaveSize 0
+            events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+            target.exists() shouldBe true
+        }
+
+        "passive approval is excluded from judge after unrelated invoking reply" {
+            val tempDir = Files.createTempDirectory("agentadvanced-ac7-").also { it.toFile().deleteOnExit() }
+            val target = tempDir.resolve("old.txt").also { it.writeText("data") }
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val agentId = UUID.randomUUID()
+            val tool = TestRemoveTool(tempDir)
+            val initialUserMsg = makeInitialEvents(namespaceId, caseId)
+            val pending =
+                PendingConfirmationEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    toolRequestId = "orig-req-7",
+                    toolName = "FILES__remove",
+                    inputJson = """{"path":"old.txt"}""",
+                )
+            val confirmation = mockk<ConfirmationManager>(relaxed = true)
+            val judgeHistory = slot<List<org.springframework.ai.chat.messages.Message>>()
+            every { confirmation.analyzeConfirmation(any(), capture(judgeHistory), any(), any()) } answers {
+                if (judgeHistory.captured.any { it.text.contains("yes, delete it") }) ConfirmationDecision.CONFIRMED
+                else ConfirmationDecision.REJECTED
+            }
+            val (ctx, _) = confirmationContext(listOf(tool), agentId, confirmation)
+            val agent =
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = "TestAgent",
+                    context = ctx,
+                    intentionGenerator = mockGeneratorReturning(namespaceId, caseId, agentId, "Answer"),
+                    objectMapper = testObjectMapper,
+                    maxIterations = 1,
+                    llmProvider = "test-provider",
+                    llmModel = "test-model",
+                )
+            val discussion = MessageEvent(namespaceId = namespaceId, caseId = caseId,
+                actor = Actor("bob", "Bob", ActorRole.USER), content = listOf(MessageContent.Text("yes, delete it")), startsAgentTurn = false)
+            val invocation = MessageEvent(namespaceId = namespaceId, caseId = caseId,
+                actor = Actor("alice", "Alice", ActorRole.USER), content = listOf(MessageContent.Text("summarize our discussion")))
+            val events = agent.run(initialUserMsg + pending + discussion + invocation).toList()
+            judgeHistory.captured.any { it.text.contains("yes, delete it") } shouldBe false
+            judgeHistory.captured.any { it.text.contains("summarize our discussion") } shouldBe true
+
+            events.filterIsInstance<ConfirmationResolvedEvent>().single().confirmed shouldBe false
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
             events.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
             target.exists() shouldBe true

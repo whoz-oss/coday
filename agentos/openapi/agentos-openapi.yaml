@@ -1289,7 +1289,8 @@ paths:
     get:
       description: Every SSE frame uses the stable event name 'case-event'. Its JSON
         CaseEvent payload carries the subtype in its 'type' discriminant. includePreviousEvents
-        defaults to true.
+        defaults to true. collaborative=true keeps inactive cases subscribed without
+        running an agent.
       operationId: streamEventsCaseEventSse
       parameters:
       - in: path
@@ -1304,6 +1305,12 @@ paths:
         schema:
           type: boolean
           default: true
+      - in: query
+        name: collaborative
+        required: false
+        schema:
+          type: boolean
+          default: false
       responses:
         "200":
           content:
@@ -4414,11 +4421,18 @@ components:
     AddMessageRequest:
       type: object
       properties:
+        agentName:
+          type: string
         answerToEventId:
           type: string
           format: uuid
         content:
           type: string
+        mode:
+          type: string
+          enum:
+          - HUMAN
+          - AGENT
         rerunOf:
           type: string
           format: uuid
@@ -6191,6 +6205,8 @@ components:
           sessionContext:
             type: object
             additionalProperties: {}
+          startsAgentTurn:
+            type: boolean
       required:
       - actor
       - caseId
@@ -6198,6 +6214,7 @@ components:
       - id
       - metadata
       - namespaceId
+      - startsAgentTurn
       - timestamp
       - type
     ModelPricing:
