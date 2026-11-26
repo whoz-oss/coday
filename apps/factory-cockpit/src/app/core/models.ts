@@ -475,6 +475,18 @@ export type BlockerCode =
   | 'REAL_COST_PAUSED'
   | 'VERIFICATION_FAILED'
   | 'UNKNOWN_RUNTIME'
+  | 'AGENT_KILL_UNCONFIRMED'
+
+/**
+ * Outcome of the last Stop of a run, when it was refused, not confirmed or failed. A Stop that AgentOS refuses
+ * (`not_authorized`) or cannot be asked (`error`) changes nothing; `unconfirmed` means the run was sealed but the
+ * agents are not proven stopped yet, so the Stop can be retried.
+ */
+export interface StopFeedback {
+  workflowId: string
+  kind: 'not_authorized' | 'unconfirmed' | 'error'
+  message: string
+}
 
 /** One active blocker preventing a workflow from progressing unattended. */
 export interface WorkflowBlocker {

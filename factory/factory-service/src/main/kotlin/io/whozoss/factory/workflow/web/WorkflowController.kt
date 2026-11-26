@@ -50,6 +50,7 @@ import java.nio.file.Paths
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import mu.KotlinLogging
 
 /**
  * Canonical HTTP surface of the workflow aggregate.
@@ -94,6 +95,8 @@ class WorkflowController(
      */
     private val bridgeCancellationService: BridgeCancellationService? = null,
 ) {
+
+    private val logger = KotlinLogging.logger {}
 
     // ----- collection / detail ------------------------------------------
 
@@ -535,15 +538,35 @@ class WorkflowController(
     }
 
     /**
-     * Explicit business cancellation of a durable agent attempt.
+     * Explicit business cancellation of a durable agent attempt (Stop).
      *
      * Closing the SSE stream (or a browser tab) only stops *observing* the run;
      * it never cancels it. Cancellation requires this explicit, revision-fenced
-     * command, which interrupts/kills the AgentOS case, reconciles its post-kill
-     * state and moves the attempt to the durable terminal `interrupted` status.
+     * command. AgentOS decides who may stop the run: the kill is sent with the caller's identity
+     * (`403 STOP_NOT_AUTHORIZED` when refused, `503 STOP_RUNTIME_UNAVAILABLE` when AgentOS cannot be
+     * reached for a caller who is not the run owner; nothing is changed in both cases). A Stop on an
+     * attempt already stopped is a retry of the kill, which a cockpit offers while the kill is not proven.
      */
     @PostMapping(path = ["/{workflowId}/attempts/{attemptId}/cancel"], produces = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(summary = "Explicitly cancel a durable agent attempt (revision-fenced, interrupt/kill + reconcile).")
+    @Operation(summary = "Explicitly cancel a durable agent attempt (Stop): authenticated kill, durable cancel, kill proof; also retries a Stop whose kill is not proven.")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Stop recorded; killResult and killProven report what AgentOS did"),
+        ApiResponse(
+            responseCode = "403",
+            description = "STOP_NOT_AUTHORIZED: AgentOS refused the caller's kill; nothing was changed",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "409",
+            description = "ATTEMPT_INVALID_TRANSITION or REVISION_CONFLICT; nothing was sent",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "503",
+            description = "STOP_RUNTIME_UNAVAILABLE: AgentOS could not be reached to authorize the caller; nothing was changed",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
     fun cancelAttempt(
         @PathVariable workflowId: String,
         @PathVariable attemptId: String,
@@ -571,7 +594,12 @@ class WorkflowController(
             attemptId,
             expectedRevision,
             reason,
+            caller.actorId,
         )
+        // The cancellation is committed. Enqueue a durable continuation (also on an idempotent
+        // replay or a retry of the Stop, which heals a run left stuck by an earlier Stop) so the
+        // sequencer seals the step and the run as cancelled even when no live sequencer observed the kill.
+        enqueueCancellationContinuation(caller, user, workflowId, attemptId)
         return WorkflowDataEnvelope(
             mapOf(
                 "workflowId" to outcome.workflowId,
@@ -581,8 +609,39 @@ class WorkflowController(
                 "revision" to outcome.revision,
                 "idempotent" to outcome.idempotent,
                 "reconciledVerdict" to outcome.reconciledVerdict,
+                "killResult" to outcome.killResult.name,
+                "killProven" to outcome.killProven,
             ),
         )
+    }
+
+    /**
+     * Best-effort durable continuation after a committed cancellation: never turns it into an error.
+     */
+    private fun enqueueCancellationContinuation(
+        caller: WorkflowCaller,
+        user: AuthenticatedUser,
+        workflowId: String,
+        attemptId: String,
+    ) {
+        val repoRoot = resolveRepoRoot(caller.namespaceId, user.userId)
+            ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
+        if (repoRoot == null) {
+            logger.warn { "No repository root resolvable: no continuation enqueued after cancelling attempt '$attemptId' of workflow '$workflowId'" }
+            return
+        }
+        runCatching {
+            sessionRunSubmissionService.submit(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                repoRoot,
+                "attempt-cancelled:$attemptId",
+                null,
+            )
+        }.onFailure { error ->
+            logger.warn(error) { "Continuation after cancelling attempt '$attemptId' of workflow '$workflowId' could not be enqueued" }
+        }
     }
 
     @GetMapping(path = ["/{workflowId}/session"], produces = [MediaType.APPLICATION_JSON_VALUE])

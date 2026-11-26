@@ -4,7 +4,7 @@ import { MatDialog } from '@angular/material/dialog'
 import { provideRouter } from '@angular/router'
 import { of } from 'rxjs'
 import { FactoryStore } from '../../core/factory.store'
-import { CostSummary, FactoryRun, RecentTask, SessionDetail, WorkstreamView } from '../../core/models'
+import { CostSummary, FactoryRun, RecentTask, SessionDetail, StopFeedback, WorkstreamView } from '../../core/models'
 import { ConfirmDialogComponent } from '../admin/confirm-dialog.component'
 import { WorkstreamsPageComponent } from './workstreams-page.component'
 
@@ -27,6 +27,7 @@ interface StoreStub {
   restore: jest.Mock
   openSupervisorCase: jest.Mock
   restoreSupervisorCase: jest.Mock
+  stopFeedback: WritableSignal<StopFeedback | null>
 }
 
 function createRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
@@ -92,6 +93,7 @@ function createStore(
     restore: jest.fn(),
     openSupervisorCase: jest.fn().mockReturnValue(of(null)),
     restoreSupervisorCase: jest.fn().mockReturnValue(undefined),
+    stopFeedback: signal<StopFeedback | null>(null),
   }
 }
 

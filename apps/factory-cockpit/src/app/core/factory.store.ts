@@ -42,6 +42,7 @@ import {
   RecentTask,
   RunSummary,
   SessionDetail,
+  StopFeedback,
   UNASSIGNED_NAMESPACE_ID,
   WorkstreamView,
 } from './models'
@@ -126,6 +127,8 @@ export class FactoryStore implements OnDestroy {
   readonly retryingStepId = signal<string | null>(null)
   readonly retryFeedback = signal<StepFeedback | null>(null)
   private readonly retryKeys = new Map<string, { payload: string; key: string }>()
+  /** Last Stop that was refused, not confirmed or failed, shown on the run it targets; cleared by the next Stop. */
+  readonly stopFeedback = signal<StopFeedback | null>(null)
 
   /** @deprecated Use {@link runs}. Kept as an alias for compatibility. */
   readonly sandboxes = computed(() => this.runs())
@@ -1144,9 +1147,24 @@ export class FactoryStore implements OnDestroy {
   ): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
     if (!ns) return
+    this.stopFeedback.set(null)
     this.api.cancelAttempt(workflowId, attemptId, payload, ns).subscribe({
-      next: () => this.refreshAfterAction(workflowId),
-      error: () => undefined,
+      next: (response) => {
+        // The run is sealed, but the agents are only known to be stopped once AgentOS proved the kill.
+        if (response?.killProven === false) {
+          this.stopFeedback.set({
+            workflowId,
+            kind: 'unconfirmed',
+            message: 'Stop requested but the agents are not confirmed stopped. Retry stop.',
+          })
+        }
+        this.refreshAfterAction(workflowId)
+      },
+      error: (error: FactoryApiError) => {
+        this.stopFeedback.set({ workflowId, ...stopErrorFeedback(error) })
+        // A stale revision or an already finished attempt: the allowed state moved, show the current one.
+        if (error.status === 409) this.refreshAfterAction(workflowId)
+      },
     })
   }
 
@@ -1348,6 +1366,18 @@ function generateRetryKey(): string {
   const cryptoRef = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
   if (typeof cryptoRef?.randomUUID === 'function') return cryptoRef.randomUUID()
   return `failed-step-retry-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+/** What a user is told when a Stop failed; the codes are the ones of the cancel route. */
+function stopErrorFeedback(error: FactoryApiError): Pick<StopFeedback, 'kind' | 'message'> {
+  switch (error.code) {
+    case 'STOP_NOT_AUTHORIZED':
+      return { kind: 'not_authorized', message: 'You are not allowed to stop this run.' }
+    case 'STOP_RUNTIME_UNAVAILABLE':
+      return { kind: 'error', message: 'AgentOS is unreachable; the run was not stopped.' }
+    default:
+      return { kind: 'error', message: error.message }
+  }
 }
 
 function generateResearchResumptionKey(): string {

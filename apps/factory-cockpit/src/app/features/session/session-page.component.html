@@ -82,6 +82,7 @@
       [researchResumptionFeedback]="store.researchResumptionFeedback()"
       [retryingStepId]="store.retryingStepId()"
       [retryFeedback]="store.retryFeedback()"
+      [stopFeedback]="sessionStopFeedback()"
       (reply)="onReply($event)"
       (agentQuestionAnswered)="onAgentQuestionAnswered($event)"
       (retryRequested)="onRetry($event)"
