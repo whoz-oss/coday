@@ -1,0 +1,18 @@
+<ds-copy-button [text]="text()" title="Copy message" />
+@if (editable()) {
+  <ds-icon-button
+    icon="refresh"
+    inputTrack="CaseChat-reloadMessage"
+    [title]="reloadTooltip"
+    (action)="reloadRequested.emit()"
+  />
+  <ds-icon-button icon="edit" inputTrack="CaseChat-editMessage" [title]="editTooltip" (action)="editRequested.emit()" />
+}
+@if (rewindable()) {
+  <ds-icon-button
+    icon="history"
+    inputTrack="CaseChat-rewindMessage"
+    [title]="rewindTooltip"
+    (action)="rewindRequested.emit()"
+  />
+}

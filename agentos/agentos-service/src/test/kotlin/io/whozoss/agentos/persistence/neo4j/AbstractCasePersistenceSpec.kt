@@ -72,6 +72,17 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             found.getValue(withoutEffort.id).reasoningEffort.shouldBeNull()
         }
 
+        "save and findByIds round-trips modelName, absent by default" {
+            val ns = namespaceRepo.save(namespace())
+            val withModel = repo.save(case(ns.id).copy(modelName = "BIG"))
+            val withoutModel = repo.save(case(ns.id))
+
+            val found = repo.findByIds(listOf(withModel.id, withoutModel.id)).associateBy { it.id }
+
+            found.getValue(withModel.id).modelName shouldBe "BIG"
+            found.getValue(withoutModel.id).modelName.shouldBeNull()
+        }
+
         "save and findByIds round-trips summary and summaryMessageCount, absent by default" {
             val ns = namespaceRepo.save(namespace())
             val summarized = repo.save(case(ns.id).copy(summary = "Billing migration, in progress.", summaryMessageCount = 4))

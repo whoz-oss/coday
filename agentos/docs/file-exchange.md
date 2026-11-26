@@ -273,6 +273,50 @@ This shares the `{{TOKEN}}` spelling of `{{NAMESPACE_CONFIG_PATH}}`
 filesystem YAML config is loaded, and only for those; these are resolved on every run, for configs
 of every origin.
 
+### Environment tokens
+
+The exchange tokens name directories that exist per case. A value that belongs to the *deployment* — where
+the Factory is, a default path — is a different need, served by **environment tokens**, resolved per run by
+`EnvironmentTokenRunIntegration` in the same places (any text of an integration's parameters, nested
+objects and arrays included):
+
+```yaml
+# HTTP_API pointing at the Factory of whatever instance it runs on
+baseUrl: "{{FACTORY_URL}}"
+```
+
+`{{FACTORY_URL}}` is declared by default, and takes the value of the `FACTORY_URL` environment variable.
+The Coday launcher sets it to the managed Factory (`http://127.0.0.1:<factory port>`) unless one is already
+defined or the managed Factory is disabled (`CODAY_NO_FACTORY=1`). For the namespace's shared directory,
+there is nothing to declare: `{{NAMESPACE_EXCHANGE}}` above already is it.
+
+An operator declares more under `agentos.integrations.environment-tokens`, each key `NAME` giving the token
+`{{NAME}}` the value it is bound to:
+
+```yaml
+agentos:
+  integrations:
+    environment-tokens:
+      "[FACTORY_URL]": ${FACTORY_URL:}
+      "[NAMESPACE_PATH]": ${SOME_ENV:/default/path}
+```
+
+or, without a file, with the environment variable `AGENTOS_INTEGRATIONS_ENVIRONMENT_TOKENS_<NAME>` (for
+example `AGENTOS_INTEGRATIONS_ENVIRONMENT_TOKENS_NAMESPACE_PATH=/data/ns`). In YAML the bracket notation
+is what keeps the name as written; without it Spring lower-cases the key and splits it on its underscores.
+
+- **It is an allowlist, on purpose.** Only declared tokens are resolved, never an arbitrary Spring
+  property or environment variable. Integration parameters are written by namespace admins, and by users
+  for some types: `{{ANY_PROPERTY}}` would let them copy `AGENTOS_ENCRYPTION_KEY` or a provider key into a
+  URL or a command they control. Declare values, not secrets.
+- Names are `[A-Z][A-Z0-9_]*`. Other names, and the reserved `CASE_EXCHANGE`, `NAMESPACE_EXCHANGE` and
+  `NAMESPACE_CONFIG_PATH`, are ignored with a warning at startup.
+- An undeclared `{{SOMETHING}}` is plain text and left as written.
+- **A declared token with no value removes its integration from the run**, like an unresolvable exchange
+  token: the environment variable is not set, and a literal `{{FACTORY_URL}}` would make a plugin call or
+  run somewhere nobody looks. Logged at `warn` on a real run, at `debug` otherwise; the other integrations
+  are untouched.
+
 ## Safety
 
 - **Create-only writes**: written straight to the target with an atomic create-new open. A concurrent

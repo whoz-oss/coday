@@ -14,8 +14,10 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
 import io.whozoss.agentos.sdk.api.case.CaseApi
 import io.whozoss.agentos.sdk.api.case.CaseDto
+import io.whozoss.agentos.sdk.api.case.CaseModelRequest
 import io.whozoss.agentos.sdk.api.case.CaseReasoningEffortRequest
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
+import io.whozoss.agentos.sdk.api.case.RewindCaseRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -200,6 +202,7 @@ class CaseController(
                 // Left unset when the caller gives none: the service materialises the inherited value.
                 runCostThreshold = resource.runCostThreshold,
                 reasoningEffort = resource.reasoningEffort,
+                modelName = resource.modelName?.trim()?.takeIf { it.isNotEmpty() },
                 parentCaseId = resource.parentCaseId,
             )
         val saved = caseService.create(domain, resource.worktree)
@@ -251,6 +254,7 @@ class CaseController(
                     runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                     // reasoningEffort is not changed here: an absent field must not erase the
                     // override, and null is a meaningful value. See setReasoningEffort.
+                    // modelName is not changed here for the same reason. See setModel.
                     // summary and summaryMessageCount are not changed here either: they belong to
                     // CaseSummaryService, a client cannot overwrite them.
                 )
@@ -270,6 +274,21 @@ class CaseController(
     ): CaseDto {
         val updated = caseService.setReasoningEffort(id, request.reasoningEffort)
         logger.info { "Case $id reasoning effort set to ${request.reasoningEffort}" }
+        return updated.withCallerMeta(userService.getCurrentUser().id.toString())
+    }
+
+    /**
+     * PUT /api/cases/{id}/model — set the case-level AI model override, or remove it with a null value. An unknown
+     * model name is refused with 400. Same permission as renaming the case.
+     */
+    @PutMapping("/{id}/model", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("hasPermission(#id, 'Case', 'WRITE')")
+    override fun setModel(
+        @PathVariable id: UUID,
+        @RequestBody request: CaseModelRequest,
+    ): CaseDto {
+        val updated = caseService.setModel(id, request.modelName)
+        logger.info { "Case $id model set to ${request.modelName}" }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 
@@ -346,6 +365,7 @@ class CaseController(
             content = listOf(MessageContent.Text(request.content)),
             answerToEventId = request.answerToEventId,
             sessionContext = request.sessionContext,
+            rerunOf = request.rerunOf,
         )
         logger.info { "Message added to case: $caseId" }
     }
@@ -382,6 +402,20 @@ class CaseController(
         val reopened = caseService.reopenCase(caseId)
         logger.info { "Case reopened: $caseId" }
         return reopened.withCallerMeta(userId)
+    }
+
+    /** POST /api/cases/{caseId}/rewind — rewind an idle case to one of its user messages. */
+    @PostMapping("/{caseId}/rewind", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    override fun rewindCase(
+        @PathVariable caseId: UUID,
+        @RequestBody request: RewindCaseRequest,
+    ): CaseDto {
+        logger.info { "Rewinding case: $caseId to event ${request.eventId}" }
+        val userId = userService.getCurrentUser().id.toString()
+        val rewound = caseService.rewindCase(caseId, request.eventId)
+        return rewound.withCallerMeta(userId)
     }
 
     /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */
@@ -488,6 +522,7 @@ internal fun toDto(entity: Case) =
         scheduledPromptId = entity.scheduledPromptId,
         runCostThreshold = entity.runCostThreshold,
         reasoningEffort = entity.reasoningEffort,
+        modelName = entity.modelName,
         summary = entity.summary,
         created = entity.metadata.created,
         modified = entity.metadata.modified,

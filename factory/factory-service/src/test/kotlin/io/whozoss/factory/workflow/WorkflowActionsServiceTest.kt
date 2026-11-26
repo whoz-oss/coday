@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
+import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.error.FactoryException
@@ -201,6 +202,72 @@ class WorkflowActionsServiceTest {
         assertThat(result.allowedActions.none { it.type == WorkflowActionTypes.CANCEL_ATTEMPT }).isTrue()
         assertThat(result.blockers.map { it.code })
             .contains(WorkflowBlockerCodes.ATTEMPT_FAILED, WorkflowBlockerCodes.UNKNOWN_RUNTIME)
+    }
+
+    private fun outcomeManagedInstance() = WorkflowInstanceRecord(
+        namespaceId = namespace,
+        workflowId = workflowId,
+        revision = 3,
+        status = "active",
+        creationCommandHash = null,
+        instance = mapOf("status" to "running"),
+        projection = mapOf("stepExecutions" to listOf(mapOf("executionId" to "exec-2", "stepId" to "code-review"))),
+    )
+
+    private fun pinnedAttempt(stepExecutionId: String?, status: AgentAttemptStatus = AgentAttemptStatus.FAILED) =
+        attempt("case-r", status).copy(
+            stepId = "code-review",
+            failureCode = "FACTORY_STEP_RESULT_FAILED",
+            contextEnvelope = stepExecutionId?.let {
+                AttemptContextEnvelope(
+                    organizationId = "org", workstreamId = "workstream", namespaceId = namespace,
+                    workflowId = workflowId, stepId = "code-review", attemptNumber = 1, agentName = "agent",
+                    briefHash = "brief", inputs = mapOf("stepExecutionId" to it),
+                ).toJson()
+            },
+        )
+
+    @Test
+    fun `a failed attempt pinned to an older execution of an outcome-managed run yields no blocker once the step is replayed`() {
+        stubBaseline(
+            steps = listOf(mapOf("id" to "code-review", "status" to "pending", "executionId" to "exec-2")),
+            workflowAttempts = listOf(pinnedAttempt("exec-1")),
+            instance = outcomeManagedInstance(),
+        )
+        every { proxy.getRunCost(any(), reader) } returns null
+
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
+
+        assertThat(result.blockers.none { it.code == WorkflowBlockerCodes.ATTEMPT_FAILED && it.stepId == "code-review" }).isTrue()
+        assertThat(result.allowedActions.none { it.type == WorkflowActionTypes.RETRY }).isTrue()
+    }
+
+    @Test
+    fun `a failed attempt pinned to the current execution of an outcome-managed run keeps its blocker`() {
+        stubBaseline(
+            steps = listOf(mapOf("id" to "code-review", "status" to "failed", "executionId" to "exec-2")),
+            workflowAttempts = listOf(pinnedAttempt("exec-2")),
+            instance = outcomeManagedInstance(),
+        )
+        every { proxy.getRunCost(any(), reader) } returns null
+
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
+
+        assertThat(result.blockers.any { it.code == WorkflowBlockerCodes.ATTEMPT_FAILED && it.stepId == "code-review" }).isTrue()
+    }
+
+    @Test
+    fun `a failed attempt without a frozen envelope keeps its blocker on an outcome-managed run`() {
+        stubBaseline(
+            steps = listOf(mapOf("id" to "code-review", "status" to "pending", "executionId" to "exec-2")),
+            workflowAttempts = listOf(pinnedAttempt(null)),
+            instance = outcomeManagedInstance(),
+        )
+        every { proxy.getRunCost(any(), reader) } returns null
+
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
+
+        assertThat(result.blockers.any { it.code == WorkflowBlockerCodes.ATTEMPT_FAILED && it.stepId == "code-review" }).isTrue()
     }
 
     @Test

@@ -263,22 +263,74 @@ describe('AgentTimelineComponent', () => {
   })
 
   it('highlights only the exact clicked attempt or execution', () => {
-    const component = render({ lanes: [lane()], nowSec: 10, activelyRunning: false, selected: { stepId: 'build', attemptId: 'attempt-1' } })
-    expect(component.isSelected({ label: 'first', stepId: 'build', attemptId: 'attempt-1', startSec: 0, endSec: 1, status: 'failed' })).toBe(true)
-    expect(component.isSelected({ label: 'second', stepId: 'build', attemptId: 'attempt-2', startSec: 2, endSec: 3, status: 'running' })).toBe(false)
+    const component = render({
+      lanes: [lane()],
+      nowSec: 10,
+      activelyRunning: false,
+      selected: { stepId: 'build', attemptId: 'attempt-1' },
+    })
+    expect(
+      component.isSelected({
+        label: 'first',
+        stepId: 'build',
+        attemptId: 'attempt-1',
+        startSec: 0,
+        endSec: 1,
+        status: 'failed',
+      })
+    ).toBe(true)
+    expect(
+      component.isSelected({
+        label: 'second',
+        stepId: 'build',
+        attemptId: 'attempt-2',
+        startSec: 2,
+        endSec: 3,
+        status: 'running',
+      })
+    ).toBe(false)
     fixture.componentRef.setInput('selected', { stepId: 'build', executionId: 'execution-1' })
     fixture.detectChanges()
-    expect(component.isSelected({ label: 'code one', stepId: 'build', executionId: 'execution-1', startSec: 0, endSec: 1, status: 'completed' })).toBe(true)
-    expect(component.isSelected({ label: 'code two', stepId: 'build', executionId: 'execution-2', startSec: 2, endSec: 3, status: 'running' })).toBe(false)
+    expect(
+      component.isSelected({
+        label: 'code one',
+        stepId: 'build',
+        executionId: 'execution-1',
+        startSec: 0,
+        endSec: 1,
+        status: 'completed',
+      })
+    ).toBe(true)
+    expect(
+      component.isSelected({
+        label: 'code two',
+        stepId: 'build',
+        executionId: 'execution-2',
+        startSec: 2,
+        endSec: 3,
+        status: 'running',
+      })
+    ).toBe(false)
   })
 
   it('keeps a durable pending correction execution visible without showing ordinary planned work', () => {
     const correction = lane({
-      blocks: [{ label: 'Implement · execution 2', stepId: 'implement', executionId: 'exec-2', startSec: 4, endSec: 4, status: 'pending' }],
+      blocks: [
+        {
+          label: 'Implement · execution 2',
+          stepId: 'implement',
+          executionId: 'exec-2',
+          startSec: 4,
+          endSec: 4,
+          status: 'pending',
+        },
+      ],
     })
     const component = render({ lanes: [correction], nowSec: 10, activelyRunning: false })
     expect(component.effectiveLanes()[0]?.blocks).toHaveLength(1)
-    expect(fixture.nativeElement.querySelector('button.block')?.getAttribute('aria-label')).toBe('Implement · execution 2, waiting')
+    expect(fixture.nativeElement.querySelector('button.block')?.getAttribute('aria-label')).toBe(
+      'Implement · execution 2, waiting'
+    )
   })
 
   it('keeps a planned Thor lane empty while Tony failed remains truthfully visible', () => {

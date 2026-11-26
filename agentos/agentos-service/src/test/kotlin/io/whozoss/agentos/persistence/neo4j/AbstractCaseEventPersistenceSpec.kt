@@ -203,6 +203,41 @@ abstract class AbstractCaseEventPersistenceSpec : StringSpec() {
             repo.findLastMessageTimestamps(emptyList()).values.shouldBeEmpty()
         }
 
+        "deleteFrom soft-deletes the event and every later one, and keeps the head" {
+            val ns = namespaceRepo.save(namespace())
+            val case = caseRepo.save(case(ns.id))
+            val other = caseRepo.save(case(ns.id))
+            val saved = (1..5).map { repo.save(msgEvent(case.id, "message $it")) }
+            val otherEvent = repo.save(msgEvent(other.id))
+            val ordered = repo.findByParent(case.id)
+            val target = ordered[2]
+
+            repo.deleteFrom(case.id, target.id) shouldBe 3
+
+            repo.findByParent(case.id).map { it.id } shouldBe ordered.take(2).map { it.id }
+            repo.findByIds(ordered.drop(2).map { it.id }).shouldBeEmpty()
+            repo.findByIds(ordered.drop(2).map { it.id }, withRemoved = true) shouldHaveSize 3
+            repo.findByParent(other.id).map { it.id } shouldBe listOf(otherEvent.id)
+            saved shouldHaveSize 5
+        }
+
+        "deleteFrom returns 0 and changes nothing for an unknown, removed or foreign event" {
+            val ns = namespaceRepo.save(namespace())
+            val case = caseRepo.save(case(ns.id))
+            val other = caseRepo.save(case(ns.id))
+            repo.save(msgEvent(case.id))
+            val removed = repo.save(msgEvent(case.id))
+            val foreign = repo.save(msgEvent(other.id))
+            repo.delete(removed.id).shouldBeTrue()
+
+            repo.deleteFrom(case.id, UUID.randomUUID()) shouldBe 0
+            repo.deleteFrom(case.id, removed.id) shouldBe 0
+            repo.deleteFrom(case.id, foreign.id) shouldBe 0
+
+            repo.findByParent(case.id) shouldHaveSize 1
+            repo.findByParent(other.id) shouldHaveSize 1
+        }
+
         "deleteByParent removes all events for a case" {
             val ns = namespaceRepo.save(namespace())
             val case1 = caseRepo.save(case(ns.id))

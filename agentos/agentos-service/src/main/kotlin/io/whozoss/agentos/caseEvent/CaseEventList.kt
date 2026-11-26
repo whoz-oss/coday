@@ -24,4 +24,10 @@ interface CaseEventList {
      * @return The event if found, null otherwise.
      */
     fun getById(id: UUID): CaseEvent?
+
+    /**
+     * Remove the event [eventId] and every event after it (rewind).
+     * @return The number of events removed, 0 (nothing changed) when the event is absent.
+     */
+    fun removeFrom(eventId: UUID): Int
 }

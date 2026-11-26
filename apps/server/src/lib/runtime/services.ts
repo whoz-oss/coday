@@ -7,6 +7,7 @@
 import * as path from 'path'
 import { javaBinary } from './java'
 import { agentosDataDir, agentosExchangeDir, factoryDataDir } from './paths'
+import { isManagedFactoryDisabled } from './factory-option'
 import { RuntimeSecrets } from './secrets'
 import { RuntimeProfile } from './state'
 
@@ -33,6 +34,11 @@ export interface AgentosSpecInput extends CommonInput {
   port: number
   boltPort: number
   expressPort: number
+  /**
+   * Port of the managed Factory. When set (and the managed Factory is not disabled), AgentOS learns where the
+   * Factory is through `FACTORY_URL`, which integrations reference as the `{{FACTORY_URL}}` token.
+   */
+  factoryPort?: number
   /** Bootstrap admin (unmanaged profile). */
   identityEmail?: string
   secrets?: RuntimeSecrets
@@ -59,6 +65,11 @@ export function buildAgentosSpec(input: AgentosSpecInput): ServiceSpec {
     // the application-embedded-neo4j.yml default, 7688, is never relied on). SDN must connect to the same one.
     AGENTOS_PERSISTENCE_EMBEDDED_BOLT_PORT: boltPortValue,
     SPRING_NEO4J_URI: baseEnv.SPRING_NEO4J_URI ?? `bolt://localhost:${boltPortValue}`,
+  }
+  // The Factory URL AgentOS resolves `{{FACTORY_URL}}` to (agentos.integrations.environment-tokens). An explicit
+  // value wins (external Factory, reverse proxy); none is invented when the managed Factory is left out.
+  if (!baseEnv.FACTORY_URL && input.factoryPort && !isManagedFactoryDisabled(baseEnv)) {
+    env.FACTORY_URL = `http://${LOOPBACK}:${input.factoryPort}`
   }
   const args = ['-jar', agentosJarPath(configDir, input.version), `--server.port=${port}`]
 

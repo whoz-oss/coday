@@ -60,6 +60,9 @@ interface AgentOsProxyClient {
      */
     fun getRunCost(caseId: String, externalUserId: String? = null): RunCostDto?
 
+    /** Lifetime union, not a budget window. Null means unavailable, never zero. */
+    fun getCumulativeUsage(caseIds: List<String>, externalUserId: String): CumulativeUsageDto? = null
+
     /**
      * Confirm a paused run's next cost window (`POST /api/cases/{caseId}/run-cost/continue`).
      *

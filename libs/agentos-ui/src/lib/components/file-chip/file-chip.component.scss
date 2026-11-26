@@ -1,0 +1,31 @@
+@use 'file-chip-styles' as chip;
+
+// The host takes no box of its own: the chip is the flex item of the row it is in.
+:host {
+  display: contents;
+}
+
+.file-chip {
+  @include chip.chip;
+
+  // Without the remove button at its right end, the chip is as wide on that side as on the other.
+  &--readonly {
+    padding-right: 0.625rem;
+  }
+
+  &__icon {
+    @include chip.icon;
+  }
+
+  &__name {
+    @include chip.name;
+  }
+
+  &__kind {
+    @include chip.kind;
+  }
+
+  &__badge {
+    @include chip.badge;
+  }
+}

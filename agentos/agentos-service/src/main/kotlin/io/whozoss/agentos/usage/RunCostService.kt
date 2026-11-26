@@ -40,6 +40,13 @@ class RunCostService(
 ) {
     private val sessions = mutableMapOf<UUID, Session>()
 
+    /**
+     * Bumped (under the monitor) every time an accumulator leaves the live set, i.e. every live -> persisted
+     * handoff. [cumulativeUsage] reads persisted history WITHOUT the monitor and uses this to prove that no
+     * handoff happened while it was reading.
+     */
+    private var handoffGeneration = 0L
+
     private data class Session(
         val caseId: UUID,
         val since: Instant,
@@ -89,6 +96,7 @@ class RunCostService(
                 try {
                     persist()
                 } finally {
+                    handoffGeneration++
                     val usage = accumulator.snapshot()
                     caseIds.forEach { id ->
                         sessions[id]?.let { session ->
@@ -199,6 +207,52 @@ class RunCostService(
         }
     }
 
+    /**
+     * Lifetime analytics, deliberately independent of the last-user-message budget window.
+     *
+     * No database I/O runs under the service monitor (it is shared with every cost gate of the platform):
+     * ancestry and persisted history are read outside it. An accumulator must count either live OR persisted,
+     * never both nor neither, so the read is validated optimistically: the handoff generation is sampled
+     * under the monitor before the history read and compared again under the monitor when the live
+     * snapshot is taken. A handoff in between (finish persisted an accumulator) makes the history read
+     * stale, so the whole read is retried; a bounded number of retries ends in an explicit 503, never in a
+     * double-counted or partial figure. Ancestor reduction and accumulator identity dedup prevent
+     * parent/child overlap.
+     */
+    fun cumulativeUsage(caseIds: Collection<UUID>): io.whozoss.agentos.sdk.api.usageRecord.CumulativeUsageDto {
+        requireEnabled()
+        val requested = caseIds.toSet()
+        val roots = requested.filter { id -> ancestors(id).drop(1).none { it.id in requested } }
+        repeat(CUMULATIVE_READ_ATTEMPTS) {
+            val generation = synchronized(this) { handoffGeneration }
+            val history = roots.map { records.aggregateByCaseTree(it) }
+            val dto = synchronized(this) {
+                if (handoffGeneration != generation) {
+                    null
+                } else {
+                    val live = sessions.values.filter { session -> roots.any { it in session.ancestorIds } }
+                        .flatMap { it.live }.distinct().map { it.snapshot() }
+                    io.whozoss.agentos.sdk.api.usageRecord.CumulativeUsageDto(
+                        cost = history.sumOf { it.cost } + live.sumOf { it.knownCost },
+                        // Persisted facts group priced/unpriced calls per invocation, not per request.
+                        unknownCostCount = history.sumOf { it.unknownCostCount } + live.count { it.unknownCalls > 0 },
+                        totalTokens = history.sumOf { it.totalTokens } + live.sumOf { it.usage.totalTokens },
+                        inputTokens = history.sumOf { it.inputTokens } + live.sumOf { it.usage.inputTokens },
+                        outputTokens = history.sumOf { it.outputTokens } + live.sumOf { it.usage.outputTokens },
+                        cacheReadTokens = history.sumOf { it.cacheReadTokens } + live.sumOf { it.usage.cacheReadTokens },
+                        cacheWriteTokens = history.sumOf { it.cacheWriteTokens } + live.sumOf { it.usage.cacheWriteTokens },
+                        liveTokens = live.sumOf { it.usage.totalTokens },
+                    )
+                }
+            }
+            if (dto != null) return dto
+        }
+        throw ResponseStatusException(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "Cumulative usage could not be read consistently while runs were finishing; retry",
+        )
+    }
+
     private fun requireEnabled() {
         if (!usageConfig.enabled) {
             throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Usage tracking is disabled")
@@ -280,5 +334,7 @@ class RunCostService(
         return result
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private const val CUMULATIVE_READ_ATTEMPTS = 5
+    }
 }

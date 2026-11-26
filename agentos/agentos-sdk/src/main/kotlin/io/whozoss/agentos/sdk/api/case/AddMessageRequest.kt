@@ -15,10 +15,15 @@ import java.util.UUID
  * (e.g. current page type, entity type/id). It is persisted for traceability but
  * never replayed as a conversational message — only the most recent user message
  * that carries a non-null [sessionContext] has it injected into the LLM prompt.
+ *
+ * [rerunOf] optionally re-runs a previous user message of the case: the conversation restarts from just
+ * before that message and [content] takes its place (the non-text parts of the original are kept). It is
+ * exclusive with [answerToEventId]. See [io.whozoss.agentos.sdk.caseEvent.MessageEvent.rerunOf].
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AddMessageRequest(
     val content: String,
     val answerToEventId: UUID? = null,
     val sessionContext: Map<String, Any?>? = null,
+    val rerunOf: UUID? = null,
 )

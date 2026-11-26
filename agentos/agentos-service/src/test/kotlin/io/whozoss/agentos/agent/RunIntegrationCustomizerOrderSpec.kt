@@ -10,6 +10,8 @@ import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.git.CaseResourceBindingService
 import io.whozoss.agentos.git.GitExchangeRootResolver
 import io.whozoss.agentos.git.GitToolsRunIntegration
+import io.whozoss.agentos.integrationConfig.EnvironmentTokenRunIntegration
+import io.whozoss.agentos.integrationConfig.IntegrationsProperties
 import io.whozoss.agentos.caseFlow.CaseRepository
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 
@@ -32,13 +34,15 @@ class RunIntegrationCustomizerOrderSpec :
                 .withBean(ExchangeStorageService::class.java, { mockk<ExchangeStorageService>() })
                 .withBean(ExchangeCapabilityService::class.java, { mockk<ExchangeCapabilityService>() })
                 .withBean(ExchangeRootResolver::class.java, { mockk<ExchangeRootResolver>() })
+                .withBean(IntegrationsProperties::class.java, { IntegrationsProperties() })
                 .withUserConfiguration(
                     GitExchangeRootResolver::class.java,
                     GitToolsRunIntegration::class.java,
                     ExchangePathRunIntegration::class.java,
+                    EnvironmentTokenRunIntegration::class.java,
                 )
 
-        "the Git customizer runs before the exchange one" {
+        "the Git customizer runs before the exchange one, and the environment tokens last" {
             contexts
                 .withPropertyValues("agentos.git.workspaces.enabled=true")
                 .run { context ->
@@ -48,17 +52,21 @@ class RunIntegrationCustomizerOrderSpec :
                         .orderedStream()
                         .map { it::class }
                         .toList() shouldBe
-                        listOf(GitToolsRunIntegration::class, ExchangePathRunIntegration::class)
+                        listOf(
+                            GitToolsRunIntegration::class,
+                            ExchangePathRunIntegration::class,
+                            EnvironmentTokenRunIntegration::class,
+                        )
                 }
         }
 
-        "the exchange one is the only customizer without Git workspaces" {
+        "without Git workspaces only the exchange and environment token customizers remain" {
             contexts.run { context ->
                 context
                     .getBeanProvider(RunIntegrationCustomizer::class.java)
                     .orderedStream()
                     .map { it::class }
-                    .toList() shouldBe listOf(ExchangePathRunIntegration::class)
+                    .toList() shouldBe listOf(ExchangePathRunIntegration::class, EnvironmentTokenRunIntegration::class)
             }
         }
     })

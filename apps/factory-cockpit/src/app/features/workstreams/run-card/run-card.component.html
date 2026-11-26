@@ -95,7 +95,7 @@
           <sf-step-dots [phases]="summary.phases" />
         </div>
         <div class="run-metrics" aria-label="Run metrics">
-          <sf-metric icon="paid" label="Run cost" [unknownCostCount]="summary.unknownCostCount ?? 0">{{
+          <sf-metric icon="paid" label="Run cost" [unknownCostCount]="summary.unknownCostCount">{{
             summary.costUsd | usd: 4 : summary.unknownCostCount
           }}</sf-metric>
           <sf-metric icon="timer" label="Active time">{{ summary.durationSec | duration }}</sf-metric>

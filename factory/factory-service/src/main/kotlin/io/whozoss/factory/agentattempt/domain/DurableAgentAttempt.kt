@@ -125,6 +125,8 @@ data class DurableAgentAttempt(
      * at registration and never mutated; `null` on legacy records.
      */
     val parentCaseId: String? = null,
+    /** Observed execution attribution, never reconstructed from current configuration. */
+    val resolvedModel: ResolvedModel? = null,
 ) {
     /** Whether the attempt may move from its current [status] to [next]. */
     fun canTransitionTo(next: AgentAttemptStatus): Boolean = status.canTransitionTo(next)

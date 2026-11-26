@@ -1,0 +1,23 @@
+<textarea
+  #field
+  class="message-editor__input"
+  rows="3"
+  aria-label="Edit message"
+  [value]="draft()"
+  (input)="onInput($event)"
+  (keydown)="onKeydown($event)"
+></textarea>
+@if (files().length > 0) {
+  <!-- The files of the message, as they will be sent with the text: not editable here. -->
+  <div class="message-editor__files">
+    @for (file of files(); track file.scope + ':' + file.path) {
+      <agentos-file-chip [name]="file.name" [path]="file.path" [scope]="file.scope" />
+    }
+  </div>
+}
+<div class="message-editor__actions">
+  <button dsButton type="button" (click)="cancelled.emit()">Cancel</button>
+  <button dsButton variant="primary" type="button" [disabled]="!canRerun()" (click)="submit()">
+    {{ rerunLabel() }}
+  </button>
+</div>

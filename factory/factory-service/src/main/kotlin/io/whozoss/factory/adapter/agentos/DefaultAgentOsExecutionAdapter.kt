@@ -44,6 +44,7 @@ class DefaultAgentOsExecutionAdapter(
     private val sseClientFactory: (baseUrl: String) -> AgentOsSseClient = { AgentOsSseClient(it) },
     private val checkpointStore: HighWaterMarkStore = HighWaterMarkStore(),
     private val registry: ActiveCaseRegistry = ActiveCaseRegistry(),
+    private val modelObserver: AttemptModelObserver? = null,
 ) : AgentOsExecutionAdapter {
 
     private val logger = KotlinLogging.logger {}
@@ -66,6 +67,7 @@ class DefaultAgentOsExecutionAdapter(
         val runtimeId: String? = null,
         val environmentRef: String? = null,
         val environmentRevision: Int? = null,
+        val scope: io.whozoss.factory.persistence.TenantScope? = null,
     ) {
         fun toBinding(attemptId: String): TrustedCaseBinding = TrustedCaseBinding(
             caseId = caseId,
@@ -78,7 +80,24 @@ class DefaultAgentOsExecutionAdapter(
             environmentRef = environmentRef,
             environmentRevision = environmentRevision,
             externalUserId = externalUserId,
+            scope = scope,
         )
+    }
+
+    /** Tenant of a turn: its own, else the one recorded when the attempt's case was bound. */
+    private fun scopeOf(turn: TurnToken): io.whozoss.factory.persistence.TenantScope? =
+        turn.scope ?: executions[turn.attemptId]?.scope
+
+    private fun namespaceOf(turn: TurnToken): String? = executions[turn.attemptId]?.namespaceId
+
+    private fun observeModel(turn: TurnToken, events: List<CaseEventView>) {
+        val scope = scopeOf(turn) ?: return
+        modelObserver?.observe(scope, namespaceOf(turn), turn.caseId, turn.attemptId, events)
+    }
+
+    private fun modelBaseline(turn: TurnToken): HighWaterMark? {
+        val scope = scopeOf(turn) ?: return null
+        return modelObserver?.baseline(scope, namespaceOf(turn), turn.caseId, turn.attemptId)
     }
 
     // ---- AgentRuntimeAdapter contract (binding/token based) ----
@@ -128,6 +147,7 @@ class DefaultAgentOsExecutionAdapter(
             runtimeId = binding.runtimeId,
             environmentRef = binding.environmentRef,
             environmentRevision = binding.environmentRevision,
+            scope = binding.scope,
         )
         val raced = executions.putIfAbsent(binding.attemptId, record)
         val effective = raced ?: record
@@ -176,6 +196,7 @@ class DefaultAgentOsExecutionAdapter(
             runtimeId = binding.runtimeId,
             environmentRef = binding.environmentRef,
             environmentRevision = binding.environmentRevision,
+            scope = binding.scope,
         )
         executions[binding.attemptId] = record
         registry.register(record.toBinding(binding.attemptId))
@@ -209,6 +230,10 @@ class DefaultAgentOsExecutionAdapter(
             throw AgentOsCaseBusyException(caseId, lastStatus)
         }
         val baseline = EventCheckpoint.baselineOf(durable)
+        // Tenant-scoped and durable BEFORE dispatch: without a scope (legacy entry point) no attribution is kept.
+        binding.scope?.let { scope ->
+            modelObserver?.captureBaseline(scope, binding.namespaceId, caseId, binding.attemptId, baseline)
+        }
         checkpointStore.setBaseline(caseId, binding.attemptId, baseline)
         registry.markBaseline(caseId, baseline)
         val spec = client.post()
@@ -218,7 +243,7 @@ class DefaultAgentOsExecutionAdapter(
         if (!binding.externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", binding.externalUserId)
         spec.retrieve().toBodilessEntity()
         registry.markState(caseId, ActiveCaseState.RUNNING)
-        return TurnToken(caseId, binding.attemptId, baseline)
+        return TurnToken(caseId, binding.attemptId, baseline, binding.scope)
     }
 
     override fun observeTurn(
@@ -229,7 +254,8 @@ class DefaultAgentOsExecutionAdapter(
     ): AgentOsExecutionVerdict {
         val caseId = turn.caseId
         val record = executions[turn.attemptId] ?: executions.values.firstOrNull { it.caseId == caseId }
-        val baseline = checkpointStore.baseline(caseId, turn.attemptId) ?: turn.baseline
+        val baseline = checkpointStore.baseline(caseId, turn.attemptId)
+            ?: modelBaseline(turn) ?: turn.baseline
         val checkpoint = checkpointStore.checkpointWithBaseline(caseId, turn.attemptId, baseline)
         val verdict = sseClientFactory(baseUrl).observe(
             caseId = caseId,
@@ -238,6 +264,7 @@ class DefaultAgentOsExecutionAdapter(
             checkpoint = checkpoint,
             context = contextFor(caseId),
             reconcile = { reconcileSnapshot(caseId, record?.externalUserId, baseline.takeIf { it.isPositioned() }) },
+            onEvent = { event -> observeModel(turn, listOf(event)) },
             onIntermediateVerdict = onIntermediateVerdict,
             onAnswerObserved = onAnswerObserved,
         )
@@ -255,6 +282,7 @@ class DefaultAgentOsExecutionAdapter(
         val caseId = turn.caseId
         val record = executions[turn.attemptId] ?: executions.values.firstOrNull { it.caseId == caseId }
         val baseline = checkpointStore.baseline(caseId, turn.attemptId)
+            ?: modelBaseline(turn)
             ?: turn.baseline.takeIf { it.isPositioned() }
             ?: checkpointStore.latestBaseline(caseId)
         val result = try {
@@ -269,6 +297,7 @@ class DefaultAgentOsExecutionAdapter(
                 mapOf("caseId" to caseId, "cause" to (e.message ?: e.javaClass.simpleName)),
             )
         }
+        observeModel(turn, result.events)
         return result.verdict ?: AgentOsExecutionVerdict.Indeterminate(
             VerdictDeriver.NOT_QUIESCENT,
             mapOf(
@@ -287,8 +316,10 @@ class DefaultAgentOsExecutionAdapter(
         onAnswerObserved: (CaseEventView) -> Unit,
     ): AgentOsObservationResult {
         val verdict = observeTurn(turn, timeoutMs, onIntermediateVerdict, onAnswerObserved)
-        val baseline = checkpointStore.baseline(turn.caseId, turn.attemptId) ?: turn.baseline
+        val baseline = checkpointStore.baseline(turn.caseId, turn.attemptId)
+            ?: modelBaseline(turn) ?: turn.baseline
         val events = persistedEvents(turn.caseId)
+        observeModel(turn, events)
         val derived = VerdictDeriver.deriveWithProof(events, contextFor(turn.caseId), turn.attemptId, baseline)
         return AgentOsObservationResult(verdict, derived.runtimeProof)
     }
@@ -296,9 +327,11 @@ class DefaultAgentOsExecutionAdapter(
     override fun reconcileResult(turn: TurnToken): AgentOsObservationResult {
         val verdict = reconcile(turn)
         val baseline = checkpointStore.baseline(turn.caseId, turn.attemptId)
+            ?: modelBaseline(turn)
             ?: turn.baseline.takeIf { it.isPositioned() }
             ?: checkpointStore.latestBaseline(turn.caseId)
         val events = runCatching { persistedEvents(turn.caseId) }.getOrDefault(emptyList())
+        observeModel(turn, events)
         val derived = VerdictDeriver.deriveWithProof(events, contextFor(turn.caseId), turn.attemptId, baseline)
         return AgentOsObservationResult(verdict, derived.runtimeProof)
     }

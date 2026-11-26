@@ -14,11 +14,16 @@ data class TurnToken(
     val attemptId: String,
     /** Baseline captured before the turn started; fences out every older event. */
     val baseline: HighWaterMark,
+    /** Tenant of the attempt; scopes execution-bound metadata lookups. `null` when unknown. */
+    val scope: io.whozoss.factory.persistence.TenantScope? = null,
 ) {
     companion object {
         /** A token with no baseline information — observation falls back to a full replay. */
-        fun unbaselined(caseId: String, attemptId: String): TurnToken =
-            TurnToken(caseId, attemptId, HighWaterMark(null, null))
+        fun unbaselined(
+            caseId: String,
+            attemptId: String,
+            scope: io.whozoss.factory.persistence.TenantScope? = null,
+        ): TurnToken = TurnToken(caseId, attemptId, HighWaterMark(null, null), scope)
     }
 }
 

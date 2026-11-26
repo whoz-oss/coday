@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.chat.AiProviderErrorProperties
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
@@ -16,9 +17,26 @@ import org.springframework.ai.retry.TransientAiException
 import java.util.UUID
 
 /**
+ * Formats the message of a provider [ErrorEvent]: [headline], the exception message ([detail]: status line, endpoint,
+ * and the provider response body when it was exposed) and the compact request summary. The single point of
+ * formatting of these events.
+ */
+private fun providerErrorMessage(
+    headline: String,
+    detail: String?,
+    summary: ProviderRequestSummary,
+): String = "$headline: $detail — request: ${summary.render()}"
+
+/**
  * Emits an [ErrorEvent] and [AgentFinishedEvent] when the LLM provider rejects a request
  * with a non-transient error (4xx). Retrying with the same payload would produce the
  * same result, so the run is terminated immediately rather than looping.
+ *
+ * The event message is the exception message followed by the [requestSummary] (by default the agent's provider and
+ * model only). The provider response body is part of it only when the exception already carries it: built by
+ * [handleGenericAgentException] on the streaming path according to its `exposeResponseBody` flag, or by Spring AI
+ * itself on the blocking path, which AgentOS cannot switch off (see [io.whozoss.agentos.chat.AiProviderErrorProperties]).
+ * Nothing is appended here, so the body is never shown twice.
  */
 suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
     agent: Agent,
@@ -26,13 +44,19 @@ suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
     namespaceId: UUID,
     caseId: UUID,
     logger: KLogger,
+    requestSummary: ProviderRequestSummary = ProviderRequestSummary(agent.llmProvider, agent.llmModel),
 ) {
     logger.error(e) { "LLM provider rejected request for case $caseId" }
     emit(
         ErrorEvent(
             namespaceId = namespaceId,
             caseId = caseId,
-            message = "The AI provider rejected the request and the agent cannot continue: ${e.message}",
+            message =
+                providerErrorMessage(
+                    "The AI provider rejected the request and the agent cannot continue",
+                    e.message,
+                    requestSummary,
+                ),
         ),
     )
     emit(
@@ -72,8 +96,11 @@ suspend fun FlowCollector<CaseEvent>.emitMaxIterationsWarning(
  *
  * If [e] or any cause in its chain is a [WebClientResponseException], it is translated
  * to the appropriate Spring AI exception ([NonTransientAiException] for 4xx,
- * [TransientAiException] for 5xx). Provider response bodies are intentionally excluded
- * from propagated messages and events; they are available only in diagnostic DEBUG logs.
+ * [TransientAiException] for 5xx). When [exposeResponseBody] is true
+ * (`agentos.ai-provider-errors.expose-response-body`), the provider response body is part of the
+ * propagated message and event, trimmed, bounded and with secrets masked; when false it is available
+ * only in diagnostic DEBUG logs. The event always ends with the [requestSummary] (by default the
+ * agent's provider and model only), never with the raw request.
  *
  * If [e] is not a provider HTTP error, the function falls back to the original generic
  * behaviour: log at ERROR level and emit a [WarnEvent].
@@ -89,6 +116,8 @@ suspend fun FlowCollector<CaseEvent>.handleGenericAgentException(
     namespaceId: UUID,
     caseId: UUID,
     logger: KLogger,
+    requestSummary: ProviderRequestSummary = ProviderRequestSummary(agent.llmProvider, agent.llmModel),
+    exposeResponseBody: Boolean = AiProviderErrorProperties().exposeResponseBody,
 ) {
     if (generateSequence<Throwable>(e) { it.cause }.any { it is io.whozoss.agentos.usage.CostRunStopped }) {
         emit(
@@ -103,8 +132,9 @@ suspend fun FlowCollector<CaseEvent>.handleGenericAgentException(
         )
         return
     }
-    when (val providerException = e.unwrapToProviderAiException()) {
-        is NonTransientAiException -> emitProviderErrorAndFinishEvents(agent, providerException, namespaceId, caseId, logger)
+    when (val providerException = e.unwrapToProviderAiException(exposeResponseBody)) {
+        is NonTransientAiException ->
+            emitProviderErrorAndFinishEvents(agent, providerException, namespaceId, caseId, logger, requestSummary)
         is TransientAiException -> {
             // 5xx — provider-side failure, potentially transient.
             // Emit ErrorEvent (same lifecycle termination) but log at WARN since a retry may succeed.
@@ -113,7 +143,12 @@ suspend fun FlowCollector<CaseEvent>.handleGenericAgentException(
                 ErrorEvent(
                     namespaceId = namespaceId,
                     caseId = caseId,
-                    message = "The AI provider returned a transient error and the agent cannot continue: ${providerException.message}",
+                    message =
+                        providerErrorMessage(
+                            "The AI provider returned a transient error and the agent cannot continue",
+                            providerException.message,
+                            requestSummary,
+                        ),
                 ),
             )
             emit(

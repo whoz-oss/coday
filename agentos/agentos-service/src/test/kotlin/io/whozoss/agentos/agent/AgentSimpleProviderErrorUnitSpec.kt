@@ -16,9 +16,11 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.StandardTool
 import kotlinx.coroutines.flow.toList
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.tool.ToolCallback
 import org.springframework.http.HttpStatus
 import org.springframework.web.reactive.function.client.WebClientResponseException
 import reactor.core.Exceptions
@@ -27,8 +29,9 @@ import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 /**
- * Tests that verify streaming provider errors emit useful diagnostics without exposing
- * the provider response body, which may contain sensitive data.
+ * Tests that verify streaming provider errors emit useful diagnostics: the status line, the request summary
+ * (provider, model, message and tool counts, never the content) and, depending on
+ * `agentos.ai-provider-errors.expose-response-body`, the masked provider response body.
  */
 class AgentSimpleProviderErrorUnitSpec : StringSpec({
     timeout = 5000
@@ -36,15 +39,35 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
     fun makeAgent(
         agentId: UUID,
         chatClient: ChatClient,
+        exposeBody: Boolean = false,
+        tools: Collection<StandardTool<*>> = emptyList(),
     ): AgentSimple =
         AgentSimple(
             metadata = EntityMetadata(id = agentId),
             name = "TestAgent",
             chatClient = chatClient,
-            tools = emptyList(),
+            tools = tools,
             llmProvider = "openai",
             llmModel = "gpt-4o",
+            exposeProviderResponseBody = exposeBody,
         )
+
+    fun namedTool(toolName: String): StandardTool<*> {
+        val tool = mockk<StandardTool<*>>(relaxed = true)
+        every { tool.name } returns toolName
+        every { tool.description } returns "desc of $toolName"
+        every { tool.inputSchema } returns """{"type":"object"}"""
+        return tool
+    }
+
+    fun failingChatClient(error: Throwable): ChatClient {
+        val mockChatClient = mockk<ChatClient>(relaxed = true)
+        val mockStreamSpec = mockk<ChatClient.StreamResponseSpec>(relaxed = true)
+        every { mockChatClient.prompt(any<Prompt>()).stream() } returns mockStreamSpec
+        every { mockChatClient.prompt(any<Prompt>()).toolCallbacks(any<List<ToolCallback>>()).stream() } returns mockStreamSpec
+        every { mockStreamSpec.chatResponse() } returns Flux.error(error)
+        return mockChatClient
+    }
 
     fun userMessage(
         namespaceId: UUID,
@@ -167,6 +190,74 @@ class AgentSimpleProviderErrorUnitSpec : StringSpec({
         errorEvent.message shouldNotContain "service unavailable"
         events.filterIsInstance<WarnEvent>().size shouldBe 0
         events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
+    }
+
+    // -----------------------------------------------------------------------
+    // exposeProviderResponseBody = true, request summary
+    // -----------------------------------------------------------------------
+
+    "streaming 400 with the body exposed puts the masked response body and the request summary in the ErrorEvent" {
+        val namespaceId = UUID.randomUUID()
+        val caseId = UUID.randomUUID()
+        val body = """{"error":{"message":"tools.9.custom.name: invalid"},"api_key":"hunter2"}"""
+        val chatClient = failingChatClient(Exceptions.propagate(webClientException(HttpStatus.BAD_REQUEST, body)))
+
+        val events =
+            makeAgent(UUID.randomUUID(), chatClient, exposeBody = true, tools = listOf(namedTool("jira__search"), namedTool("bad name")))
+                .run(listOf(userMessage(namespaceId, caseId)))
+                .toList()
+
+        val errorEvent = events.filterIsInstance<ErrorEvent>().single()
+        errorEvent.message shouldContain "400 BAD_REQUEST"
+        errorEvent.message shouldContain "provider response:"
+        errorEvent.message shouldContain "tools.9.custom.name: invalid"
+        errorEvent.message shouldNotContain "hunter2"
+        errorEvent.message shouldContain "request: provider=openai, model=gpt-4o, messages=1, tools=2 (jira__search, bad name)"
+        events.filterIsInstance<WarnEvent>().size shouldBe 0
+        events.filterIsInstance<AgentFinishedEvent>().size shouldBe 1
+    }
+
+    "streaming 503 with the body exposed puts the response body and the request summary in the transient ErrorEvent" {
+        val chatClient = failingChatClient(webClientException(HttpStatus.SERVICE_UNAVAILABLE, "upstream overloaded"))
+
+        val events =
+            makeAgent(UUID.randomUUID(), chatClient, exposeBody = true)
+                .run(listOf(userMessage(UUID.randomUUID(), UUID.randomUUID())))
+                .toList()
+
+        val errorEvent = events.filterIsInstance<ErrorEvent>().single()
+        errorEvent.message shouldContain "transient error"
+        errorEvent.message shouldContain "provider response: upstream overloaded"
+        errorEvent.message shouldContain "request: provider=openai, model=gpt-4o, messages=1, tools=0"
+    }
+
+    "streaming 400 with the body hidden still carries the request summary and never the conversation" {
+        val chatClient = failingChatClient(webClientException(HttpStatus.BAD_REQUEST, "private body"))
+
+        val events =
+            makeAgent(UUID.randomUUID(), chatClient, exposeBody = false)
+                .run(listOf(userMessage(UUID.randomUUID(), UUID.randomUUID())))
+                .toList()
+
+        val errorEvent = events.filterIsInstance<ErrorEvent>().single()
+        errorEvent.message shouldNotContain "private body"
+        errorEvent.message shouldNotContain "provider response"
+        errorEvent.message shouldContain "request: provider=openai, model=gpt-4o, messages=1, tools=0"
+        errorEvent.message shouldNotContain "hello"
+    }
+
+    "a blocking-path NonTransientAiException already carrying the body is not given the body twice" {
+        val ex = org.springframework.ai.retry.NonTransientAiException("HTTP 400 - {\"error\":\"spring body\"}")
+        val chatClient = failingChatClient(ex)
+
+        val events =
+            makeAgent(UUID.randomUUID(), chatClient, exposeBody = true)
+                .run(listOf(userMessage(UUID.randomUUID(), UUID.randomUUID())))
+                .toList()
+
+        val message = events.filterIsInstance<ErrorEvent>().single().message
+        message.split("spring body").size - 1 shouldBe 1
+        message shouldContain "request: provider=openai, model=gpt-4o"
     }
 
     // -----------------------------------------------------------------------
