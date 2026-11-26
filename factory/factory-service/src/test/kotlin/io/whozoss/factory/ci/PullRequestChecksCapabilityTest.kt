@@ -193,6 +193,29 @@ class PullRequestChecksCapabilityTest {
     }
 
     @Test
+    fun `a log cut in the middle of a secret keeps neither the partial secret nor more than the excerpt size`() {
+        git()
+        val excerptBytes = 16_384
+        val secretLine = "GITHUB_TOKEN=ghp_" + "a".repeat(36) + "\n"
+        // Only the last 20 bytes of the secret line fit in the excerpt: the cut lands INSIDE the token.
+        val kept = 20
+        val tailFiller = "y\n".repeat((excerptBytes - kept) / 2)
+        val log = "x\n".repeat(2_621_440) + secretLine + tailFiller
+        assertThat(log.length).isGreaterThan(5 * 1024 * 1024)
+        routes["/repos/acme/widgets/actions/jobs/2/logs"] = { reply(it, 200, log) }
+        serve(runs = listOf(run(2, "validate-jvm", "completed", "failure")))
+
+        val outcome = check() as CapabilityOutcome.CiChecksCompleted
+
+        val failed = outcome.failedChecks.single()
+        val excerpt = failed["logExcerpt"] as String
+        assertThat(failed["logTruncated"]).isEqualTo(true)
+        assertThat(excerpt.toByteArray().size).isLessThanOrEqualTo(excerptBytes)
+        assertThat(excerpt).startsWith("y\n")
+        assertThat(excerpt).doesNotContain("aaaaaaaa", "GITHUB_TOKEN", "ghp_")
+    }
+
+    @Test
     fun `a failed commit status is a failure`() {
         git(); serve(runs = listOf(run(1, "a", "completed", "success")), statuses = """[{"context":"legacy","state":"failure","target_url":"https://legacy","description":"broke"}]""")
         val outcome = check() as CapabilityOutcome.CiChecksCompleted

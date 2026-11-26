@@ -20,6 +20,7 @@ import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.workflow.service.ExternalWaitSweeper
 import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
@@ -260,6 +261,142 @@ class ExternalPollingSessionTest : Neo4jDomainIntegrationTest() {
         every { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns pending(retryAfter = 5)
         f.service.runSession(scope, namespace, id, repoRoot)
         assertThat(pollOf(id, "ci")["intervalSeconds"]).isEqualTo(30)
+    }
+
+    private fun agentStep(id: String, dependsOn: List<String>) = linkedMapOf<String, Any?>(
+        "id" to id, "name" to "Step $id", "responsibility" to mapOf("kind" to "agent", "name" to "Dev"), "dependsOn" to dependsOn,
+    )
+
+    /** A workflow of two agent steps: `wait` (polls an external condition) then `after`. */
+    private fun startAgents(workflowId: String) {
+        val raw = linkedMapOf<String, Any?>(
+            "schemaVersion" to "1", "workflowType" to workflowId, "version" to "1.0.0", "title" to workflowId,
+            "steps" to listOf(agentStep("wait", emptyList()), agentStep("after", listOf("wait"))),
+        )
+        val valid = WorkflowDefinitionValidator.validate(raw) as WorkflowDefinitionValidation.Valid
+        workflowService.registerDefinition(
+            scope,
+            WorkflowDefinitionRecord(workflowId, "1.0.0", hashWorkflowDefinition(valid.definition), valid.definition),
+        )
+        val result = workflowService.start(
+            scope, namespace, WorkflowStartCommand(workflowId, workflowId, workflowId),
+            ControllerExecutionInput(runtimeId = "test", kind = "agentos", agentId = "runner", namespaceId = namespace),
+        )
+        assertThat(result.status).isEqualTo(201)
+    }
+
+    private fun agentInProgress(attemptId: String, retryAfter: Int? = null) = CapabilityExecution(
+        CapabilityOutcome.AgentInProgress("wait", "Dev", attemptId, "result-$attemptId", "deployment at 60%", retryAfter),
+        attemptId = attemptId,
+    )
+
+    private fun agentCompleted(stepId: String, attemptId: String) = CapabilityExecution(
+        CapabilityOutcome.AgentCompleted(stepId, "Dev", "PASS", emptyMap()),
+        attemptId = attemptId,
+    )
+
+    @Test
+    fun `an agent IN_PROGRESS parks the step, each poll counts, and a PASS of attempt N+1 releases the dependants`() {
+        val id = "poll-agent"
+        startAgents(id)
+        val f = fixture()
+        var waitCalls = 0
+        every { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } answers {
+            val step = arg<io.whozoss.factory.workflow.domain.WorkflowStepDefinition>(3)
+            when {
+                step.id == "after" -> agentCompleted("after", "attempt-after")
+                ++waitCalls == 1 -> agentInProgress("attempt-1")
+                waitCalls == 2 -> agentInProgress("attempt-2", retryAfter = 45)
+                else -> agentCompleted("wait", "attempt-3")
+            }
+        }
+        val wakes = mutableListOf<Instant>()
+        every { f.drain.scheduleWakeInCurrentTransaction(any(), any(), any(), any(), any(), capture(wakes)) } returns Unit
+
+        // Poll 1: the accepted IN_PROGRESS of attempt 1 parks the step. Nothing failed, the dependant waits.
+        val first = f.service.runSession(scope, namespace, id, repoRoot)
+        assertThat(first.status).isEqualTo(WorkflowStatuses.WAITING_EXTERNAL)
+        assertThat(statusOf(id, "wait")).isEqualTo(WorkflowStatuses.WAITING_EXTERNAL)
+        assertThat(statusOf(id, "after")).isEqualTo(WorkflowStatuses.PENDING)
+        val firstPoll = pollOf(id, "wait")
+        assertThat(firstPoll["source"]).isEqualTo("agent")
+        assertThat(firstPoll["attemptId"]).isEqualTo("attempt-1")
+        assertThat(firstPoll["pollCount"]).isEqualTo(1)
+        assertThat(firstPoll["intervalSeconds"]).isEqualTo(60)
+        assertThat(wakes.last()).isEqualTo(f.clock.now.plusSeconds(60))
+
+        // Poll 2, once due: attempt 2 is IN_PROGRESS again, with its own requested delay.
+        f.clock.now = f.clock.now.plusSeconds(61)
+        f.service.runSession(scope, namespace, id, repoRoot)
+        val secondPoll = pollOf(id, "wait")
+        assertThat(secondPoll["pollCount"]).isEqualTo(2)
+        assertThat(secondPoll["attemptId"]).isEqualTo("attempt-2")
+        assertThat(secondPoll["intervalSeconds"]).isEqualTo(45)
+        assertThat(secondPoll["source"]).isEqualTo("agent")
+        assertThat(secondPoll["firstPollStartedAt"]).isEqualTo(firstPoll["firstPollStartedAt"])
+        assertThat(secondPoll["deadlineAt"]).isEqualTo(firstPoll["deadlineAt"])
+        assertThat(statusOf(id, "wait")).isEqualTo(WorkflowStatuses.WAITING_EXTERNAL)
+
+        // Poll 3: attempt 3 passes. The step completes, its poll is gone and the dependant runs.
+        f.clock.now = f.clock.now.plusSeconds(61)
+        val last = f.service.runSession(scope, namespace, id, repoRoot)
+        assertThat(last.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(id, "wait")).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(id, "after")).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(workflowRepository.findStepStates(scope, namespace, id).first { it.stepId == "wait" }.payload)
+            .doesNotContainKey("poll")
+        assertThat(waitCalls).isEqualTo(3)
+        // An agent poll never records a failure nor a correction cycle.
+        assertThat(evidenceRepository.list(scope, namespace, id).filter { it.outcome == WorkflowStatuses.FAILED }).isEmpty()
+        assertThat(workflowRepository.findInstance(scope, namespace, id)!!.projection).doesNotContainKeys("correctionCounts", "correction")
+    }
+
+    @Test
+    fun `an agent that keeps answering IN_PROGRESS for thirty minutes fails with POLL_TIMEOUT_EXCEEDED`() {
+        val id = "poll-agent-timeout"
+        startAgents(id)
+        val f = fixture()
+        every { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns agentInProgress("attempt-1")
+        f.service.runSession(scope, namespace, id, repoRoot)
+
+        f.clock.now = Instant.parse(pollOf(id, "wait")["deadlineAt"] as String).plusSeconds(1)
+        val result = f.service.runSession(scope, namespace, id, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(id, "wait")).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(id, "after")).isEqualTo(WorkflowStatuses.BLOCKED)
+        val failure = evidenceRepository.list(scope, namespace, id, "wait").last { it.outcome == WorkflowStatuses.FAILED }
+        assertThat(failure.facts["code"]).isEqualTo("POLL_TIMEOUT_EXCEEDED")
+        verify(exactly = 1) { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `a parked step whose wake was lost is re-armed by the sweeper and the next run ends it by its deadline`() {
+        val id = "poll-lost-wake"
+        start(id)
+        val f = fixture()
+        every { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } returns pending()
+        f.service.runSession(scope, namespace, id, repoRoot)
+        val deadline = Instant.parse(pollOf(id, "ci")["deadlineAt"] as String)
+
+        // The process was down and the continuation row is gone: nothing will ever wake the parked step.
+        f.clock.now = deadline.plusSeconds(300)
+        every { f.drain.continuationSnapshot(any(), any(), any()) } returns null
+        val sweeper = ExternalWaitSweeper(workflowRepository, f.drain, ExternalPollingProperties(), f.clock)
+
+        assertThat(sweeper.sweep()).isEqualTo(1)
+        verify(exactly = 1) { f.drain.rearmExternalWait(scope, namespace, id, f.clock.now) }
+
+        // The re-armed wake runs the session: the window is over, so the step fails explicitly and blocks its dependants.
+        val result = f.service.runSession(scope, namespace, id, repoRoot)
+        assertThat(result.status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(id, "ci")).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(id, "after")).isEqualTo(WorkflowStatuses.BLOCKED)
+        val failure = evidenceRepository.list(scope, namespace, id, "ci").last { it.outcome == WorkflowStatuses.FAILED }
+        assertThat(failure.facts["code"]).isEqualTo("POLL_TIMEOUT_EXCEEDED")
+        verify(exactly = 1) { f.capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) }
+        // Once failed the step is no longer parked: a second sweep has nothing left to re-arm.
+        assertThat(sweeper.sweep()).isZero()
     }
 
     @Test
