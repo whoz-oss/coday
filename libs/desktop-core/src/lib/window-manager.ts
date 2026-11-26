@@ -100,6 +100,22 @@ export function createMainWindow(
     }
   })
 
+  // The page asks before dropping an unsent prompt (beforeunload). Electron shows nothing by itself and would
+  // silently block a quit or a reload, so ask here.
+  win.webContents.on('will-prevent-unload', (event) => {
+    const { dialog } = require('electron') as typeof import('electron')
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'question',
+      buttons: ['Leave', 'Stay'],
+      defaultId: 1,
+      cancelId: 1,
+      message: 'Leave this page?',
+      detail: 'A prompt you typed has not been sent. It will be lost.',
+    })
+    // preventDefault here means: ignore the beforeunload veto and unload anyway.
+    if (choice === 0) event.preventDefault()
+  })
+
   // Call app-specific hook (e.g. CSS injection)
   if (onWindowCreated) {
     onWindowCreated(win)

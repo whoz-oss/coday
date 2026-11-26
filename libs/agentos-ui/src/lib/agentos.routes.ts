@@ -1,5 +1,6 @@
 import { Route } from '@angular/router'
 import { agentosReadyGuard } from './guards/agentos-ready.guard'
+import { unsentDraftGuard } from './guards/unsent-draft.guard'
 
 export const AGENTOS_ROUTES: Route[] = [
   {
@@ -18,6 +19,9 @@ export const AGENTOS_ROUTES: Route[] = [
       {
         path: 'home',
         canActivate: [agentosReadyGuard],
+        // Case, new case and namespace changes are query param navigations on this route: guard them too (#1788).
+        canDeactivate: [unsentDraftGuard],
+        runGuardsAndResolvers: 'paramsOrQueryParamsChange',
         loadComponent: () => import('./components/case-shell/case-shell.component').then((m) => m.CaseShellComponent),
       },
       {
