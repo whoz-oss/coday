@@ -5,7 +5,7 @@ initiative its own branch family and its own artifact build, so that related iss
 integrate and get reviewed together — without blocking or polluting `master`.
 
 Coday's workstreams produce **artifacts, not deployments**. There is no environment to
-deploy to; the integration build publishes a coherent prerelease artifact set (npm packages
+deploy to; the workstream build publishes a coherent prerelease artifact set (npm packages
 + AgentOS JARs) that an external system downloads exactly as it downloads release artifacts
 today.
 
@@ -17,14 +17,14 @@ today.
 |---|---|---|
 | Workstream | `workstream/<slug>/<base>` | `workstream/talent-portal/master` |
 | Work | `work/<slug>/issue-XXXX-description` | `work/talent-portal/issue-0585-sync` |
-| Integration | `integration/<slug>` | `integration/talent-portal` |
 
-The `<slug>` is the workstream identifier and is shared by all three branch types.
+The `<slug>` is the workstream identifier and is shared by both branch types.
 
 > **The slug is semver-constrained.** It is embedded in a prerelease version identifier, so
 > it MUST match `^[a-z0-9]+(-[a-z0-9]+)*$` — lowercase alphanumerics and single hyphens only.
 > No underscores, no slashes, no dots. This is validated in CI; an invalid slug fails the
-> promote job with an explicit message rather than surfacing later as an obscure npm error.
+> workstream build ("Derive slug" step) with an explicit message rather than surfacing later as
+> an obscure npm error.
 
 ### `workstream/<slug>/<base>`
 
@@ -32,8 +32,8 @@ The shared integration point and the **PR target** for all work branches in the 
 
 - Tracks its base branch (normally `master`) via the **Workstream Sync** workflow.
 - Never receives direct commits — only base syncs and merged work PRs.
-- Does **not** trigger an artifact build directly (see *Why the build triggers on
-  `integration/**` only*, below).
+- **Every push to it triggers Workstream Build**, publishing a full prerelease artifact set
+  (a merged work PR, or a base sync from `master`).
 
 ### `work/<slug>/issue-XXXX-description`
 
@@ -43,25 +43,14 @@ One developer's (or agent's) branch for one issue, within the initiative.
 - PR target is `workstream/<slug>/<base>`.
 - Retains Coday's standard issue-number naming convention, prefixed with `work/<slug>/`.
   No base suffix — the workstream parent determines the base.
-- On a passing PR validation, it is automatically promoted into `integration/<slug>`,
-  which builds artifacts the reviewer can exercise **before** approving the merge.
+- On a passing PR validation, the PR is **automatically merged** into the workstream branch
+  (`automerge-to-target` in `validate.yml`). The resulting push builds the artifacts.
 
 > **Work branches are not auto-synced.** Unlike the upstream design this was adapted from,
 > Coday does not push workstream updates into active work branches automatically. Coday's
 > worktree workflow means agents are frequently mid-task in a worktree with a dirty tree;
 > a bot push there is disruptive rather than helpful. Syncing is a manual
 > `workflow_dispatch` instead.
-
-### `integration/<slug>`
-
-The mutable staging branch whose sole purpose is to produce reviewable artifacts.
-
-- Receives automatic merges from work branches after each successful PR validation.
-- Every push triggers **Workstream Build**, publishing a full prerelease artifact set.
-- **Reset after each merge**: when a PR merges into `workstream/<slug>/<base>`, the branch
-  is force-reset to the workstream head. This discards in-flight work that had been
-  promoted but not yet merged (see *Known trade-off*, below).
-- Its history is disposable. Never branch from it, never open a PR from it.
 
 ---
 
@@ -70,16 +59,15 @@ The mutable staging branch whose sole purpose is to produce reviewable artifacts
 | Workflow | Trigger | Responsibility |
 |---|---|---|
 | `workstream-sync.yml` | push to `master` | Merge `master` into every `workstream/*/master` |
-| `validate.yml` *(extended)* | PR into `master`, `hotfix/*`, `workstream/**` | Existing validation + `promote-to-integration` |
-| `workstream-build.yml` | push to `integration/**` | Version, build, publish prerelease artifacts |
-| `integration-reset.yml` | PR **merged** into `workstream/**` | Force-reset `integration/<slug>` to workstream head |
+| `validate.yml` *(extended)* | PR into `master`, `hotfix/*`, `workstream/**` | Existing validation + `automerge-to-target` |
+| `workstream-build.yml` | push to `workstream/**` | Version, build, publish prerelease artifacts |
 
-### Why the build triggers on `integration/**` only
+### Build trigger
 
-The reset force-push *is itself* a push to `integration/**`. It therefore triggers a build
-of the post-merge workstream state automatically. A separate build trigger on
-`workstream/**` would be redundant and would double-publish the same tree under two
-versions.
+The build triggers on every push to `workstream/**`: an automerged work PR, a base sync from
+`master`, or any other push. Artifacts are therefore published **after** a work PR is merged,
+not before: the merge is gated by PR validation (and branch protection), and the build
+publishes the resulting stable state of the workstream.
 
 ### Flow
 
@@ -89,7 +77,6 @@ sequenceDiagram
     participant master
     participant ws as workstream/slug/master
     participant work as work/slug/issue-XXXX
-    participant int as integration/slug
     participant art as Artifacts
 
     Note over master,ws: workstream-sync.yml
@@ -99,24 +86,17 @@ sequenceDiagram
 
     Note over work,int: validate.yml (PR work -> workstream)
     work->>work: validate-ts / validate-jvm / merge-gate
-    work->>int: promote-to-integration (on success)
+    work->>ws: automerge-to-target (on success, RELEASE_PAT)
 
-    Note over int,art: workstream-build.yml
-    int->>art: JARs (GitHub prerelease), then npm (dist-tag) last
-
-    Note over Dev,art: Reviewer exercises artifacts, then approves
-    Dev->>ws: merge work PR into workstream
-
-    Note over ws,int: integration-reset.yml
-    ws->>int: force-reset integration to workstream
-    Note over int,art: reset push re-triggers build (stable state)
+    Note over ws,art: workstream-build.yml (push to workstream)
+    ws->>art: JARs (GitHub prerelease), then npm (dist-tag) last
 ```
 
 ---
 
 ## Versioning
 
-Every integration build publishes the **complete** release set at one coherent prerelease
+Every workstream build publishes the **complete** release set at one coherent prerelease
 version:
 
 Every build produces **three identifiers**, all carrying the literal keyword `workstream`
@@ -214,7 +194,7 @@ The counter is read-modify-write over shared state, which makes ordering load-be
    counter.
 
 2. **The `concurrency` group is now a correctness mechanism**, not merely a guard against
-   partial artifact sets. Two concurrent builds on the same integration branch would read the
+   partial artifact sets. Two concurrent builds on the same workstream branch would read the
    same `n` and the second tag push would be rejected. Same-slug serialisation is what makes
    the read-modify-write atomic in practice. Builds for *different* slugs may safely overlap —
    they touch disjoint tag namespaces, exactly the property a per-slug counter has and
@@ -243,7 +223,7 @@ Consumers rely on that lockstep invariant — most visibly in
 server as `@whoz-oss/coday-web@<app.getVersion()>`, valid only because every artifact
 shares a version.
 
-Publishing a partial set would break that coherence. Integration builds therefore run
+Publishing a partial set would break that coherence. Workstream builds therefore run
 `nx run-many` across the whole set, including projects with no changes.
 
 ### Three inviolable rules
@@ -254,7 +234,7 @@ the time and surfaces later somewhere unrelated.
 **1. Never create a `release/*` tag.**
 `nx.json` sets `releaseTag.pattern: release/{version}`, and version derivation finds the most
 recent matching tag and walks conventional commits forward from it. A `release/*` tag created
-by an integration build silently corrupts the *next real release on `master`*, which computes
+by a workstream build silently corrupts the *next real release on `master`*, which computes
 its bump from the wrong baseline. Workstream tags live in a disjoint, **flat, dash-only**
 namespace: `workstream-<slug>-<n>` — for example `workstream-forge-4`. The workstream build
 now neither writes **nor reads** the `release/*` namespace: its version base is a fixed
@@ -267,7 +247,7 @@ awkward to glob or pass to `gh release download`. The flat form supports
 its own counter back.
 
 **2. Never run `releaseChangelog`.**
-It commits version bumps and `CHANGELOG.md`, tags, and pushes. On an integration branch all
+It commits version bumps and `CHANGELOG.md`, tags, and pushes. On a workstream branch all
 three are wrong, and the committed version bumps would then conflict on every subsequent base
 sync from `master`. Workstream builds stamp versions in the working tree and never commit them.
 
@@ -318,10 +298,10 @@ reports each one. This is the only sanctioned exception to Coday's mandatory-squ
 
 ### Cross-workflow pushes require `RELEASE_PAT`
 
-Pushes made with the default `GITHUB_TOKEN` **do not trigger downstream workflows**. Every push
-in this system is consumed by another workflow — sync feeds nothing directly, but promote and
-reset both feed `workstream-build.yml`. Using `GITHUB_TOKEN` anywhere in the chain makes it
-silently half-work: the push succeeds, the build never runs.
+Pushes and merges made with the default `GITHUB_TOKEN` **do not trigger downstream workflows**.
+The automerge (`validate.yml`) and the base sync both write to the workstream branch and feed
+`workstream-build.yml`. Using `GITHUB_TOKEN` anywhere in the chain makes it silently
+half-work: the merge succeeds, the build never runs.
 
 ### Concurrency
 
@@ -331,18 +311,17 @@ checks. An earlier version of this document prescribed `split(github.base_ref, '
 was wrong and must not be reintroduced.
 
 Because `concurrency` is evaluated *before any step runs*, a slug derived in a shell step is also
-unavailable to it. A slug sitting mid-ref (`workstream/<slug>/master`, `integration/<slug>`)
-therefore **cannot** be extracted to form a shared key. The actual groups are:
+unavailable to it. The actual groups are:
 
 | Workflow | Expression | Resolves to (slug `forge`) |
 |---|---|---|
-| `validate.yml` (promote) | `workstream-${{ github.base_ref }}` | `workstream-workstream/forge/master` |
-| `integration-reset.yml` | `workstream-${{ github.base_ref }}` | `workstream-workstream/forge/master` |
-| `workstream-build.yml` | `workstream-${{ github.ref_name }}` | `workstream-integration/forge` |
-| `workstream-repromote.yml` | `workstream-repromote-${{ inputs.work_branch }}` | `workstream-repromote-work/forge/…` |
+| `validate.yml` (automerge) | `workstream-${{ github.base_ref }}` | `workstream-workstream/forge/master` |
+| `workstream-build.yml` | `workstream-build-${{ github.ref_name }}` | `workstream-build-workstream/forge/master` |
 
-Promote and reset **do** serialise with each other — the pairing that actually matters, since
-both write the integration branch. Build and repromote serialise only against themselves.
+The build group is **deliberately different** from the automerge group: with the same string,
+a long-running build and a quick automerge would share one group (one running, one pending run)
+and could replace each other's pending run, silently dropping one. Automerges serialise among
+themselves; builds serialise among themselves, which is what protects the tag counter.
 
 If true cross-workflow serialisation ever becomes necessary, the options are to flatten the
 branch taxonomy so the slug is a whole leading ref segment, or to route through `workflow_call`
@@ -351,11 +330,11 @@ passing the slug as an input so `inputs.slug` is directly usable in `concurrency
 When reviewing any change here, write out the literal group string each workflow produces for
 one concrete slug and confirm byte-equality. Do not trust an inline comment claiming they match.
 
-`cancel-in-progress: false` everywhere. Cancelling a promote loses an artifact set; cancelling a
-reset leaves the branch corrupt.
+`cancel-in-progress: false` everywhere. Cancelling a build can leave a partial artifact set;
+cancelling an in-flight merge is never useful.
 
-`workstream-sync.yml` is the exception: it uses a fixed `workstream-sync` group, since it
-serialises only against itself and writes to no integration branch.
+`workstream-sync.yml` uses a fixed `workstream-sync` group, since it serialises only against
+itself. Each branch it syncs triggers its own build.
 
 ### The fork guard must be job-level, not step-level
 
@@ -371,10 +350,10 @@ A fork PR then shows as a cleanly *skipped* job rather than a failed one.
 
 ### Merge conflicts are signal, not noise
 
-A promote that conflicts means two tickets in the initiative genuinely collide — which is
-precisely what a workstream exists to surface early. The job must fail loudly and comment on
-the PR. A silently-failed promote is the worst possible outcome: the reviewer then exercises an
-artifact that does not contain the change under review.
+An automerge that fails (conflict with the workstream branch, unmet branch protection, or a
+head that moved since validation) means the PR is **not** in the workstream. The job must fail
+loudly and comment on the PR. `--match-head-commit` pins the merge to the validated SHA, so a
+push made after validation can never be merged unvalidated.
 
 ### Base-sync conflicts on version files are rarer than they look — and MUST NOT be auto-resolved
 
@@ -384,7 +363,7 @@ artifact that does not contain the change under review.
 
 **That assumption is wrong, and the mitigation is dangerous.**
 
-Because of rule 2, the workstream branch **never commits version stamps** — integration builds
+Because of rule 2, the workstream branch **never commits version stamps** — workstream builds
 stamp versions in the working tree only. The version line in `apps/*/package.json` and the
 `agentosSdk` / `agentosService` keys in `libs.versions.toml` are therefore *unmodified* on the
 workstream side. Git merges line-by-line, not file-by-file, so a work branch that adds a
@@ -454,18 +433,6 @@ silently breaks the chain:
 - `npm pack` / `npm publish` do **not** substitute the protocol. To check a tarball locally, use
   `pnpm pack` and inspect `package/package.json` inside it. A `--dry-run` of the release scripts
   does not show the substituted versions either, since nothing is written to disk.
-
-### Known trade-off: reset discards in-flight promotions
-
-When a PR merges, the reset wipes integration back to the workstream head — including *other*
-work branches that were promoted but not yet merged. Those tickets disappear from the artifact
-set until each re-promotes.
-
-In a high-cadence repository this self-heals within minutes. At Coday's cadence it may not, so
-`validate.yml` exposes a `workflow_dispatch` re-promote entry point allowing a developer to
-restore their branch to integration without pushing a dummy commit.
-
----
 
 ---
 
@@ -540,18 +507,18 @@ and `publishPackages(releaseGraph, versionData, distTag, dryRun)`. `stampVersion
 - `scripts/workstream-release.ts` — takes `--version` and `--slug`, calls the two shared
   functions, and never imports `releaseChangelog`. That omission is the entire safety guarantee.
 
-### Promote job specifics
+### Automerge job specifics
 
 - Slug comes from `github.base_ref`; cross-check it against the slug in `github.head_ref` and fail
   with a PR comment on mismatch (a `work/foo/*` PR targeting `workstream/bar/master` is a user
   error).
-- If `integration/<slug>` does not exist, **create it** from the workstream head rather than
-  failing. Requiring manual setup before the first PR is friction without safety benefit.
+- Merges with `gh pr merge --auto --match-head-commit <validated sha>` using `RELEASE_PAT`;
+  falls back to an immediate merge if auto-merge cannot be enabled. Requires
+  "Allow auto-merge" on the repository for the `--auto` path.
 - Requires `permissions: contents: write` and `pull-requests: write`.
 - **Fork guard**: `pull_request` events from forks have no secrets and no write permission, so the
-  promote would fail obscurely. Detect
-  `github.event.pull_request.head.repo.full_name != github.repository` and skip with a clear
-  message. We deliberately do *not* use `pull_request_target`, which would run fork-authored code
+  automerge would fail obscurely. The job-level `if` skips it when
+  `github.event.pull_request.head.repo.full_name != github.repository`. We deliberately do *not* use `pull_request_target`, which would run fork-authored code
   with full secret access.
 
 ### `agentos-service` JAR naming
@@ -567,15 +534,14 @@ preserve the `<artifactId>-<version>.jar` contract consumers rely on.
 **Starting an initiative**
 1. Choose a slug matching `^[a-z0-9]+(-[a-z0-9]+)*$`.
 2. Create `workstream/<slug>/master` from `master`.
-3. Create `integration/<slug>` from the workstream branch.
 
 **Working an issue**
 1. Branch `work/<slug>/issue-XXXX-description` from the workstream branch.
 2. Open a PR targeting `workstream/<slug>/master`.
-3. On green CI, artifacts build automatically; the reviewer exercises them.
-4. Squash-merge into the workstream. Integration resets and rebuilds.
+3. On green CI, the PR is automerged into the workstream, which triggers a build of the new
+   workstream state.
 
 **Closing an initiative**
 1. Open a PR from `workstream/<slug>/master` to `master`.
 2. **Merge commit** — not squash.
-3. Delete all three branches. Optionally deprecate the npm dist-tag.
+3. Delete both branches. Optionally deprecate the npm dist-tag.

@@ -13,6 +13,9 @@
 @if (deletion.error()) {
   <p class="settings-table__error" role="alert">{{ deletion.error() }}</p>
 }
+@if (toggleError()) {
+  <p class="settings-table__error" role="alert">{{ toggleError() }}</p>
+}
 @if (isLoading()) {
   <p class="settings-table__status" role="status">Loading agent configs…</p>
 } @else if (rows().length === 0) {
@@ -27,6 +30,7 @@
           <th role="columnheader">Name</th>
           <th role="columnheader">Description</th>
           <th role="columnheader">Execution mode</th>
+          <th role="columnheader">Enabled</th>
           <th role="columnheader">Scope</th>
           <th role="columnheader"><span class="sr-only">Actions</span></th>
         </tr>
@@ -39,6 +43,25 @@
               {{ row.config.description || '—' }}
             </td>
             <td role="cell" data-label="Execution mode">{{ mode(row) }}</td>
+            <td role="cell" data-label="Enabled">
+              @if (row.scope === 'namespace') {
+                <label dsCheck>
+                  <input
+                    #enabledInput
+                    type="checkbox"
+                    role="switch"
+                    [checked]="isEnabled(row)"
+                    [disabled]="isToggling()"
+                    [attr.aria-label]="'Enabled: ' + row.config.name"
+                    (change)="toggleEnabled(row, enabledInput)"
+                  />
+                </label>
+              } @else {
+                <ds-tag [variant]="isEnabled(row) ? 'accent' : 'outline'">{{
+                  isEnabled(row) ? 'Enabled' : 'Disabled'
+                }}</ds-tag>
+              }
+            </td>
             <td role="cell" data-label="Scope">
               <div class="settings-table__tags">
                 <ds-tag [variant]="row.scope === 'platform' ? 'neutral' : 'accent'">{{

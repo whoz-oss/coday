@@ -32,6 +32,21 @@
     </a>
   </header>
 
+  <!-- Status filter -->
+  <div class="filters">
+    <mat-chip-listbox
+      aria-label="Filter runs by status"
+      data-workstreams-status-filter
+      [value]="activeStatus()"
+      (change)="selectStatus($event.value)"
+    >
+      <mat-chip-option value="all">All · {{ statusCounts().all }}</mat-chip-option>
+      @for (option of statusOptions(); track option.value) {
+        <mat-chip-option [value]="option.value">{{ option.label }} · {{ statusCounts()[option.value] }}</mat-chip-option>
+      }
+    </mat-chip-listbox>
+  </div>
+
   @if (store.namespaceSelectionRequired()) {
     <p class="empty sf-panel sf-muted" data-workstreams-namespace-required>
       Select a namespace to load its Factory workstream. A namespace without a first run has no mapping yet.
@@ -64,10 +79,12 @@
 
   <!-- Workstreams → runs -->
   <section class="cards" aria-label="Workstreams">
-    @for (ws of store.workstreams(); track ws.namespaceId) {
+    @for (ws of filteredWorkstreams(); track ws.namespaceId) {
       <sf-workstream-card [workstream]="ws" (action)="onAction($event)" />
     } @empty {
-      @if (store.workstreamMappingMissing()) {
+      @if (activeStatus() !== 'all' && store.workstreams().length > 0) {
+        <p class="empty sf-panel sf-muted" data-workstreams-status-empty>No run matches the selected status filter.</p>
+      } @else if (store.workstreamMappingMissing()) {
         <p class="empty sf-panel sf-muted" data-workstreams-no-mapping>
           No Factory workstream is mapped to this namespace yet. Launch its first run to create it.
         </p>
