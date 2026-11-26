@@ -8,6 +8,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.types.shouldBeInstanceOf
 import java.util.concurrent.Callable
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
@@ -44,11 +45,21 @@ class KtlintWorkersUnitSpec :
                 projectDir.writeFile(relativePath = "Sample.kt", content = WILDCARD_IMPORT_SOURCE)
                 val tool = KtlintCheckTool(projectRoot = projectDir)
                 tool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText() shouldContain "no-wildcard-imports"
+                val engineBefore =
+                    tool.bounded.runner
+                        .shouldBeInstanceOf<KtlintRunner>()
+                        .engine
 
                 KtlintPlugin().stop()
                 KtlintPlugin().start()
 
                 tool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText() shouldContain "no-wildcard-imports"
+                // the engine was dropped by the stop and created again, not kept
+                (
+                    tool.bounded.runner
+                        .shouldBeInstanceOf<KtlintRunner>()
+                        .engine === engineBefore
+                ) shouldBe false
             }
         }
 

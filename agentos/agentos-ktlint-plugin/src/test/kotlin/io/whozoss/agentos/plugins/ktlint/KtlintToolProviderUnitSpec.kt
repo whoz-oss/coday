@@ -118,46 +118,43 @@ class KtlintToolProviderUnitSpec :
             }
         }
 
-        // --- the tools share one runner on the configured project ---
+        // --- every project uses the one engine shared by the plugin ---
 
-        "two provideTools calls on the same project use the very same ktlint runner" {
+        fun engineOf(tool: io.whozoss.agentos.sdk.tool.StandardTool<*>): Any =
+            when (tool) {
+                is KtlintCheckTool -> {
+                    tool.bounded.runner
+                        .shouldBeInstanceOf<KtlintRunner>()
+                        .engine
+                }
+
+                is KtlintFormatTool -> {
+                    tool.bounded.runner
+                        .shouldBeInstanceOf<KtlintRunner>()
+                        .engine
+                }
+
+                else -> {
+                    error("Not a ktlint tool: ${tool.name}")
+                }
+            }
+
+        "two provideTools calls on the same project use the very same shared ktlint engine" {
             withTempProject { dir ->
                 val first = provider.provideTools(json("""{"projectDirectory": "$dir"}"""), "ONE")
                 val second = provider.provideTools(json("""{"projectDirectory": "$dir/."}"""), "TWO")
 
-                val firstRunner =
-                    first
-                        .filterIsInstance<KtlintCheckTool>()
-                        .single()
-                        .bounded.runner
-                val secondRunner =
-                    second
-                        .filterIsInstance<KtlintFormatTool>()
-                        .single()
-                        .bounded.runner
-
-                (firstRunner === secondRunner) shouldBe true
+                (engineOf(tool = first.first()) === engineOf(tool = second.last())) shouldBe true
             }
         }
 
-        "provideTools on two different projects uses two ktlint runners" {
+        "provideTools on two different projects uses the same shared ktlint engine" {
             withTempProject { dir ->
                 withTempProject { otherDir ->
                     val first = provider.provideTools(json("""{"projectDirectory": "$dir"}"""), null)
                     val second = provider.provideTools(json("""{"projectDirectory": "$otherDir"}"""), null)
 
-                    val firstRunner =
-                        first
-                            .filterIsInstance<KtlintCheckTool>()
-                            .single()
-                            .bounded.runner
-                    val secondRunner =
-                        second
-                            .filterIsInstance<KtlintCheckTool>()
-                            .single()
-                            .bounded.runner
-
-                    (firstRunner === secondRunner) shouldBe false
+                    (engineOf(tool = first.first()) === engineOf(tool = second.first())) shouldBe true
                 }
             }
         }

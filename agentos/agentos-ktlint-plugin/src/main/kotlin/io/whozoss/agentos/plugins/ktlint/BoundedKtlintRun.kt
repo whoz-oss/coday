@@ -56,8 +56,8 @@ internal class BoundedKtlintRun(
     private val settleTimeout: Duration = SETTLE_TIMEOUT,
     private val worker: () -> ExecutorService = { KtlintWorkers.executor },
 ) {
-    /** Run on the real ktlint engine, the one shared by every run on this project ([KtlintRunnerCache]). */
-    constructor(projectRoot: Path) : this(projectRoot = projectRoot, runner = KtlintRunnerCache.runnerFor(projectRoot = projectRoot))
+    /** Run on the real ktlint engine, the one shared by the whole plugin ([KtlintEngine]). */
+    constructor(projectRoot: Path) : this(projectRoot = projectRoot, runner = KtlintRunner(projectRoot = projectRoot.toRealPath()))
 
     private val realRoot: Path = projectRoot.toRealPath()
 

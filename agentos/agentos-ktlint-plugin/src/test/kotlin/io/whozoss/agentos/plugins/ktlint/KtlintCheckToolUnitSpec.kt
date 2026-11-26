@@ -6,6 +6,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolTimeout
 import java.nio.file.Files
@@ -229,6 +230,37 @@ class KtlintCheckToolUnitSpec :
                         .failureText()
 
                 report shouldContain "max-line-length"
+            }
+        }
+
+        "two projects with different editorconfig get their own style from the one shared engine" {
+            val longLine = "val aVeryLongVariableNameThatGoesBeyondFortyCharacters = 42\n"
+            withProject { strict ->
+                withProject { lax ->
+                    strict.writeFile(relativePath = ".editorconfig", content = "root = true\n\n[*.{kt,kts}]\nmax_line_length = 40\n")
+                    lax.writeFile(relativePath = ".editorconfig", content = "root = true\n\n[*.{kt,kts}]\nmax_line_length = 200\n")
+                    strict.writeFile(relativePath = "Sample.kt", content = longLine)
+                    lax.writeFile(relativePath = "Sample.kt", content = longLine)
+                    val strictTool = KtlintCheckTool(projectRoot = strict)
+                    val laxTool = KtlintCheckTool(projectRoot = lax)
+
+                    (
+                        strictTool.bounded.runner
+                            .shouldBeInstanceOf<KtlintRunner>()
+                            .engine ===
+                            laxTool.bounded.runner
+                                .shouldBeInstanceOf<KtlintRunner>()
+                                .engine
+                    ) shouldBe
+                        true
+                    strictTool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText() shouldContain
+                        "max-line-length"
+                    laxTool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).successText() shouldContain "no violation"
+                    // and again in the other order, with the editorconfig cache of the engine now filled
+                    laxTool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).successText() shouldContain "no violation"
+                    strictTool.check(files = listOf("Sample.kt"), timeoutSeconds = TIMEOUT_SECONDS).failureText() shouldContain
+                        "max-line-length"
+                }
             }
         }
 

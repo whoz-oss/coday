@@ -3,7 +3,6 @@ package io.whozoss.agentos.plugins.ktlint
 import com.pinterest.ktlint.rule.engine.api.Code
 import com.pinterest.ktlint.rule.engine.api.KtLintRuleEngine
 import com.pinterest.ktlint.rule.engine.api.LintError
-import com.pinterest.ktlint.ruleset.standard.StandardRuleSetProvider
 import java.io.File
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -17,16 +16,22 @@ import java.nio.file.attribute.PosixFileAttributeView
  * `.editorconfig` files are discovered by the engine from each file's location, so the target project's
  * own style configuration applies. Reported file names are relative to [projectRoot].
  *
- * One instance serves every run on its project, from several threads at once (see [KtlintRunnerCache]): the
- * [KtLintRuleEngine] keeps no state of a run (each call builds its own rule instances and context, the `.editorconfig`
- * cache it uses is a thread-safe one).
+ * One runner per project is a small object: it only keeps [projectRoot] to relativize the reported file names. The
+ * engine behind it is the one of the whole plugin ([KtlintEngine]), shared by every project and thread: it is not tied
+ * to a directory and keeps no state of a run, and it discovers the `.editorconfig` files from the location of each
+ * file, so the files of two projects get the style of their own project.
+ *
+ * Known limit: the internal `.editorconfig` cache of ktlint grows with the number of distinct directories met, until
+ * the plugin stops (see [KtlintEngine.reset]).
  *
  * @property projectRoot real path of the project root, used to relativize the reported file names.
  */
 class KtlintRunner(
     private val projectRoot: Path,
 ) : StyleRunner {
-    private val engine = KtLintRuleEngine(ruleProviders = StandardRuleSetProvider().getRuleProviders())
+    /** The shared engine, asked at each call so that a runner built before a stop of the plugin keeps working. */
+    internal val engine: KtLintRuleEngine
+        get() = KtlintEngine.shared
 
     /** @see StyleRunner.lint */
     override fun lint(file: Path): List<KtlintViolation> {

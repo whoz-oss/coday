@@ -31,8 +31,11 @@ left by `ktlint_format` and to the violations listed when a run stops on a timeo
 disk or a killed service never leaves a half-written source (the permissions of the file are kept).
 
 The ktlint runs share a small pool of 2 to 4 platform threads (half of the processors). It is created again if the plugin is
-stopped then started, and a run that finds it unavailable answers a `KTLINT_ERROR` instead of failing. One ktlint engine is
-built per project and shared by all the tool calls on it.
+stopped then started, and a run that finds it unavailable answers a `KTLINT_ERROR` instead of failing. One ktlint rule
+engine is shared by the whole plugin and every project: it is not tied to a directory and discovers the `.editorconfig`
+files from the location of each file, so two projects get their own style. It is created on first use and dropped when
+the plugin stops. Known limit: the internal `.editorconfig` cache of ktlint grows with the number of distinct
+directories met, until the plugin stops.
 
 ## Results
 
