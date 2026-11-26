@@ -110,6 +110,10 @@ const GIT_INTEGRATION_TYPE = 'GIT'
  */
 @Component({
   selector: 'agentos-case-home',
+  host: {
+    // Files pasted anywhere on the home screen, not only into the textarea (see ComposerAttachmentsService).
+    '(document:paste)': '!isCreating() && attachments.onDocumentPaste($event)',
+  },
   imports: [
     BlueprintDirective,
     DrawerComponent,
