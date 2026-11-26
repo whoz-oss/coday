@@ -2,11 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   OnInit,
   WritableSignal,
   computed,
   inject,
   signal,
+  viewChild,
 } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import {
@@ -53,6 +55,15 @@ import { buildModelOptions, ModelOptions } from './model-options'
 
 /** Convenience alias for the generated enum. */
 type ExecutionMode = AgentConfigExecutionModeEnum
+
+/**
+ * Longest agent instructions the form accepts, in characters.
+ *
+ * Mirrors the limit enforced by the consumer backend (Medley). The AgentOS API itself has none
+ * (`AgentConfigDto.instructions` carries no `@Size`), so this constant is kept in sync by hand:
+ * if the backend limit changes, change it here too.
+ */
+export const MAX_INSTRUCTIONS_LENGTH = 20_000
 
 /**
  * One line of the sub-agents section: an agent this one may delegate to.
@@ -175,6 +186,7 @@ interface SkillRow {
   selector: 'agentos-agent-config-form',
   imports: [ReactiveFormsModule, RouterLink, DS_PAGE_KIT, TagComponent],
   templateUrl: './agent-config-form.component.html',
+  styleUrl: './agent-config-form.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AgentConfigFormComponent implements OnInit {
@@ -209,7 +221,9 @@ export class AgentConfigFormComponent implements OnInit {
     modelName: new FormControl<string | null>(null, {
       validators: [Validators.required, AgentConfigFormComponent.notBlankValidator],
     }),
-    instructions: new FormControl<string | null>(null),
+    instructions: new FormControl<string | null>(null, {
+      validators: [Validators.maxLength(MAX_INSTRUCTIONS_LENGTH)],
+    }),
     executionMode: new FormControl<ExecutionMode>(AgentConfigExecutionModeEnum.SIMPLE, { nonNullable: true }),
     delegationTimeoutSeconds: new FormControl<number | null>(null, {
       validators: [Validators.min(1), Validators.max(2147483647), Validators.pattern(/^\d+$/)],
@@ -302,6 +316,48 @@ export class AgentConfigFormComponent implements OnInit {
 
   /** True when the selected execution mode is LOOP. */
   protected readonly isLoopMode = computed(() => this.executionModeValue() === AgentConfigExecutionModeEnum.LOOP)
+
+  // ── Instructions ──────────────────────────────────────────────────────────
+
+  private static readonly maxInstructionsLabel = MAX_INSTRUCTIONS_LENGTH.toLocaleString('en-US')
+
+  /** Current instructions value, bridged to a signal so the OnPush template follows typing and hydration. */
+  private readonly instructionsValue = toSignal(this.form.controls.instructions.valueChanges, {
+    initialValue: this.form.controls.instructions.value,
+  })
+
+  /** Length of the raw value: what the counter shows and what the maxLength validator checks. */
+  private readonly instructionsLength = computed(() => (this.instructionsValue() ?? '').length)
+
+  protected readonly instructionsCounter = computed(() => {
+    const length = this.instructionsLength().toLocaleString('en-US')
+    return `${length} / ${AgentConfigFormComponent.maxInstructionsLabel} characters`
+  })
+
+  protected readonly instructionsError = computed(() => {
+    const length = this.instructionsLength()
+    if (length <= MAX_INSTRUCTIONS_LENGTH) return null
+    const limit = AgentConfigFormComponent.maxInstructionsLabel
+    return `Instructions must not exceed ${limit} characters (currently ${length.toLocaleString('en-US')}).`
+  })
+
+  /** True while the instructions editor covers the screen. Same textarea, only the layout changes. */
+  protected readonly instructionsFullscreen = signal(false)
+
+  private readonly instructionsTextarea = viewChild<ElementRef<HTMLTextAreaElement>>('instructionsTextarea')
+
+  protected toggleInstructionsFullscreen(): void {
+    this.instructionsFullscreen.update((v) => !v)
+    // The button had the focus: hand it back to the text the user is editing.
+    this.instructionsTextarea()?.nativeElement.focus()
+  }
+
+  /** Escape leaves the full-screen editor; outside it the key keeps its usual meaning. */
+  protected closeInstructionsFullscreen(): void {
+    if (!this.instructionsFullscreen()) return
+    this.instructionsFullscreen.set(false)
+    this.instructionsTextarea()?.nativeElement.focus()
+  }
 
   // ── Sub-agents list ───────────────────────────────────────────────────────
 

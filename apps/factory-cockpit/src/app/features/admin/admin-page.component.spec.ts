@@ -137,7 +137,10 @@ describe('AdminPageComponent', () => {
 
   it('shows a load error with a Retry button that reloads', async () => {
     const error: FactoryApiError = { code: 'HTTP_503', message: 'Factory unavailable', status: 503, raw: null }
-    const getRunConcurrency = jest.fn().mockReturnValueOnce(throwError(() => error)).mockReturnValue(of(settings))
+    const getRunConcurrency = jest
+      .fn()
+      .mockReturnValueOnce(throwError(() => error))
+      .mockReturnValue(of(settings))
     const { host, fixture } = await setup(createApi({ getRunConcurrency }))
 
     expect(query(host, '[data-admin-load-error]').textContent).toContain('Factory unavailable')

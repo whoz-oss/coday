@@ -39,8 +39,7 @@ import { PromptStateService } from '../../services/prompt-state.service'
  * ## Parameters section
  *
  * The `parameters` field is a dynamic list of named placeholders. Each parameter
- * has a required name, optional description, and optional defaultValue (null =
- * required at execution time).
+ * has a required name, an optional description, and a required defaultValue.
  *
  * ## Agent Config (namespace scope only, immutable post-creation)
  *

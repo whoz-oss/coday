@@ -190,11 +190,7 @@ export function mapProjectionToSessionDetail(
       latestAttempts.some((attempt) => attempt.status === 'waiting_human') ||
       (agentQuestions ?? []).some((q) => !q.answered))
   const status: RunStatus =
-    isActivelyRunning || waitingHuman
-      ? 'running'
-      : stepsForceFailedStatus
-        ? 'failed'
-        : projectedStatus
+    isActivelyRunning || waitingHuman ? 'running' : stepsForceFailedStatus ? 'failed' : projectedStatus
   const activelyRunning = isActivelyRunning
   const executionState: import('../models').TimelineStepStatus = waitingHuman
     ? 'waiting_human'

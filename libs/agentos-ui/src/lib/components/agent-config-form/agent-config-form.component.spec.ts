@@ -1196,6 +1196,154 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       expect(restriction?.textContent).toContain('readFile, ls')
     })
   })
+  describe('instructions', () => {
+    const LIMIT = 20_000
+    type InstructionsControl = {
+      setValue: (v: string | null) => void
+      value: string | null
+      invalid: boolean
+      hasError: (e: string) => boolean
+    }
+    const instructionsControl = () =>
+      (component as unknown as { instructionsControl: InstructionsControl }).instructionsControl
+    const root = () => fixture.nativeElement as HTMLElement
+    const textarea = () => root().querySelector<HTMLTextAreaElement>('textarea#agent-config-instructions')!
+    const saveButton = () => root().querySelector<HTMLButtonElement>('button[type="submit"]')!
+    const fullscreenToggle = () =>
+      Array.from(root().querySelectorAll<HTMLButtonElement>('.agent-config-instructions button')).find((b) =>
+        /full screen/i.test(b.textContent ?? '')
+      )!
+    const wrapper = () => root().querySelector('.agent-config-instructions')!
+
+    it('submits instructions of exactly 20,000 characters', () => {
+      component.ngOnInit()
+      internals().nameControl.setValue('My Agent')
+      instructionsControl().setValue('a'.repeat(LIMIT))
+
+      internals().submit()
+
+      expect(instructionsControl().invalid).toBe(false)
+      expect(controller.createAgentConfig).toHaveBeenCalledTimes(1)
+      expect(controller.createAgentConfig.mock.calls[0][0].instructions).toHaveLength(LIMIT)
+    })
+
+    it('refuses 20,001 characters: not submitted, Save disabled, error shown', () => {
+      fixture.detectChanges()
+      internals().nameControl.setValue('My Agent')
+      instructionsControl().setValue('a'.repeat(LIMIT))
+      fixture.detectChanges()
+      expect(saveButton().disabled).toBe(false)
+      expect(root().querySelector('#agent-config-instructions-error')).toBeNull()
+
+      instructionsControl().setValue('a'.repeat(LIMIT + 1))
+      fixture.detectChanges()
+      internals().submit()
+
+      expect(instructionsControl().hasError('maxlength')).toBe(true)
+      expect(controller.createAgentConfig).not.toHaveBeenCalled()
+      expect(saveButton().disabled).toBe(true)
+      expect(root().querySelector('#agent-config-instructions-error')?.textContent).toContain(
+        'Instructions must not exceed 20,000 characters (currently 20,001)'
+      )
+      expect(textarea().getAttribute('aria-invalid')).toBe('true')
+    })
+
+    it('does not set a native maxlength, which would cut a paste silently', () => {
+      fixture.detectChanges()
+      expect(textarea().hasAttribute('maxlength')).toBe(false)
+    })
+
+    it('blocks the update of a stored over-limit agent until its instructions are shortened', () => {
+      routeAgentConfigId = 'a-1'
+      controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ instructions: 'a'.repeat(LIMIT + 1) })))
+      fixture.detectChanges()
+
+      expect(root().querySelector('#agent-config-instructions-error')).not.toBeNull()
+      internals().submit()
+      expect(controller.updateAgentConfig).not.toHaveBeenCalled()
+
+      instructionsControl().setValue('a'.repeat(LIMIT))
+      internals().submit()
+      expect(controller.updateAgentConfig).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows a counter against the limit', () => {
+      const counter = () => root().querySelector('#agent-config-instructions-hint')?.textContent
+      fixture.detectChanges()
+      expect(counter()).toContain('0 / 20,000 characters')
+
+      instructionsControl().setValue('hello')
+      fixture.detectChanges()
+
+      expect(counter()).toContain('5 / 20,000 characters')
+    })
+
+    it('renders a taller textarea than the former 6 rows', () => {
+      fixture.detectChanges()
+      expect(textarea().getAttribute('rows')).toBe('20')
+    })
+
+    describe('full screen', () => {
+      it('toggles a layout class on the same textarea, keeping its value', () => {
+        fixture.detectChanges()
+        instructionsControl().setValue('keep me')
+        fixture.detectChanges()
+        const before = textarea()
+        expect(wrapper().classList).not.toContain('agent-config-instructions--fullscreen')
+
+        fullscreenToggle().click()
+        fixture.detectChanges()
+
+        expect(wrapper().classList).toContain('agent-config-instructions--fullscreen')
+        expect(textarea()).toBe(before)
+        expect(textarea().value).toBe('keep me')
+        expect(fullscreenToggle().getAttribute('aria-pressed')).toBe('true')
+        expect(fullscreenToggle().textContent).toContain('Exit full screen')
+
+        fullscreenToggle().click()
+        fixture.detectChanges()
+
+        expect(wrapper().classList).not.toContain('agent-config-instructions--fullscreen')
+        expect(textarea()).toBe(before)
+        expect(textarea().value).toBe('keep me')
+      })
+
+      it('closes on Escape from the textarea', () => {
+        fixture.detectChanges()
+        fullscreenToggle().click()
+        fixture.detectChanges()
+        expect(wrapper().classList).toContain('agent-config-instructions--fullscreen')
+
+        textarea().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        fixture.detectChanges()
+
+        expect(wrapper().classList).not.toContain('agent-config-instructions--fullscreen')
+      })
+
+      it('ignores Escape while not in full screen', () => {
+        fixture.detectChanges()
+
+        textarea().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        fixture.detectChanges()
+
+        expect(wrapper().classList).not.toContain('agent-config-instructions--fullscreen')
+      })
+
+      it('never submits the form', () => {
+        fixture.detectChanges()
+        internals().nameControl.setValue('My Agent')
+
+        fullscreenToggle().click()
+        fixture.detectChanges()
+        fullscreenToggle().click()
+        fixture.detectChanges()
+
+        expect(controller.createAgentConfig).not.toHaveBeenCalled()
+        expect(controller.updateAgentConfig).not.toHaveBeenCalled()
+      })
+    })
+  })
+
   describe('enabled', () => {
     it('is ticked when the create form opens, and a new agent is sent enabled', () => {
       component.ngOnInit()

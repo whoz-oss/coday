@@ -2350,10 +2350,7 @@ describe('mappers', () => {
         },
         undefined,
         {
-          items: [
-            ...previousExecutionEvidence.items,
-            evidenceOf('cr-2', 'code-review', 'running', 30),
-          ],
+          items: [...previousExecutionEvidence.items, evidenceOf('cr-2', 'code-review', 'running', 30)],
         }
       )
 
