@@ -13,6 +13,7 @@ integrations:
   GRADLE:
   KTLINT:
     - ktlint_format
+  KOTLIN:
   CHROME:
     # Navigate and manage tabs
     - navigate_page

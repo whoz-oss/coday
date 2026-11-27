@@ -37,7 +37,7 @@ data class IntegrationsProperties(
      * may create or update in a user scope. Setting the list replaces the default entirely: an
      * instance that wants to allow one of the defaults must list the others explicitly.
      */
-    val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH", "GRADLE", "KTLINT"),
+    val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "BASH", "GRADLE", "KTLINT", "KOTLIN"),
     /**
      * Integration types that may set [IntegrationConfig.autoGrant], i.e. be handed to every agent
      * in the config's scope without the agent naming it. Setting the list replaces the default

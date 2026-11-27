@@ -12,6 +12,7 @@ integrations:
   GRADLE:
   KTLINT:
     - ktlint_format
+  KOTLIN:
   ATLASSIAN_JIRA:
   ATLASSIAN_CONFLUENCE:
   ATLASSIAN_CONFLUENCE_SEARCH:

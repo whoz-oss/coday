@@ -131,7 +131,7 @@ jobs:
       - name: Build AgentOS JARs
         working-directory: agentos
         run: |
-          ./gradlew :agentos-service:bootJar :agentos-bash-plugin:jar :agentos-file-plugin:jar :agentos-mcp-plugin:jar :agentos-http-plugin:jar :agentos-tmux-plugin:jar :agentos-git-plugin:jar :agentos-gradle-plugin:jar :agentos-ktlint-plugin:jar --no-daemon
+          ./gradlew :agentos-service:bootJar :agentos-bash-plugin:jar :agentos-file-plugin:jar :agentos-mcp-plugin:jar :agentos-http-plugin:jar :agentos-tmux-plugin:jar :agentos-git-plugin:jar :agentos-gradle-plugin:jar :agentos-ktlint-plugin:jar :agentos-kotlin-plugin:jar --no-daemon
 
       - name: Upload JARs to GitHub Release
         env:
@@ -160,6 +160,7 @@ jobs:
           cp agentos/agentos-git-plugin/build/libs/agentos-git-plugin-*.jar /tmp/agentos-jars/
           cp agentos/agentos-gradle-plugin/build/libs/agentos-gradle-plugin-*.jar /tmp/agentos-jars/
           cp agentos/agentos-ktlint-plugin/build/libs/agentos-ktlint-plugin-*.jar /tmp/agentos-jars/
+          cp agentos/agentos-kotlin-plugin/build/libs/agentos-kotlin-plugin-*.jar /tmp/agentos-jars/
 
           # Generate checksums manifest keyed by the versioned filenames above
           cd /tmp/agentos-jars
@@ -177,6 +178,7 @@ jobs:
             /tmp/agentos-jars/agentos-git-plugin-*.jar \
             /tmp/agentos-jars/agentos-gradle-plugin-*.jar \
             /tmp/agentos-jars/agentos-ktlint-plugin-*.jar \
+            /tmp/agentos-jars/agentos-kotlin-plugin-*.jar \
             /tmp/agentos-jars/checksums.sha256 \
             --clobber
 
