@@ -983,6 +983,7 @@ class SessionRunService(
         is CapabilityOutcome.AgentFailed -> WorkflowStatuses.FAILED
         is CapabilityOutcome.AgentDeferred -> WorkflowStatuses.FAILED
         is CapabilityOutcome.AgentNeedsResearch -> WorkflowStatuses.NEEDS_RESEARCH
+        is CapabilityOutcome.AgentCancelled -> WorkflowStatuses.CANCELLED
         is CapabilityOutcome.HumanCheckpointRequired -> WorkflowStatuses.WAITING_HUMAN
         is CapabilityOutcome.CiChecksCompleted -> if (outcome.passed) WorkflowStatuses.COMPLETED else WorkflowStatuses.FAILED
         is CapabilityOutcome.ExternalPending -> WorkflowStatuses.WAITING_EXTERNAL

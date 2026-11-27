@@ -106,7 +106,7 @@ the step by its deadline plus the sweep interval plus the grace (about 33 min), 
 The sweeper only re-arms the wake; the sequencer still decides poll or `POLL_TIMEOUT_EXCEEDED`.
 
 `github-pr-checks` calls no LLM and spawns no process. It reads the `origin` remote and the attached branch from the
-run worktree, finds the open PR through the GitHub REST API (`FACTORY_GITHUB_TOKEN`, optional
+run worktree, finds the open PR through the GitHub REST API (token chain below, optional
 `factory.ci.github.repository` fallback) and evaluates the check runs and commit statuses of the PR head SHA. Pending
 when a check is not completed, no check exists yet, the worktree HEAD is not the PR head (`CI_HEAD_NOT_PUSHED`) or
 GitHub answers 5xx/429/network errors. A draft PR is refused (`CI_PR_IS_DRAFT`): `validate.yml` skips every job on
@@ -120,7 +120,15 @@ Green: `success`, `neutral`, `skipped`, status `success`. HTTP 403/429 rate limi
 `x-ratelimit-reset` (clamped to 30–300 s); any other 401/403/404 is a refusal (`CI_GITHUB_REFUSED`). The step is read-only: it
 does not take the worktree occupancy (a writer holding it never fails a poll).
 
-Token confinement: `FACTORY_GITHUB_TOKEN` is sent only to URLs with the scheme, host, port and path prefix of
+Token resolution (first non blank wins): `FACTORY_GITHUB_TOKEN` -> `GITHUB_TOKEN` -> `GH_TOKEN` -> `gh auth token`. The last one is
+the developer's local GitHub CLI login, enabled by `factory.ci.github.gh-cli-fallback` (`FACTORY_GITHUB_GH_CLI_FALLBACK`, default
+`true` in `application.yml`, `false` for a hand-built `GitHubChecksProperties`, so unit tests never read the host's `gh`). It runs
+`gh auth token` with a 3 s timeout, only when no token is configured, and the first non blank answer is cached for the life of the
+process (a missing or logged-out `gh` is retried on a later poll). The resolved token is never logged or printed. When nothing
+resolves, the step is refused with `CI_GITHUB_NOT_CONFIGURED`. Use a dedicated token with the allow-list below in shared
+deployments: the `gh` login of the Factory OS user is typically broader than a fine-grained token.
+
+Token confinement: the resolved token is sent only to URLs with the scheme, host, port and path prefix of
 `factory.ci.github.api-base-url`; a `Link` header or any other absolute URL outside it is refused without a request
 (`CI_GITHUB_UNTRUSTED_URL`). The pre-signed log redirect never receives the token and must be https. `GitHubChecksProperties.toString()`
 redacts the token. `factory.ci.github.allowed-repositories` (comma separated `owner/repo`, case-insensitive) restricts the

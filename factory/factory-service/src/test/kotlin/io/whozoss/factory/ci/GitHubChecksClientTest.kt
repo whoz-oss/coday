@@ -180,4 +180,157 @@ class GitHubChecksClientTest {
         assertThat(properties.toString()).doesNotContain("ghs_veryverysecret").contains("<redacted>")
         assertThat(GitHubChecksProperties().toString()).contains("<unset>")
     }
+
+    @Test
+    fun `a blank token falls back to the gh cli token, resolved once and never printed`() {
+        var calls = 0
+        val properties = GitHubChecksProperties(token = "", ghCliFallback = true).useGhTokenSupplier {
+            calls++
+            "gho_fromghcli\n"
+        }
+        assertThat(properties.toString()).contains("<unset>")
+        assertThat(calls).isZero()
+
+        assertThat(properties.configured).isTrue()
+        assertThat(properties.effectiveToken).isEqualTo("gho_fromghcli")
+        assertThat(properties.effectiveToken).isEqualTo("gho_fromghcli")
+
+        assertThat(calls).isEqualTo(1)
+        assertThat(properties.toString()).doesNotContain("gho_fromghcli").contains("<redacted>")
+    }
+
+    @Test
+    fun `the configured token wins and gh is not consulted`() {
+        var calls = 0
+        val properties = GitHubChecksProperties(token = "configured", ghCliFallback = true).useGhTokenSupplier { calls++; "fromgh" }
+
+        assertThat(properties.effectiveToken).isEqualTo("configured")
+        assertThat(calls).isZero()
+    }
+
+    @Test
+    fun `gh is not consulted when the fallback is off, and a blank answer is retried later`() {
+        var calls = 0
+        val off = GitHubChecksProperties(token = "", ghCliFallback = false).useGhTokenSupplier { calls++; "fromgh" }
+        assertThat(off.configured).isFalse()
+        assertThat(calls).isZero()
+
+        var answer = ""
+        val on = GitHubChecksProperties(token = "", ghCliFallback = true).useGhTokenSupplier { calls++; answer }
+        assertThat(on.configured).isFalse()
+        answer = "loggedin"
+        assertThat(on.effectiveToken).isEqualTo("loggedin")
+        assertThat(calls).isEqualTo(2)
+    }
+
+    @Test
+    fun `a failing gh command leaves the token unset`() {
+        val properties = GitHubChecksProperties(token = "", ghCliFallback = true).useGhTokenSupplier { error("gh missing") }
+
+        assertThat(properties.configured).isFalse()
+    }
+
+    @Test
+    fun `the admin token wins over the configured token and the gh cli, and says where it comes from`() {
+        var calls = 0
+        val properties = GitHubChecksProperties(token = "configured", ghCliFallback = true).useGhTokenSupplier { calls++; "fromgh" }
+        assertThat(properties.tokenSource).isEqualTo("environment")
+
+        properties.adminToken = "from-admin"
+        assertThat(properties.effectiveToken).isEqualTo("from-admin")
+        assertThat(properties.tokenSource).isEqualTo("admin")
+        assertThat(properties.toString()).doesNotContain("from-admin").contains("<redacted>")
+
+        properties.adminToken = "  "
+        assertThat(properties.tokenSource).isEqualTo("environment")
+        assertThat(properties.effectiveToken).isEqualTo("configured")
+
+        val ghOnly = GitHubChecksProperties(token = "", ghCliFallback = true).useGhTokenSupplier { "fromgh" }
+        assertThat(ghOnly.tokenSource).isEqualTo("gh-cli")
+        assertThat(GitHubChecksProperties().tokenSource).isEqualTo("none")
+        assertThat(calls).isZero()
+    }
+
+    @Test
+    fun `the masked hint never reveals a whole token`() {
+        val properties = GitHubChecksProperties()
+
+        assertThat(properties.maskedHint("ghp_abcdefghijklmnopqrstuvwxyz0123456789")).isEqualTo("ghp_…6789")
+        assertThat(properties.maskedHint("short")).isEqualTo("****")
+        assertThat(properties.maskedHint("12345678")).isEqualTo("****")
+        assertThat(properties.maskedHint("")).isEqualTo("****")
+    }
+
+    @Test
+    fun `verifyToken reports the login and scopes of a token GitHub accepts`() {
+        apiRoutes["/user"] = { reply(it, 200, """{"login":"octocat"}""", mapOf("X-OAuth-Scopes" to "repo, read:org")) }
+
+        val result = client().verifyToken("ghp_candidate") as GitHubTokenVerification.Connected
+
+        assertThat(result.login).isEqualTo("octocat")
+        assertThat(result.scopes).isEqualTo("repo, read:org")
+        assertThat(apiRequests.map { it.authorization }).containsExactly("Bearer ghp_candidate")
+    }
+
+    @Test
+    fun `verifyToken without an override checks the effective token`() {
+        apiRoutes["/user"] = { reply(it, 200, """{"login":"octocat"}""") }
+
+        assertThat(client().verifyToken()).isInstanceOf(GitHubTokenVerification.Connected::class.java)
+        assertThat(apiRequests.map { it.authorization }).containsExactly("Bearer secret-token")
+    }
+
+    @Test
+    fun `verifyToken says invalid on 401 and on a plain 403 that rate_limit also refuses`() {
+        apiRoutes["/user"] = { reply(it, 401, """{"message":"Bad credentials"}""") }
+        val unauthorized = client().verifyToken("bad") as GitHubTokenVerification.Invalid
+        assertThat(unauthorized.message).isEqualTo("GitHub rejected this token (HTTP 401).")
+
+        apiRoutes["/user"] = { reply(it, 403, """{"message":"Forbidden"}""") }
+        apiRoutes["/rate_limit"] = { reply(it, 403, """{"message":"Forbidden"}""") }
+        val forbidden = client().verifyToken("bad") as GitHubTokenVerification.Invalid
+        assertThat(forbidden.message).isEqualTo("GitHub rejected this token (HTTP 403).")
+    }
+
+    @Test
+    fun `verifyToken accepts an installation token that cannot read the user but can read rate_limit`() {
+        apiRoutes["/user"] = { reply(it, 403, """{"message":"Resource not accessible by integration"}""") }
+        apiRoutes["/rate_limit"] = { reply(it, 200, """{"resources":{}}""") }
+
+        val result = client().verifyToken("ghs_installation") as GitHubTokenVerification.Connected
+
+        assertThat(result.login).isNull()
+    }
+
+    @Test
+    fun `verifyToken says unreachable on a server error, a rate limit and a network failure`() {
+        apiRoutes["/user"] = { reply(it, 503, "{}") }
+        assertThat(client().verifyToken("t")).isInstanceOf(GitHubTokenVerification.Unreachable::class.java)
+
+        apiRoutes["/user"] = { reply(it, 403, """{"message":"API rate limit exceeded"}""", mapOf("x-ratelimit-remaining" to "0")) }
+        val limited = client().verifyToken("t") as GitHubTokenVerification.Unreachable
+        assertThat(limited.message).startsWith("Could not reach GitHub (")
+
+        api.stop(0)
+        assertThat(client().verifyToken("t")).isInstanceOf(GitHubTokenVerification.Unreachable::class.java)
+    }
+
+    @Test
+    fun `verifyToken of a blank token is invalid without any request`() {
+        val result = client().verifyToken("   ")
+
+        assertThat(result).isInstanceOf(GitHubTokenVerification.Invalid::class.java)
+        assertThat(apiRequests).isEmpty()
+    }
+
+    @Test
+    fun `the client sends the gh cli token as the bearer credential`() {
+        apiRoutes["/repos/acme/widgets/pulls"] = { reply(it, 200, "[]") }
+        val properties = GitHubChecksProperties(token = "", ghCliFallback = true, apiBaseUrl = "http://127.0.0.1:${api.address.port}", requestTimeoutMs = 5_000)
+            .useGhTokenSupplier { "gho_fromghcli" }
+
+        GitHubChecksClient(properties).findOpenPullRequest("acme", "widgets", "feat")
+
+        assertThat(apiRequests.map { it.authorization }.distinct()).containsExactly("Bearer gho_fromghcli")
+    }
 }

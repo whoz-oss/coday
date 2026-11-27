@@ -44,10 +44,18 @@ class PullRequestChecksCapabilityTest {
         exchange.responseBody.use { it.write(bytes) }
     }
 
-    private fun capability(token: String = "secret-token", repository: String = "") = PullRequestChecksCapability(
-        GitHubChecksProperties(token = token, apiBaseUrl = "http://127.0.0.1:${server.address.port}", repository = repository, requestTimeoutMs = 3_000),
-        GitHubChecksClient(GitHubChecksProperties(token = token, apiBaseUrl = "http://127.0.0.1:${server.address.port}", requestTimeoutMs = 3_000)),
-    )
+    private fun capability(token: String = "secret-token", repository: String = ""): PullRequestChecksCapability {
+        val properties = GitHubChecksProperties(token = token, apiBaseUrl = "http://127.0.0.1:${server.address.port}", repository = repository, requestTimeoutMs = 3_000)
+        return PullRequestChecksCapability(properties, GitHubChecksClient(properties))
+    }
+
+    /** Blank configured token, `gh auth token` fallback enabled and answered by [ghToken] (never the host's `gh`). */
+    private fun ghFallbackCapability(ghToken: String): PullRequestChecksCapability {
+        val properties = GitHubChecksProperties(
+            token = "", ghCliFallback = true, apiBaseUrl = "http://127.0.0.1:${server.address.port}", requestTimeoutMs = 3_000,
+        ).useGhTokenSupplier { ghToken }
+        return PullRequestChecksCapability(properties, GitHubChecksClient(properties))
+    }
 
     private fun git(origin: String? = "https://github.com/acme/widgets.git", branch: String? = "feat/ci", head: String? = sha) {
         val dir = Files.createDirectories(repo.resolve(".git"))
@@ -243,6 +251,23 @@ class PullRequestChecksCapabilityTest {
     }
 
     @Test
+    fun `a blank token is replaced by the gh cli token and sent as the bearer credential`() {
+        git(); serve(runs = listOf(run(1, "a", "completed", "success")))
+        val outcome = ghFallbackCapability("gh-cli-token\n").check("ci", repo) as CapabilityOutcome.CiChecksCompleted
+        assertThat(outcome.passed).isTrue()
+        assertThat(requests.map { it.second }.distinct()).containsExactly("Bearer gh-cli-token")
+    }
+
+    @Test
+    fun `a blank token and a blank gh cli token is refused without any call`() {
+        git(); serve()
+        val outcome = ghFallbackCapability("  ").check("ci", repo) as CapabilityOutcome.CodeRefused
+        assertThat(outcome.code).isEqualTo("CI_GITHUB_NOT_CONFIGURED")
+        assertThat(outcome.message).contains("FACTORY_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN", "gh CLI")
+        assertThat(requests).isEmpty()
+    }
+
+    @Test
     fun `an authentication error is refused and not retried as pending`() {
         git(); routes["/repos/acme/widgets/pulls"] = { reply(it, 401, """{"message":"Bad credentials"}""") }
         assertThat(refusedCode(check())).isEqualTo("CI_GITHUB_REFUSED")
@@ -278,6 +303,34 @@ class PullRequestChecksCapabilityTest {
     fun `a detached head has no branch to look up`() {
         git(branch = null); serve()
         assertThat(refusedCode(check())).isEqualTo("CI_BRANCH_UNRESOLVED")
+    }
+
+    @Test
+    fun `the admin token wins over the configured token for every call`() {
+        git(); serve(runs = listOf(run(1, "a", "completed", "success")))
+        val properties = GitHubChecksProperties(
+            token = "env-token", apiBaseUrl = "http://127.0.0.1:${server.address.port}", requestTimeoutMs = 3_000,
+        )
+        properties.adminToken = "admin-token"
+
+        val outcome = PullRequestChecksCapability(properties, GitHubChecksClient(properties)).check("ci", repo)
+
+        assertThat((outcome as CapabilityOutcome.CiChecksCompleted).passed).isTrue()
+        assertThat(requests.map { it.second }.distinct()).containsExactly("Bearer admin-token")
+    }
+
+    @Test
+    fun `an admin token alone is enough and a token set later is used without a restart`() {
+        git(); serve(runs = listOf(run(1, "a", "completed", "success")))
+        val properties = GitHubChecksProperties(token = "", apiBaseUrl = "http://127.0.0.1:${server.address.port}", requestTimeoutMs = 3_000)
+        val capability = PullRequestChecksCapability(properties, GitHubChecksClient(properties))
+        assertThat(refusedCode(capability.check("ci", repo))).isEqualTo("CI_GITHUB_NOT_CONFIGURED")
+        assertThat(requests).isEmpty()
+
+        properties.adminToken = "admin-token"
+
+        assertThat((capability.check("ci", repo) as CapabilityOutcome.CiChecksCompleted).passed).isTrue()
+        assertThat(requests.map { it.second }.distinct()).containsExactly("Bearer admin-token")
     }
 
     @Test

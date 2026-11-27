@@ -102,7 +102,9 @@ factory:
   ci:
     github:
       # Deterministic GitHub PR checks step (`github-pr-checks`); never logged.
-      token: ${FACTORY_GITHUB_TOKEN:}
+      # Token chain: FACTORY_GITHUB_TOKEN, then GITHUB_TOKEN, then GH_TOKEN, then (gh-cli-fallback) `gh auth token`.
+      token: ${FACTORY_GITHUB_TOKEN:${GITHUB_TOKEN:${GH_TOKEN:}}}
+      gh-cli-fallback: ${FACTORY_GITHUB_GH_CLI_FALLBACK:true}
       api-base-url: ${FACTORY_GITHUB_API_URL:https://api.github.com}
       repository: ${FACTORY_GITHUB_REPOSITORY:}
       request-timeout-ms: ${FACTORY_GITHUB_REQUEST_TIMEOUT_MS:10000}
