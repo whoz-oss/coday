@@ -76,10 +76,14 @@ import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.compone
 import { VoiceRecorderService } from '../voice-recorder/voice-recorder.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
 import { AiModelStateService } from '../../services/ai-model-state.service'
+import { DefaultAgentStateService } from '../../services/default-agent-state.service'
 import { chatModelOptions } from '../../services/chat-model.utils'
 import { ModelOption } from '../agent-config-form/model-options'
 
 const GIT_INTEGRATION_TYPE = 'GIT'
+
+/** The composer placeholder when no default agent is known (none would answer, or not loaded yet). */
+const GENERIC_PLACEHOLDER = 'Describe your task or ask a question…'
 
 /**
  * CaseHomeComponent — landing page for a namespace.
@@ -138,6 +142,7 @@ export class CaseHomeComponent implements OnInit {
   private readonly gitApi = inject(NamespaceGitControllerService)
   private readonly integrationTypeApi = inject(IntegrationTypeControllerService)
   private readonly aiModels = inject(AiModelStateService)
+  private readonly defaultAgents = inject(DefaultAgentStateService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
   private readonly caseState = inject(CaseStateService)
@@ -200,6 +205,14 @@ export class CaseHomeComponent implements OnInit {
   protected readonly reasoningEffort = signal<ReasoningEffort | null>(null)
   private readonly modelNamespace = new Subject<string>()
   private readonly modelChoiceList = computed(() => modelChoices(this.modelOptions()))
+  /** The agent a message without `@mention` reaches in the new case, as the server resolves it; null when unknown. */
+  protected readonly defaultAgentName = signal<string | null>(null)
+  private readonly defaultAgentNamespace = new Subject<string>()
+  /** Says who answers when the server knows one, so a user working across namespaces is reminded. */
+  protected readonly placeholder = computed(() => {
+    const agent = this.defaultAgentName()
+    return agent ? `${agent} will answer. Type @ to address another agent…` : GENERIC_PLACEHOLDER
+  })
   /**
    * Git workspaces are on and the GIT plugin is loaded, which the integration type catalogue shows.
    * A failure is not kept: the next namespace asks again.
@@ -216,6 +229,8 @@ export class CaseHomeComponent implements OnInit {
 
   /** The async submit chain must stop touching state or navigating once the view is gone. */
   private destroyed = false
+  /** The namespace the default agent was last asked for: a parent switch in the same namespace asks nothing. */
+  private defaultAgentNamespaceId: string | null = null
 
   /** True when the message text targets the namespace exchange (previewed on the chips). */
   protected readonly namespaceTargeted = computed(() =>
@@ -229,6 +244,7 @@ export class CaseHomeComponent implements OnInit {
     this.exchangeState.initializeForNamespace(this.namespaceId)
     this.worktreeNamespace.next(this.namespaceId)
     this.modelNamespace.next(this.namespaceId)
+    this.defaultAgentNamespace.next(this.namespaceId)
 
     // The composer is reused when switching namespaces or the parent of a new sub-case.
     this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -255,6 +271,10 @@ export class CaseHomeComponent implements OnInit {
         this.reasoningEffort.set(null)
         this.modelOptions.set([])
         this.modelNamespace.next(newNs)
+        if (newNs !== this.defaultAgentNamespaceId) {
+          this.defaultAgentName.set(null)
+          this.defaultAgentNamespace.next(newNs)
+        }
       }
     })
   }
@@ -285,6 +305,18 @@ export class CaseHomeComponent implements OnInit {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe((models) => this.modelOptions.set(chatModelOptions(models)))
+
+    // The default agent of the namespace, for the placeholder. A namespace switch drops the answer still pending
+    // for the previous one, so the placeholder never names the agent of another namespace.
+    this.defaultAgentNamespace
+      .pipe(
+        switchMap((namespaceId) => {
+          this.defaultAgentNamespaceId = namespaceId
+          return this.defaultAgents.resolve(namespaceId)
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((agentName) => this.defaultAgentName.set(agentName))
 
     // A namespace switch drops the answer still pending for the previous one. A sub-case shares its
     // root's worktree, so its composer asks nothing.

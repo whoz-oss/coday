@@ -4,6 +4,7 @@ import io.whozoss.agentos.agent.AdvancedExecutionNotSupportedException
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agent.DefaultAgentResolver
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.caseEvent.CaseEventService
@@ -126,6 +127,9 @@ class CaseServiceImpl(
      * simply notifies nobody.
      */
     private val mentionService: CaseMentionService? = null,
+    /** The default agent rule, shared with the composer (see [DefaultAgentResolver]). */
+    private val defaultAgentResolver: DefaultAgentResolver =
+        DefaultAgentResolver(namespaceService, agentService, agentConfigProperties),
 ) : CaseService,
     SubCaseManager {
     /**
@@ -854,8 +858,9 @@ class CaseServiceImpl(
         caseId: UUID,
         userId: UUID?,
     ): List<CaseEvent> {
-        val namespaceLevelDefault = namespaceService.findById(namespaceId)?.defaultAgentName
-        val effectiveDefaultName = namespaceLevelDefault ?: agentConfigProperties.agentName
+        val resolution = defaultAgentResolver.resolve(namespaceId, userId)
+        val effectiveDefaultName = resolution.configuredName
+        val resolvedName = resolution.agentName
 
         return when {
             effectiveDefaultName == null -> {
@@ -869,33 +874,23 @@ class CaseServiceImpl(
                 )
             }
 
-            else -> {
-                val resolvedName =
-                    agentService.resolveAgentName(
-                        namePart = effectiveDefaultName,
-                        namespaceId = namespaceId,
-                        userId = userId,
-                    )
-                when {
-                    resolvedName != null -> {
-                        val source = if (namespaceLevelDefault != null) "namespace" else "environment"
-                        logger.info { "Selecting $source default agent: $resolvedName" }
-                        listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
-                    }
+            resolvedName != null -> {
+                val source = if (resolution.fromNamespace) "namespace" else "environment"
+                logger.info { "Selecting $source default agent: $resolvedName" }
+                listOf(agentSelectedEvent(resolvedName, namespaceId, caseId))
+            }
 
-                    else -> {
-                        logger.warn { "Default agent '$effectiveDefaultName' is not available in namespace $namespaceId" }
-                        listOf(
-                            WarnEvent(
-                                namespaceId = namespaceId,
-                                caseId = caseId,
-                                message =
-                                    "Default agent '$effectiveDefaultName' is not available. " +
-                                        "Use @agentName to address an agent explicitly.",
-                            ),
-                        )
-                    }
-                }
+            else -> {
+                logger.warn { "Default agent '$effectiveDefaultName' is not available in namespace $namespaceId" }
+                listOf(
+                    WarnEvent(
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        message =
+                            "Default agent '$effectiveDefaultName' is not available. " +
+                                "Use @agentName to address an agent explicitly.",
+                    ),
+                )
             }
         }
     }

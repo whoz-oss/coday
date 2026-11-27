@@ -38,6 +38,8 @@ export * from './integration-type-controller.service'
 import { IntegrationTypeControllerService } from './integration-type-controller.service'
 export * from './namespace-controller.service'
 import { NamespaceControllerService } from './namespace-controller.service'
+export * from './namespace-default-agent-controller.service'
+import { NamespaceDefaultAgentControllerService } from './namespace-default-agent-controller.service'
 export * from './namespace-git-controller.service'
 import { NamespaceGitControllerService } from './namespace-git-controller.service'
 export * from './namespace-membership-controller.service'
@@ -91,6 +93,7 @@ export const APIS = [
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   NamespaceControllerService,
+  NamespaceDefaultAgentControllerService,
   NamespaceGitControllerService,
   NamespaceMembershipControllerService,
   NamespacePermissionEndpointsService,
