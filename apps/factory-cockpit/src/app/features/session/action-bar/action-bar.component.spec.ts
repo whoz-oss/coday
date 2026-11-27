@@ -300,6 +300,27 @@ describe('ActionBarComponent', () => {
     expect(emitted).toEqual([{ attemptId: 'a-1', expectedRevision: 4 }])
   })
 
+  it('shows "Retry stop" for the cancel action the backend offers when the kill is unconfirmed', () => {
+    const emitted: CancelIntent[] = []
+    fixture.componentInstance.cancelAttempt.subscribe((intent) => emitted.push(intent))
+    const host = render([{ type: 'cancel_attempt', attemptId: 'a-1', expectedRevision: 5, label: 'Retry stop' }])
+
+    expect(buttons(host)[0]?.textContent?.trim()).toBe('Retry stop')
+    buttons(host)[0]?.click()
+    expect(emitted).toEqual([{ attemptId: 'a-1', expectedRevision: 5 }])
+  })
+
+  it('renders the feedback of a refused Stop next to the cancel action', () => {
+    fixture.componentRef.setInput('stopFeedback', {
+      workflowId: 'wf-1',
+      kind: 'not_authorized',
+      message: 'You are not allowed to stop this run.',
+    })
+    const host = render([{ type: 'cancel_attempt', attemptId: 'a-1', expectedRevision: 4 }])
+
+    expect(host.textContent).toContain('You are not allowed to stop this run.')
+  })
+
   it('renders cost continue/stop actions and emits their intents', () => {
     const continued: unknown[] = []
     let stops = 0

@@ -2569,9 +2569,9 @@ describe('mappers', () => {
 
     it('returns the controller case when the snapshot exposes one, even when attempts exist', () => {
       const attempts = extractAttempts([attempt({ caseId: 'case-root' })])
-      expect(resolveMainCaseId({ ...noControllerSnapshot, controllerExecution: { caseId: 'case-ctl' } }, attempts)).toBe(
-        'case-ctl'
-      )
+      expect(
+        resolveMainCaseId({ ...noControllerSnapshot, controllerExecution: { caseId: 'case-ctl' } }, attempts)
+      ).toBe('case-ctl')
     })
 
     it('resolves the case of the entry agent step attempt, not of a dependent step', () => {

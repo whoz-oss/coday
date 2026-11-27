@@ -66,6 +66,12 @@ object WorkflowErrorCodes {
     const val INVALID_REPLY = "INVALID_REPLY"
     const val INVALID_RETRY_REQUEST = "INVALID_RETRY_REQUEST"
     const val ACTION_NOT_ALLOWED = "ACTION_NOT_ALLOWED"
+
+    /** 403 — AgentOS refused the Stop caller's kill: the caller may not stop this run. Nothing was changed. */
+    const val STOP_NOT_AUTHORIZED = "STOP_NOT_AUTHORIZED"
+
+    /** 503 — AgentOS could not be reached to authorize a non-owner's Stop. Nothing was changed. */
+    const val STOP_RUNTIME_UNAVAILABLE = "STOP_RUNTIME_UNAVAILABLE"
     const val UNAUTHENTICATED_ACTOR = "UNAUTHENTICATED_ACTOR"
     const val TRUST_CONTEXT_UNAVAILABLE = "TRUST_CONTEXT_UNAVAILABLE"
     const val ROUTE_NOT_FOUND = "ROUTE_NOT_FOUND"
@@ -122,7 +128,9 @@ fun workflowStatusCode(code: String): Int = when (code) {
     WorkflowErrorCodes.TRUST_CONTEXT_UNAVAILABLE,
     WorkflowErrorCodes.UNAUTHENTICATED_ACTOR,
     -> 401
-    WorkflowErrorCodes.FACTORY_ONLY_EVIDENCE -> 403
+    WorkflowErrorCodes.FACTORY_ONLY_EVIDENCE,
+    WorkflowErrorCodes.STOP_NOT_AUTHORIZED,
+    -> 403
     WorkflowErrorCodes.WORKFLOW_NOT_FOUND,
     WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND,
     WorkflowErrorCodes.INTERACTION_NOT_FOUND,
@@ -132,6 +140,7 @@ fun workflowStatusCode(code: String): Int = when (code) {
     WorkflowErrorCodes.WORKFLOW_PURGED,
     -> 410
     WorkflowErrorCodes.METRICS_DATA_INCOMPLETE -> 422
+    WorkflowErrorCodes.STOP_RUNTIME_UNAVAILABLE -> 503
     // Explicit: a sealed (terminal-run) workflow rejects any further mutation
     // as a conflict, like every other optimistic-locking / state-machine code.
     WorkflowErrorCodes.WORKFLOW_SEALED -> 409

@@ -36,6 +36,8 @@ import kotlin.concurrent.thread
  *   active-execution inactivity budget elapses it is
  *   `Indeterminate("SSE observation timeout")`. Waiting for a human pauses
  *   that budget and uses the separate bounded [humanWaitTimeoutMs].
+ * - A local observation can be abandoned (`abandoned` callback of [observe]): the observer then returns an
+ *   interrupted verdict within [ABANDON_POLL_MS], whatever the state of the stream.
  */
 class AgentOsSseClient(
     private val baseUrl: String,
@@ -66,6 +68,8 @@ class AgentOsSseClient(
      *   re-opening the stream). Default: no reconciler.
      * @param onEvent sink invoked exactly once per processed (non-duplicate,
      *   non-transient, case-matching) event — useful for tests and auditing.
+     * @param abandoned polled at every loop turn and at most every [ABANDON_POLL_MS] while the stream is idle;
+     *   once true the observation returns [abandonedObservation] without waiting for the case.
      */
     fun observe(
         caseId: String,
@@ -74,6 +78,7 @@ class AgentOsSseClient(
         checkpoint: EventCheckpoint = EventCheckpoint(),
         context: VerdictDeriver.DerivationContext = VerdictDeriver.DerivationContext(caseId),
         reconcile: (String) -> ReconcileResult? = { null },
+        abandoned: () -> Boolean = { false },
         onEvent: (CaseEventView) -> Unit = {},
         onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit = {},
         onAnswerObserved: (CaseEventView) -> Unit = {},
@@ -136,6 +141,7 @@ class AgentOsSseClient(
         observed.forEach(::applyLifecycleEvent)
         var connectedOnce = false
         while (true) {
+            if (abandoned()) return abandonedObservation(caseId)
             if (connectedOnce) {
                 // Every reconnection starts with a REST catch-up so no durable
                 // event is missed while the stream was down.
@@ -172,7 +178,14 @@ class AgentOsSseClient(
                 reconnects++
                 if (now() + delay >= currentDeadline()) return timeoutVerdict()
                 try {
-                    sleep(delay)
+                    // Slept in slices so that an abandonment is noticed without waiting for the whole backoff.
+                    var slept = 0L
+                    while (slept < delay) {
+                        if (abandoned()) return abandonedObservation(caseId)
+                        val slice = minOf(delay - slept, ABANDON_POLL_MS)
+                        sleep(slice)
+                        slept += slice
+                    }
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
                     return interruptedObservation(caseId)
@@ -182,11 +195,13 @@ class AgentOsSseClient(
                 val outcome = streamOnce(
                     caseId, externalUserId, checkpoint,
                     ::currentDeadline, ::recordActivity, observed, onEvent, onAnswerObserved, ::applyLifecycleEvent, ::evaluateVerdict,
+                    abandoned,
                 )
             ) {
                 is StreamOutcome.Verdict -> return outcome.verdict
                 StreamOutcome.Timeout -> return timeoutVerdict()
                 StreamOutcome.Interrupted -> return interruptedObservation(caseId)
+                StreamOutcome.Abandoned -> return abandonedObservation(caseId)
                 StreamOutcome.Dropped -> connectedOnce = true
             }
         }
@@ -210,6 +225,13 @@ class AgentOsSseClient(
             mapOf("caseId" to caseId),
         )
 
+    /** The observation was abandoned on purpose after a user Stop: the verdict says so, whatever the case state. */
+    private fun abandonedObservation(caseId: String): AgentOsExecutionVerdict =
+        AgentOsExecutionVerdict.Interrupted(
+            OBSERVATION_ABANDONED,
+            mapOf("caseId" to caseId),
+        )
+
     private sealed interface HumanWaitPhase {
         data object Active : HumanWaitPhase
         data class WaitingHuman(val questionRef: String, val deadline: Long) : HumanWaitPhase
@@ -221,6 +243,7 @@ class AgentOsSseClient(
         data object Dropped : StreamOutcome
         data object Timeout : StreamOutcome
         data object Interrupted : StreamOutcome
+        data object Abandoned : StreamOutcome
     }
 
     private sealed interface Signal {
@@ -239,6 +262,7 @@ class AgentOsSseClient(
         onAnswerObserved: (CaseEventView) -> Unit,
         onLifecycleEvent: (CaseEventView) -> Unit,
         evaluateVerdict: () -> AgentOsExecutionVerdict?,
+        abandoned: () -> Boolean,
     ): StreamOutcome {
         val requestBuilder = HttpRequest.newBuilder()
             .uri(URI.create("${baseUrl.trimEnd('/')}/api/cases/$caseId/events?includePreviousEvents=true"))
@@ -280,15 +304,28 @@ class AgentOsSseClient(
         }
         try {
             val parser = SseFrameParser()
+            // Time already waited with no signal at all. The original single wait of min(stall window, remaining
+            // budget) is kept as is, only cut into slices so that an abandonment is polled during it.
+            var idleMs = 0L
             while (true) {
+                if (abandoned()) return StreamOutcome.Abandoned
                 val remaining = deadline() - now()
                 if (remaining <= 0) return StreamOutcome.Timeout
+                val wait = minOf(stallTimeoutMs - idleMs, remaining)
+                val slice = minOf(wait, ABANDON_POLL_MS)
                 val signal = try {
-                    signals.poll(minOf(stallTimeoutMs, remaining), TimeUnit.MILLISECONDS)
+                    signals.poll(slice, TimeUnit.MILLISECONDS)
                 } catch (_: InterruptedException) {
                     Thread.currentThread().interrupt()
                     return StreamOutcome.Interrupted
-                } ?: return if (now() >= deadline()) StreamOutcome.Timeout else StreamOutcome.Dropped
+                }
+                if (signal == null) {
+                    idleMs += slice
+                    // The whole original wait elapsed without a signal: a timeout when the budget is spent, else a stall.
+                    if (slice == wait) return if (now() >= deadline()) StreamOutcome.Timeout else StreamOutcome.Dropped
+                    continue
+                }
+                idleMs = 0L
                 when (signal) {
                     Signal.End -> {
                         // Flush any unterminated trailing frame before treating
@@ -376,6 +413,12 @@ class AgentOsSseClient(
         const val DEFAULT_MAX_RECONNECTS = 5
         const val DEFAULT_STALL_TIMEOUT_MS = 60_000L
         const val DEFAULT_HUMAN_WAIT_TIMEOUT_MS = 86_400_000L
+
+        /** How often an idle observation checks whether it was abandoned. */
+        const val ABANDON_POLL_MS = 1_000L
+
+        /** Interrupted reason of an observation abandoned after a user Stop. */
+        const val OBSERVATION_ABANDONED = "${VerdictDeriver.USER_CANCELLED_PREFIX}: observation abandoned"
         private const val SIGNAL_QUEUE_CAPACITY = 1_024
     }
 }

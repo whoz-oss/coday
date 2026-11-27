@@ -149,6 +149,12 @@ export class SessionPageComponent implements OnDestroy {
    */
   protected readonly selectedEvents = this.pageState.selectedEvents
 
+  /** The last refused, unreachable or unconfirmed Stop, when it targets the run shown here. */
+  protected readonly sessionStopFeedback = computed(() => {
+    const feedback = this.store.stopFeedback()
+    return feedback && feedback.workflowId === this.effectiveRunId() ? feedback : null
+  })
+
   constructor() {
     effect(() => {
       // Component input binding may supply the id without a paramMap emission.

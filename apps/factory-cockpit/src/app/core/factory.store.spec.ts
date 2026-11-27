@@ -1509,10 +1509,12 @@ describe('FactoryStore', () => {
     flushEnrichment()
 
     store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7 })
-    http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries')).flush(
-      { error: { code: 'REVISION_CONFLICT', message: 'The expected revision is stale.' } },
-      { status: 409, statusText: 'Conflict' }
-    )
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries'))
+      .flush(
+        { error: { code: 'REVISION_CONFLICT', message: 'The expected revision is stale.' } },
+        { status: 409, statusText: 'Conflict' }
+      )
 
     expect(store.retryFeedback()).toEqual(expect.objectContaining({ stepId: 'build', kind: 'conflict' }))
     expect(store.retryFeedback()?.message).toBe(
@@ -1528,10 +1530,17 @@ describe('FactoryStore', () => {
     flushEnrichment()
 
     store.retryFailedStep('wf-1', { stepId: 'build', expectedRevision: 7 })
-    http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries')).flush(
-      { error: { code: 'IDEMPOTENCY_KEY_COLLISION', message: 'The idempotency key was already used with a different request' } },
-      { status: 409, statusText: 'Conflict' }
-    )
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/steps/build/failed-step-retries'))
+      .flush(
+        {
+          error: {
+            code: 'IDEMPOTENCY_KEY_COLLISION',
+            message: 'The idempotency key was already used with a different request',
+          },
+        },
+        { status: 409, statusText: 'Conflict' }
+      )
 
     expect(store.retryFeedback()).toEqual(expect.objectContaining({ stepId: 'build', kind: 'collision' }))
     expect(store.retryFeedback()?.message).toBe(
@@ -1611,6 +1620,71 @@ describe('FactoryStore', () => {
 
     flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
+  })
+
+  describe('Stop feedback', () => {
+    function stopWith(respond: (request: ReturnType<typeof http.expectOne>) => void): void {
+      flushInitialWorkflows([snapshot])
+      flushEnrichment()
+      store.cancelAttempt('wf-1', 'a-2', { expectedRevision: 4, reason: 'stop' })
+      respond(http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-2/cancel'))
+    }
+
+    it('reports a refused Stop (403 STOP_NOT_AUTHORIZED) and refreshes nothing', () => {
+      stopWith((request) =>
+        request.flush(
+          { error: { code: 'STOP_NOT_AUTHORIZED', message: 'refused' } },
+          { status: 403, statusText: 'Forbidden' }
+        )
+      )
+
+      expect(store.stopFeedback()).toEqual({
+        workflowId: 'wf-1',
+        kind: 'not_authorized',
+        message: 'You are not allowed to stop this run.',
+      })
+      http.expectNone((r) => r.url === '/api/factory/workflows')
+    })
+
+    it('reports an unreachable AgentOS (503 STOP_RUNTIME_UNAVAILABLE) as an error', () => {
+      stopWith((request) =>
+        request.flush(
+          { error: { code: 'STOP_RUNTIME_UNAVAILABLE', message: 'down' } },
+          { status: 503, statusText: 'Service Unavailable' }
+        )
+      )
+
+      expect(store.stopFeedback()).toEqual({
+        workflowId: 'wf-1',
+        kind: 'error',
+        message: 'AgentOS is unreachable; the run was not stopped.',
+      })
+    })
+
+    it('reports a Stop whose kill is not proven as unconfirmed, then still refreshes the state', () => {
+      stopWith((request) =>
+        request.flush({ data: { status: 'interrupted', killResult: 'UNREACHABLE', killProven: false } })
+      )
+
+      expect(store.stopFeedback()).toEqual({
+        workflowId: 'wf-1',
+        kind: 'unconfirmed',
+        message: 'Stop requested but the agents are not confirmed stopped. Retry stop.',
+      })
+      flushRunEnrichment('wf-1', false)
+      flushInitialWorkflows([])
+    })
+
+    it('shows no feedback for a proven kill and clears the previous one on the next Stop', () => {
+      store.stopFeedback.set({ workflowId: 'wf-1', kind: 'error', message: 'old' })
+      stopWith((request) =>
+        request.flush({ data: { status: 'interrupted', killResult: 'ACKNOWLEDGED', killProven: true } })
+      )
+
+      expect(store.stopFeedback()).toBeNull()
+      flushRunEnrichment('wf-1', false)
+      flushInitialWorkflows([])
+    })
   })
 
   it('continueCost relays a threshold, then refetches the authoritative state', () => {

@@ -85,10 +85,7 @@
           }
         </ds-form-field>
 
-        <div
-          class="agent-config-instructions"
-          [class.agent-config-instructions--fullscreen]="instructionsFullscreen()"
-        >
+        <div class="agent-config-instructions" [class.agent-config-instructions--fullscreen]="instructionsFullscreen()">
           <!-- Escape is bound on the focusable children, not on this wrapper: a div is not focusable. -->
           <div class="agent-config-instructions__toolbar">
             <button
