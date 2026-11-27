@@ -84,6 +84,14 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
     fun disableByAgentConfigId(agentConfigId: UUID): Int
 
     /**
+     * Find all enabled, non-removed scheduled prompts of [namespaceId], whatever their user scope: namespace-shared
+     * ones and user×namespace ones. Unlike [findByParent], user-scoped overlays are included.
+     *
+     * Used to find the scheduled prompts that target an agent by name when that agent is disabled.
+     */
+    fun findEnabledByNamespaceId(namespaceId: UUID): List<ScheduledPrompt>
+
+    /**
      * Soft-delete all non-removed [ScheduledPrompt]s referencing the given [agentConfigId]
      * and their linked [io.whozoss.agentos.prompt.Prompt]s in a single query.
      *

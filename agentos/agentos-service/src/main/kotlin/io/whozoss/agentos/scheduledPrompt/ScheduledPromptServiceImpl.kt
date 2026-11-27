@@ -62,6 +62,7 @@ class ScheduledPromptServiceImpl(
         }
         validateAgentConfigScope(entity, agentConfig)
         validateFlowConfiguration(entity, agentConfig)
+        requireActAgentPublished(entity)
 
         val prompt = promptService.findById(entity.promptTemplateId)
             ?: throw ResourceNotFoundException("Prompt not found: ${entity.promptTemplateId}")
@@ -89,6 +90,7 @@ class ScheduledPromptServiceImpl(
                 ?: throw ResourceNotFoundException("AgentConfig not found: ${entity.agentConfigId}")
             validateFlowConfiguration(entity, agentConfig)
         }
+        requireActAgentPublished(entity)
 
         repository.findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
@@ -139,6 +141,7 @@ class ScheduledPromptServiceImpl(
             ?: throw ResourceNotFoundException("ScheduledPrompt not found: $id")
         if (existing.enabled) return existing
         val enabled = existing.copy(enabled = true)
+        requireActAgentPublished(enabled)
         val withNextRun = enabled.copy(nextRunAt = nextRunCalculatorService.compute(enabled))
         return repository.save(withNextRun)
             .also { logger.info { "[ScheduledPrompt] Enabled $id, nextRunAt=${it.nextRunAt}" } }
@@ -263,6 +266,45 @@ class ScheduledPromptServiceImpl(
             throw UnprocessableEntityException(
                 "flowConfiguration is only allowed for a LOOP agent: AgentConfig id=${entity.agentConfigId} " +
                     "has execution mode ${agentConfig.resolvedExecutionMode}",
+            )
+        }
+    }
+
+    /**
+     * An enabled scheduled prompt whose loop payload targets an agent ([actAgentName]) must target a published one:
+     * the scheduler would otherwise start cases for an agent that cannot run. It is the counterpart of the cascade of
+     * [io.whozoss.agentos.agentConfig.AgentConfigService.disable], which disables such scheduled prompts when the
+     * agent is unpublished: without this check they could be enabled again straight away.
+     *
+     * Applied wherever a scheduled prompt can end up enabled ([create], [update], [enable]). Nothing to check when the
+     * scheduled prompt is disabled, has no `act.agentName`, or has no namespace (the name is resolved within the
+     * namespace at run time).
+     *
+     * The published agents are read with an explicit `withDisabled = false`: the lookups that default to
+     * "everything" or "enabled only" differ between repository implementations, so this check does not rely on them.
+     * Published platform-level agents count too, as for the agents the generation proposes as targets; they are not
+     * otherwise handled (the cascade only follows agents of the namespace).
+     *
+     * Not covered: a scheduled prompt without flowConfiguration, which runs the default loop configuration of its
+     * agent, and a scheduled prompt already enabled with an unpublished act agent (it is refused when next updated
+     * while enabled, until it is disabled).
+     *
+     * @throws UnprocessableEntityException when the agent is not published
+     */
+    private fun requireActAgentPublished(entity: ScheduledPrompt) {
+        if (!entity.enabled) return
+        val agentName = entity.actAgentName ?: return
+        val namespaceId = entity.namespaceId ?: return
+
+        fun isPublishedIn(scope: UUID?): Boolean =
+            agentConfigService
+                .findByNamespace(scope, withDisabled = false)
+                .any { it.name.equals(agentName, ignoreCase = true) }
+
+        if (!isPublishedIn(namespaceId) && !isPublishedIn(null)) {
+            throw UnprocessableEntityException(
+                "Agent '$agentName' targeted by the flowConfiguration (act.agentName) is not published in this namespace: " +
+                    "the ScheduledPrompt '${entity.name}' cannot be enabled",
             )
         }
     }

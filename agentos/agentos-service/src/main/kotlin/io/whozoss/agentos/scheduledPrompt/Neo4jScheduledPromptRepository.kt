@@ -106,6 +106,9 @@ open class Neo4jScheduledPromptRepository(
         neo4jRepository.disableByAgentConfigId(agentConfigId.toString())
             .also { count -> logger.debug { "[Neo4jScheduledPromptRepository] Disabled $count scheduled prompts for agentConfigId=$agentConfigId" } }
 
+    override fun findEnabledByNamespaceId(namespaceId: UUID): List<ScheduledPrompt> =
+        neo4jRepository.findEnabledByNamespaceId(namespaceId.toString()).map { it.toDomain() }
+
     override fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean =
         neo4jRepository.existsActiveByPromptTemplateId(promptTemplateId.toString())
 

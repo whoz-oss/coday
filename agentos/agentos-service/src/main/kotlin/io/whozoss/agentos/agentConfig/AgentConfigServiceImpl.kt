@@ -3,6 +3,7 @@ package io.whozoss.agentos.agentConfig
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.prompt.PromptRepository
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
+import io.whozoss.agentos.scheduledPrompt.actAgentName
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -102,6 +103,20 @@ class AgentConfigServiceImpl(
         return agentConfigRepository.save(existing.copy(enabled = true))
     }
 
+    /**
+     * Disables the agent, and the scheduled prompts that depend on it, in the same transaction:
+     * - those that run it (`agentConfigId`);
+     * - those of the same namespace whose loop payload targets it by name (`flowConfiguration.act.agentName`,
+     *   case-insensitive), which would otherwise fail or do nothing at run time.
+     *
+     * The by-name cascade is strictly scoped to the namespace of the agent: names are only unique within a namespace,
+     * and another namespace may hold an agent of the same name. An agent without a namespace (platform-level) has no
+     * by-name cascade. The scheduled prompts are not re-enabled when the agent is published again, and enabling one
+     * of them while the agent is unpublished is refused by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptService].
+     *
+     * Not covered: a scheduled prompt without flowConfiguration, which runs the default loop configuration of its
+     * agent; agent renames and deletions (by-name targets are not followed).
+     */
     @Transactional
     override fun disable(id: UUID): AgentConfig {
         val existing =
@@ -112,7 +127,29 @@ class AgentConfigServiceImpl(
         if (disabledCount > 0) {
             logger.info { "[AgentConfigService] Disabled $disabledCount scheduled prompt(s) for disabled agentConfigId=$id" }
         }
+        val disabledByNameCount = disableScheduledPromptsTargeting(existing)
+        if (disabledByNameCount > 0) {
+            logger.info {
+                "[AgentConfigService] Disabled $disabledByNameCount scheduled prompt(s) targeting disabled agent " +
+                    "'${existing.name}' (agentConfigId=$id) by act.agentName"
+            }
+        }
         return disabled
+    }
+
+    /**
+     * Disables the enabled scheduled prompts of the namespace of [agent] whose `act.agentName` is the name of [agent],
+     * and returns how many. The filtering is done here, on the parsed payload: a namespace has few scheduled prompts
+     * and this only runs when an agent is unpublished.
+     */
+    private fun disableScheduledPromptsTargeting(agent: AgentConfig): Int {
+        val namespaceId = agent.namespaceId ?: return 0
+        val targeting =
+            scheduledPromptRepository
+                .findEnabledByNamespaceId(namespaceId)
+                .filter { it.actAgentName.equals(agent.name, ignoreCase = true) }
+        targeting.forEach { scheduledPromptRepository.updateEnabled(it.id, enabled = false) }
+        return targeting.size
     }
 
     /**

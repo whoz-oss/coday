@@ -57,6 +57,7 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
+    private val storedAgents = mutableListOf<AgentConfig>()
     private val agentConfigId: UUID = UUID.randomUUID()
     private val promptId: UUID = UUID.randomUUID()
     private val today: LocalDate = LocalDate.of(2026, 1, 1)
@@ -115,6 +116,14 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
     init {
         beforeTest {
+            // Agents of the namespace/platform, answered like the real repository: withDisabled = false keeps only the
+            // published ones. The mocks are shared, so every test starts from an empty store.
+            storedAgents.clear()
+            every { agentConfigService.findByNamespace(any(), any()) } answers {
+                val scope = firstArg<UUID?>()
+                val withDisabled = secondArg<Boolean>()
+                storedAgents.filter { it.namespaceId == scope && (withDisabled || it.enabled) }
+            }
             every { agentConfigService.findById(agentConfigId) } returns defaultAgent()
             every { promptService.findById(promptId) } returns defaultPrompt()
             every { namespaceService.findById(namespaceId) } returns Namespace(
@@ -579,6 +588,11 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         fun agentWithMode(mode: ExecutionMode) = defaultAgent().copy(executionMode = mode)
 
+        /** Stores an agent named [name] in [scope], published unless [enabled] is false. */
+        fun storeAgent(name: String, scope: UUID? = namespaceId, enabled: Boolean = true) {
+            storedAgents += defaultAgent(nsId = scope).copy(metadata = EntityMetadata(id = UUID.randomUUID()), name = name, enabled = enabled)
+        }
+
         "flowConfiguration is refused with 422 when it is not for a LOOP agent or not a JSON object, on create and on update" {
             forAll(
                 row(ExecutionMode.ADVANCED, flowConfiguration, "only allowed for a LOOP agent"),
@@ -600,12 +614,14 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
         "flowConfiguration on a LOOP agent is saved on create" {
             every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            storeAgent("Caretaker")
 
             newService().create(sp().copy(flowConfiguration = flowConfiguration)).flowConfiguration shouldBe flowConfiguration
         }
 
         "flowConfiguration on a LOOP agent is saved on update, and a null one clears it" {
             every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            storeAgent("Caretaker")
             val svc = newService()
             val saved = svc.create(sp())
 
@@ -613,6 +629,82 @@ class ScheduledPromptServiceImplUnitSpec : StringSpec() {
 
             withConfig.flowConfiguration shouldBe flowConfiguration
             svc.update(withConfig.copy(flowConfiguration = null)).flowConfiguration.shouldBeNull()
+        }
+
+        // -------------------------------------------------------------------------
+        // act.agentName must designate a published agent for the scheduled prompt to be enabled
+        // -------------------------------------------------------------------------
+
+        fun flowTargeting(agentName: String?): JsonNode {
+            val act = if (agentName == null) "{}" else "{\"agentName\": \"$agentName\"}"
+            return ObjectMapper().readTree("{\"search\": {\"tool\": \"searchTool\"}, \"act\": $act}")
+        }
+
+        "create, update and enable refuse with 422 naming the agent when act.agentName is not published, and accept it once published" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            val svc = newService()
+            // 'Caretaker' exists in the namespace but is unpublished: only a lookup returning disabled agents sees it
+            storeAgent("Caretaker", enabled = false)
+            val disabledSaved = svc.create(sp(name = "sp-disabled", enabled = false).copy(flowConfiguration = flowTargeting("Caretaker")))
+
+            listOf<() -> Unit>(
+                { svc.create(sp(name = "sp-new").copy(flowConfiguration = flowTargeting("Caretaker"))) },
+                { svc.update(disabledSaved.copy(enabled = true)) },
+                { svc.enable(disabledSaved.id) },
+            ).forEach { call ->
+                shouldThrow<UnprocessableEntityException> { call() }.message.orEmpty() shouldContain "'Caretaker'"
+            }
+            svc.findById(disabledSaved.id)!!.enabled.shouldBeFalse()
+
+            storedAgents.clear()
+            storeAgent("Caretaker")
+            svc.enable(disabledSaved.id).enabled.shouldBeTrue()
+        }
+
+        "an enabled scheduled prompt is refused on update once its act agent is unpublished, until it is disabled" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            storeAgent("Caretaker")
+            val svc = newService()
+            val saved = svc.create(sp().copy(flowConfiguration = flowTargeting("Caretaker")))
+            storedAgents.clear()
+            storeAgent("Caretaker", enabled = false)
+
+            shouldThrow<UnprocessableEntityException> { svc.update(saved) }
+            svc.update(saved.copy(enabled = false)).enabled.shouldBeFalse()
+        }
+
+        "act.agentName is matched case-insensitively, among the published agents of the namespace or of the platform" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            val svc = newService()
+
+            storeAgent("caretaker")
+            svc.create(sp(name = "in-namespace").copy(flowConfiguration = flowTargeting("CARETAKER"))).enabled.shouldBeTrue()
+
+            storedAgents.clear()
+            storeAgent("caretaker", scope = null)
+            svc.create(sp(name = "on-platform").copy(flowConfiguration = flowTargeting("Caretaker"))).enabled.shouldBeTrue()
+        }
+
+        "an agent of another namespace with the same name does not count as published" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP)
+            storeAgent("Caretaker", scope = UUID.randomUUID())
+
+            shouldThrow<UnprocessableEntityException> {
+                newService().create(sp().copy(flowConfiguration = flowTargeting("Caretaker")))
+            }.message.orEmpty() shouldContain "'Caretaker'"
+        }
+
+        "no published-agent check without namespace, without act.agentName, without flowConfiguration, or when disabled" {
+            every { agentConfigService.findById(agentConfigId) } returns agentWithMode(ExecutionMode.LOOP).copy(namespaceId = null)
+            val svc = newService()
+
+            // nothing is published: any check would refuse
+            listOf(
+                sp(name = "no-namespace", nsId = null).copy(flowConfiguration = flowTargeting("Caretaker")),
+                sp(name = "no-agent-name").copy(flowConfiguration = flowTargeting(null)),
+                sp(name = "no-flow"),
+                sp(name = "disabled", enabled = false).copy(flowConfiguration = flowTargeting("Caretaker")),
+            ).forEach { svc.create(it).name shouldBe it.name }
         }
 
         // -------------------------------------------------------------------------

@@ -92,6 +92,10 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
         return toDisable.size
     }
 
+    /** Enabled, non-removed scheduled prompts of the namespace, user-scoped ones included. */
+    override fun findEnabledByNamespaceId(namespaceId: UUID): List<ScheduledPrompt> =
+        delegate.findAll().filter { it.namespaceId == namespaceId && it.enabled && !it.metadata.removed }
+
     /** Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId. */
     override fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean =
         delegate.findAll().any { it.promptTemplateId == promptTemplateId && !it.metadata.removed }

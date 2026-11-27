@@ -112,3 +112,23 @@ data class ScheduledPrompt(
      */
     val flowConfiguration: JsonNode? = null,
 ) : Entity
+
+/**
+ * Name of the agent the loop payload of [ScheduledPrompt.flowConfiguration] starts for each search result
+ * (`act.agentName`), or null when there is no flowConfiguration or no usable name.
+ *
+ * The name is resolved at run time within the namespace of the scheduled prompt, so it is only meaningful together
+ * with [ScheduledPrompt.namespaceId]. Only this field is read, not the whole payload: whether the payload is a valid
+ * loop payload is decided when it runs (see [io.whozoss.agentos.agent.AgentLoop]).
+ *
+ * Limits: a scheduled prompt without flowConfiguration, which falls back to the default loop configuration of its
+ * agent, has no act agent as far as this property is concerned.
+ */
+val ScheduledPrompt.actAgentName: String?
+    get() =
+        flowConfiguration
+            ?.path("act")
+            ?.path("agentName")
+            ?.takeIf { it.isTextual }
+            ?.asText()
+            ?.takeIf { it.isNotBlank() }
