@@ -71,6 +71,15 @@ export const AGENTOS_ROUTES: Route[] = [
                     (m) => m.PlatformConfigurationComponent
                   ),
               },
+              // --- Admin: Filesystem config caches ---
+              {
+                path: 'caches',
+                canActivate: [agentosReadyGuard],
+                loadComponent: () =>
+                  import('./components/platform-caches/platform-caches.component').then(
+                    (m) => m.PlatformCachesComponent
+                  ),
+              },
               // --- Admin: Tool invoke (debug) ---
               {
                 path: 'tool-invoke',

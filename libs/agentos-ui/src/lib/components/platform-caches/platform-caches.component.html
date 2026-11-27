@@ -1,0 +1,18 @@
+<ds-section-header
+  title="Caches"
+  description="Agents, integrations, prompts, skills and AI models read from a namespace configPath are cached for 5 minutes. Clear the cache to read the files again now."
+>
+  <button dsButton variant="primary" type="button" [disabled]="isClearing()" (click)="clear()">
+    {{ isClearing() ? 'Reloading…' : 'Reload configuration files' }}
+  </button>
+</ds-section-header>
+@if (error()) {
+  <p class="settings-table__error" role="alert">Clearing the caches failed. Try again.</p>
+}
+<p class="settings-table__status" role="status">
+  @if (clearedCount() !== null) {
+    {{ clearedCount() }} {{ clearedCount() === 1 ? 'directory' : 'directories' }} cleared. Files will be read again on
+    next access.
+  }
+</p>
+<p class="settings-table__status">Only the AgentOS instance that receives the request is concerned.</p>
