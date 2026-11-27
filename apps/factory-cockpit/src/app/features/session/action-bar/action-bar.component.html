@@ -1,6 +1,6 @@
 @if (hasBlockers()) {
   <section class="blockers" aria-label="Workflow blockers">
-    <!-- Root failures: ATTEMPT_FAILED, VERIFICATION_FAILED (real execution errors) -->
+    <!-- Root failures: ATTEMPT_FAILED, VERIFICATION_FAILED, WORKSPACE_PRECHECK_FAILED (real execution errors) -->
     @if (blockerGroups().failures.length > 0) {
       <div class="blocker-group">
         <span class="blocker-group-title blocker-group-title--failure">
@@ -14,6 +14,9 @@
               <span class="blocker-label">{{ blocker.label }}</span>
               @if (blocker.stepId) {
                 <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
+              }
+              @if (blocker.details) {
+                <span class="blocker-details sf-mono">{{ blocker.details }}</span>
               }
             </div>
             <span class="blocker-code sf-mono">{{ blocker.code }}</span>

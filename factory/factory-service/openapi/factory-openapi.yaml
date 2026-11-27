@@ -3690,6 +3690,8 @@ components:
           type: string
         message:
           type: string
+        details:
+          type: string
       required:
       - code
       - message

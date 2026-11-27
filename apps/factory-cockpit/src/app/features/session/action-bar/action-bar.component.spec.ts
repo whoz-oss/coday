@@ -340,6 +340,20 @@ describe('ActionBarComponent', () => {
     expect(stops).toBe(1)
   })
 
+  it('renders a workspace pre-check refusal in the root failures with its machine detail', () => {
+    const host = render([], [
+      {
+        code: 'WORKSPACE_PRECHECK_FAILED',
+        label: 'Required agent(s) reviewer are not available.',
+        details: 'REQUIRED_AGENTS_MISSING',
+      },
+    ] as WorkflowBlocker[])
+
+    const failure = host.querySelector('.blocker--failure')
+    expect(failure?.textContent).toContain('Required agent(s) reviewer are not available.')
+    expect(failure?.querySelector('.blocker-details')?.textContent).toContain('REQUIRED_AGENTS_MISSING')
+  })
+
   it('renders blockers with a visual class per blocker nature', () => {
     // Classification itself is covered by core/blocker-classification.spec.ts: this test only proves the
     // template renders every bucket with its visual class and group header.

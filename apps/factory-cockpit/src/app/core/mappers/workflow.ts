@@ -669,6 +669,9 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
   summary.unknownCostCount = detail.unknownCostCount
   summary.waitingHuman = detail.executionState === 'waiting_human'
   if (detail.mainCaseId) summary.mainCaseId = detail.mainCaseId
+  // The pre-check refusal reason is derived here from the authoritative blocker, never in a component (WZ-36423).
+  const precheckRefusal = (detail.blockers ?? []).find((blocker) => blocker.code === 'WORKSPACE_PRECHECK_FAILED')
+  if (precheckRefusal) summary.failureReason = precheckRefusal.label
   summary.cardState =
     detail.executionState === 'waiting_human'
       ? 'waiting_human'
