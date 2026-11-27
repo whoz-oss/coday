@@ -55,11 +55,18 @@
                     [attr.aria-label]="'Enabled: ' + row.config.name"
                     (change)="toggleEnabled(row, enabledInput)"
                   />
+                  Enabled
                 </label>
               } @else {
-                <ds-tag [variant]="isEnabled(row) ? 'accent' : 'outline'">{{
-                  isEnabled(row) ? 'Enabled' : 'Disabled'
-                }}</ds-tag>
+                <label dsCheck>
+                  <input
+                    type="checkbox"
+                    [checked]="isEnabled(row)"
+                    disabled
+                    [attr.aria-label]="'Enabled: ' + row.config.name"
+                  />
+                  Enabled
+                </label>
               }
             </td>
             <td role="cell" data-label="Scope">

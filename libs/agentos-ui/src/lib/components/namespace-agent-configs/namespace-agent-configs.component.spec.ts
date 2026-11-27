@@ -6,7 +6,7 @@ import { NamespaceAgentConfigsComponent } from './namespace-agent-configs.compon
 
 /**
  * The Enabled column of the namespace agent-configs list: a switch on namespace rows that enables or disables
- * the agent in place, and a read-only tag on the platform rows this page cannot change.
+ * the agent in place, and a ticked, locked checkbox on the platform rows this page cannot change.
  */
 describe('NamespaceAgentConfigsComponent (enabled column)', () => {
   let controller: {
@@ -98,13 +98,25 @@ describe('NamespaceAgentConfigsComponent (enabled column)', () => {
     expect(switchOf('Beta')?.checked).toBe(true)
   })
 
-  it('shows a platform agent as a read-only tag, with no switch', () => {
+  it('shows the Enabled label next to a namespace switch', () => {
+    render([agent({ id: 'a-2', name: 'Beta', enabled: false })])
+
+    expect(switchOf('Beta')?.closest('label')?.textContent?.trim()).toBe('Enabled')
+  })
+
+  it('shows a platform agent as a ticked, locked checkbox', () => {
     render([], [agent({ id: 'p-1', namespaceId: undefined, name: 'Shared', enabled: true })])
 
     expect(root().querySelector('input[role="switch"]')).toBeNull()
     const cell = root().querySelector('td[data-label="Enabled"]')
+    const checkbox = cell?.querySelector<HTMLInputElement>('input[type="checkbox"]')
+    expect(checkbox).not.toBeNull()
+    expect(checkbox?.checked).toBe(true)
+    expect(checkbox?.disabled).toBe(true)
+    expect(cell?.querySelector('ds-tag')).toBeNull()
     expect(cell?.textContent?.trim()).toBe('Enabled')
-    expect(cell?.querySelector('ds-tag')).not.toBeNull()
+    checkbox?.dispatchEvent(new Event('change'))
+    fixture.detectChanges()
     expect(controller.enableAgentConfig).not.toHaveBeenCalled()
     expect(controller.disableAgentConfig).not.toHaveBeenCalled()
   })
