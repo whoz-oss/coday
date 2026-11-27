@@ -98,6 +98,14 @@
   background: var(--color-surface-muted);
   border: 1px solid var(--color-divider);
 }
+.failure-reason {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sf-error-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .run-notice {
   display: flex;
   align-items: center;

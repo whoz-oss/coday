@@ -390,7 +390,12 @@ class WorkstreamServiceController(
         )
 
     private fun blockerView(blocker: WorkflowBlockerDto): Map<String, Any?> =
-        mapOf("code" to blocker.code, "stepId" to blocker.stepId, "message" to blocker.message)
+        buildMap {
+            put("code", blocker.code)
+            put("stepId", blocker.stepId)
+            put("message", blocker.message)
+            blocker.details?.let { put("details", it) }
+        }
 
     private fun optionalPin(request: Map<String, Any?>, field: String): String? {
         if (!request.containsKey(field)) return null

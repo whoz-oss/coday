@@ -1709,6 +1709,28 @@ describe('mappers', () => {
       ])
     })
 
+    it('keeps the details of a workspace pre-check blocker and its run-level (step-less) scope', () => {
+      expect(
+        extractBlockers({
+          blockers: [
+            {
+              code: 'WORKSPACE_PRECHECK_FAILED',
+              stepId: null,
+              message: 'Required agent(s) reviewer are not available. Remedy: Publish the agents.',
+              details: 'REQUIRED_AGENTS_MISSING',
+            },
+          ],
+        })
+      ).toEqual([
+        {
+          code: 'WORKSPACE_PRECHECK_FAILED',
+          label: 'Required agent(s) reviewer are not available. Remedy: Publish the agents.',
+          message: 'Required agent(s) reviewer are not available. Remedy: Publish the agents.',
+          details: 'REQUIRED_AGENTS_MISSING',
+        },
+      ])
+    })
+
     it('accepts the { blockers } block and falls back to the code as label', () => {
       expect(extractBlockers({ blockers: [{ code: 'UNKNOWN_RUNTIME' }] })).toEqual([
         { code: 'UNKNOWN_RUNTIME', label: 'UNKNOWN_RUNTIME' },
@@ -2499,6 +2521,87 @@ describe('mappers', () => {
       expect(session.lanes.flatMap((lane) => lane.blocks).filter((block) => block.stepId === 'implement')).toHaveLength(
         2
       )
+    })
+  })
+
+  describe('workspace pre-check refusal (WZ-36423)', () => {
+    const message = "Required agent(s) reviewer are not available in namespace 'ns-1'."
+    const refused = {
+      workflowId: 'wf-refused',
+      namespaceId: 'ns-1',
+      projection: {
+        status: 'failed',
+        steps: [
+          { id: 's1', status: 'failed', responsibility: { kind: 'agent', name: 'reviewer' } },
+          { id: 's2', status: 'blocked', dependsOn: ['s1'], responsibility: { kind: 'agent', name: 'reviewer' } },
+        ],
+      },
+    }
+    const actions = {
+      allowedActions: [],
+      blockers: [
+        {
+          code: 'WORKSPACE_PRECHECK_FAILED',
+          stepId: null,
+          message: `${message} Remedy: Publish/enable the required agents in the namespace.`,
+          details: 'REQUIRED_AGENTS_MISSING',
+        },
+        { code: 'ATTEMPT_FAILED', stepId: 's1', message: "Step 's1' failed." },
+      ],
+    }
+    const evidence = {
+      items: [
+        {
+          evidenceId: 'ev-precheck',
+          kind: 'workspace-precheck',
+          outcome: 'failed',
+          createdAt: startedAt,
+          facts: { code: 'REQUIRED_AGENTS_MISSING', message, remedy: 'Publish/enable the required agents.' },
+        },
+      ],
+    }
+
+    it('gives the run card a failed state and the pre-check message as failure reason', () => {
+      const detail = mapProjectionToSessionDetail(refused, undefined, evidence, undefined, undefined, [], actions)
+      const summary = mapSessionDetailToRunSummary(refused, detail)
+
+      expect(summary.cardState).toBe('failed')
+      expect(summary.failureReason).toBe(
+        `${message} Remedy: Publish/enable the required agents in the namespace.`
+      )
+    })
+
+    it('leaves the failure reason unset without a pre-check blocker', () => {
+      const detail = mapProjectionToSessionDetail(refused, undefined, undefined, undefined, undefined, [], {
+        blockers: [{ code: 'ATTEMPT_FAILED', stepId: 's1', message: "Step 's1' failed." }],
+      })
+
+      expect(mapSessionDetailToRunSummary(refused, detail).failureReason).toBeUndefined()
+    })
+
+    it('turns the workspace-precheck evidence into a log event carrying the message', () => {
+      const detail = mapProjectionToSessionDetail(refused, undefined, evidence, undefined, undefined, [], actions)
+
+      expect(detail.events).toEqual([expect.objectContaining({ type: 'log', text: message })])
+    })
+
+    it('keeps the refused step evidence as a plain failure, not as a refused code step', () => {
+      const stepEvidence = {
+        items: [
+          {
+            evidenceId: 'ev-s1',
+            stepId: 's1',
+            kind: 'session-step',
+            outcome: 'failed',
+            facts: { stepId: 's1', status: 'failed', code: 'REQUIRED_AGENTS_MISSING', message },
+          },
+        ],
+      }
+      const detail = mapProjectionToSessionDetail(refused, undefined, stepEvidence)
+      const event = detail.eventsByStepId?.get('s1')?.[0]
+
+      expect(event?.text).toBe(message)
+      expect(event?.codeDiagnostic).toBeUndefined()
     })
   })
 

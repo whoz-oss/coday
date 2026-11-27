@@ -34,6 +34,7 @@ object WorkflowBlockerCodes {
     const val VERIFICATION_FAILED = "VERIFICATION_FAILED"
     const val UNKNOWN_RUNTIME = "UNKNOWN_RUNTIME"
     const val NEEDS_RESEARCH = "NEEDS_RESEARCH"
+    const val WORKSPACE_PRECHECK_FAILED = "WORKSPACE_PRECHECK_FAILED"
 }
 
 /**
@@ -65,12 +66,14 @@ data class AllowedActionDto(
  * One active blocker that prevents a workflow from progressing unattended.
  *
  * [code] is a stable machine code (see [WorkflowBlockerCodes]); [stepId] points
- * at the target step when the blocker is step-scoped.
+ * at the target step when the blocker is step-scoped. [details] is an optional
+ * secondary machine detail (e.g. the workspace pre-check error code).
  */
 data class WorkflowBlockerDto(
     val code: String,
     val stepId: String? = null,
     val message: String,
+    val details: String? = null,
 )
 
 /** Enveloped payload of the authoritative actions/blockers read. */

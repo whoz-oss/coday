@@ -15,6 +15,7 @@ import io.whozoss.factory.proxy.UsageTrackingUnavailableException
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.workflow.domain.WorkflowActionTypes
 import io.whozoss.factory.workflow.domain.WorkflowBlockerCodes
+import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowProjectionRecord
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
@@ -322,6 +323,46 @@ class WorkflowActionsServiceTest {
 
         assertThat(result.allowedActions).isEmpty()
         assertThat(result.blockers).isEmpty()
+    }
+
+    @Test
+    fun `a refused workspace pre-check yields a run-level blocker with the message, remedy and code`() {
+        stubBaseline(
+            instance = WorkflowInstanceRecord(
+                namespaceId = namespace, workflowId = workflowId, revision = 3, status = "active",
+                creationCommandHash = null, instance = mapOf("status" to "failed"), projection = emptyMap(),
+            ),
+        )
+        every { evidenceRepository.list(scope, namespace, workflowId) } returns listOf(
+            WorkflowEvidenceItem(
+                evidenceId = "ev-1", namespaceId = namespace, workflowId = workflowId, stepId = null,
+                kind = "workspace-precheck", outcome = "failed", source = null,
+                facts = mapOf(
+                    "code" to "REQUIRED_AGENTS_MISSING",
+                    "message" to "Required agent(s) reviewer are not available.",
+                    "remedy" to "Publish/enable the required agents.",
+                ),
+                idempotencyKey = "k", createdAt = null,
+            ),
+        )
+
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
+
+        val blocker = result.blockers.single { it.code == WorkflowBlockerCodes.WORKSPACE_PRECHECK_FAILED }
+        assertThat(blocker.stepId).isNull()
+        assertThat(blocker.message).isEqualTo(
+            "Required agent(s) reviewer are not available. Remedy: Publish/enable the required agents.",
+        )
+        assertThat(blocker.details).isEqualTo("REQUIRED_AGENTS_MISSING")
+    }
+
+    @Test
+    fun `no workspace pre-check blocker without a failed pre-check evidence`() {
+        stubBaseline(steps = listOf(mapOf("id" to "done", "status" to "completed")))
+
+        val result = service.workflowActions(scope, namespace, workflowId, canReply = true, actorId = reader)
+
+        assertThat(result.blockers.none { it.code == WorkflowBlockerCodes.WORKSPACE_PRECHECK_FAILED }).isTrue()
     }
 
     @Test

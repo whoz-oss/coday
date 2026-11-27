@@ -100,6 +100,30 @@ describe('RunCardComponent', () => {
     expect(host.textContent).toContain('waiting')
   })
 
+  describe('failure reason', () => {
+    it('shows the failed chip and the pre-check message of a refused run', async () => {
+      await setup()
+      const reason = "Required agent(s) reviewer are not available in namespace 'ns-1'. Remedy: Publish the agents."
+      const host = render({
+        ...run,
+        status: 'failed',
+        run: { ...(run.run as NonNullable<FactoryRun['run']>), status: 'failed', cardState: 'failed', failureReason: reason },
+      })
+
+      expect(host.textContent).toContain('failed')
+      const line = host.querySelector('.failure-reason')
+      expect(line?.textContent?.trim()).toBe(reason)
+      expect(line?.getAttribute('title')).toBe(reason)
+    })
+
+    it('renders no failure reason line when none is set', async () => {
+      await setup()
+      const host = render()
+
+      expect(host.querySelector('.failure-reason')).toBeNull()
+    })
+  })
+
   describe('Ask supervisor removal', () => {
     it.each([
       ['a known namespace', run],
