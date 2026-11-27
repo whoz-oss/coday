@@ -2884,24 +2884,6 @@ components:
         data: {}
       required:
       - data
-    ErrorDetail:
-      type: object
-      properties:
-        code:
-          type: string
-        message:
-          type: string
-        details: {}
-      required:
-      - code
-      - message
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          $ref: "#/components/schemas/ErrorDetail"
-      required:
-      - error
     DependencyChangeDto:
       type: object
       properties:
