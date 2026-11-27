@@ -26,6 +26,24 @@ paths:
         properties) of the service
       tags:
       - effective-configuration-controller
+  /api/admin/filesystem-caches/clear:
+    post:
+      description: "Forgets what was read from the configuration directories of the\
+        \ namespaces (agents, integrations, prompts, skills, AI models), so that the\
+        \ next read of each one reads its files again. Only the AgentOS instance that\
+        \ receives the call is cleared: with several instances, the others keep their\
+        \ caches until they expire."
+      operationId: clearFilesystemCache
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FilesystemCacheClearResult"
+          description: OK
+      summary: Clear the caches of the configuration files read from the filesystem
+      tags:
+      - filesystem-cache-controller
   /api/agent-configs:
     post:
       operationId: createAgentConfig
@@ -5893,6 +5911,14 @@ components:
       required:
       - caseEventId
       - positive
+    FilesystemCacheClearResult:
+      type: object
+      properties:
+        clearedDirectories:
+          type: integer
+          format: int32
+      required:
+      - clearedDirectories
     GetByIdsRequest:
       type: object
       properties:

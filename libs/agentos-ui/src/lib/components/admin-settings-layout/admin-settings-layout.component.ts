@@ -41,7 +41,10 @@ export class AdminSettingsLayoutComponent {
     },
     {
       label: 'System',
-      items: [{ label: 'Configuration', commands: ['configuration'] }],
+      items: [
+        { label: 'Configuration', commands: ['configuration'] },
+        { label: 'Caches', commands: ['caches'] },
+      ],
     },
   ]
 }
