@@ -32,7 +32,7 @@ class PullRequestChecksCapability(
         if (!properties.configured) {
             return refused(
                 stepId, "CI_GITHUB_NOT_CONFIGURED",
-                "GitHub token is not configured on Factory (set FACTORY_GITHUB_TOKEN, GITHUB_TOKEN, GH_TOKEN, or authenticate the gh CLI).",
+                "GitHub token is not configured on Factory (set it in the cockpit Admin page, or set FACTORY_GITHUB_TOKEN, GITHUB_TOKEN, GH_TOKEN, or authenticate the gh CLI).",
             )
         }
         val fromOrigin = GitWorktreeReader.githubOrigin(repoRoot)

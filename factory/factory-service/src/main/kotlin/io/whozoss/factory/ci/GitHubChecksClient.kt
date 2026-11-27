@@ -29,6 +29,20 @@ sealed interface GitHubResult<out T> {
     data class Refused(val code: Int, val message: String) : GitHubResult<Nothing>
 }
 
+/**
+ * Outcome of [GitHubChecksClient.verifyToken]. None of the variants ever carries the token.
+ */
+sealed interface GitHubTokenVerification {
+    /** GitHub accepted the token. [login] is the user it belongs to (null for an installation token). */
+    data class Connected(val login: String?, val scopes: String?) : GitHubTokenVerification
+
+    /** GitHub answered 401 / 403: the token is wrong, expired, revoked or lacks the permissions. */
+    data class Invalid(val message: String) : GitHubTokenVerification
+
+    /** Network error, 5xx or rate limit: nothing can be said about the token. */
+    data class Unreachable(val message: String) : GitHubTokenVerification
+}
+
 /** One open pull request, as far as the CI check needs it. */
 data class GitHubPullRequest(
     val number: Int,
@@ -61,6 +75,39 @@ class GitHubChecksClient(
         // are followed manually and the Authorization header is only sent to the configured API origin.
         .followRedirects(HttpClient.Redirect.NEVER)
         .build()
+
+    /**
+     * Checks a token against GitHub: `GET /user` (a personal access token answers with its `login`), then
+     * `GET /rate_limit` when `/user` is forbidden (an installation token cannot read `/user`).
+     * Verifies [tokenOverride] when given (a token not saved yet), otherwise the effective token.
+     */
+    fun verifyToken(tokenOverride: String? = null): GitHubTokenVerification {
+        val token = (tokenOverride ?: properties.effectiveToken).trim()
+        if (token.isEmpty()) return GitHubTokenVerification.Invalid("No GitHub token is configured.")
+        return when (val user = get("/user", token)) {
+            is GitHubResult.Ok -> {
+                val login = runCatching { objectMapper.readTree(user.value.body()).path("login").asText("") }
+                    .getOrDefault("").ifBlank { null }
+                GitHubTokenVerification.Connected(login, user.value.headers().firstValue("X-OAuth-Scopes").orElse(null))
+            }
+            is GitHubResult.Transient -> unreachable(user)
+            is GitHubResult.Refused -> when (user.code) {
+                401 -> rejected(401)
+                403 -> when (val limit = get("/rate_limit", token)) {
+                    is GitHubResult.Ok -> GitHubTokenVerification.Connected(null, null)
+                    is GitHubResult.Transient -> unreachable(limit)
+                    is GitHubResult.Refused -> rejected(limit.code)
+                }
+                else -> rejected(user.code)
+            }
+        }
+    }
+
+    private fun rejected(status: Int) =
+        GitHubTokenVerification.Invalid("GitHub rejected this token (HTTP $status).")
+
+    private fun unreachable(result: GitHubResult.Transient) =
+        GitHubTokenVerification.Unreachable("Could not reach GitHub (${result.reason}).")
 
     fun findOpenPullRequest(owner: String, repo: String, branch: String): GitHubResult<GitHubPullRequest?> {
         val head = URLEncoder.encode("$owner:$branch", StandardCharsets.UTF_8)
@@ -179,8 +226,8 @@ class GitHubChecksClient(
         }
 
     /** GET of an API path or of an absolute URL, which must belong to the API origin (see [isTrusted]). */
-    private fun get(pathOrUrl: String): GitHubResult<HttpResponse<String>> {
-        val request = when (val built = buildApiRequest(pathOrUrl)) {
+    private fun get(pathOrUrl: String, token: String = properties.effectiveToken): GitHubResult<HttpResponse<String>> {
+        val request = when (val built = buildApiRequest(pathOrUrl, token)) {
             is GitHubResult.Ok -> built.value
             is GitHubResult.Transient -> return built
             is GitHubResult.Refused -> return built
@@ -220,7 +267,7 @@ class GitHubChecksClient(
 
     private fun apiRequest(pathOrUrl: String): GitHubResult<HttpRequest> = buildApiRequest(pathOrUrl)
 
-    private fun buildApiRequest(pathOrUrl: String): GitHubResult<HttpRequest> {
+    private fun buildApiRequest(pathOrUrl: String, token: String = properties.effectiveToken): GitHubResult<HttpRequest> {
         val uri = if (pathOrUrl.startsWith("http", ignoreCase = true)) {
             val absolute = runCatching { URI.create(pathOrUrl) }.getOrNull()
             if (absolute == null || !isTrusted(absolute)) return GitHubResult.Refused(0, "CI_GITHUB_UNTRUSTED_URL")
@@ -232,7 +279,7 @@ class GitHubChecksClient(
             HttpRequest.newBuilder(uri)
                 .GET()
                 .timeout(timeout())
-                .header("Authorization", "Bearer ${properties.effectiveToken}")
+                .header("Authorization", "Bearer $token")
                 .header("Accept", ACCEPT_JSON)
                 .header("X-GitHub-Api-Version", API_VERSION)
                 .build(),

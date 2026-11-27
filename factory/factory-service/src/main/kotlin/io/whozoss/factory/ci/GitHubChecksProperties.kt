@@ -11,8 +11,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * would print the token, so [toString] is explicit and redacts it.
  *
  * Token resolution ([effectiveToken]), first non blank wins:
- *  1. [token], bound from `FACTORY_GITHUB_TOKEN`, then `GITHUB_TOKEN`, then `GH_TOKEN` (see `application.yml`);
- *  2. when [ghCliFallback] is true, the output of `gh auth token` (the developer's local GitHub CLI login).
+ *  1. [adminToken], set at runtime from the cockpit Admin page (persisted and encrypted by `GitHubTokenSettingsService`,
+ *     which loads it at startup and keeps this memory copy up to date, so a poll never reads the database);
+ *  2. [token], bound from `FACTORY_GITHUB_TOKEN`, then `GITHUB_TOKEN`, then `GH_TOKEN` (see `application.yml`);
+ *  3. when [ghCliFallback] is true, the output of `gh auth token` (the developer's local GitHub CLI login).
  *
  * [ghCliFallback] defaults to `false` here so that code (and unit tests) that build this class by hand never pick up
  * the real `gh` login of the host; `application.yml` turns it on for the running service.
@@ -53,9 +55,17 @@ class GitHubChecksProperties(
     @Volatile
     private var cachedGhToken: String? = null
 
-    /** The token to send to GitHub: [token], else (when [ghCliFallback]) the cached `gh auth token`, else blank. */
+    /** Token configured from the Admin page; wins over every other source. Never log it, never return it in a DTO. */
+    @Volatile
+    var adminToken: String? = null
+
+    /**
+     * The token to send to GitHub: [adminToken], else [token], else (when [ghCliFallback]) the cached
+     * `gh auth token`, else blank.
+     */
     val effectiveToken: String
         get() {
+            adminToken?.takeIf { it.isNotBlank() }?.let { return it }
             if (token.isNotBlank()) return token
             if (!ghCliFallback) return ""
             cachedGhToken?.let { return it }
@@ -66,6 +76,22 @@ class GitHubChecksProperties(
         }
 
     val configured: Boolean get() = effectiveToken.isNotBlank()
+
+    /** Where [effectiveToken] comes from: `admin`, `environment`, `gh-cli` or `none`. */
+    val tokenSource: String
+        get() = when {
+            !adminToken.isNullOrBlank() -> SOURCE_ADMIN
+            token.isNotBlank() -> SOURCE_ENVIRONMENT
+            effectiveToken.isNotBlank() -> SOURCE_GH_CLI
+            else -> SOURCE_NONE
+        }
+
+    /**
+     * A hint that identifies a token without revealing it: its first and last 4 characters when it is long enough
+     * (real GitHub tokens are 40+ characters), otherwise `****`.
+     */
+    fun maskedHint(raw: String): String =
+        if (raw.length >= MASK_MIN_LENGTH) "${raw.take(MASK_EDGE)}…${raw.takeLast(MASK_EDGE)}" else "****"
 
     /** Replaces the `gh auth token` command runner (tests only): keeps them independent from the host's `gh`. */
     internal fun useGhTokenSupplier(supplier: () -> String): GitHubChecksProperties = apply {
@@ -83,20 +109,26 @@ class GitHubChecksProperties(
 
     /** Never spawns `gh` and never prints a token: only says whether one is known right now. */
     override fun toString(): String =
-        "GitHubChecksProperties(token=${if (token.isNotBlank() || cachedGhToken != null) "<redacted>" else "<unset>"}, " +
+        "GitHubChecksProperties(token=${if (token.isNotBlank() || cachedGhToken != null || !adminToken.isNullOrBlank()) "<redacted>" else "<unset>"}, " +
             "ghCliFallback=$ghCliFallback, apiBaseUrl=$apiBaseUrl, " +
             "repository=$repository, allowedRepositories=$allowedRepositories, requestTimeoutMs=$requestTimeoutMs, " +
             "logExcerptBytes=$logExcerptBytes, maxFailedJobsWithLogs=$maxFailedJobsWithLogs, " +
             "maxLogDownloadBytes=$maxLogDownloadBytes, pollBudgetMs=$pollBudgetMs)"
 
-    private companion object {
-        const val GH_TIMEOUT_SECONDS = 3L
+    companion object {
+        const val SOURCE_ADMIN = "admin"
+        const val SOURCE_ENVIRONMENT = "environment"
+        const val SOURCE_GH_CLI = "gh-cli"
+        const val SOURCE_NONE = "none"
+        private const val MASK_MIN_LENGTH = 16
+        private const val MASK_EDGE = 4
+        private const val GH_TIMEOUT_SECONDS = 3L
 
         /**
          * `gh auth token`, bounded by a short timeout. Returns blank when `gh` is missing, not logged in, too slow or
          * fails: the output (stderr is merged into stdout) is only trusted on a zero exit code, and is never logged.
          */
-        fun runGhAuthToken(): String {
+        private fun runGhAuthToken(): String {
             val process = try {
                 ProcessBuilder("gh", "auth", "token").redirectErrorStream(true).start()
             } catch (ignored: Exception) {

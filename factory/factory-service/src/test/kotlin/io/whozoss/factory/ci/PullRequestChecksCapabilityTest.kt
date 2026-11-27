@@ -306,6 +306,34 @@ class PullRequestChecksCapabilityTest {
     }
 
     @Test
+    fun `the admin token wins over the configured token for every call`() {
+        git(); serve(runs = listOf(run(1, "a", "completed", "success")))
+        val properties = GitHubChecksProperties(
+            token = "env-token", apiBaseUrl = "http://127.0.0.1:${server.address.port}", requestTimeoutMs = 3_000,
+        )
+        properties.adminToken = "admin-token"
+
+        val outcome = PullRequestChecksCapability(properties, GitHubChecksClient(properties)).check("ci", repo)
+
+        assertThat((outcome as CapabilityOutcome.CiChecksCompleted).passed).isTrue()
+        assertThat(requests.map { it.second }.distinct()).containsExactly("Bearer admin-token")
+    }
+
+    @Test
+    fun `an admin token alone is enough and a token set later is used without a restart`() {
+        git(); serve(runs = listOf(run(1, "a", "completed", "success")))
+        val properties = GitHubChecksProperties(token = "", apiBaseUrl = "http://127.0.0.1:${server.address.port}", requestTimeoutMs = 3_000)
+        val capability = PullRequestChecksCapability(properties, GitHubChecksClient(properties))
+        assertThat(refusedCode(capability.check("ci", repo))).isEqualTo("CI_GITHUB_NOT_CONFIGURED")
+        assertThat(requests).isEmpty()
+
+        properties.adminToken = "admin-token"
+
+        assertThat((capability.check("ci", repo) as CapabilityOutcome.CiChecksCompleted).passed).isTrue()
+        assertThat(requests.map { it.second }.distinct()).containsExactly("Bearer admin-token")
+    }
+
+    @Test
     fun `the token is only sent as a bearer credential to the API`() {
         git(); serve(runs = listOf(run(1, "a", "completed", "success")))
         check()

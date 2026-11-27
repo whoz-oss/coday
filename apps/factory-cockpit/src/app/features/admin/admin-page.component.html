@@ -6,68 +6,205 @@
     </div>
   </header>
 
-  <section class="sf-panel setting" aria-labelledby="run-concurrency-title" data-run-concurrency>
-    <h2 id="run-concurrency-title">Workflow execution</h2>
+  <div class="admin-grid">
+    <section class="sf-panel setting" aria-labelledby="run-concurrency-title" data-run-concurrency>
+      <h2 id="run-concurrency-title">Workflow execution</h2>
 
-    @if (loadError(); as message) {
-      <div class="banner banner--warn" role="alert" data-admin-load-error>
-        <mat-icon aria-hidden="true">cloud_off</mat-icon>
-        <span>{{ message }}</span>
-        <button mat-stroked-button class="sf-secondary" type="button" (click)="load()" data-admin-retry>Retry</button>
+      @if (loadError(); as message) {
+        <div class="banner banner--warn" role="alert" data-admin-load-error>
+          <mat-icon aria-hidden="true">cloud_off</mat-icon>
+          <span>{{ message }}</span>
+          <button mat-stroked-button class="sf-secondary" type="button" (click)="load()" data-admin-retry>Retry</button>
+        </div>
+      } @else if (loading() && !settings()) {
+        <div class="state" data-admin-loading>
+          <mat-progress-spinner diameter="32" mode="indeterminate" />
+          <span class="sf-muted">Loading…</span>
+        </div>
+      } @else if (settings(); as current) {
+        <form class="field" (ngSubmit)="save()">
+          <label for="max-parallel-runs">Maximum parallel workflow runs</label>
+          <div class="field__row">
+            <input
+              id="max-parallel-runs"
+              name="maxParallelRuns"
+              type="number"
+              step="1"
+              inputmode="numeric"
+              [min]="current.min"
+              [max]="current.max"
+              [ngModel]="draft()"
+              (ngModelChange)="onValueChange($event)"
+              [disabled]="saving()"
+              [attr.aria-invalid]="validation() ? 'true' : null"
+              aria-describedby="max-parallel-runs-hint max-parallel-runs-error"
+              data-max-parallel-runs
+            />
+            <button mat-flat-button class="sf-primary" type="submit" [disabled]="!canSave()" data-admin-save>
+              {{ saving() ? 'Saving…' : 'Save' }}
+            </button>
+          </div>
+          <p class="sf-muted" id="max-parallel-runs-hint" data-admin-hint>
+            Default: {{ current.defaultMaxParallelRuns }} · allowed {{ current.min }}–{{ current.max }}. Extra runs wait
+            in the queue.
+          </p>
+          <p id="max-parallel-runs-error" class="field__error" role="alert" data-admin-validation>
+            {{ validation() }}
+          </p>
+          @if (current.updatedBy || current.updatedAt) {
+            <p class="sf-muted" data-admin-updated>
+              Last changed
+              @if (current.updatedBy) {
+                by {{ current.updatedBy }}
+              }
+              @if (current.updatedAt; as updatedAt) {
+                on {{ formatUpdatedAt(updatedAt) }}
+              }
+            </p>
+          }
+          @if (savedMessage(); as message) {
+            <p role="status" data-admin-saved>{{ message }}</p>
+          }
+          @if (saveError(); as message) {
+            <p class="banner banner--warn" role="alert" data-admin-save-error>{{ message }}</p>
+          }
+        </form>
+      }
+    </section>
+
+    <section class="sf-panel setting" aria-labelledby="github-token-title" data-github-token>
+      <div class="setting__head">
+        <div>
+          <p class="sf-overline">CI integration</p>
+          <h2 id="github-token-title">GitHub PR checks token</h2>
+        </div>
+        @if (github(); as current) {
+          <span class="pill" [class]="'pill pill--' + current.status" role="status" data-github-pill>
+            <span class="pill__dot" aria-hidden="true"></span>
+            <mat-icon aria-hidden="true">{{ githubPill().icon }}</mat-icon>
+            <span>
+              {{ githubPill().label }}
+              @if (current.status === 'connected' && current.login) {
+                · &#64;{{ current.login }}
+              }
+            </span>
+          </span>
+        }
       </div>
-    } @else if (loading() && !settings()) {
-      <div class="state" data-admin-loading>
-        <mat-progress-spinner diameter="32" mode="indeterminate" />
-        <span class="sf-muted">Loading…</span>
-      </div>
-    } @else if (settings(); as current) {
-      <form class="field" (ngSubmit)="save()">
-        <label for="max-parallel-runs">Maximum parallel workflow runs</label>
-        <div class="field__row">
-          <input
-            id="max-parallel-runs"
-            name="maxParallelRuns"
-            type="number"
-            step="1"
-            inputmode="numeric"
-            [min]="current.min"
-            [max]="current.max"
-            [ngModel]="draft()"
-            (ngModelChange)="onValueChange($event)"
-            [disabled]="saving()"
-            [attr.aria-invalid]="validation() ? 'true' : null"
-            aria-describedby="max-parallel-runs-hint max-parallel-runs-error"
-            data-max-parallel-runs
-          />
-          <button mat-flat-button class="sf-primary" type="submit" [disabled]="!canSave()" data-admin-save>
-            {{ saving() ? 'Saving…' : 'Save' }}
+
+      @if (githubLoadError(); as message) {
+        <div class="banner banner--warn" role="alert" data-github-load-error>
+          <mat-icon aria-hidden="true">cloud_off</mat-icon>
+          <span>{{ message }}</span>
+          <button mat-stroked-button class="sf-secondary" type="button" (click)="loadGitHub()" data-github-retry>
+            Retry
           </button>
         </div>
-        <p class="sf-muted" id="max-parallel-runs-hint" data-admin-hint>
-          Default: {{ current.defaultMaxParallelRuns }} · allowed {{ current.min }}–{{ current.max }}. Extra runs wait
-          in the queue.
-        </p>
-        <p id="max-parallel-runs-error" class="field__error" role="alert" data-admin-validation>
-          {{ validation() }}
-        </p>
-        @if (current.updatedBy || current.updatedAt) {
-          <p class="sf-muted" data-admin-updated>
-            Last changed
-            @if (current.updatedBy) {
-              by {{ current.updatedBy }}
+      } @else if (githubLoading() && !github()) {
+        <div class="state" data-github-loading>
+          <mat-progress-spinner diameter="32" mode="indeterminate" />
+          <span class="sf-muted">Checking the connection…</span>
+        </div>
+      } @else if (github(); as current) {
+        <div class="connection connection--{{ current.status }}" data-github-status>
+          <div class="connection__line">
+            <span class="sf-muted">Active token</span>
+            <span data-github-source>{{ githubSourceLabel() }}</span>
+            @if (current.maskedToken) {
+              <code class="sf-mono" data-github-masked>{{ current.maskedToken }}</code>
             }
-            @if (current.updatedAt; as updatedAt) {
-              on {{ formatUpdatedAt(updatedAt) }}
+          </div>
+          @if (current.message && current.status !== 'connected') {
+            <p class="connection__message" data-github-message>{{ current.message }}</p>
+          }
+          @if (current.status === 'unconfigured') {
+            <p class="sf-muted">
+              Without a token the “GitHub PR checks” step cannot read your pull requests. Paste a personal access token
+              with read access to checks and pull requests.
+            </p>
+          }
+        </div>
+
+        <form class="field" (ngSubmit)="saveToken()">
+          <label for="github-token-input">
+            {{ current.source === 'admin' ? 'Replace the token' : 'Set a token' }}
+          </label>
+          <div class="field__row">
+            <input
+              id="github-token-input"
+              name="githubToken"
+              class="token-input"
+              [type]="tokenVisible() ? 'text' : 'password'"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="ghp_... or github_pat_..."
+              [ngModel]="tokenInput()"
+              (ngModelChange)="onTokenChange($event)"
+              [disabled]="githubBusy()"
+              data-github-token-input
+            />
+            <button
+              mat-icon-button
+              type="button"
+              class="sf-ghost"
+              [attr.aria-label]="tokenVisible() ? 'Hide the token' : 'Show the token'"
+              (click)="toggleTokenVisibility()"
+              data-github-toggle
+            >
+              <mat-icon aria-hidden="true">{{ tokenVisible() ? 'visibility_off' : 'visibility' }}</mat-icon>
+            </button>
+          </div>
+          <div class="field__row">
+            <button mat-flat-button class="sf-primary" type="submit" [disabled]="!canSaveToken()" data-github-save>
+              {{ githubBusy() ? 'Working…' : 'Save & test connection' }}
+            </button>
+            @if (current.configured) {
+              <button
+                mat-stroked-button
+                class="sf-secondary"
+                type="button"
+                [disabled]="githubBusy()"
+                (click)="testConnection()"
+                data-github-test
+              >
+                Test connection
+              </button>
             }
+            @if (current.source === 'admin') {
+              <button
+                mat-stroked-button
+                class="sf-danger"
+                type="button"
+                [disabled]="githubBusy()"
+                (click)="removeToken()"
+                data-github-remove
+              >
+                Remove
+              </button>
+            }
+          </div>
+          <p class="sf-muted">
+            The token is checked against GitHub before it is stored, and never shown again. It takes priority over
+            FACTORY_GITHUB_TOKEN, GITHUB_TOKEN, GH_TOKEN and the gh CLI.
           </p>
+        </form>
+
+        @if (githubFeedback(); as feedback) {
+          <div
+            class="banner"
+            [class.banner--success]="feedback.tone === 'success'"
+            [class.banner--error]="feedback.tone === 'error'"
+            [class.banner--warn]="feedback.tone === 'warn'"
+            role="alert"
+            data-github-feedback
+          >
+            <mat-icon aria-hidden="true">
+              {{ feedback.tone === 'success' ? 'check_circle' : feedback.tone === 'error' ? 'error' : 'warning' }}
+            </mat-icon>
+            <span>{{ feedback.text }}</span>
+          </div>
         }
-        @if (savedMessage(); as message) {
-          <p role="status" data-admin-saved>{{ message }}</p>
-        }
-        @if (saveError(); as message) {
-          <p class="banner banner--warn" role="alert" data-admin-save-error>{{ message }}</p>
-        }
-      </form>
-    }
-  </section>
+      }
+    </section>
+  </div>
 </div>

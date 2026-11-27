@@ -601,6 +601,73 @@ describe('FactoryApiService', () => {
     })
   })
 
+  describe('GitHub token admin setting', () => {
+    const url = '/api/factory/admin/settings/github-token'
+    const connected = {
+      configured: true,
+      connected: true,
+      status: 'connected',
+      source: 'admin',
+      login: 'octocat',
+      maskedToken: 'ghp_…6789',
+    }
+
+    it('getGitHubToken issues a GET and unwraps the { data } envelope', () => {
+      let result: unknown
+      service.getGitHubToken().subscribe((value) => (result = value))
+
+      const request = http.expectOne(url)
+      expect(request.request.method).toBe('GET')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: connected })
+
+      expect(result).toEqual(connected)
+    })
+
+    it('updateGitHubToken issues a PUT with the token in the JSON body', () => {
+      let result: unknown
+      service.updateGitHubToken('ghp_secret').subscribe((value) => (result = value))
+
+      const request = http.expectOne(url)
+      expect(request.request.method).toBe('PUT')
+      expect(request.request.body).toEqual({ token: 'ghp_secret' })
+      expect(request.request.headers.get('Content-Type')).toBe('application/json')
+      request.flush({ data: connected })
+
+      expect(result).toEqual(connected)
+    })
+
+    it('updateGitHubToken normalizes a 400 INVALID_VALUE failure', () => {
+      let error: FactoryApiError | undefined
+      service.updateGitHubToken(' ').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne(url)
+        .flush({ error: { code: 'INVALID_VALUE', message: 'blank' } }, { status: 400, statusText: 'Bad Request' })
+
+      expect(error).toEqual(expect.objectContaining({ code: 'INVALID_VALUE', status: 400 }))
+    })
+
+    it('clearGitHubToken issues a DELETE and unwraps the envelope', () => {
+      let result: unknown
+      service.clearGitHubToken().subscribe((value) => (result = value))
+
+      const request = http.expectOne(url)
+      expect(request.request.method).toBe('DELETE')
+      request.flush({ data: { configured: false, connected: false, status: 'unconfigured', source: 'none' } })
+
+      expect(result).toEqual(expect.objectContaining({ status: 'unconfigured' }))
+    })
+
+    it('testGitHubToken posts to the /test route', () => {
+      service.testGitHubToken().subscribe()
+
+      const request = http.expectOne(`${url}/test`)
+      expect(request.request.method).toBe('POST')
+      request.flush({ data: connected })
+    })
+  })
+
   describe('admin artifact operations', () => {
     it('runGarbageCollection posts to /admin/artifacts/gc with the dryRun body and a correlation id', () => {
       let result: unknown

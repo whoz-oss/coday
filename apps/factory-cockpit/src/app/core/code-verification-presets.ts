@@ -29,7 +29,7 @@ export const CODE_VERIFICATION_PRESETS: readonly CodeVerificationPreset[] = [
   {
     id: 'github-pr-checks',
     label: 'GitHub PR checks',
-    hint: 'Waits for the GitHub checks of the run branch pull request (polls every 60 s, max 30 min, no LLM). Requires FACTORY_GITHUB_TOKEN on Factory and a non-draft PR. A red CI can return for correction.',
+    hint: 'Waits for the GitHub checks of the run branch pull request (polls every 60 s, max 30 min, no LLM). Requires a GitHub token (set it in the Admin page, or FACTORY_GITHUB_TOKEN on Factory) and a non-draft PR. A red CI can return for correction.',
   },
 ] as const
 

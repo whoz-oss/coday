@@ -63,6 +63,21 @@ export interface RunConcurrencySettings {
   updatedBy?: string | null
 }
 
+/**
+ * Connection status of the GitHub token used by the PR checks step (`/api/factory/admin/settings/github-token`).
+ * It never carries the token, only a masked hint.
+ */
+export interface FactoryGitHubSettings {
+  configured: boolean
+  connected: boolean
+  status: 'connected' | 'invalid' | 'unconfigured' | 'unreachable'
+  source: 'admin' | 'environment' | 'gh-cli' | 'none'
+  login?: string | null
+  maskedToken?: string | null
+  message?: string | null
+  checkedAt?: string | null
+}
+
 /** One registered workflow definition. */
 export interface WorkflowDefinition {
   workflowType?: string
@@ -638,6 +653,29 @@ export class FactoryApiService {
   /** PUT `/api/factory/admin/settings/run-concurrency` — changes the limit at runtime (400 `INVALID_MAX_PARALLEL_RUNS` when out of range). */
   updateRunConcurrency(maxParallelRuns: number): Observable<RunConcurrencySettings> {
     return this.put<RunConcurrencySettings>('/api/factory/admin/settings/run-concurrency', { maxParallelRuns })
+  }
+
+  /** GET `/api/factory/admin/settings/github-token` — the status of the effective GitHub token, verified against GitHub. */
+  getGitHubToken(): Observable<FactoryGitHubSettings> {
+    return this.request<FactoryGitHubSettings>('/api/factory/admin/settings/github-token', {})
+  }
+
+  /**
+   * PUT `/api/factory/admin/settings/github-token` — verifies the token live, then saves it unless GitHub rejects it
+   * (the answer then has `status: 'invalid'`). 400 `INVALID_VALUE` when the token is blank.
+   */
+  updateGitHubToken(token: string): Observable<FactoryGitHubSettings> {
+    return this.put<FactoryGitHubSettings>('/api/factory/admin/settings/github-token', { token })
+  }
+
+  /** DELETE `/api/factory/admin/settings/github-token` — removes the Admin token; the environment / `gh` token takes over. */
+  clearGitHubToken(): Observable<FactoryGitHubSettings> {
+    return this.delete<FactoryGitHubSettings>('/api/factory/admin/settings/github-token')
+  }
+
+  /** POST `/api/factory/admin/settings/github-token/test` — re-tests the effective token now, bypassing the server cache. */
+  testGitHubToken(): Observable<FactoryGitHubSettings> {
+    return this.post<FactoryGitHubSettings>('/api/factory/admin/settings/github-token/test', {})
   }
 
   /** Existing AgentOS discovery through the same-origin gateway, scoped by namespace. */
