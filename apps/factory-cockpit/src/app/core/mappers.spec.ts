@@ -852,6 +852,64 @@ describe('mappers', () => {
     })
   })
 
+  describe('mapSessionDetailToRunSummary - workspace pre-check refusal', () => {
+    it('derives the failed card state and the failure reason from the pre-check blocker', () => {
+      const detail = mapProjectionToSessionDetail(
+        { workflowId: 'wf-refused', projection: { status: 'failed', steps: [{ id: 'build', status: 'failed' }] } },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          blockers: [
+            {
+              code: 'WORKSPACE_PRECHECK_FAILED',
+              message: 'Required agent(s) reviewer are not available. Remedy: Publish the agents.',
+              details: 'REQUIRED_AGENTS_MISSING',
+            },
+          ],
+        }
+      )
+
+      const summary = mapSessionDetailToRunSummary({ workflowId: 'wf-refused' }, detail)
+      expect(summary.cardState).toBe('failed')
+      expect(summary.failureReason).toBe('Required agent(s) reviewer are not available. Remedy: Publish the agents.')
+    })
+
+    it('carries no failure reason when no pre-check blocker is active', () => {
+      const detail = mapProjectionToSessionDetail({
+        workflowId: 'wf-plain',
+        projection: { status: 'failed', steps: [{ id: 'build', status: 'failed' }] },
+      })
+      expect(mapSessionDetailToRunSummary({ workflowId: 'wf-plain' }, detail).failureReason).toBeUndefined()
+    })
+  })
+
+  describe('workspace pre-check evidence', () => {
+    it('turns a pre-check refusal into a plain log event carrying its message, without a code diagnostic', () => {
+      const session = mapProjectionToSessionDetail(
+        { workflowId: 'wf-evt', projection: { status: 'failed', steps: [] } },
+        undefined,
+        {
+          items: [
+            {
+              evidenceId: 'ev-precheck',
+              kind: 'workspace-precheck',
+              outcome: 'failed',
+              createdAt: startedAt,
+              facts: { code: 'REQUIRED_AGENTS_MISSING', message: 'Required agent(s) reviewer are not available.' },
+            },
+          ],
+        }
+      )
+
+      const event = session.events.find((candidate) => candidate.text.includes('reviewer are not available'))
+      expect(event).toMatchObject({ type: 'log', text: 'Required agent(s) reviewer are not available.' })
+      expect(event?.codeDiagnostic).toBeUndefined()
+    })
+  })
+
   describe('extractInteractions', () => {
     it('maps a bare array of records defensively', () => {
       const result = extractInteractions([
@@ -1696,6 +1754,25 @@ describe('mappers', () => {
   })
 
   describe('extractBlockers', () => {
+    it('keeps the machine detail of a workspace pre-check refusal', () => {
+      expect(
+        extractBlockers([
+          {
+            code: 'WORKSPACE_PRECHECK_FAILED',
+            message: 'Required agent(s) reviewer are not available.',
+            details: 'REQUIRED_AGENTS_MISSING',
+          },
+        ])
+      ).toEqual([
+        {
+          code: 'WORKSPACE_PRECHECK_FAILED',
+          label: 'Required agent(s) reviewer are not available.',
+          message: 'Required agent(s) reviewer are not available.',
+          details: 'REQUIRED_AGENTS_MISSING',
+        },
+      ])
+    })
+
     it('maps the backend message to label and keeps code/stepId', () => {
       expect(
         extractBlockers([{ code: 'WAITING_HUMAN_INTERACTION', stepId: 'build', message: 'Waiting for human' }])

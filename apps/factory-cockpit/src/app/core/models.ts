@@ -117,7 +117,7 @@ export interface FactoryRun {
    * run root case (entry agent step attempt case). Absent until the first agent step is dispatched.
    */
   mainCaseId?: string
-  phases: PhaseSegment[] // destroyed runs (only set when a real teardown exists)
+  finalCostUsd?: number // destroyed runs (only set when a real teardown exists)
   /** Full run summary (status, current phase, goal…). */
   run?: RunSummary
 }

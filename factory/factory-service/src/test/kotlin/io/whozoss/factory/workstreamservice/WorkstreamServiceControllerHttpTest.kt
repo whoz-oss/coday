@@ -7,7 +7,9 @@ import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
+import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
+import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workstream.domain.Workstream
@@ -50,6 +52,9 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var workflowRepository: WorkflowRepository
+
+    @Autowired
+    private lateinit var workflowEvidence: WorkflowEvidenceRepository
 
     @Autowired
     private lateinit var durableAttempts: DurableAgentAttemptService
@@ -200,6 +205,37 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
 
         assertThat(payload["state"]).isEqualTo("existing")
         assertThat(payload["allowedActions"] as List<*>).isEmpty()
+    }
+
+    @Test
+    fun `get_blockers exposes the pre-check details only for a refused run`() {
+        publish("wf-svc-plain", namespace, stepStatus = "failed")
+        val plain = data(get("$base/workflows/wf-svc-plain/blockers").body)["items"] as List<Map<String, Any?>>
+        assertThat(plain).allSatisfy { assertThat(it).doesNotContainKey("details") }
+
+        publish("wf-svc-refused", namespace)
+        workflowEvidence.append(
+            scope,
+            WorkflowEvidenceItem(
+                evidenceId = UUID.randomUUID().toString(),
+                namespaceId = namespace,
+                workflowId = "wf-svc-refused",
+                stepId = null,
+                kind = "workspace-precheck",
+                outcome = "failed",
+                source = mapOf("kind" to "factory-session-sequencer"),
+                facts = mapOf(
+                    "code" to "REQUIRED_AGENTS_MISSING",
+                    "message" to "Required agent(s) reviewer are not available.",
+                ),
+                idempotencyKey = null,
+                createdAt = null,
+            ),
+        )
+
+        val refused = data(get("$base/workflows/wf-svc-refused/blockers").body)["items"] as List<Map<String, Any?>>
+        val precheck = refused.single { it["code"] == "WORKSPACE_PRECHECK_FAILED" }
+        assertThat(precheck["details"]).isEqualTo("REQUIRED_AGENTS_MISSING")
     }
 
     @Test
