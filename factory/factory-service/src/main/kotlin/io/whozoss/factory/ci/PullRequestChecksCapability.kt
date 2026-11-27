@@ -47,14 +47,28 @@ class PullRequestChecksCapability(
             ?: return refused(stepId, "CI_BRANCH_UNRESOLVED", "The run worktree has no attached branch.")
 
         val pullRequest = when (val found = client.findOpenPullRequest(owner, repo, branch)) {
-            is GitHubResult.Ok -> found.value ?: return refused(stepId, "CI_PR_NOT_FOUND", "No open pull request exists for branch '$branch'.")
+            is GitHubResult.Ok -> found.value ?: return refused(stepId, "CI_PR_NOT_FOUND", "No open or merged pull request exists for branch '$branch'.")
             is GitHubResult.Transient -> return transient(stepId, found)
             is GitHubResult.Refused -> return githubRefused(stepId, found)
+        }
+        // When auto-merge is enabled, the PR can be merged between two polls once required checks turn green.
+        // A merged PR on the current local HEAD (or when local HEAD is unknown) has passed its merge gate and is green.
+        val localHead = GitWorktreeReader.head(repoRoot)
+        if (pullRequest.merged && (localHead == null || localHead.equals(pullRequest.headSha, ignoreCase = true))) {
+            return CapabilityOutcome.CiChecksCompleted(
+                stepId = stepId,
+                passed = true,
+                prNumber = pullRequest.number,
+                prUrl = pullRequest.url,
+                headSha = pullRequest.headSha,
+                branch = branch,
+                checks = listOf(checkEntry("pull-request-merged", "completed", "success", pullRequest.url)),
+                failedChecks = emptyList(),
+            )
         }
         if (pullRequest.draft) {
             return refused(stepId, "CI_PR_IS_DRAFT", "Pull request #${pullRequest.number} is a draft: its CI is skipped. Mark it ready for review first.")
         }
-        val localHead = GitWorktreeReader.head(repoRoot)
         if (localHead != null && !localHead.equals(pullRequest.headSha, ignoreCase = true)) {
             return pending(
                 stepId, "CI_HEAD_NOT_PUSHED",
