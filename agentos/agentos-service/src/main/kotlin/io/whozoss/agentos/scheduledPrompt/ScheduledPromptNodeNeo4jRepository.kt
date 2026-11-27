@@ -175,6 +175,21 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
     fun disableByAgentConfigId(agentConfigId: String): Int
 
     /**
+     * Find all enabled, non-removed scheduled prompts of a namespace, whatever their user scope
+     * (namespace-shared and user×namespace).
+     */
+    @Query(
+        $$"""
+            MATCH (sp:ScheduledPrompt)
+            WHERE sp.namespaceId = $namespaceId
+              AND sp.enabled = true
+              AND NOT COALESCE(sp.removed, false)
+            RETURN sp ORDER BY sp.name ASC
+            """,
+    )
+    fun findEnabledByNamespaceId(namespaceId: String): List<ScheduledPromptNode>
+
+    /**
      * Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId.
      * Read-only: no write intent, no dirty checking.
      */

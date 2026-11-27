@@ -1,5 +1,7 @@
 package io.whozoss.agentos.agentConfig
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
@@ -371,5 +373,98 @@ class AgentConfigServiceImplUnitSpec :
 
             // The other agent's scheduler must remain enabled
             scheduledPromptRepo.findByScope(null, null, listOf(otherAgentId)).single().enabled shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // disable — cascade to scheduled prompts targeting the agent by name (act.agentName)
+        // -------------------------------------------------------------------------
+
+        val loopAgentId: UUID = UUID.randomUUID()
+        val otherNamespaceId: UUID = UUID.randomUUID()
+
+        fun flowTargeting(agentName: String?): JsonNode {
+            val act = if (agentName == null) "{}" else "{\"agentName\": \"$agentName\"}"
+            return ObjectMapper().readTree("{\"search\": {\"tool\": \"searchTool\"}, \"act\": $act}")
+        }
+
+        fun targetingPrompt(
+            name: String,
+            nsId: UUID? = namespaceId,
+            flow: JsonNode? = flowTargeting("Caretaker"),
+            userId: UUID? = null,
+            enabled: Boolean = true,
+        ) = scheduledPrompt(loopAgentId, name, enabled).copy(namespaceId = nsId, userId = userId, flowConfiguration = flow)
+
+        "disable also disables the scheduled prompts of the namespace targeting the agent by act.agentName, case-insensitively" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+            val agent = repo.save(config("Caretaker", nsId = namespaceId))
+            scheduledPromptRepo.save(targetingPrompt("exact", flow = flowTargeting("Caretaker")))
+            scheduledPromptRepo.save(targetingPrompt("lower-case", flow = flowTargeting("caretaker")))
+            scheduledPromptRepo.save(targetingPrompt("user-scoped", userId = UUID.randomUUID()))
+
+            svc.disable(agent.metadata.id)
+
+            scheduledPromptRepo.findEnabledByNamespaceId(namespaceId) shouldHaveSize 0
+        }
+
+        "disable leaves untouched the scheduled prompts of ANOTHER namespace targeting an agent of the same name" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+            // same name in both namespaces: two different agents, only the first one is disabled
+            val agent = repo.save(config("Caretaker", nsId = namespaceId))
+            repo.save(config("Caretaker", nsId = otherNamespaceId))
+            scheduledPromptRepo.save(targetingPrompt("in-namespace"))
+            scheduledPromptRepo.save(targetingPrompt("in-other-namespace", nsId = otherNamespaceId))
+            scheduledPromptRepo.save(targetingPrompt("in-other-namespace-user", nsId = otherNamespaceId, userId = UUID.randomUUID()))
+
+            svc.disable(agent.metadata.id)
+
+            scheduledPromptRepo.findEnabledByNamespaceId(namespaceId) shouldHaveSize 0
+            scheduledPromptRepo.findEnabledByNamespaceId(otherNamespaceId).map { it.name }.toSet() shouldBe
+                setOf("in-other-namespace", "in-other-namespace-user")
+        }
+
+        "disable ignores scheduled prompts without flowConfiguration, without act.agentName, or targeting another agent" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+            val agent = repo.save(config("Caretaker", nsId = namespaceId))
+            scheduledPromptRepo.save(targetingPrompt("no-flow", flow = null))
+            scheduledPromptRepo.save(targetingPrompt("no-agent-name", flow = flowTargeting(null)))
+            scheduledPromptRepo.save(targetingPrompt("other-agent", flow = flowTargeting("Reviewer")))
+            scheduledPromptRepo.save(targetingPrompt("prefix-only", flow = flowTargeting("Caretaker2")))
+            scheduledPromptRepo.save(targetingPrompt("blank-name", flow = flowTargeting(" ")))
+
+            svc.disable(agent.metadata.id)
+
+            scheduledPromptRepo.findEnabledByNamespaceId(namespaceId) shouldHaveSize 5
+        }
+
+        "disable of a platform-level agent does not cascade by name" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+            val platformAgent = repo.save(config("Caretaker", nsId = null))
+            scheduledPromptRepo.save(targetingPrompt("in-namespace"))
+
+            svc.disable(platformAgent.metadata.id)
+
+            scheduledPromptRepo.findEnabledByNamespaceId(namespaceId) shouldHaveSize 1
+        }
+
+        "disable does not touch removed scheduled prompts targeting the agent" {
+            val repo = repository()
+            val scheduledPromptRepo = InMemoryScheduledPromptRepository()
+            val svc = service(repo, spr = scheduledPromptRepo)
+            val agent = repo.save(config("Caretaker", nsId = namespaceId))
+            val removed = scheduledPromptRepo.save(targetingPrompt("removed"))
+            scheduledPromptRepo.delete(removed.id)
+
+            svc.disable(agent.metadata.id)
+
+            scheduledPromptRepo.findByIds(listOf(removed.id), withRemoved = true).single().enabled shouldBe true
         }
     })

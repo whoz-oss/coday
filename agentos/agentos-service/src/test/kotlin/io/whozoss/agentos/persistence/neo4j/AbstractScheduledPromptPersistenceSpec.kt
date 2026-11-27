@@ -156,6 +156,23 @@ abstract class AbstractScheduledPromptPersistenceSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // findEnabledByNamespaceId
+        // -------------------------------------------------------------------------
+
+        "findEnabledByNamespaceId returns only the enabled scheduled prompts of the given namespace" {
+            val ns = namespaceRepo.save(namespace())
+            val otherNs = namespaceRepo.save(namespace())
+            val enabledAgentId = UUID.randomUUID()
+            val disabledAgentId = UUID.randomUUID()
+            val enabledId = insertScheduledPromptNode(ns.id, enabledAgentId)
+            insertScheduledPromptNode(ns.id, disabledAgentId)
+            insertScheduledPromptNode(otherNs.id, UUID.randomUUID())
+            scheduledPromptRepo.disableByAgentConfigId(disabledAgentId)
+
+            scheduledPromptRepo.findEnabledByNamespaceId(ns.id).map { it.id } shouldBe listOf(enabledId)
+        }
+
+        // -------------------------------------------------------------------------
         // findByScope — modifiedSince basic filtering
         // -------------------------------------------------------------------------
 
