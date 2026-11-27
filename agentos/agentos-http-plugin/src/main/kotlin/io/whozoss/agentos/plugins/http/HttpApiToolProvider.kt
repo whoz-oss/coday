@@ -107,6 +107,8 @@ class HttpApiToolProvider @JvmOverloads constructor(
             semaphore = services.limiters.limiterFor(namespaceId, configName, parsed.maxConcurrentCalls),
             urlPolicy = services.urlPolicy,
             client = services.client,
+            connectionCapability = context?.connectionCapability,
+            connectionAuth = authConfig,
         )
         logger.info {
             "$INTEGRATION_TYPE integration '$configName': providing ${catalogue.operations.size} tool(s), " +

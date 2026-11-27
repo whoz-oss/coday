@@ -10,8 +10,10 @@ import io.whozoss.agentos.sdk.tool.StandardTool
  * the case's events) can leak one by construction. The full failure is in the server logs.
  *
  * @property tools The de-duplicated tools of every integration that loaded, sorted by name.
- * @property failedIntegrations The names of the integrations whose plugin failed to provide their tools,
- *   in resolution order, each once. Empty when nothing failed.
+ * @property failedIntegrations The names of the integrations whose plugin failed to provide their tools
+ *   (it threw, or no plugin is loaded for the integration type), in resolution order, each once. Empty when
+ *   nothing failed. A plugin that deliberately refuses an invalid configuration must throw rather than return
+ *   an empty list, so that the refusal surfaces here.
  */
 data class ToolResolution(
     val tools: Collection<StandardTool<*>>,

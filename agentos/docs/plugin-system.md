@@ -33,6 +33,7 @@ The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlug
 | `agentos-datetime-plugin` | `DATETIME` | Date/time tools |
 | `agentos-file-plugin` | `FILE_ACCESS` | File system tools under a root path (`readOnly` keeps only the read tools) |
 | `agentos-mcp-plugin` | `MCP_STDIO`, `MCP_HTTP` | Tools of a local (stdio) or remote (HTTP) MCP server |
+| `agentos-google-workspace-plugin` | `GOOGLE_WORKSPACE` | Governed read-only Drive, Calendar and Gmail (see [google-workspace-governance.md](google-workspace-governance.md)) |
 | `agentos-http-plugin` | `HTTP_API` | Operations of an OpenAPI-described HTTP API (see [http-api-integration.md](http-api-integration.md)) |
 | `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
 | `agentos-gradle-plugin` | `GRADLE` | Structured Gradle tools (`gradle_compile`, `gradle_tests`, `gradle_dependency_insight`) run through the `gradlew` of a configured directory (see [GRADLE integration](#gradle-integration)) |
@@ -196,6 +197,10 @@ later needs the flag enabled on its model.
 Through the API (`PUT /api/ai-models/{id}`), omitting `supportsAdvancedExecution` keeps the current
 value; an explicit `false` clears it. On creation, omitting it means `false`.
 
+## Platform Connection Policies
+
+Server-owned connection policies bind authentication endpoints, scopes and runtime integration usage; HTTP_API also consumes a host-installed resource capability. See [connection-policies.md](connection-policies.md) for strict/compatibility migration and trusted-runtime limits.
+
 ## Credentials Delivered to Plugins
 
 An `IntegrationConfig.authSettingName` is resolved into a `ToolContext.credentialProvider` once per
@@ -266,9 +271,9 @@ endpoint or a command, that overlay would let any authenticated user point a sha
 host they control (or, for `BASH`, run a command that reads it; for `GRADLE`, run a build with a chosen `javaHome`, `projectDirectory` or `inheritEnvironment`; for `KTLINT`, point `projectDirectory` at `/` so that `ktlint_format` rewrites any Kotlin file the service can write), so those types are refused in both user scopes at the API edge (`POST` -> 403,
 `PUT` -> 404 because the endpoint hides existence). Shared scopes are unaffected.
 
-| Property | Env var | Default | Purpose |
-|---|---|---|---|
-| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
+| Property | Env var | Default                                                | Purpose |
+|---|---|--------------------------------------------------------|---|
+| `agentos.integrations.user-scope-denied-types` | `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` | `HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT, GOOGLE_WORKSPACE` | Integration types (exact match) that cannot be created or updated in a user scope. Setting the list replaces the default entirely. |
 
 ## Tool Registration
 

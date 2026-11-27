@@ -32,6 +32,11 @@
                   <project path="$PROJECT_DIR$/agentos/agentos-git-plugin" />
                 </projects>
               </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-google-workspace-plugin" name="agentos-google-workspace-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-google-workspace-plugin" />
+                </projects>
+              </build>
               <build path="$PROJECT_DIR$/agentos/agentos-gradle-plugin" name="agentos-gradle-plugin">
                 <projects>
                   <project path="$PROJECT_DIR$/agentos/agentos-gradle-plugin" />
@@ -40,6 +45,11 @@
               <build path="$PROJECT_DIR$/agentos/agentos-http-plugin" name="agentos-http-plugin">
                 <projects>
                   <project path="$PROJECT_DIR$/agentos/agentos-http-plugin" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-ktlint-plugin" name="agentos-ktlint-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-ktlint-plugin" />
                 </projects>
               </build>
               <build path="$PROJECT_DIR$/agentos/agentos-mcp-plugin" name="agentos-mcp-plugin">
@@ -79,8 +89,10 @@
             <option value="$PROJECT_DIR$/agentos/agentos-file-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-git" />
             <option value="$PROJECT_DIR$/agentos/agentos-git-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-google-workspace-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-gradle-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-http-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-ktlint-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-mcp-plugin" />
             <option value="$PROJECT_DIR$/agentos/agentos-plugins-filesystem" />
             <option value="$PROJECT_DIR$/agentos/agentos-sdk" />

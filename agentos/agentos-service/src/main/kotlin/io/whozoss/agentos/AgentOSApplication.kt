@@ -52,6 +52,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
     ExchangeToolsConfigProperties::class,
     GitExecutionProperties::class,
     IntegrationsProperties::class,
+    io.whozoss.agentos.auth.ConnectionPolicyProperties::class,
     PromptBatchTranslationProperties::class,
     PromptTranslationCacheProperties::class,
     QueryUserConfigProperties::class,

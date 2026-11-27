@@ -1,0 +1,1 @@
+{"name":"agentos-google-workspace-plugin","$schema":"../../node_modules/nx/schemas/project-schema.json","projectType":"library","sourceRoot":"agentos/agentos-google-workspace-plugin/src","tags":["type:lib","platform:jvm-agentos","scope:plugin"]}

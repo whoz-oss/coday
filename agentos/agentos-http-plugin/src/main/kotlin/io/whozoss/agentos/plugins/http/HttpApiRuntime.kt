@@ -30,6 +30,8 @@ class HttpApiRuntime(
     val semaphore: Semaphore,
     val urlPolicy: OutboundUrlPolicy,
     client: OkHttpClient,
+    val connectionCapability: io.whozoss.agentos.sdk.auth.ConnectionCapability? = null,
+    val connectionAuth: io.whozoss.agentos.plugins.http.config.AuthConfig? = null,
 ) {
     val baseUrl: HttpUrl = normalise(baseUrl.toHttpUrl())
 

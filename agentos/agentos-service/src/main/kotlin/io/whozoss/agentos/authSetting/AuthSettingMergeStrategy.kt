@@ -19,12 +19,21 @@ import org.springframework.stereotype.Component
  *   value for that key is preserved. Keys present only in `base` are always preserved.
  */
 @Component
-class AuthSettingMergeStrategy : MergeStrategy<AuthSetting> {
+class AuthSettingMergeStrategy(private val connectionPolicies: io.whozoss.agentos.auth.ConnectionPolicyRegistry = io.whozoss.agentos.auth.ConnectionPolicyRegistry()) : MergeStrategy<AuthSetting> {
     override fun merge(
         base: AuthSetting,
         override: AuthSetting,
     ): AuthSetting {
         val mergedData = mergeData(base.toDataMap(), override.toDataMap())
+        if (connectionPolicies.isGoverned(base)) {
+            val original = base.toDataMap()
+            check(base.authType == override.authType && listOf("authorizationUrl", "tokenUrl", "discoveryUrl", "resourceUrl").all { original[it] == mergedData[it] }) {
+                io.whozoss.agentos.auth.ConnectionPolicyRegistry.DENIED
+            }
+            val scopes = original["scopes"]?.trim()?.split(Regex("\\s+"))?.toSet().orEmpty()
+            val narrowed = mergedData["scopes"]?.trim()?.split(Regex("\\s+"))?.toSet().orEmpty()
+            check(scopes.containsAll(narrowed)) { io.whozoss.agentos.auth.ConnectionPolicyRegistry.DENIED }
+        }
         return authSettingFromDataMap(
             authType = override.authType,
             data = mergedData,

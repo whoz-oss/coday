@@ -3,6 +3,7 @@ package io.whozoss.agentos.auth
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.authSetting.AuthSetting
+import io.whozoss.agentos.authSetting.toDataMap
 import io.whozoss.agentos.authSetting.OAuthCustomAuthSetting
 import io.whozoss.agentos.authSetting.OAuthDiscoverableAuthSetting
 import io.whozoss.agentos.authSetting.OAuthMcpDiscoverableAuthSetting
@@ -46,6 +47,8 @@ class OAuthFlowService(
     private val httpClient: OkHttpClient,
     private val objectMapper: ObjectMapper,
     private val config: OAuthConfigProperties,
+    private val connectionPolicies: ConnectionPolicyRegistry = ConnectionPolicyRegistry(),
+    private val authSettingService: io.whozoss.agentos.authSetting.AuthSettingService? = null,
 ) {
     private val redirectUri: String get() = config.redirectUri
 
@@ -60,13 +63,43 @@ class OAuthFlowService(
         agentId: UUID,
         agentName: String,
         emitEvent: (CaseEvent) -> CaseEvent,
+    ): Credential? = resolveCredential(userId, authSetting, namespaceId, caseId, agentId, agentName, emitEvent, false)
+
+    /** Only governed runs opt into strict grant checks; generic OAuth behavior is unchanged. */
+    suspend fun resolveGovernedGoogleCredential(
+        userId: UUID,
+        authSetting: AuthSetting,
+        namespaceId: UUID,
+        caseId: UUID,
+        agentId: UUID,
+        agentName: String,
+        emitEvent: (CaseEvent) -> CaseEvent,
+    ): Credential? = resolveCredential(userId, authSetting, namespaceId, caseId, agentId, agentName, emitEvent, true)
+
+    private suspend fun resolveCredential(
+        userId: UUID,
+        authSetting: AuthSetting,
+        namespaceId: UUID,
+        caseId: UUID,
+        agentId: UUID,
+        agentName: String,
+        emitEvent: (CaseEvent) -> CaseEvent,
+        governedGoogle: Boolean,
     ): Credential? {
+        requireCurrent(authSetting, userId, namespaceId)
+        connectionPolicies.requireSetting(authSetting)
         val authSettingId = authSetting.metadata.id
         logger.debug { "[OAuth] resolveOAuthCredential: authSetting=${authSetting.name} (${authSetting.authType}), userId=$userId" }
 
+        if (governedGoogle) check(GoogleWorkspaceAuthPolicy.allowed(authSetting)) {
+            "Governed Google authentication requires registered Google endpoints and read-only scopes"
+        }
         val existing = credentialService.resolve(userId, authSettingId)
+        if (existing != null) connectionPolicies.requireGrant(authSetting, existing, userId)
+        if (governedGoogle && existing != null) GoogleWorkspaceAuthPolicy.requireGrant(authSetting, existing, userId)
         if (existing != null && !isExpired(existing)) {
             logger.debug { "[OAuth] resolveOAuthCredential: returning existing valid credential for ${authSetting.name}" }
+            requireCurrent(authSetting, userId, namespaceId)
             return existing
         }
 
@@ -82,14 +115,27 @@ class OAuthFlowService(
                 } else {
                     // For MCP discoverable, check for stored dynamic client credentials
                     val (effectiveClientId, effectiveClientSecret) = resolveClientCredentials(authSetting, existing)
-                    val refreshed = refreshAccessToken(endpoints.tokenEndpoint, refreshToken, effectiveClientId, effectiveClientSecret)
+                    requireCurrent(authSetting, userId, namespaceId)
+                    val refreshed = refreshAccessToken(endpoints.tokenEndpoint, refreshToken, effectiveClientId, effectiveClientSecret, policyClient(authSetting))
                     if (refreshed != null) {
                         logger.debug { "[OAuth] resolveOAuthCredential: token refreshed successfully for ${authSetting.name}" }
                         val dynamicInfo = extractDynamicClientInfo(existing)
                         // A refresh response may omit the refresh token (Google always does): the current one
                         // stays valid and is kept, otherwise the next expiry would ask the user again.
-                        val kept = refreshed.copy(refreshToken = refreshed.refreshToken ?: refreshToken)
-                        return credentialService.store(buildCredential(userId, authSettingId, kept, dynamicInfo))
+                        val kept = refreshed.copy(
+                            refreshToken = refreshed.refreshToken ?: refreshToken,
+                            // The validated row supplies this exact refresh grant; omitted scope means unchanged.
+                            // Never substitute requested configuration or preserve an unvalidated grant.
+                            scope = if ((governedGoogle || connectionPolicies.isGoverned(authSetting)) && refreshed.scope == null) existing.data["scope"] else refreshed.scope,
+                        )
+                        val replacement = buildCredential(userId, authSettingId, kept, dynamicInfo)
+                        if (governedGoogle) GoogleWorkspaceAuthPolicy.requireGrant(authSetting, replacement, userId)
+                        requireCurrent(authSetting, userId, namespaceId)
+                        connectionPolicies.requireGrant(authSetting, replacement, userId)
+                        val stored = credentialService.store(replacement)
+                        requireCurrent(authSetting, userId, namespaceId)
+                        connectionPolicies.requireGrant(authSetting, stored, userId)
+                        return stored
                     } else {
                         logger.warn {
                             "[OAuth] resolveOAuthCredential: token refresh failed for ${authSetting.name}, falling through to interactive flow"
@@ -105,7 +151,8 @@ class OAuthFlowService(
             logger.debug { "[OAuth] resolveOAuthCredential: no existing credential for ${authSetting.name}" }
         }
 
-        return runInteractiveFlow(userId, authSetting, namespaceId, caseId, agentId, agentName, emitEvent)
+        requireCurrent(authSetting, userId, namespaceId)
+        return runInteractiveFlow(userId, authSetting, namespaceId, caseId, agentId, agentName, emitEvent, governedGoogle)
     }
 
     /** Whether an interactive authorization can run at all: it needs the redirect URI the provider calls back. */
@@ -137,11 +184,15 @@ class OAuthFlowService(
     suspend fun startInteractiveConnection(
         userId: UUID,
         authSetting: AuthSetting,
+        namespaceId: UUID? = null,
     ): String? {
+        // Null intentionally means the raw row; base provenance is not the resolution context.
+        requireCurrent(authSetting, userId, namespaceId)
+        connectionPolicies.requireSetting(authSetting)
         val authorizationUrl = CompletableDeferred<String?>()
         connectScope.launch {
             try {
-                runInteractiveFlowCore(userId, authSetting) { authorizationUrl.complete(it) }
+                runInteractiveFlowCore(userId, authSetting, namespaceId = namespaceId) { authorizationUrl.complete(it) }
                 // A flow that ended before announcing any URL failed to start: release the caller.
                 authorizationUrl.complete(null)
             } catch (e: CancellationException) {
@@ -168,8 +219,9 @@ class OAuthFlowService(
         agentId: UUID,
         agentName: String,
         emitEvent: (CaseEvent) -> CaseEvent,
+        governedGoogle: Boolean,
     ): Credential? =
-        runInteractiveFlowCore(userId, authSetting) { authorizationUrl ->
+        runInteractiveFlowCore(userId, authSetting, governedGoogle, namespaceId) { authorizationUrl ->
             emitEvent(
                 QuestionEvent(
                     namespaceId = namespaceId,
@@ -191,8 +243,11 @@ class OAuthFlowService(
     private suspend fun runInteractiveFlowCore(
         userId: UUID,
         authSetting: AuthSetting,
+        governedGoogle: Boolean = false,
+        namespaceId: UUID?,
         announce: (String) -> Unit,
     ): Credential? {
+        connectionPolicies.requireSetting(authSetting)
         logger.debug { "[OAuth] runInteractiveFlow: starting for ${authSetting.name}, userId=$userId" }
 
         if (redirectUri.isBlank()) {
@@ -224,6 +279,7 @@ class OAuthFlowService(
                         registrationEndpoint = endpoints.registrationEndpoint,
                         redirectUri = redirectUri,
                         clientName = authSetting.name,
+                        client = policyClient(authSetting),
                     )
                 if (dynamicClientInfo == null) {
                     logger.error { "[OAuth] Dynamic client registration failed for ${authSetting.name}" }
@@ -282,30 +338,64 @@ class OAuthFlowService(
             return null
         }
 
+        requireCurrent(authSetting, userId, namespaceId)
         val tokenResponse =
-            exchangeCodeForTokens(endpoints.tokenEndpoint, code, effectiveClientId, effectiveClientSecret, redirectUri, pkce.codeVerifier)
+            exchangeCodeForTokens(endpoints.tokenEndpoint, code, effectiveClientId, effectiveClientSecret, redirectUri, pkce.codeVerifier, policyClient(authSetting))
         if (tokenResponse == null) {
             logger.warn { "[OAuth] runInteractiveFlow: token exchange failed for ${authSetting.name}" }
             return null
         }
 
-        val credential = credentialService.store(buildCredential(userId, authSettingId, tokenResponse, dynamicClientInfo))
+        val candidate = buildCredential(userId, authSettingId, tokenResponse, dynamicClientInfo)
+        if (governedGoogle) GoogleWorkspaceAuthPolicy.requireGrant(authSetting, candidate, userId)
+        requireCurrent(authSetting, userId, namespaceId)
+        connectionPolicies.requireGrant(authSetting, candidate, userId)
+        val credential = credentialService.store(candidate)
+        requireCurrent(authSetting, userId, namespaceId)
+        connectionPolicies.requireGrant(authSetting, credential, userId)
         logger.info { "[OAuth] runInteractiveFlow: credential obtained and stored for ${authSetting.name}" }
         return credential
     }
 
     private fun resolveEndpoints(authSetting: AuthSetting): OAuthEndpoints? =
         when (authSetting) {
-            is OAuthDiscoverableAuthSetting -> discoverEndpoints(authSetting.discoveryUrl)
+            is OAuthDiscoverableAuthSetting -> discoverEndpoints(authSetting.discoveryUrl, policyClient(authSetting))
             is OAuthRegisteredAuthSetting -> OAuthEndpoints(authSetting.authorizationUrl, authSetting.tokenUrl)
             is OAuthCustomAuthSetting -> OAuthEndpoints(authSetting.authorizationUrl, authSetting.tokenUrl)
             is OAuthMcpDiscoverableAuthSetting -> discoverMcpEndpoints(authSetting.resourceUrl)
             else -> null
+        }?.also { endpoints ->
+            connectionPolicies.requireEndpoint(authSetting, "authorization", endpoints.authorizationEndpoint)
+            connectionPolicies.requireEndpoint(authSetting, "token", endpoints.tokenEndpoint)
+            endpoints.registrationEndpoint?.let { connectionPolicies.requireEndpoint(authSetting, "registration", it) }
         }
 
-    private fun discoverEndpoints(discoveryUrl: String): OAuthEndpoints? =
+    private fun requireCurrent(setting: AuthSetting, user: UUID, namespace: UUID?) {
+        if (connectionPolicies.isGoverned(setting) && authSettingService != null) {
+            val current = when (namespace) {
+                null -> authSettingService.findById(setting.metadata.id)
+                else -> authSettingService.resolveAuthSetting(namespace, user, setting.name)
+            }
+            check(current != null && current.metadata.id == setting.metadata.id && current.authType == setting.authType &&
+                current.toDataMap() == setting.toDataMap()) { ConnectionPolicyRegistry.DENIED }
+            connectionPolicies.requireSetting(current)
+        }
+    }
+
+    private fun policyClient(setting: AuthSetting): OkHttpClient = when {
+        !connectionPolicies.isGoverned(setting) -> httpClient
+        else -> httpClient.newBuilder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
+            .callTimeout(20, TimeUnit.SECONDS).addInterceptor { chain ->
+                val url = chain.request().url.toString()
+                val kind = when (chain.request().method) { "GET" -> "discovery"; else -> "token" }
+                connectionPolicies.requireEndpoint(setting, kind, url)
+                chain.proceed(chain.request())
+            }.build()
+    }
+
+    private fun discoverEndpoints(discoveryUrl: String, client: OkHttpClient): OAuthEndpoints? =
         try {
-            httpClient
+            client
                 .newCall(
                     Request
                         .Builder()
@@ -409,9 +499,9 @@ class OAuthFlowService(
         }
     }
 
-    private fun fetchJson(url: String): JsonNode? =
+    private fun fetchJson(url: String, client: OkHttpClient = httpClient): JsonNode? =
         try {
-            httpClient
+            client
                 .newCall(
                     Request
                         .Builder()
@@ -436,6 +526,7 @@ class OAuthFlowService(
         registrationEndpoint: String,
         redirectUri: String,
         clientName: String,
+        client: OkHttpClient,
     ): DynamicClientInfo? =
         try {
             val requestBody =
@@ -450,7 +541,7 @@ class OAuthFlowService(
                 )
             val mediaType = "application/json".toMediaType()
             val body = requestBody.toRequestBody(mediaType)
-            httpClient
+            client
                 .newCall(
                     Request
                         .Builder()
@@ -501,6 +592,7 @@ class OAuthFlowService(
         clientSecret: String,
         redirectUri: String,
         codeVerifier: String,
+        client: OkHttpClient,
     ): TokenResponse? =
         try {
             val body =
@@ -519,7 +611,7 @@ class OAuthFlowService(
                     .apply { if (clientSecret.isNotBlank()) add("client_secret", clientSecret) }
                     .add("code_verifier", codeVerifier)
                     .build()
-            httpClient
+            GoogleWorkspaceAuthPolicy.tokenClient(client, tokenEndpoint)
                 .newCall(
                     Request
                         .Builder()
@@ -540,6 +632,7 @@ class OAuthFlowService(
         refreshToken: String,
         clientId: String,
         clientSecret: String,
+        client: OkHttpClient,
     ): TokenResponse? =
         try {
             val body =
@@ -552,7 +645,7 @@ class OAuthFlowService(
                     .add("client_id", clientId)
                     .apply { if (clientSecret.isNotBlank()) add("client_secret", clientSecret) }
                     .build()
-            httpClient
+            GoogleWorkspaceAuthPolicy.tokenClient(client, tokenEndpoint)
                 .newCall(
                     Request
                         .Builder()
@@ -587,7 +680,7 @@ class OAuthFlowService(
                 },
                 json["expires_in"]?.asLong(),
                 json["token_type"]?.asText(),
-                json["scope"]?.asText(),
+                if (json.has("scope")) json["scope"].takeUnless { it.isNull }?.asText() ?: "" else null,
             )
         } catch (e: Exception) {
             logger.error("[OAuth] Parse failed", e)

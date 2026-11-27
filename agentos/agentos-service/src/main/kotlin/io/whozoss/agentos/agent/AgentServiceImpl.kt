@@ -277,12 +277,19 @@ class AgentServiceImpl(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
                 agentName = agentConfig.name,
             )
+        // A shared Auth Setting used by governed Google tools is constrained for the entire run.
+        // Validate before invoking the provider: checking after refresh would be too late.
+        val governedGoogleAuthNames = effectiveIntegrationConfigs.filter { it.integrationType == "GOOGLE_WORKSPACE" }
+            .mapNotNull { it.authSettingName }.toSet()
         val credentialProviderFactory: (String) -> CredentialProvider? = { authSettingName ->
             logger.debug { "CredentialProvider invoked for '$authSettingName'" }
             context.userId?.let { userId ->
                 val scopedAuthService = authServiceFactory.create(context.namespaceId, userId)
                 val provider: CredentialProvider = {
                     val setting = scopedAuthService.resolveAuthSetting(authSettingName)
+                    check(authSettingName !in governedGoogleAuthNames || io.whozoss.agentos.auth.GoogleWorkspaceAuthPolicy.allowed(setting)) {
+                        "Governed Google authentication requires registered Google endpoints and read-only scopes"
+                    }
                     logger.debug { "CredentialProvider for '$authSettingName': resolved authType=${setting.authType}" }
                     if (setting.authType in OAUTH_AUTH_TYPES && context.caseId != null && context.emitEvent != null) {
                         // OAuth types: delegate to OAuthFlowService for full lifecycle
@@ -325,20 +332,19 @@ class AgentServiceImpl(
                         // synthesised — their credentials only ever come from OAuthFlowService.
                         val credential =
                             kotlinx.coroutines.runBlocking {
-                                oAuthFlowService.resolveOAuthCredential(
-                                    userId = userId,
-                                    authSetting = setting,
-                                    namespaceId = context.namespaceId,
-                                    caseId = context.caseId,
-                                    agentId = UUID.nameUUIDFromBytes(agentConfig.name.toByteArray()),
-                                    agentName = agentConfig.name,
-                                    emitEvent = context.emitEvent,
+                                (if (authSettingName in governedGoogleAuthNames) oAuthFlowService::resolveGovernedGoogleCredential
+                                else oAuthFlowService::resolveOAuthCredential)(
+                                    userId, setting, context.namespaceId, context.caseId,
+                                    UUID.nameUUIDFromBytes(agentConfig.name.toByteArray()), agentConfig.name, context.emitEvent,
                                 )
                             }
                         if (credential == null) {
                             logger.warn { "CredentialProvider for '$authSettingName': OAuth flow returned null" }
                         } else {
                             logger.debug { "CredentialProvider for '$authSettingName': OAuth credential resolved" }
+                        }
+                        if (authSettingName in governedGoogleAuthNames && credential != null) {
+                            io.whozoss.agentos.auth.GoogleWorkspaceAuthPolicy.requireGrant(setting, credential, userId)
                         }
                         credential
                     } else {
@@ -365,6 +371,9 @@ class AgentServiceImpl(
                                 "CredentialProvider for '$authSettingName': credential resolved " +
                                     "(per-user row or static AuthSetting secret)"
                             }
+                        }
+                        if (authSettingName in governedGoogleAuthNames && credential != null) {
+                            io.whozoss.agentos.auth.GoogleWorkspaceAuthPolicy.requireGrant(setting, credential, userId)
                         }
                         credential
                     }

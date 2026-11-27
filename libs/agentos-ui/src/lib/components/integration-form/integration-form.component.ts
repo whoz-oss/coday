@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http'
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core'
 import { Observable, Subject, catchError, forkJoin, map, of, switchMap } from 'rxjs'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
@@ -120,6 +121,12 @@ export class IntegrationFormComponent implements OnInit {
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isExporting = signal(false)
+  /**
+   * Why the server refused the last submit, shown above the actions. The form stays open so the user can fix
+   * the parameters: a type-specific rule (e.g. a Google drive ID both allowed and blocked) is owned by the
+   * server, which names the offending field, rather than restated here.
+   */
+  protected readonly errorMessage = signal<string | null>(null)
 
   protected readonly scopeOptions: ReadonlyArray<{ value: IntegrationScope; label: string }> = [
     { value: 'platform', label: SCOPE_LABEL.platform },
@@ -432,6 +439,7 @@ export class IntegrationFormComponent implements OnInit {
     }
 
     this.isSubmitting.set(true)
+    this.errorMessage.set(null)
     const trimmedDescription = this.descriptionControl.value?.trim()
 
     const draft = {
@@ -455,8 +463,20 @@ export class IntegrationFormComponent implements OnInit {
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.navigateBack(),
-      error: () => this.isSubmitting.set(false),
+      error: (err: unknown) => {
+        this.isSubmitting.set(false)
+        this.errorMessage.set(this.submitErrorMessage(err))
+      },
     })
+  }
+
+  private submitErrorMessage(err: unknown): string {
+    if (err instanceof HttpErrorResponse && [400, 409, 422].includes(err.status)) {
+      const message = (err.error as { message?: unknown } | null)?.message
+      if (typeof message === 'string' && message.trim()) return message
+      return 'The configuration was refused. Check the parameters and try again.'
+    }
+    return 'An unexpected error occurred. Please try again.'
   }
 
   protected exportYaml(): void {

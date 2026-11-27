@@ -325,7 +325,7 @@ class AuthSettingController(
             )
         }
         val authorizationUrl =
-            oAuthFlowService.startInteractiveConnection(me, target)
+            oAuthFlowService.startInteractiveConnection(me, target, namespaceId)
                 ?: throw UnprocessableEntityException(
                     "The authorization could not be started for '${target.name}': check the OAuth endpoints of the setting",
                 )

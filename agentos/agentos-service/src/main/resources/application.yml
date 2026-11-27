@@ -105,6 +105,22 @@ management:
 # datadog/agent:latest
 
 agentos:
+  # Compatibility preserves unbound legacy settings; configured endpoint policies still apply to aliases.
+  connections:
+    mode: ${AGENTOS_CONNECTIONS_MODE:COMPATIBILITY}
+    policies:
+      google-workspace-readonly:
+        allowed-auth-types: [OAUTH_REGISTERED]
+        authorization-urls: ["https://accounts.google.com/o/oauth2/v2/auth"]
+        token-urls: ["https://oauth2.googleapis.com/token"]
+        allowed-scopes:
+          - "https://www.googleapis.com/auth/drive.readonly"
+          - "https://www.googleapis.com/auth/calendar.readonly"
+          - "https://www.googleapis.com/auth/gmail.readonly"
+        allowed-integration-types: [GOOGLE_WORKSPACE]
+        resource-origins:
+          - "https://www.googleapis.com"
+          - "https://gmail.googleapis.com"
   usage:
     # LLM usage accounting, analytical records and the run-cost guard (the live usage panel of a case, the
     # run-cost threshold and its confirmation). Enabled by default in every profile, including Whoz.
@@ -206,7 +222,7 @@ agentos:
   # and a KTLINT overlay could point projectDirectory at / to rewrite any Kotlin file the service can write. Platform and namespace-shared
   # configs are unaffected. Setting the list replaces the default entirely.
   # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
-  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT
+  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,BASH,GRADLE,KTLINT,GOOGLE_WORKSPACE
   # Comma-separated integration types that may set autoGrant, i.e. be handed to every agent within
   # a config's scope without any agent naming it. At platform scope that is every agent of the
   # environment at once, so the list starts closed and setting it replaces the default entirely.

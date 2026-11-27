@@ -85,6 +85,10 @@
         </ds-card>
       }
 
+      @if (errorMessage()) {
+        <ds-notice>{{ errorMessage() }}</ds-notice>
+      }
+
       <ds-form-actions>
         <button
           dsButton

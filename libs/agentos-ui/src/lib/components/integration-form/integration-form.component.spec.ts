@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router'
 import { AuthSettingControllerService, IntegrationTypeControllerService } from '@whoz-oss/agentos-api-client'
@@ -168,6 +169,42 @@ describe.each(cases)('IntegrationFormComponent $scope authentication', (testCase
 
     expect(optionTexts()).toContain('Company Jira (platform)')
     expect(optionTexts()).not.toContain('github (mine)')
+  })
+})
+
+describe('IntegrationFormComponent submit refusal', () => {
+  const refusal =
+    'Google Workspace configuration refused: INVALID_CONFIG at drive.blockedSharedDriveIds: ' +
+    'a shared drive ID cannot be both allowed and blocked'
+
+  function submitWith(error: unknown) {
+    const { fixture } = setup(cases[1]!, 'create')
+    const state = TestBed.inject(IntegrationConfigStateService) as unknown as { create: jest.Mock }
+    state.create = jest.fn().mockReturnValue(throwError(() => error))
+    const component = fixture.componentInstance as unknown as {
+      form: { controls: Record<string, { setValue(value: string): void }> }
+      submit(): void
+    }
+    component.form.controls['name']!.setValue('GOOGLE')
+    component.form.controls['type']!.setValue('GOOGLE_WORKSPACE')
+    component.submit()
+    fixture.detectChanges()
+    return fixture
+  }
+
+  it('shows the server reason and stays on the form so the user can fix it', () => {
+    const fixture = submitWith(new HttpErrorResponse({ status: 422, error: { message: refusal } }))
+
+    expect(fixture.nativeElement.textContent).toContain('drive.blockedSharedDriveIds')
+    expect(fixture.nativeElement.textContent).toContain('cannot be both allowed and blocked')
+    expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled()
+  })
+
+  it('falls back to a generic message for an unexpected failure', () => {
+    const fixture = submitWith(new HttpErrorResponse({ status: 500, error: { message: 'stack trace' } }))
+
+    expect(fixture.nativeElement.textContent).toContain('An unexpected error occurred')
+    expect(fixture.nativeElement.textContent).not.toContain('stack trace')
   })
 })
 

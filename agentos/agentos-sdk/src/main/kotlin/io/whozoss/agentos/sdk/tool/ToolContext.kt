@@ -43,6 +43,8 @@ data class ToolContext(
     val credentialProvider: CredentialProvider? = null,
     val toolRequestId: String? = null,
     val authSettingName: String? = null,
+    /** Host-owned binding, captured by transports at tool creation, not caller-supplied JSON. */
+    val connectionCapability: io.whozoss.agentos.sdk.auth.ConnectionCapability? = null,
 ) {
     /**
      * The case the tool runs in: the case of the first of [caseEvents], or null when there are no events

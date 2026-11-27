@@ -612,6 +612,39 @@ class ToolResolverServiceSpec :
             resolution.tools.map { it.name } shouldBe listOf("MY_DATETIME__GetCurrentDateTime")
         }
 
+        "resolveToolsForRun reports a requested integration whose plugin is not loaded, and keeps the others" {
+            val nsId = UUID.randomUUID()
+            val service = buildService(plugins = listOf(makePlugin("DATETIME", "GetCurrentDateTime")))
+            val configs =
+                listOf(
+                    integrationConfig(namespaceId = nsId, name = "GOOGLE", integrationType = "NOT_DEPLOYED"),
+                    integrationConfig(namespaceId = nsId, name = "MY_DATETIME", integrationType = "DATETIME"),
+                )
+
+            val resolution =
+                service.resolveToolsForRun(
+                    agentIntegrations = mapOf("GOOGLE" to null, "MY_DATETIME" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = configs,
+                )
+
+            resolution.failedIntegrations shouldBe listOf("GOOGLE")
+            resolution.tools.map { it.name } shouldBe listOf("MY_DATETIME__GetCurrentDateTime")
+        }
+
+        "resolveToolsForRun does not report the GIT_REPOSITORY association, which no plugin answers" {
+            val nsId = UUID.randomUUID()
+            val config = integrationConfig(namespaceId = nsId, name = "REPO", integrationType = "GIT_REPOSITORY")
+
+            buildService()
+                .resolveToolsForRun(
+                    agentIntegrations = mapOf("REPO" to null),
+                    context = ctx(nsId),
+                    allIntegrationConfigs = listOf(config),
+                ).failedIntegrations
+                .shouldBeEmpty()
+        }
+
         "resolveToolsForRun reports no failed integration when every plugin provides its tools, even none" {
             val nsId = UUID.randomUUID()
             val service = buildService(plugins = listOf(makePlugin("EMPTY"), makePlugin("DATETIME", "GetCurrentDateTime")))

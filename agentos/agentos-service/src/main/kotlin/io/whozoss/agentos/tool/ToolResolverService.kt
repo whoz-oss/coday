@@ -1,6 +1,8 @@
 package io.whozoss.agentos.tool
 
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
+import io.whozoss.agentos.integrationConfig.IntegrationTypeConstraints
+import io.whozoss.agentos.authSetting.toDataMap
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -11,6 +13,8 @@ import org.springframework.stereotype.Service
 @Service
 class ToolResolverService(
     private val toolRegistryService: ToolRegistryService,
+    private val connectionPolicies: io.whozoss.agentos.auth.ConnectionPolicyRegistry = io.whozoss.agentos.auth.ConnectionPolicyRegistry(),
+    private val authSettingService: io.whozoss.agentos.authSetting.AuthSettingService? = null,
 ) {
     /**
      * Resolves the tool set for an agent run from the already-merged [allIntegrationConfigs]
@@ -45,7 +49,8 @@ class ToolResolverService(
      * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
      * @param credentialProviderFactory Builds the [CredentialProvider] for a config's
      *   `authSettingName`; a `null` result leaves the context without a provider.
-     * @return The resolved tools and the names of the integrations whose plugin threw (see [ToolResolution]).
+     * @return The resolved tools and the names of the integrations whose plugin threw or is not loaded
+     *   (see [ToolResolution]).
      *   A failing integration never fails the run: its tools are missing and its name is reported, its full
      *   error is logged here.
      */
@@ -74,8 +79,20 @@ class ToolResolverService(
                 .mapNotNull { config ->
                     toolRegistryService
                         .findPlugin(config.integrationType)
-                        .also { if (it == null) logger.warn { "[ToolResolver] No plugin found for type ${config.integrationType}" } }
-                        ?.let { plugin ->
+                        .also {
+                            if (it == null) {
+                                logger.warn {
+                                    "[ToolResolver] No plugin found for type ${config.integrationType} " +
+                                        "(integration '${config.name}')"
+                                }
+                                // A requested integration whose plugin is not loaded is a load failure, not an
+                                // integration without tools: report it like a throwing plugin so it is not silent.
+                                // GIT_REPOSITORY is a namespace capability that no ToolPlugin ever answers.
+                                if (config.integrationType != IntegrationTypeConstraints.GIT_REPOSITORY_TYPE) {
+                                    failedIntegrations.add(config.name)
+                                }
+                            }
+                        }?.let { plugin ->
                             extractTools(
                                 allowedNames = agentIntegrations?.get(config.name),
                                 config = config,
@@ -130,14 +147,55 @@ class ToolResolverService(
         credentialProviderFactory: (String) -> CredentialProvider?,
         onFailure: () -> Unit,
     ): List<StandardTool<*>>? {
-        val enrichedContext =
-            config.authSettingName?.let { name ->
-                credentialProviderFactory(name)?.let { provider ->
-                    context.copy(credentialProvider = provider, authSettingName = name)
-                }
-            } ?: context
+        var boundContext = context.copy(credentialProvider = null, authSettingName = null, connectionCapability = null)
         val tools =
             try {
+                val name = config.authSettingName
+                if (name != null) {
+                    var pinned: io.whozoss.agentos.authSetting.AuthSetting? = null
+                    fun setting(): io.whozoss.agentos.authSetting.AuthSetting {
+                        val user = context.userId ?: error(io.whozoss.agentos.auth.ConnectionPolicyRegistry.DENIED)
+                        val current = checkNotNull(authSettingService).resolveAuthSetting(context.namespaceId, user, name)
+                        pinned?.let { base ->
+                            val old = base.toDataMap()
+                            val fresh = current.toDataMap()
+                            check(current.metadata.id == base.metadata.id && current.authType == base.authType &&
+                                listOf("authorizationUrl", "tokenUrl", "discoveryUrl", "resourceUrl").all { old[it] == fresh[it] }) { io.whozoss.agentos.auth.ConnectionPolicyRegistry.DENIED }
+                        }
+                        return current
+                    }
+                    // Legacy unit callers without a service keep their old factory contract. The real
+                    // Spring runtime always injects AuthSettingService, including direct execution.
+                    if (authSettingService != null) connectionPolicies.requireIntegration(setting(), config.integrationType)
+                    if (authSettingService != null) setting().takeIf { connectionPolicies.isGoverned(it) }?.let { pinned = it }
+                    val original = credentialProviderFactory(name)
+                    val guarded: CredentialProvider? = when {
+                        authSettingService == null -> original
+                        else -> original?.let { supplier -> {
+                            setting().also { connectionPolicies.requireIntegration(it, config.integrationType) }
+                            val credential = supplier()
+                            if (credential != null) connectionPolicies.requireGrant(setting(), credential, context.userId!!)
+                            credential
+                        } }
+                    }
+                    val capability = if (authSettingService != null) object : io.whozoss.agentos.sdk.auth.ConnectionCapability {
+                        override fun requireActive() { connectionPolicies.requireIntegration(setting(), config.integrationType) }
+                        override fun isGoverned(): Boolean = connectionPolicies.isGoverned(setting())
+                        override fun authorize(destination: String): io.whozoss.agentos.sdk.credential.Credential? {
+                            val before = setting()
+                            connectionPolicies.requireResource(before, config.integrationType, destination)
+                            val credential = guarded?.invoke()
+                            val after = setting()
+                            check(after.metadata.id == before.metadata.id) { io.whozoss.agentos.auth.ConnectionPolicyRegistry.DENIED }
+                            connectionPolicies.requireResource(after, config.integrationType, destination)
+                            if (credential != null) connectionPolicies.requireGrant(after, credential, context.userId!!)
+                            check(credential != null || !connectionPolicies.isGoverned(after)) { io.whozoss.agentos.auth.ConnectionPolicyRegistry.DENIED }
+                            return credential
+                        }
+                    } else null
+                    boundContext = context.copy(credentialProvider = guarded, authSettingName = name.takeIf { guarded != null || capability != null }, connectionCapability = capability)
+                }
+                val enrichedContext = boundContext
                 plugin.provideTools(
                     config = config.parameters,
                     configName = config.name,
@@ -158,6 +216,7 @@ class ToolResolverService(
                 }"
         }
         return tools
+            .map { tool -> boundContext.connectionCapability?.let { GuardedConnectionTool(tool, boundContext) } ?: tool }
             .filter { tool ->
                 isToolAllowed(
                     toolName = tool.name,

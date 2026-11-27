@@ -124,7 +124,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             override fun resolve(
                 caseId: UUID,
                 namespaceId: UUID,
-                caseCreatedAt: java.time.Instant,
+                caseCreatedAt: Instant,
             ): ResolvedExchangeRoot = sharedRoot ?: defaultRootResolver.resolve(caseId, namespaceId, caseCreatedAt)
         }
 
@@ -168,10 +168,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val noToolResolution = ToolResolution(tools = emptyList(), failedIntegrations = emptyList())
 
     /** An [AgentServiceImpl] wired like [agentService] but with the REAL [ToolResolverService] over [toolRegistryService]. */
-    private fun realToolResolverAgentService(): AgentServiceImpl =
+    private fun realToolResolverAgentService(
+        oauth: OAuthFlowService = oAuthFlowService,
+        resolver: ToolResolverService = ToolResolverService(toolRegistryService),
+    ): AgentServiceImpl =
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
-            toolResolverService = ToolResolverService(toolRegistryService),
+            toolResolverService = resolver,
             aiModelService = aiModelService,
             aiProviderService = aiProviderService,
             namespaceService = namespaceService,
@@ -185,7 +188,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             toolMetricsService = toolMetricsService,
             caseEventService = caseEventService,
             authServiceFactory = authServiceFactory,
-            oAuthFlowService = oAuthFlowService,
+            oAuthFlowService = oauth,
             staticCredentialFactory = staticCredentialFactory,
             exchangeStorageService = exchangeStorageService,
             exchangeCapabilityService = exchangeCapabilityService,
@@ -264,6 +267,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private suspend fun captureCredentialProviderFactory(
         context: AgentExecutionContext,
         agentName: String,
+        oauth: OAuthFlowService? = null,
+        integrations: List<IntegrationConfig> = emptyList(),
     ): (String) -> CredentialProvider? {
         val factorySlot = slot<(String) -> CredentialProvider?>()
         every {
@@ -288,9 +293,10 @@ class AgentServiceImplUnitSpec : StringSpec() {
         every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
         every { aiProviderService.getById(aiProviderId) } returns providerConfig()
         every { chatClientProvider.getChatClient(any(), any(), any(), promptCacheTtl = any()) } returns mockk<ChatClient>(relaxed = true)
-        every { integrationConfigService.findEffective(namespaceId, userId) } returns emptyList()
+        every { integrationConfigService.findEffective(namespaceId, userId) } returns integrations
 
-        agentService.findAgentByName(agentName, context)
+        (if (oauth == null) agentService else realToolResolverAgentService(oauth, toolResolverService))
+            .findAgentByName(agentName, context)
 
         return factorySlot.captured
     }
@@ -2260,6 +2266,51 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // is actually exercised.
         // -------------------------------------------------------------------------
 
+        listOf("https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/calendar.readonly", "unknown", "", null, "unsafe-endpoint").forEach { scope ->
+            listOf(false, true).forEach { expired ->
+              listOf(false, true).forEach { direct ->
+                "governed supplier rejects saved scope=$scope expired=$expired direct=$direct before refresh or resource" {
+                    val user = UUID.randomUUID()
+                    val setting = OAuthRegisteredAuthSetting(name = "GOOGLE", clientId = "synthetic-client",
+                        authorizationUrl = "https://accounts.google.com/o/oauth2/v2/auth",
+                        tokenUrl = if (scope == "unsafe-endpoint") "https://evil.example.test/token" else "https://oauth2.googleapis.com/token", scopes = "https://www.googleapis.com/auth/drive.readonly")
+                    val saved = Credential(userId = user, authSettingId = setting.metadata.id,
+                        credentialType = CredentialType.OAUTH_TOKENS, data = buildMap {
+                            put("accessToken", "synthetic-token"); put("refreshToken", "synthetic-refresh")
+                            put("expiresAt", Instant.now().plusSeconds(if (expired) -3600 else 3600).toString())
+                            if (scope != null) put("scope", scope)
+                        })
+                    val creds = mockk<io.whozoss.agentos.credential.CredentialService>()
+                    every { creds.resolve(user, setting.metadata.id) } returns saved
+                    every { creds.store(any()) } answers { firstArg() }
+                    var requests = 0
+                    val client = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+                        requests++
+                        okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1)
+                            .code(200).message("OK").body("""{"access_token":"synthetic-new","expires_in":3600}""".let {
+                                okhttp3.ResponseBody.Companion.run { it.toResponseBody() }
+                            }).build()
+                    }.build()
+                    val flow = OAuthFlowService(mockk(), creds, client, testObjectMapper,
+                        io.whozoss.agentos.auth.OAuthConfigProperties(redirectUri = ""))
+                    val auth = mockk<AuthService>()
+                    every { auth.resolveAuthSetting("GOOGLE") } returns setting
+                    every { auth.resolveCredential(setting.metadata.id) } returns saved
+                    every { authServiceFactory.create(namespaceId, user) } returns auth
+                    val factory = captureCredentialProviderFactory(context.copy(userId = user, emitEvent = if (direct) null else { event -> event }),
+                        "governed-agent", flow, listOf(IntegrationConfig(name = "GW", integrationType = "GOOGLE_WORKSPACE", authSettingName = "GOOGLE")))
+                    var resources = 0
+                    try {
+                        shouldThrow<IllegalStateException> { factory("GOOGLE")!!.invoke(); resources++ }
+                            .message shouldContain if (scope == "unsafe-endpoint") "endpoints" else "grant"
+                        requests shouldBe 0
+                        resources shouldBe 0
+                        verify(exactly = 0) { creds.store(any()) }
+                    } finally { flow.shutdown(); client.dispatcher.executorService.shutdown(); client.connectionPool.evictAll() }
+                }
+              }
+            }
+        }
         "credentialProviderFactory routes OAuth authType to OAuthFlowService.resolveOAuthCredential" {
             val userId = UUID.randomUUID()
             val authSettingId = UUID.randomUUID()

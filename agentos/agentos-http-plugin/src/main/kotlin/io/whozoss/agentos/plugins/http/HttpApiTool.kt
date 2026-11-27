@@ -67,20 +67,23 @@ class HttpApiTool(
                 errorType = HttpApiErrors.INVALID_INPUT,
             )
             is RequestPlan.Rejected -> failure(output = plan.message, errorType = plan.errorType)
-            is RequestPlan.Ready -> sendAuthenticated(plan.request)
+            is RequestPlan.Ready -> try { sendAuthenticated(plan.request) } catch (e: IllegalStateException) {
+                if (e.message?.startsWith("CONNECTION_POLICY_DENIED") != true) throw e
+                failure("CONNECTION_POLICY_DENIED", "CONNECTION_POLICY_DENIED")
+            }
         }
     }
 
     private suspend fun sendAuthenticated(request: Request): ToolExecutionResult =
-        when (val auth = runtime.auth.spec()) {
-            is AuthHeaderSpec.Missing -> failure(
-                output = "Authentication is not available for HTTP_API integration '${runtime.configName}': " +
-                    "${auth.reason}. Every call of this run fails the same way, do not retry. Tell the user: " +
-                    "an authorization is asked again on their next message; if none is asked, an administrator " +
-                    "must check the bound Auth Setting.",
-                errorType = HttpApiErrors.AUTH_MISSING,
-            )
-            else -> send(HttpRequestFactory.authenticate(request, auth))
+        when (val auth = runtime.connectionCapability?.takeIf { it.isGoverned() }?.let { capability ->
+            val credential = kotlinx.coroutines.runInterruptible(kotlinx.coroutines.Dispatchers.IO) { capability.authorize(request.url.toString()) }
+            AuthHeaderSpec.from(credential, checkNotNull(runtime.connectionAuth), providerBound = true)
+        } ?: runtime.auth.spec()) {
+            is AuthHeaderSpec.Missing -> missingAuthentication(auth)
+            else -> send(when {
+                runtime.connectionCapability?.isGoverned() == true -> request
+                else -> HttpRequestFactory.authenticate(request, auth)
+            })
         }
 
     /** Null or blank arguments mean no arguments; anything that is not a JSON object is refused. */
@@ -124,7 +127,14 @@ class HttpApiTool(
     private suspend fun perform(request: Request, path: String): ToolExecutionResult {
         val started = System.nanoTime()
         return try {
-            val result = runtime.client.newCall(request).executeCancellable { response ->
+            runtime.connectionCapability?.requireActive()
+            val effective = runtime.connectionCapability?.takeIf { it.isGoverned() }?.let { capability ->
+                val credential = kotlinx.coroutines.runInterruptible(kotlinx.coroutines.Dispatchers.IO) { capability.authorize(request.url.toString()) }
+                val auth = AuthHeaderSpec.from(credential, checkNotNull(runtime.connectionAuth), providerBound = true)
+                if (auth is AuthHeaderSpec.Missing) return missingAuthentication(auth, path)
+                HttpRequestFactory.authenticate(request, auth)
+            } ?: request
+            val result = runtime.client.newCall(effective).executeCancellable { response ->
                 HttpResponseMapper.map(response, descriptor, configName = runtime.configName, path = path)
             }
             val status = "${result.metadata["status"]}"
@@ -151,6 +161,16 @@ class HttpApiTool(
             " -> $outcome in ${millis}ms ($detail)"
         if (success) logger.info { line } else logger.warn { line }
     }
+
+    private fun missingAuthentication(auth: AuthHeaderSpec.Missing, path: String? = null): ToolExecutionResult =
+        failure(
+            output = "Authentication is not available for HTTP_API integration '${runtime.configName}': " +
+                "${auth.reason}. Every call of this run fails the same way, do not retry. Tell the user: " +
+                "an authorization is asked again on their next message; if none is asked, an administrator " +
+                "must check the bound Auth Setting.",
+            errorType = HttpApiErrors.AUTH_MISSING,
+            path = path,
+        )
 
     private fun failure(output: String, errorType: String, path: String? = null): ToolExecutionResult =
         ToolExecutionResult(
