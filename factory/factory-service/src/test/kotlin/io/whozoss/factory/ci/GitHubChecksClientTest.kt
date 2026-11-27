@@ -180,4 +180,64 @@ class GitHubChecksClientTest {
         assertThat(properties.toString()).doesNotContain("ghs_veryverysecret").contains("<redacted>")
         assertThat(GitHubChecksProperties().toString()).contains("<unset>")
     }
+
+    @Test
+    fun `a blank token falls back to the gh cli token, resolved once and never printed`() {
+        var calls = 0
+        val properties = GitHubChecksProperties(token = "", ghCliFallback = true).useGhTokenSupplier {
+            calls++
+            "gho_fromghcli\n"
+        }
+        assertThat(properties.toString()).contains("<unset>")
+        assertThat(calls).isZero()
+
+        assertThat(properties.configured).isTrue()
+        assertThat(properties.effectiveToken).isEqualTo("gho_fromghcli")
+        assertThat(properties.effectiveToken).isEqualTo("gho_fromghcli")
+
+        assertThat(calls).isEqualTo(1)
+        assertThat(properties.toString()).doesNotContain("gho_fromghcli").contains("<redacted>")
+    }
+
+    @Test
+    fun `the configured token wins and gh is not consulted`() {
+        var calls = 0
+        val properties = GitHubChecksProperties(token = "configured", ghCliFallback = true).useGhTokenSupplier { calls++; "fromgh" }
+
+        assertThat(properties.effectiveToken).isEqualTo("configured")
+        assertThat(calls).isZero()
+    }
+
+    @Test
+    fun `gh is not consulted when the fallback is off, and a blank answer is retried later`() {
+        var calls = 0
+        val off = GitHubChecksProperties(token = "", ghCliFallback = false).useGhTokenSupplier { calls++; "fromgh" }
+        assertThat(off.configured).isFalse()
+        assertThat(calls).isZero()
+
+        var answer = ""
+        val on = GitHubChecksProperties(token = "", ghCliFallback = true).useGhTokenSupplier { calls++; answer }
+        assertThat(on.configured).isFalse()
+        answer = "loggedin"
+        assertThat(on.effectiveToken).isEqualTo("loggedin")
+        assertThat(calls).isEqualTo(2)
+    }
+
+    @Test
+    fun `a failing gh command leaves the token unset`() {
+        val properties = GitHubChecksProperties(token = "", ghCliFallback = true).useGhTokenSupplier { error("gh missing") }
+
+        assertThat(properties.configured).isFalse()
+    }
+
+    @Test
+    fun `the client sends the gh cli token as the bearer credential`() {
+        apiRoutes["/repos/acme/widgets/pulls"] = { reply(it, 200, "[]") }
+        val properties = GitHubChecksProperties(token = "", ghCliFallback = true, apiBaseUrl = "http://127.0.0.1:${api.address.port}", requestTimeoutMs = 5_000)
+            .useGhTokenSupplier { "gho_fromghcli" }
+
+        GitHubChecksClient(properties).findOpenPullRequest("acme", "widgets", "feat")
+
+        assertThat(apiRequests.map { it.authorization }.distinct()).containsExactly("Bearer gho_fromghcli")
+    }
 }

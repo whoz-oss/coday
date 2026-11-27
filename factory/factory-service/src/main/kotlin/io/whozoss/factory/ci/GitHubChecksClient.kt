@@ -232,7 +232,7 @@ class GitHubChecksClient(
             HttpRequest.newBuilder(uri)
                 .GET()
                 .timeout(timeout())
-                .header("Authorization", "Bearer ${properties.token}")
+                .header("Authorization", "Bearer ${properties.effectiveToken}")
                 .header("Accept", ACCEPT_JSON)
                 .header("X-GitHub-Api-Version", API_VERSION)
                 .build(),
