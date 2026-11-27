@@ -246,15 +246,6 @@ describe('ActionBarComponent', () => {
     expect(host.querySelector('button[type="submit"]')).toBeNull()
   })
 
-  it('renders NEEDS_RESEARCH as information/access needed, not as a failure or unknown runtime', () => {
-    const host = render([], [{ code: 'NEEDS_RESEARCH', stepId: 'research', label: 'Agent needs research' }])
-
-    expect(host.textContent).toContain('Information or access needed')
-    expect(host.querySelector('.blocker--research')).not.toBeNull()
-    expect(host.querySelector('.blocker--failure')).toBeNull()
-    expect(host.querySelector('.blocker--indeterminate')).toBeNull()
-  })
-
   it('shows and submits research resumption only for the server allowed action', () => {
     const emitted: ResearchResumptionIntent[] = []
     fixture.componentInstance.researchResumptionRequested.subscribe((intent) => emitted.push(intent))
@@ -309,6 +300,27 @@ describe('ActionBarComponent', () => {
     expect(emitted).toEqual([{ attemptId: 'a-1', expectedRevision: 4 }])
   })
 
+  it('shows "Retry stop" for the cancel action the backend offers when the kill is unconfirmed', () => {
+    const emitted: CancelIntent[] = []
+    fixture.componentInstance.cancelAttempt.subscribe((intent) => emitted.push(intent))
+    const host = render([{ type: 'cancel_attempt', attemptId: 'a-1', expectedRevision: 5, label: 'Retry stop' }])
+
+    expect(buttons(host)[0]?.textContent?.trim()).toBe('Retry stop')
+    buttons(host)[0]?.click()
+    expect(emitted).toEqual([{ attemptId: 'a-1', expectedRevision: 5 }])
+  })
+
+  it('renders the feedback of a refused Stop next to the cancel action', () => {
+    fixture.componentRef.setInput('stopFeedback', {
+      workflowId: 'wf-1',
+      kind: 'not_authorized',
+      message: 'You are not allowed to stop this run.',
+    })
+    const host = render([{ type: 'cancel_attempt', attemptId: 'a-1', expectedRevision: 4 }])
+
+    expect(host.textContent).toContain('You are not allowed to stop this run.')
+  })
+
   it('renders cost continue/stop actions and emits their intents', () => {
     const continued: unknown[] = []
     let stops = 0
@@ -329,73 +341,29 @@ describe('ActionBarComponent', () => {
   })
 
   it('renders blockers with a visual class per blocker nature', () => {
-    const blockers: WorkflowBlocker[] = [
+    // Classification itself is covered by core/blocker-classification.spec.ts: this test only proves the
+    // template renders every bucket with its visual class and group header.
+    const blockers = [
+      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Attempt failed' },
+      { code: 'VERIFICATION_FAILED', stepId: 'test', label: 'Verification failed' },
+      { code: 'STEP_BLOCKED', stepId: 'deploy', label: 'Blocked' },
+      { code: 'NEEDS_RESEARCH', stepId: 'research', label: 'Agent needs research' },
       { code: 'WAITING_HUMAN_INTERACTION', stepId: 'build', label: 'Waiting' },
-      { code: 'STEP_BLOCKED', stepId: 'build', label: 'Blocked' },
       { code: 'REAL_COST_PAUSED', label: 'Paused' },
+      { code: 'UNKNOWN_RUNTIME', label: 'Unknown runtime state' },
       { code: 'SOMETHING_ELSE', label: 'Weird' },
-    ]
+    ] as WorkflowBlocker[]
     const host = render([], blockers)
 
-    const elements = Array.from(host.querySelectorAll('.blocker'))
-    expect(elements).toHaveLength(4)
-    expect(elements.some((el) => el.classList.contains('blocker--waiting'))).toBe(true)
-    expect(elements.some((el) => el.classList.contains('blocker--consequence'))).toBe(true)
-    expect(elements.some((el) => el.classList.contains('blocker--cost'))).toBe(true)
-    expect(elements.some((el) => el.classList.contains('blocker--unknown'))).toBe(true)
-  })
-
-  it('classifies ATTEMPT_FAILED and VERIFICATION_FAILED as real failures', () => {
-    const blockers: WorkflowBlocker[] = [
-      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Attempt failed' },
-      { code: 'VERIFICATION_FAILED', stepId: 'build', label: 'Verification failed' },
-    ]
-    const host = render([], blockers)
-
-    const elements = Array.from(host.querySelectorAll('.blocker--failure'))
-    expect(elements).toHaveLength(2)
-    // A group header for root failures should appear
-    expect(host.querySelector('.blocker-group-title--failure')).not.toBeNull()
-  })
-
-  it('groups STEP_BLOCKED as consequences, not root failures', () => {
-    const blockers: WorkflowBlocker[] = [
-      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Attempt failed' },
-      { code: 'STEP_BLOCKED', stepId: 'test', label: 'Test blocked' },
-      { code: 'STEP_BLOCKED', stepId: 'deploy', label: 'Deploy blocked' },
-    ]
-    const host = render([], blockers)
-
-    // Root failures: only the ATTEMPT_FAILED
-    expect(host.querySelectorAll('.blocker--failure')).toHaveLength(1)
-    // Consequences: both STEP_BLOCKED
-    expect(host.querySelectorAll('.blocker--consequence')).toHaveLength(2)
-    // Group header for consequences
-    expect(host.querySelector('.blocker-group-title--consequence')).not.toBeNull()
-  })
-
-  it('renders UNKNOWN_RUNTIME as indeterminate (distinct from failures)', () => {
-    const blockers: WorkflowBlocker[] = [{ code: 'UNKNOWN_RUNTIME', label: 'Unknown runtime state' }]
-    const host = render([], blockers)
-
-    expect(host.querySelector('.blocker--indeterminate')).not.toBeNull()
-    expect(host.querySelector('.blocker--failure')).toBeNull()
-    expect(host.querySelector('.blocker--consequence')).toBeNull()
-  })
-
-  it('supports multiple root failures simultaneously (does not pick only one)', () => {
-    const blockers: WorkflowBlocker[] = [
-      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Build failed' },
-      { code: 'VERIFICATION_FAILED', stepId: 'test', label: 'Test failed' },
-    ]
-    const host = render([], blockers)
-
-    // Both must be rendered, not just the first
+    expect(host.querySelectorAll('.blocker')).toHaveLength(8)
     expect(host.querySelectorAll('.blocker--failure')).toHaveLength(2)
-    const failureTexts = Array.from(host.querySelectorAll('.blocker--failure .blocker-label')).map((el) =>
-      el.textContent?.trim()
+    for (const kind of ['consequence', 'research', 'waiting', 'cost', 'indeterminate', 'unknown']) {
+      expect(host.querySelectorAll(`.blocker--${kind}`)).toHaveLength(1)
+    }
+    expect(host.querySelector('.blocker-group-title--failure')?.textContent).toContain('Root failures')
+    expect(host.querySelector('.blocker-group-title--consequence')?.textContent).toContain(
+      'Blocked steps (consequence)'
     )
-    expect(failureTexts).toContain('Build failed')
-    expect(failureTexts).toContain('Test failed')
+    expect(host.querySelector('.blocker--research')?.textContent).toContain('Information or access needed')
   })
 })

@@ -16,6 +16,7 @@ import {
   mapSessionDetailToRunSummary,
   mapStepsToPhaseSegments,
   mapWorkflowStateToRunStatus,
+  resolveMainCaseId,
 } from './mappers'
 
 const startedAt = '2026-09-30T16:00:00.000Z'
@@ -2719,6 +2720,106 @@ describe('mappers', () => {
 
     it('forces the status for removed snapshots', () => {
       expect(mapProjectionToFactoryRun(snapshot, 'destroyed').status).toBe('destroyed')
+    })
+  })
+
+  describe('resolveMainCaseId', () => {
+    const attempt = (overrides: Record<string, unknown>) => ({
+      attemptId: 'a',
+      stepId: 'plan',
+      attemptNumber: 1,
+      agentName: 'planner',
+      status: 'completed',
+      caseId: 'case-x',
+      ...overrides,
+    })
+    /** No controller case: the usual state of a cockpit-created run on the durable bridge. */
+    const noControllerSnapshot = {
+      workflowId: 'wf-main',
+      namespaceId: 'ns-1',
+      projection: {
+        title: 'Main case',
+        status: 'running',
+        steps: [
+          { id: 'plan', status: 'completed', responsibility: { kind: 'agent', name: 'planner' } },
+          {
+            id: 'build',
+            status: 'running',
+            dependsOn: ['plan'],
+            responsibility: { kind: 'agent', name: 'builder' },
+          },
+        ],
+      },
+    }
+
+    it('returns the controller case when the snapshot exposes one, even when attempts exist', () => {
+      const attempts = extractAttempts([attempt({ caseId: 'case-root' })])
+      expect(
+        resolveMainCaseId({ ...noControllerSnapshot, controllerExecution: { caseId: 'case-ctl' } }, attempts)
+      ).toBe('case-ctl')
+    })
+
+    it('resolves the case of the entry agent step attempt, not of a dependent step', () => {
+      const attempts = extractAttempts([
+        attempt({ attemptId: 'a-build', stepId: 'build', caseId: 'case-b' }),
+        attempt({ attemptId: 'a-plan', stepId: 'plan', attemptNumber: 1, caseId: 'case-root' }),
+      ])
+
+      expect(resolveMainCaseId(noControllerSnapshot, attempts)).toBe('case-root')
+      const detail = mapProjectionToSessionDetail(
+        noControllerSnapshot,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        attempts
+      )
+      expect(detail.controllerCaseId).toBeUndefined()
+      expect(detail.mainCaseId).toBe('case-root')
+      expect(mapSessionDetailToRunSummary(noControllerSnapshot, detail).mainCaseId).toBe('case-root')
+    })
+
+    it('uses the lowest attempt number of the entry step that has a case', () => {
+      const attempts = extractAttempts([
+        attempt({ attemptId: 'a-2', attemptNumber: 2, caseId: 'case-retry' }),
+        attempt({ attemptId: 'a-1', attemptNumber: 1, caseId: 'case-first' }),
+      ])
+      expect(resolveMainCaseId(noControllerSnapshot, attempts)).toBe('case-first')
+    })
+
+    it('falls back to the earliest attempt by createdAt when no unique entry agent step exists', () => {
+      const ambiguous = {
+        ...noControllerSnapshot,
+        projection: {
+          ...noControllerSnapshot.projection,
+          steps: [
+            { id: 'plan', responsibility: { kind: 'agent' } },
+            { id: 'design', responsibility: { kind: 'agent' } },
+          ],
+        },
+      }
+      const attempts = extractAttempts([
+        attempt({ attemptId: 'late', stepId: 'plan', caseId: 'case-late', createdAt: isoOffset(30) }),
+        attempt({ attemptId: 'early', stepId: 'design', caseId: 'case-early', createdAt: isoOffset(10) }),
+        attempt({ attemptId: 'unknown', stepId: 'plan', caseId: 'case-unknown' }),
+      ])
+      expect(resolveMainCaseId(ambiguous, attempts)).toBe('case-early')
+    })
+
+    it('ignores attempts without a case id', () => {
+      const attempts = extractAttempts([attempt({ caseId: '' })])
+      expect(resolveMainCaseId(noControllerSnapshot, attempts)).toBeUndefined()
+    })
+
+    it('is undefined without controller case and without attempt, and the run card then carries none', () => {
+      expect(resolveMainCaseId(noControllerSnapshot)).toBeUndefined()
+      expect(mapProjectionToFactoryRun(noControllerSnapshot).mainCaseId).toBeUndefined()
+      expect(mapProjectionToSessionDetail(noControllerSnapshot).mainCaseId).toBeUndefined()
+    })
+
+    it('carries the controller case as main case on the run before any enrichment', () => {
+      const withController = { ...noControllerSnapshot, controllerExecution: { caseId: 'case-ctl' } }
+      expect(mapProjectionToFactoryRun(withController).mainCaseId).toBe('case-ctl')
     })
   })
 })

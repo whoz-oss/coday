@@ -283,6 +283,16 @@ class RunService(
 
             notifyFragmentFinished(run, outcome)
 
+            // A user Stop is final for the whole parent Run (see SessionRunService): the selector is
+            // never consulted, no next fragment exists, and the Run is sealed `cancelled`.
+            if (sessionResult.status == WorkflowStatuses.CANCELLED) {
+                val sealed = inTransaction { sealRunCancelled(scope, namespaceId, runId, fragmentWorkflowId) }
+                if (RunStatuses.isTerminal(sealed.status)) {
+                    notifyRunFinished(sealed)
+                }
+                return@withRunWriteLock committedRepositoryState(scope, namespaceId, runId) ?: sealed
+            }
+
             val completedFragments = run.fragments.map {
                 if (it.fragmentId == fragmentWorkflowId) {
                     it.copy(status = sessionResult.status, completedAt = nowIso())
@@ -351,6 +361,81 @@ class RunService(
             }
             return@withRunWriteLock committedRepositoryState(scope, namespaceId, runId) ?: committed
         }
+    }
+
+    /**
+     * Seals the parent Run as `cancelled` after the user stopped fragment [fragmentId]: the fragment
+     * becomes `cancelled`, a `cancelled` decision is recorded under the fragment id (so a replay is a
+     * no-op through the same `decisions` guard as every other transition), the audit evidence is
+     * appended and the update is published. Never creates a next fragment and never calls the selector.
+     * Must run inside a transaction: it re-reads the Run and commits through the revision CAS.
+     */
+    private fun sealRunCancelled(
+        scope: TenantScope,
+        namespaceId: String,
+        runId: String,
+        fragmentId: String,
+    ): RunRecord {
+        val fresh = runRepository.find(scope, namespaceId, runId)
+            ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_NOT_FOUND, "Run '$runId' not found.")
+        if (fresh.decisions.containsKey(fragmentId)) return fresh
+
+        val reason = "USER_CANCELLED: fragment $fragmentId stopped by the user"
+        val decision = RunDecisionRecord(
+            decisionKey = fragmentId,
+            decisionType = "cancelled",
+            reason = reason,
+            domainRevisionAfter = fresh.domainRevision,
+        )
+        val nextFragments = fresh.fragments.map {
+            if (it.fragmentId == fragmentId) it.copy(status = WorkflowStatuses.CANCELLED, completedAt = nowIso()) else it
+        }
+        val nextRun = fresh.copy(
+            status = RunStatuses.CANCELLED,
+            revision = fresh.revision + 1,
+            fragments = nextFragments,
+            decisions = LinkedHashMap(fresh.decisions).apply { put(fragmentId, decision) },
+            activeEscalation = null,
+        )
+        if (!runRepository.update(scope, namespaceId, runId, fresh.revision, nextRun)) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "Concurrent update on Run '$runId'.")
+        }
+
+        evidenceRepository.append(
+            scope,
+            namespaceId,
+            fragmentId,
+            WorkflowEvidenceItem(
+                evidenceId = UUID.randomUUID().toString(),
+                namespaceId = namespaceId,
+                workflowId = fragmentId,
+                stepId = null,
+                kind = "run-flow-decision",
+                outcome = decision.decisionType,
+                source = mapOf("kind" to "factory-run-selector", "runId" to runId, "selectorVersion" to fresh.selectorVersion),
+                facts = mapOf(
+                    "runId" to runId,
+                    "decisionKey" to fragmentId,
+                    "decisionType" to decision.decisionType,
+                    "reason" to reason,
+                    "domainRevision" to fresh.domainRevision,
+                ),
+                idempotencyKey = "run-decision:$runId:$fragmentId",
+                createdAt = null,
+            ),
+        )
+        sseHub?.publish(
+            scope,
+            namespaceId,
+            mapOf(
+                "runId" to runId,
+                "workflowId" to fragmentId,
+                "namespaceId" to namespaceId,
+                "status" to nextRun.status,
+                "revision" to nextRun.revision,
+            ),
+        )
+        return nextRun
     }
 
     /**

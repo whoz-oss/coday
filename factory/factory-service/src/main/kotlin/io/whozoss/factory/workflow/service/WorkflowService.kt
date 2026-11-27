@@ -6,6 +6,8 @@ import io.whozoss.factory.agentattempt.domain.toCheckedJsonObject
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.agentattempt.service.BridgeCancellationService
+import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.persistence.IdempotencyRepository
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -17,7 +19,6 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.capability.NeedsResearchRouter
 import io.whozoss.factory.capability.CapabilityOutcome
-import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.FailedAttemptSummary
 import io.whozoss.factory.workflow.domain.ProjectionValidation
 import io.whozoss.factory.workflow.domain.WorkflowException
@@ -2040,6 +2041,30 @@ class WorkflowService(
                         caseId = attempt.caseId,
                         expectedRevision = attempt.revision,
                         label = "Cancel attempt '${attempt.attemptId}'",
+                    ),
+                )
+            }
+            // A user Stop whose kill AgentOS has not been proven to have carried out: the run is sealed, but the
+            // agents may still run. Stop stays available, as a retry that sends the kill again.
+            val stopUnconfirmed = attempt.status == AgentAttemptStatus.INTERRUPTED &&
+                attempt.failureCode == CapabilityExecutionService.USER_CANCELLED &&
+                evidence.lastOrNull {
+                    it.kind == BridgeCancellationService.AGENT_STOP_EVIDENCE_KIND && it.facts["attemptId"] == attempt.attemptId
+                }?.facts?.get("killProven") == false
+            if (stopUnconfirmed) {
+                blocker(
+                    WorkflowBlockerCodes.AGENT_KILL_UNCONFIRMED,
+                    attempt.stepId,
+                    "The run was stopped but AgentOS has not confirmed that its agents stopped. Retry the stop.",
+                )
+                actions.add(
+                    AllowedActionDto(
+                        type = WorkflowActionTypes.CANCEL_ATTEMPT,
+                        stepId = attempt.stepId,
+                        attemptId = attempt.attemptId,
+                        caseId = attempt.caseId,
+                        expectedRevision = attempt.revision,
+                        label = "Retry stop",
                     ),
                 )
             }

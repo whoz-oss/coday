@@ -19,6 +19,7 @@ api/cumulative-usage-controller.service.ts
 api/effective-configuration-controller.service.ts
 api/exchange-controller.service.ts
 api/feedback-controller.service.ts
+api/filesystem-cache-controller.service.ts
 api/git-workspaces-configuration-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
@@ -94,10 +95,12 @@ model/exchange-environment.ts
 model/exchange-file-content.ts
 model/exchange-file-diff.ts
 model/exchange-file-entry.ts
+model/exchange-file-update-request.ts
 model/exchange-git-changes.ts
 model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
+model/filesystem-cache-clear-result.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
 model/git-workspace-summary.ts

@@ -81,7 +81,10 @@ object SessionSequencer {
     /**
      * The overall session status, including a live/recoverable ready or running step.
      *
-     * `waiting_human` wins (the session is suspended, not terminal); then a step
+     * `cancelled` wins first: a step cancelled by an explicit user Stop seals the
+     * session as cancelled as long as no step is still running (nothing is
+     * dispatched after a Stop, so a ready branch never revives the run).
+     * `waiting_human` wins next (the session is suspended, not terminal); then a step
      * blocked for missing research keeps the session NON-terminal
      * ([WorkflowStatuses.NEEDS_RESEARCH]) as long as no step genuinely failed —
      * the engine routes a Searcher and re-arms the step. Otherwise `completed`
@@ -90,6 +93,9 @@ object SessionSequencer {
      */
     fun terminalStatus(steps: List<WorkflowStepDefinition>, statuses: Map<String, String>): String {
         val values = steps.map { statuses[it.id] }
+        if (values.any { it == WorkflowStatuses.CANCELLED } && values.none { it == WorkflowStatuses.RUNNING }) {
+            return WorkflowStatuses.CANCELLED
+        }
         if (values.any { it == WorkflowStatuses.WAITING_HUMAN }) return WorkflowStatuses.WAITING_HUMAN
         if (values.all { it == WorkflowStatuses.COMPLETED || it == WorkflowStatuses.SKIPPED }) return WorkflowStatuses.COMPLETED
         if (values.any { it == WorkflowStatuses.RUNNING }) return WorkflowStatuses.RUNNING

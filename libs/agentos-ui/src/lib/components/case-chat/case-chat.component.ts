@@ -99,6 +99,7 @@ import {
 } from '../composer-autocomplete/file-mention'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { UnsentDraftService } from '../../services/unsent-draft.service'
 import { ExchangeFileRef, ExchangeSelectionAction, ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
 import { exchangeMutationScope, isImageFile } from '../../services/exchange-content.utils'
@@ -755,6 +756,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private scrollListenerCleanup: (() => void) | null = null
 
   constructor() {
+    // A typed prompt that was not sent is asked about before leaving (a successful send clears it).
+    inject(UnsentDraftService).register(
+      computed(() => !!this.inputValue().trim()),
+      this.destroyRef
+    )
     this.autocomplete.init(this.namespaceId)
     this.autocomplete.enableEffortCommand(() => this.canChangeEffort())
     this.autocomplete.enableModelCommand(

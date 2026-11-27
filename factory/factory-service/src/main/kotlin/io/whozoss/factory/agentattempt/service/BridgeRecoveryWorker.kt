@@ -154,10 +154,14 @@ class BridgeRecoveryWorker(
         return report
     }
 
-    /** Completes the post-commit release crash window without re-dispatching terminal attempts. */
+    /**
+     * Completes the post-commit release crash window without re-dispatching terminal attempts, and releases the
+     * occupancy of a user-stopped attempt as soon as AgentOS proves its case `KILLED` (a Stop whose kill was not
+     * proven at the time keeps the worktree occupied until then).
+     */
     private fun releaseAcceptedTerminalOccupancies(limit: Int) = synchronized(terminalReleaseLock) {
         val service = worktreeOccupancyService ?: return@synchronized
-        val results = resultService ?: return@synchronized
+        val results = resultService
         var remaining = limit
         var cursor = terminalReleaseCursor
         var scanned = 0
@@ -179,9 +183,11 @@ class BridgeRecoveryWorker(
                 )
                 terminalReleaseCursor = cursor
                 scanned++
-                runCatching {
-                    results.acceptedResult(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)
-                }.getOrNull() ?: continue
+                val releasable = runCatching {
+                    (results?.acceptedResult(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId) != null) ||
+                        userStopKillProven(candidate)
+                }.getOrDefault(false)
+                if (!releasable) continue
                 val identity = attempt.occupancyResourceIdentity ?: continue
                 val kind = attempt.occupancyOwnerKind ?: continue
                 val owner = attempt.occupancyOwnerId ?: continue
@@ -202,6 +208,21 @@ class BridgeRecoveryWorker(
                 break
             }
         }
+    }
+
+    /**
+     * True when the attempt was stopped by a user and AgentOS now reports its case `KILLED`, read as the run owner
+     * persisted on the workflow instance. Without a persisted owner nothing can be asked on anyone's behalf, so the
+     * occupancy stays retained.
+     */
+    private fun userStopKillProven(candidate: ScopedDurableAgentAttempt): Boolean {
+        val attempt = candidate.attempt
+        if (attempt.status != AgentAttemptStatus.INTERRUPTED || attempt.failureCode != CapabilityExecutionService.USER_CANCELLED) {
+            return false
+        }
+        val instance = workflowRepository?.findInstance(candidate.scope, attempt.namespaceId, attempt.workflowId) ?: return false
+        val owner = resolveExternalUserId(candidate.scope, instance, attempt.environmentRef) ?: return false
+        return adapter.caseStatus(attempt.caseId, owner) == BridgeCancellationService.CASE_KILLED
     }
 
     private fun recoverAttempt(candidate: ScopedDurableAgentAttempt): Outcome {

@@ -48,6 +48,11 @@ export interface RunSummary {
   durationSec: number
   tokens: number | null
   phases: PhaseSegment[]
+  /**
+   * AgentOS case to open from the dashboard Conversation button: the controller case when Factory exposes one,
+   * else the run root case (case of the entry agent step attempt). Absent until the first agent step is dispatched.
+   */
+  mainCaseId?: string
 }
 
 /**
@@ -103,6 +108,11 @@ export interface FactoryRun {
    * (normal state when no agent step has executed yet).
    */
   controllerCaseId?: string
+  /**
+   * AgentOS case to open from the dashboard Conversation button: controller case when Factory exposes one, else the
+   * run root case (entry agent step attempt case). Absent until the first agent step is dispatched.
+   */
+  mainCaseId?: string
   finalCostUsd?: number // destroyed runs (only set when a real teardown exists)
   /** Full run summary (status, current phase, goal…). */
   run?: RunSummary
@@ -156,15 +166,7 @@ export interface CostSummary {
 export interface SessionStep {
   key: string
   tone: Tone
-  status:
-    | 'done'
-    | 'running'
-    | 'failed'
-    | 'blocked'
-    | 'waiting_human'
-    | 'waiting_external'
-    | 'pending'
-    | 'skipped'
+  status: 'done' | 'running' | 'failed' | 'blocked' | 'waiting_human' | 'waiting_external' | 'pending' | 'skipped'
   durationSec?: number
 }
 
@@ -485,6 +487,18 @@ export type BlockerCode =
   | 'REAL_COST_PAUSED'
   | 'VERIFICATION_FAILED'
   | 'UNKNOWN_RUNTIME'
+  | 'AGENT_KILL_UNCONFIRMED'
+
+/**
+ * Outcome of the last Stop of a run, when it was refused, not confirmed or failed. A Stop that AgentOS refuses
+ * (`not_authorized`) or cannot be asked (`error`) changes nothing; `unconfirmed` means the run was sealed but the
+ * agents are not proven stopped yet, so the Stop can be retried.
+ */
+export interface StopFeedback {
+  workflowId: string
+  kind: 'not_authorized' | 'unconfirmed' | 'error'
+  message: string
+}
 
 /** One active blocker preventing a workflow from progressing unattended. */
 export interface WorkflowBlocker {
@@ -571,6 +585,11 @@ export interface SessionDetail {
    * Absent when the backend exposes no controller case.
    */
   controllerCaseId?: string
+  /**
+   * AgentOS case to open for this run: controller case when Factory exposes one, else the run root case (entry agent
+   * step attempt case). Absent until the first agent step is dispatched.
+   */
+  mainCaseId?: string
   status: RunStatus
   /** Authoritative execution state, kept separate from the coarse run status. */
   executionState: TimelineStepStatus

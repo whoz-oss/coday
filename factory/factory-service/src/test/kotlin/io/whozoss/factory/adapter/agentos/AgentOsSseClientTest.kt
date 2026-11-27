@@ -308,6 +308,43 @@ class AgentOsSseClientTest {
     }
 
     @Test
+    fun `an abandoned observation returns an interrupted user-cancelled verdict within a second while the stream is idle`() {
+        server.enqueue(
+            FakeAgentOsSseServer.Script(
+                frames = (1..200).map { FakeAgentOsSseServer.heartbeat(delayAfterMs = 25) },
+            ),
+        )
+        val abandoned = java.util.concurrent.atomic.AtomicBoolean(false)
+        val result = arrayOfNulls<AgentOsExecutionVerdict>(1)
+        val observer = Thread {
+            result[0] = client(stallTimeoutMs = 60_000).observe(
+                caseId = "case-1",
+                timeoutMs = 60_000,
+                abandoned = { abandoned.get() },
+            )
+        }
+        observer.start()
+        Thread.sleep(100)
+
+        val abandonedAt = System.nanoTime()
+        abandoned.set(true)
+        observer.join(5_000)
+
+        assertThat(observer.isAlive).isFalse()
+        assertThat(java.time.Duration.ofNanos(System.nanoTime() - abandonedAt)).isLessThan(java.time.Duration.ofMillis(1_500))
+        assertThat(result[0]).isInstanceOf(AgentOsExecutionVerdict.Interrupted::class.java)
+        assertThat((result[0] as AgentOsExecutionVerdict.Interrupted).reason).isEqualTo(AgentOsSseClient.OBSERVATION_ABANDONED)
+    }
+
+    @Test
+    fun `an observation abandoned from the start never opens the stream`() {
+        val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000, abandoned = { true })
+
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Interrupted::class.java)
+        assertThat(server.connectionCount.get()).isZero()
+    }
+
+    @Test
     fun `an exhausted reconnection budget is Indeterminate - never a verdict by silence`() {
         // no script enqueued: every connection closes immediately without data
         val verdict = client(maxReconnects = 2).observe(caseId = "case-1", timeoutMs = 5_000)

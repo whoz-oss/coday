@@ -415,6 +415,43 @@ describe('CaseShellComponent', () => {
     })
   })
 
+  describe('new case button state', () => {
+    it('is on the new case composer on the home of a namespace (no case, no parent case)', () => {
+      const component = makeComponent({ ns: NS_ID })
+
+      expect(component['isOnNewCaseComposer']()).toBe(true)
+    })
+
+    it('is not on the new case composer when a case is open', () => {
+      const component = makeComponent({ ns: NS_ID, case: 'c-1' })
+
+      expect(component['isOnNewCaseComposer']()).toBe(false)
+    })
+
+    it('is not on the new case composer in the sub-case composer', () => {
+      const component = makeComponent({ ns: NS_ID, parentCase: 'root' })
+
+      expect(component['isOnNewCaseComposer']()).toBe(false)
+    })
+
+    it('follows the navigation between home, a case and a sub-case composer', () => {
+      const component = makeComponent({ ns: NS_ID })
+      expect(component['isOnNewCaseComposer']()).toBe(true)
+
+      queryParams$.next({ ns: NS_ID, case: 'c-1' })
+      TestBed.flushEffects()
+      expect(component['isOnNewCaseComposer']()).toBe(false)
+
+      queryParams$.next({ ns: NS_ID })
+      TestBed.flushEffects()
+      expect(component['isOnNewCaseComposer']()).toBe(true)
+
+      queryParams$.next({ ns: NS_ID, parentCase: 'root' })
+      TestBed.flushEffects()
+      expect(component['isOnNewCaseComposer']()).toBe(false)
+    })
+  })
+
   describe('theme', () => {
     // The mocked port is not a signal: the computed values below are read once, after the mock is set.
     it('is dark for a dark industry theme', () => {

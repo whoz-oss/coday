@@ -79,7 +79,11 @@ describe('StepContextFormComponent', () => {
     fixture.componentRef.setInput('feedback', { stepId: 'deploy', kind: 'conflict', message: 'Other step' })
     expect(host().textContent).not.toContain('Other step')
 
-    fixture.componentRef.setInput('feedback', { stepId: 'build', kind: 'conflict', message: 'The workflow has changed.' })
+    fixture.componentRef.setInput('feedback', {
+      stepId: 'build',
+      kind: 'conflict',
+      message: 'The workflow has changed.',
+    })
     fixture.detectChanges()
     expect(host().textContent).toContain('The workflow has changed.')
     expect(host().querySelector('.action-feedback--conflict')).not.toBeNull()

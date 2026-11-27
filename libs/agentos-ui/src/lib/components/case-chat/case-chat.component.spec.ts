@@ -55,6 +55,7 @@ import { ComposerAutocompleteService } from '../composer-autocomplete/composer-a
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
 import { AGENT_MODEL_CHOICE } from '../composer-autocomplete/model-command'
 import { SideQuestionApiService } from '../../services/side-question-api.service'
+import { UnsentDraftService } from '../../services/unsent-draft.service'
 import { ConfirmDialogComponent, DrawerComponent, KebabMenuComponent } from '@whoz-oss/design-system'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
@@ -1377,6 +1378,55 @@ describe('CaseChatComponent — submit with attachments', () => {
         globalThis.EventSource = original
         log.mockRestore()
       }
+    })
+  })
+
+  describe('unsent prompt (#1788)', () => {
+    const hasDraft = (): boolean => TestBed.inject(UnsentDraftService).hasUnsentDraft()
+
+    it('counts as unsent once something is typed, and not for whitespace', () => {
+      const ref = makeComponent()
+      expect(hasDraft()).toBe(false)
+
+      ref.instance['inputValue'].set('hello')
+      expect(hasDraft()).toBe(true)
+
+      ref.instance['inputValue'].set('  \n ')
+      expect(hasDraft()).toBe(false)
+      ref.destroy()
+    })
+
+    it('is forgotten when the chat is destroyed', () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+
+      ref.destroy()
+
+      expect(hasDraft()).toBe(false)
+    })
+
+    it('is cleared by a successful send, so that nothing is asked afterwards', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledTimes(1)
+      expect(hasDraft()).toBe(false)
+      ref.destroy()
+    })
+
+    it('stays unsent when the send fails', async () => {
+      const log = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      http.post.mockReturnValueOnce(throwError(() => new Error('offline')))
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+
+      await ref.instance['submit']()
+
+      expect(hasDraft()).toBe(true)
+      log.mockRestore()
+      ref.destroy()
     })
   })
 

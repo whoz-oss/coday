@@ -4,7 +4,15 @@ import { MatDialog } from '@angular/material/dialog'
 import { provideRouter } from '@angular/router'
 import { of } from 'rxjs'
 import { FactoryStore } from '../../core/factory.store'
-import { CostSummary, FactoryRun, RecentTask, RunCardState, SessionDetail, WorkstreamView } from '../../core/models'
+import {
+  CostSummary,
+  FactoryRun,
+  RecentTask,
+  RunCardState,
+  SessionDetail,
+  StopFeedback,
+  WorkstreamView,
+} from '../../core/models'
 import { ConfirmDialogComponent } from '../admin/confirm-dialog.component'
 import { WorkstreamsPageComponent } from './workstreams-page.component'
 
@@ -27,6 +35,7 @@ interface StoreStub {
   restore: jest.Mock
   openSupervisorCase: jest.Mock
   restoreSupervisorCase: jest.Mock
+  stopFeedback: WritableSignal<StopFeedback | null>
 }
 
 function createRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
@@ -92,6 +101,7 @@ function createStore(
     restore: jest.fn(),
     openSupervisorCase: jest.fn().mockReturnValue(of(null)),
     restoreSupervisorCase: jest.fn().mockReturnValue(undefined),
+    stopFeedback: signal<StopFeedback | null>(null),
   }
 }
 
@@ -195,17 +205,6 @@ describe('WorkstreamsPageComponent', () => {
       buttonByText(host, 'Stop')?.click()
 
       expect(store.stop).toHaveBeenCalledWith('wf-1')
-    })
-
-    it('routes "restore" to store.restore(runId)', async () => {
-      const store = createStore({
-        workstreams: [createWorkstream('ns-1', [createRun({ id: 'wf-1', status: 'destroyed' })])],
-      })
-      const { host } = await setup(store)
-
-      buttonByText(host, 'Restore')?.click()
-
-      expect(store.restore).toHaveBeenCalledWith('wf-1')
     })
 
     it('asks for confirmation before removing, then routes "remove" to store.remove(runId)', async () => {

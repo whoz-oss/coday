@@ -97,7 +97,8 @@
         <button
           type="button"
           class="btn btn-primary shell-sidebar__new-case-btn"
-          title="New case"
+          [title]="newCaseDisabled() ? 'Already on a new case' : 'New case'"
+          [disabled]="newCaseDisabled()"
           dsBlueprint
           (click)="createRequested.emit()"
         >
@@ -278,7 +279,8 @@
     <button
       type="button"
       class="btn btn-primary btn-icon"
-      title="New case"
+      [title]="newCaseDisabled() ? 'Already on a new case' : 'New case'"
+      [disabled]="newCaseDisabled()"
       dsBlueprint
       (click)="createRequested.emit()"
     >

@@ -103,11 +103,8 @@ export class WorkstreamsPageComponent {
       case 'restore':
         this.store.restore(runId)
         return
-      case 'ask':
       case 'conversation':
-        // Both actions are handled entirely by the run card component:
-        // 'conversation' opens the controller case link directly from the card;
-        // 'ask' is no longer emitted (supervisor flow is orchestrated via FactoryStore).
+        // The run card opens the main case link itself.
         return
     }
   }

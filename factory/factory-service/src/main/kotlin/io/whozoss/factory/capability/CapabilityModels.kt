@@ -134,6 +134,17 @@ sealed interface CapabilityOutcome {
         val claims: Map<String, Any?> = emptyMap(),
     ) : CapabilityOutcome
 
+    /**
+     * The attempt was stopped by the user (Stop): the interruption the sequencer observed carries the
+     * `USER_CANCELLED` reason. The step is sealed `cancelled`, never failed, and the attempt keeps its
+     * `USER_CANCELLED` failure code.
+     */
+    data class AgentCancelled(
+        val stepId: String,
+        val persona: String?,
+        val attemptId: String,
+    ) : CapabilityOutcome
+
     /** A human checkpoint is required for this step; the projection/instance opens it. */
     data class HumanCheckpointRequired(
         val stepId: String,

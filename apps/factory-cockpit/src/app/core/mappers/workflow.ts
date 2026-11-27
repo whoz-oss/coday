@@ -4,6 +4,7 @@
  */
 
 import {
+  AgentAttempt,
   AgentQuestion,
   CorrectionCycle,
   FactoryRun,
@@ -78,6 +79,55 @@ export function controllerCaseIdOf(snapshot: unknown): string | undefined {
   const obj = asObject(snapshot)
   const controller = asObject(obj?.['controllerExecution'])
   return getString(controller, 'caseId')
+}
+
+function hasCaseId(attempt: AgentAttempt): boolean {
+  return attempt.caseId.trim().length > 0
+}
+
+/**
+ * Resolve the main AgentOS case of a run, i.e. the one the dashboard Conversation button opens.
+ *
+ * 1. the controller case exposed by the snapshot (parent-Run fragments, runs created with an explicit case);
+ * 2. the case of the attempt of the entry agent step (the only agent step without `dependsOn`): Factory runs that
+ *    step in the run root case, which the snapshot does not expose;
+ * 3. the case of the earliest known attempt (by `createdAt`, unknown last, then `attemptNumber`).
+ *
+ * Returns `undefined` while no agent step has been dispatched.
+ */
+export function resolveMainCaseId(snapshot: unknown, attempts: AgentAttempt[] = []): string | undefined {
+  const controllerCaseId = controllerCaseIdOf(snapshot)
+  if (controllerCaseId?.trim()) return controllerCaseId
+
+  const withCase = attempts.filter(hasCaseId)
+  if (withCase.length === 0) return undefined
+
+  const obj = asObject(snapshot)
+  const projection = asObject(obj?.['projection']) ?? obj
+  const entryAgentStepIds = asArray(projection?.['steps']).flatMap((step): string[] => {
+    const stepObj = asObject(step)
+    const isAgent = getString(asObject(stepObj?.['responsibility']), 'kind') === 'agent'
+    const stepId = getString(stepObj, 'id')
+    return isAgent && stepId && asArray(stepObj?.['dependsOn']).length === 0 ? [stepId] : []
+  })
+  if (entryAgentStepIds.length === 1) {
+    const entryAttempt = withCase
+      .filter((attempt) => attempt.stepId === entryAgentStepIds[0])
+      .sort((left, right) => left.attemptNumber - right.attemptNumber)[0]
+    if (entryAttempt) return entryAttempt.caseId
+  }
+
+  const createdAtMs = (attempt: AgentAttempt): number => {
+    const parsed = Date.parse(attempt.createdAt ?? '')
+    return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY
+  }
+  const earliest = [...withCase].sort((left, right) => {
+    const leftMs = createdAtMs(left)
+    const rightMs = createdAtMs(right)
+    if (leftMs !== rightMs) return leftMs < rightMs ? -1 : 1
+    return left.attemptNumber - right.attemptNumber
+  })[0]
+  return earliest?.caseId
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +208,7 @@ export function mapProjectionToSessionDetail(
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
   const controllerCaseId = controllerCaseIdOf(snapshot)
+  const mainCaseId = resolveMainCaseId(snapshot, mappedAttempts)
   const projectedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
   const derivedStatus = mapWorkflowStateToRunStatus(undefined, steps)
   const latestAttemptByStep = new Map<string, import('../models').AgentAttempt>()
@@ -410,6 +461,7 @@ export function mapProjectionToSessionDetail(
     ...(activeAttemptId !== undefined ? { activeAttemptId } : {}),
     ...(activeAttemptRevision !== undefined ? { activeAttemptRevision } : {}),
     ...(controllerCaseId !== undefined ? { controllerCaseId } : {}),
+    ...(mainCaseId !== undefined ? { mainCaseId } : {}),
     eventsByStepId,
     eventsByAttemptId,
     eventsByExecutionId,
@@ -595,6 +647,8 @@ export function mapProjectionToFactoryRun(snapshot: unknown, forcedStatus?: Sand
   if (branch) factoryRun.branch = branch
   const controllerCaseId = controllerCaseIdOf(snapshot)
   if (controllerCaseId) factoryRun.controllerCaseId = controllerCaseId
+  const mainCaseId = resolveMainCaseId(snapshot)
+  if (mainCaseId) factoryRun.mainCaseId = mainCaseId
   const rawCreatedAt = getString(obj, 'createdAt')
   if (rawCreatedAt && isValidIsoDate(rawCreatedAt)) factoryRun.createdAt = rawCreatedAt
   return factoryRun
@@ -626,6 +680,7 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
   summary.costUsd = detail.costUsd
   summary.unknownCostCount = detail.unknownCostCount
   summary.waitingHuman = detail.executionState === 'waiting_human'
+  if (detail.mainCaseId) summary.mainCaseId = detail.mainCaseId
   summary.cardState =
     detail.executionState === 'waiting_human'
       ? 'waiting_human'

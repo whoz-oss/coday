@@ -42,6 +42,7 @@ import {
   RecentTask,
   RunSummary,
   SessionDetail,
+  StopFeedback,
   UNASSIGNED_NAMESPACE_ID,
   WorkstreamView,
 } from './models'
@@ -123,6 +124,8 @@ export class FactoryStore implements OnDestroy {
   readonly resumingResearchStepId = signal<string | null>(null)
   readonly researchResumptionFeedback = signal<StepFeedback | null>(null)
   private readonly researchResumptionKeys = new Map<string, { payload: string; key: string }>()
+  /** Last Stop that was refused, not confirmed or failed, shown on the run it targets; cleared by the next Stop. */
+  readonly stopFeedback = signal<StopFeedback | null>(null)
   readonly retryingStepId = signal<string | null>(null)
   readonly retryFeedback = signal<StepFeedback | null>(null)
   private readonly retryKeys = new Map<string, { payload: string; key: string }>()
@@ -1144,9 +1147,24 @@ export class FactoryStore implements OnDestroy {
   ): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
     if (!ns) return
+    this.stopFeedback.set(null)
     this.api.cancelAttempt(workflowId, attemptId, payload, ns).subscribe({
-      next: () => this.refreshAfterAction(workflowId),
-      error: () => undefined,
+      next: (response) => {
+        // The run is sealed, but the agents are only known to be stopped once AgentOS proved the kill.
+        if (response?.killProven === false) {
+          this.stopFeedback.set({
+            workflowId,
+            kind: 'unconfirmed',
+            message: 'Stop requested but the agents are not confirmed stopped. Retry stop.',
+          })
+        }
+        this.refreshAfterAction(workflowId)
+      },
+      error: (error: FactoryApiError) => {
+        this.stopFeedback.set({ workflowId, ...stopErrorFeedback(error) })
+        // A stale revision or an already finished attempt: the allowed state moved, show the current one.
+        if (error.status === 409) this.refreshAfterAction(workflowId)
+      },
     })
   }
 
@@ -1260,6 +1278,7 @@ export class FactoryStore implements OnDestroy {
 
 /** Attach an enriched card summary to a run; a destroyed run stays destroyed. */
 function withSummary(run: FactoryRun, summary: RunSummary): FactoryRun {
+  const mainCaseId = summary.mainCaseId ?? run.mainCaseId
   return {
     ...run,
     status:
@@ -1279,6 +1298,7 @@ function withSummary(run: FactoryRun, summary: RunSummary): FactoryRun {
     durationSec: summary.durationSec,
     tokens: summary.tokens,
     phases: summary.phases,
+    ...(mainCaseId ? { mainCaseId } : {}),
   }
 }
 
@@ -1342,6 +1362,18 @@ interface EnrichmentPartial {
   actions?: GetActionsResponse
   agentQuestions?: AgentQuestion[]
   agentQuestionsError?: SessionDetail['agentQuestionsError']
+}
+
+/** What a user is told when a Stop failed; the codes are the ones of the cancel route. */
+function stopErrorFeedback(error: FactoryApiError): Pick<StopFeedback, 'kind' | 'message'> {
+  switch (error.code) {
+    case 'STOP_NOT_AUTHORIZED':
+      return { kind: 'not_authorized', message: 'You are not allowed to stop this run.' }
+    case 'STOP_RUNTIME_UNAVAILABLE':
+      return { kind: 'error', message: 'AgentOS is unreachable; the run was not stopped.' }
+    default:
+      return { kind: 'error', message: error.message }
+  }
 }
 
 function generateRetryKey(): string {

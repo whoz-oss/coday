@@ -155,6 +155,14 @@ export class CaseShellComponent {
   private readonly _activeCaseIdRaw = toSignal(this.route.queryParams.pipe(map((p) => (p['case'] as string) ?? null)))
   protected readonly activeCaseId = computed(() => this._activeCaseIdRaw() ?? null)
 
+  private readonly _parentCaseIdRaw = toSignal(
+    this.route.queryParams.pipe(map((p) => (p['parentCase'] as string) ?? null))
+  )
+  protected readonly parentCaseId = computed(() => this._parentCaseIdRaw() ?? null)
+
+  /** True on the home composer of a top-level case: "New case" would navigate to the screen already shown. */
+  protected readonly isOnNewCaseComposer = computed(() => !this.activeCaseId() && !this.parentCaseId())
+
   // ---------------------------------------------------------------------------
   // Data
   // ---------------------------------------------------------------------------

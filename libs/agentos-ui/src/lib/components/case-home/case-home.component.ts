@@ -57,6 +57,7 @@ import {
   withoutFileReferences,
 } from '../composer-autocomplete/file-mention'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
+import { UnsentDraftService } from '../../services/unsent-draft.service'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { ExchangeDrawerWidthService } from '../../services/exchange-drawer-width.service'
@@ -260,6 +261,11 @@ export class CaseHomeComponent implements OnInit {
 
   constructor() {
     this.destroyRef.onDestroy(() => (this.destroyed = true))
+    // A typed prompt that was not sent is asked about before leaving (submit clears it before navigating).
+    inject(UnsentDraftService).register(
+      computed(() => !!this.inputValue().trim()),
+      this.destroyRef
+    )
     this.autocomplete.init(this.namespaceId)
     // The model and the effort are held here until the case is created: they can be changed while nothing is
     // being created and no case exists yet (a failed send keeps the case, and so its settings).
