@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router'
 import { FactoryStore } from '../../../core/factory.store'
 import { FactoryRun, StopFeedback, WorkstreamView } from '../../../core/models'
 import { WorkstreamActionEvent, WorkstreamCardComponent } from './workstream-card.component'
+import { of } from 'rxjs'
 
 function createRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
   const id = overrides.id ?? 'wf-1'
