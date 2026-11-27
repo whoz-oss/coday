@@ -230,4 +230,55 @@ class FilesystemYamlCacheUnitSpec :
 
             result shouldBe listOf("top")
         }
+
+        "clearAll makes a registry read a modified file again without waiting for the TTL" {
+            val dir = tempDir()
+            val file = writeYaml(dir, "a.yaml", "original")
+            val registry =
+                FilesystemYamlCacheRegistry<String>(
+                    parser = { _, f -> Files.readString(f).trim().takeIf { it.isNotBlank() } },
+                    ttl = Duration.ofMinutes(5),
+                )
+            registry.getAll(dir) shouldBe listOf("original")
+
+            Files.writeString(file, "updated")
+            registry.getAll(dir) shouldBe listOf("original")
+
+            FilesystemYamlCacheRegistry.clearAll()
+
+            registry.getAll(dir) shouldBe listOf("updated")
+        }
+
+        "clearAll clears every registry and counts the directories it forgot" {
+            val dirA = tempDir().also { writeYaml(it, "a.yaml", "a") }
+            val dirB = tempDir().also { writeYaml(it, "b.yaml", "b") }
+            val dirC = tempDir().also { writeYaml(it, "c.yaml", "c") }
+            val parser: (Path, Path) -> String? = { _, f -> Files.readString(f).trim() }
+            val first = FilesystemYamlCacheRegistry(parser)
+            val second = FilesystemYamlCacheRegistry(parser)
+            first.getAll(dirA)
+            first.getAll(dirB)
+            second.getAll(dirC)
+
+            // Other registries of the process may hold directories too: at least ours are counted.
+            (FilesystemYamlCacheRegistry.clearAll() >= 3) shouldBe true
+
+            first.clear() shouldBe 0
+            second.clear() shouldBe 0
+        }
+
+        "clear forgets the directories of one registry only" {
+            val dirA = tempDir().also { writeYaml(it, "a.yaml", "a") }
+            val dirB = tempDir().also { writeYaml(it, "b.yaml", "b") }
+            val parser: (Path, Path) -> String? = { _, f -> Files.readString(f).trim() }
+            val first = FilesystemYamlCacheRegistry(parser)
+            val second = FilesystemYamlCacheRegistry(parser)
+            first.getAll(dirA)
+            first.getAll(dirB)
+            second.getAll(dirA)
+
+            first.clear() shouldBe 2
+
+            second.clear() shouldBe 1
+        }
     })

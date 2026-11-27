@@ -5,6 +5,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
+import java.util.Collections
+import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -40,7 +42,10 @@ class FilesystemYamlCache<T>(
     private val filePredicate: (Path) -> Boolean = { it.toString().endsWith(".yaml") || it.toString().endsWith(".yml") },
     private val maxDepth: Int = Int.MAX_VALUE,
 ) {
-    private data class CacheEntry<T>(val items: List<T>, val loadedAt: Instant)
+    private data class CacheEntry<T>(
+        val items: List<T>,
+        val loadedAt: Instant,
+    )
 
     @Volatile
     private var entry: CacheEntry<T>? = null
@@ -81,8 +86,7 @@ class FilesystemYamlCache<T>(
                         .filter { Files.isRegularFile(it) }
                         .filter { filePredicate(it) }
                         .toList()
-                }
-                .mapNotNull { file: Path ->
+                }.mapNotNull { file: Path ->
                     runCatching { parser(file) }
                         .onFailure { logger.error(it) { "[FilesystemYamlCache] Failed to parse $file: ${it.message}" } }
                         .getOrNull()
@@ -118,6 +122,10 @@ class FilesystemYamlCache<T>(
  * [maxDepth] is forwarded unchanged to each per-directory [FilesystemYamlCache]; see its
  * KDoc for exact semantics. Defaults to unbounded, matching the pre-existing behaviour of
  * every caller created before this parameter was added.
+ *
+ * Every registry registers itself at construction, so that [clearAll] can make all of them read
+ * their files again at once (admin action, for a developer who just edited configuration files).
+ * The registration is weak: it never keeps a registry alive.
  */
 class FilesystemYamlCacheRegistry<T>(
     private val parser: (Path, Path) -> T?,
@@ -127,9 +135,35 @@ class FilesystemYamlCacheRegistry<T>(
 ) {
     private val caches = ConcurrentHashMap<Path, FilesystemYamlCache<T>>()
 
+    init {
+        instances.add(this)
+    }
+
     fun getAll(directory: Path): List<T> =
         caches
             .computeIfAbsent(directory) { dir ->
                 FilesystemYamlCache(dir, { file -> parser(dir, file) }, ttl, filePredicate, maxDepth)
             }.getAll()
+
+    /**
+     * Forgets every per-directory cache: the next [getAll] of a directory reads its files again.
+     * Returns how many directories were forgotten.
+     *
+     * The caches are dropped from the map rather than emptied in place: a reload in progress ends on the
+     * old instance, which is then simply discarded, so no extra locking is needed.
+     */
+    fun clear(): Int = caches.size.also { caches.clear() }
+
+    companion object {
+        /** Weak, so that a registry nobody uses anymore (a test, a discarded repository) can be collected. */
+        private val instances: MutableSet<FilesystemYamlCacheRegistry<*>> =
+            Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap()))
+
+        /**
+         * Clears every registry of the process. Returns the number of directories forgotten.
+         *
+         * Only this process is concerned: another AgentOS instance keeps its caches until their TTL expires.
+         */
+        fun clearAll(): Int = synchronized(instances) { instances.toList() }.sumOf { it.clear() }
+    }
 }
