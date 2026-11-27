@@ -33,6 +33,7 @@ import { VOICE_MEDIA_PORT } from '../voice-recorder/voice-media.port'
 import { VOICE_ERRORS } from '../voice-recorder/voice-recorder.utils'
 import { CaseHomeComponent } from './case-home.component'
 import { CaseWorkspaceService } from '../../services/case-workspace.service'
+import { UnsentDraftService } from '../../services/unsent-draft.service'
 import { ExchangeReferenceToggle } from '../exchange-drawer/exchange-drawer.component'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 
@@ -178,6 +179,71 @@ describe('CaseHomeComponent — first message with attachments', () => {
     const ref = makeComponent()
     ref.instance.ngOnInit()
     expect(exchangeState.initializeForNamespace).toHaveBeenCalledWith('ns-1')
+  })
+
+  describe('unsent prompt (#1788)', () => {
+    const hasDraft = (): boolean => TestBed.inject(UnsentDraftService).hasUnsentDraft()
+
+    it('counts as unsent once something is typed, and not for whitespace', () => {
+      const ref = makeComponent()
+      expect(hasDraft()).toBe(false)
+
+      ref.instance['inputValue'].set('hello')
+      expect(hasDraft()).toBe(true)
+
+      ref.instance['inputValue'].set('   \n ')
+      expect(hasDraft()).toBe(false)
+      ref.destroy()
+    })
+
+    it('is forgotten when the composer is destroyed', () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+
+      ref.destroy()
+
+      expect(hasDraft()).toBe(false)
+    })
+
+    it('is cleared before the navigation of a successful send, so that it never asks', async () => {
+      let draftAtNavigation: boolean | undefined
+      router.navigate.mockImplementation(() => {
+        draftAtNavigation = hasDraft()
+      })
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+      expect(hasDraft()).toBe(true)
+
+      await ref.instance['submit']()
+
+      expect(router.navigate).toHaveBeenCalledTimes(1)
+      expect(draftAtNavigation).toBe(false)
+      ref.destroy()
+    })
+
+    it('stays unsent when the send fails, so that leaving still asks', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      api.addMessageCase.mockReturnValueOnce(throwError(() => new Error('Message not accepted')))
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+
+      await ref.instance['submit']()
+
+      expect(hasDraft()).toBe(true)
+      errorSpy.mockRestore()
+      ref.destroy()
+    })
+
+    it('is dropped with the composer on a namespace switch, which the route guard has already confirmed', () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      ref.instance['inputValue'].set('hello')
+
+      queryParams$.next({ ns: 'ns-2' })
+
+      expect(hasDraft()).toBe(false)
+      ref.destroy()
+    })
   })
 
   describe('files added from the drawer', () => {

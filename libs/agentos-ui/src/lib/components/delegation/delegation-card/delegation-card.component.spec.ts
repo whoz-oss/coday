@@ -67,7 +67,8 @@ describe('DelegationCardComponent', () => {
     return (fixture.nativeElement as HTMLElement).querySelectorAll('.delegation-card__activity li')
   }
   function toggle(): void {
-    ;(fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.delegation-card__toggle')!.click()
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.delegation-card__toggle')
+    button!.click()
     fixture.detectChanges()
   }
 

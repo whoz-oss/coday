@@ -202,6 +202,11 @@ describe('toolActivityLabel', () => {
 })
 
 describe('describeAgentActivity', () => {
+  it('keeps the active tool description when a collaborator posts a human-only message', () => {
+    const tool = toolRequest('tool', 'read_file', '{"path":"src/main.ts"}')
+    const human = { ...userMessage('team'), startsAgentTurn: false } as MessageEvent
+    expect(describeAgentActivity([tool, human], [])).toEqual(describeAgentActivity([tool], []))
+  })
   it('says the agent is thinking when nothing has happened yet', () => {
     expect(describeAgentActivity([]).label).toBe('Thinking')
     expect(describeAgentActivity([userMessage('m1'), agentRunning('a1')]).label).toBe('Thinking')

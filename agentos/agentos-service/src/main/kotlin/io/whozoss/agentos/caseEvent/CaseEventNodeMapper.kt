@@ -230,6 +230,7 @@ class CaseEventNodeMapper(
                     node.modified,
                     node.modifiedBy,
                     removed,
+                    node.startsAgentTurn,
                 )
             }
 
@@ -506,6 +507,7 @@ class CaseEventNodeMapper(
             reasoningEffort = n.reasoningEffort?.let(ReasoningEffort::valueOf),
             requestedReasoningEffort = n.requestedReasoningEffort?.let(ReasoningEffort::valueOf),
             rerunOf = n.rerunOf?.let { UUID.fromString(it) },
+            startsAgentTurn = n.startsAgentTurn ?: true,
         )
 
     private fun toDomain(n: ToolRequestEventNode) =
@@ -756,6 +758,7 @@ class CaseEventNodeMapper(
             reasoningEffort = e.reasoningEffort?.name,
             requestedReasoningEffort = e.requestedReasoningEffort?.name,
             rerunOf = e.rerunOf?.toString(),
+            startsAgentTurn = e.startsAgentTurn,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

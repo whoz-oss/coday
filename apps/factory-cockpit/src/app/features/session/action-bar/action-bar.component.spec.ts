@@ -169,23 +169,81 @@ describe('ActionBarComponent', () => {
     expect(buttons(host)).toHaveLength(0)
   })
 
-  it('emits a RetryIntent carrying the step and the expected revision', () => {
+  it('emits a RetryIntent with an empty context when the optional text is left blank', () => {
     const emitted: RetryIntent[] = []
     fixture.componentInstance.retryRequested.subscribe((intent) => emitted.push(intent))
     const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7 }])
+    const submit = host.querySelector('.failed-step-retry button[type="submit"]') as HTMLButtonElement
 
-    buttons(host)[0]?.click()
+    // No `required`: retrying without any information is valid.
+    expect(submit.disabled).toBe(false)
+    submit.click()
 
-    expect(emitted).toEqual([{ stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' }])
+    expect(emitted).toEqual([{ stepId: 'build', expectedRevision: 7, additionalContext: '' }])
   })
 
-  it('renders NEEDS_RESEARCH as information/access needed, not as a failure or unknown runtime', () => {
-    const host = render([], [{ code: 'NEEDS_RESEARCH', stepId: 'research', label: 'Agent needs research' }])
+  it('emits a RetryIntent carrying the trimmed operator text and the expected revision', () => {
+    const emitted: RetryIntent[] = []
+    fixture.componentInstance.retryRequested.subscribe((intent) => emitted.push(intent))
+    const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7 }])
+    const textarea = host.querySelector('.failed-step-retry textarea') as HTMLTextAreaElement
 
-    expect(host.textContent).toContain('Information or access needed')
-    expect(host.querySelector('.blocker--research')).not.toBeNull()
-    expect(host.querySelector('.blocker--failure')).toBeNull()
-    expect(host.querySelector('.blocker--indeterminate')).toBeNull()
+    expect(textarea.maxLength).toBe(4000)
+    expect(textarea.required).toBe(false)
+    textarea.value = '  Use the staging database  '
+    textarea.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+    ;(host.querySelector('.failed-step-retry button[type="submit"]') as HTMLButtonElement).click()
+
+    expect(emitted).toEqual([{ stepId: 'build', expectedRevision: 7, additionalContext: 'Use the staging database' }])
+  })
+
+  it('shows the retry form in English with a character counter', () => {
+    const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7, label: "Retry failed step 'build'" }])
+    const text = host.textContent ?? ''
+
+    expect(text).toContain("Retry failed step 'build'")
+    expect(text).toContain('Starts a new attempt of the same step in the same case.')
+    expect(text).toContain('0 / 4000 characters')
+    expect(text).not.toMatch(/Relancer|caractères|facultatif/)
+  })
+
+  it('disables the retry form while a retry is in flight and relabels the button', () => {
+    fixture.componentRef.setInput('retryingStepId', 'build')
+    const host = render([{ type: 'retry', stepId: 'build', expectedRevision: 7 }])
+    const emitted: RetryIntent[] = []
+    fixture.componentInstance.retryRequested.subscribe((intent) => emitted.push(intent))
+    const submit = host.querySelector('.failed-step-retry button[type="submit"]') as HTMLButtonElement
+
+    expect((host.querySelector('.failed-step-retry textarea') as HTMLTextAreaElement).disabled).toBe(true)
+    expect(submit.disabled).toBe(true)
+    expect(submit.textContent).toContain('Retrying')
+    host.querySelector('.failed-step-retry')?.dispatchEvent(new Event('submit'))
+    expect(emitted).toEqual([])
+  })
+
+  it('shows the retry feedback only on the matching step', () => {
+    fixture.componentRef.setInput('retryFeedback', {
+      stepId: 'build',
+      kind: 'conflict',
+      message: 'The workflow has changed.',
+    })
+    const host = render([
+      { type: 'retry', stepId: 'build', expectedRevision: 7 },
+      { type: 'retry', stepId: 'deploy', expectedRevision: 7 },
+    ])
+
+    const forms = Array.from(host.querySelectorAll('.failed-step-retry'))
+    expect(forms).toHaveLength(2)
+    expect(forms[0]?.textContent).toContain('The workflow has changed.')
+    expect(forms[1]?.textContent).not.toContain('The workflow has changed.')
+  })
+
+  it('renders no retry form without the allowed action, even for a failed-step blocker', () => {
+    const host = render([], [{ code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Step failed' }])
+
+    expect(host.querySelector('.failed-step-retry')).toBeNull()
+    expect(host.querySelector('button[type="submit"]')).toBeNull()
   })
 
   it('shows and submits research resumption only for the server allowed action', () => {
@@ -283,73 +341,29 @@ describe('ActionBarComponent', () => {
   })
 
   it('renders blockers with a visual class per blocker nature', () => {
-    const blockers: WorkflowBlocker[] = [
+    // Classification itself is covered by core/blocker-classification.spec.ts: this test only proves the
+    // template renders every bucket with its visual class and group header.
+    const blockers = [
+      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Attempt failed' },
+      { code: 'VERIFICATION_FAILED', stepId: 'test', label: 'Verification failed' },
+      { code: 'STEP_BLOCKED', stepId: 'deploy', label: 'Blocked' },
+      { code: 'NEEDS_RESEARCH', stepId: 'research', label: 'Agent needs research' },
       { code: 'WAITING_HUMAN_INTERACTION', stepId: 'build', label: 'Waiting' },
-      { code: 'STEP_BLOCKED', stepId: 'build', label: 'Blocked' },
       { code: 'REAL_COST_PAUSED', label: 'Paused' },
+      { code: 'UNKNOWN_RUNTIME', label: 'Unknown runtime state' },
       { code: 'SOMETHING_ELSE', label: 'Weird' },
-    ]
+    ] as WorkflowBlocker[]
     const host = render([], blockers)
 
-    const elements = Array.from(host.querySelectorAll('.blocker'))
-    expect(elements).toHaveLength(4)
-    expect(elements.some((el) => el.classList.contains('blocker--waiting'))).toBe(true)
-    expect(elements.some((el) => el.classList.contains('blocker--consequence'))).toBe(true)
-    expect(elements.some((el) => el.classList.contains('blocker--cost'))).toBe(true)
-    expect(elements.some((el) => el.classList.contains('blocker--unknown'))).toBe(true)
-  })
-
-  it('classifies ATTEMPT_FAILED and VERIFICATION_FAILED as real failures', () => {
-    const blockers: WorkflowBlocker[] = [
-      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Attempt failed' },
-      { code: 'VERIFICATION_FAILED', stepId: 'build', label: 'Verification failed' },
-    ]
-    const host = render([], blockers)
-
-    const elements = Array.from(host.querySelectorAll('.blocker--failure'))
-    expect(elements).toHaveLength(2)
-    // A group header for root failures should appear
-    expect(host.querySelector('.blocker-group-title--failure')).not.toBeNull()
-  })
-
-  it('groups STEP_BLOCKED as consequences, not root failures', () => {
-    const blockers: WorkflowBlocker[] = [
-      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Attempt failed' },
-      { code: 'STEP_BLOCKED', stepId: 'test', label: 'Test blocked' },
-      { code: 'STEP_BLOCKED', stepId: 'deploy', label: 'Deploy blocked' },
-    ]
-    const host = render([], blockers)
-
-    // Root failures: only the ATTEMPT_FAILED
-    expect(host.querySelectorAll('.blocker--failure')).toHaveLength(1)
-    // Consequences: both STEP_BLOCKED
-    expect(host.querySelectorAll('.blocker--consequence')).toHaveLength(2)
-    // Group header for consequences
-    expect(host.querySelector('.blocker-group-title--consequence')).not.toBeNull()
-  })
-
-  it('renders UNKNOWN_RUNTIME as indeterminate (distinct from failures)', () => {
-    const blockers: WorkflowBlocker[] = [{ code: 'UNKNOWN_RUNTIME', label: 'Unknown runtime state' }]
-    const host = render([], blockers)
-
-    expect(host.querySelector('.blocker--indeterminate')).not.toBeNull()
-    expect(host.querySelector('.blocker--failure')).toBeNull()
-    expect(host.querySelector('.blocker--consequence')).toBeNull()
-  })
-
-  it('supports multiple root failures simultaneously (does not pick only one)', () => {
-    const blockers: WorkflowBlocker[] = [
-      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Build failed' },
-      { code: 'VERIFICATION_FAILED', stepId: 'test', label: 'Test failed' },
-    ]
-    const host = render([], blockers)
-
-    // Both must be rendered, not just the first
+    expect(host.querySelectorAll('.blocker')).toHaveLength(8)
     expect(host.querySelectorAll('.blocker--failure')).toHaveLength(2)
-    const failureTexts = Array.from(host.querySelectorAll('.blocker--failure .blocker-label')).map((el) =>
-      el.textContent?.trim()
+    for (const kind of ['consequence', 'research', 'waiting', 'cost', 'indeterminate', 'unknown']) {
+      expect(host.querySelectorAll(`.blocker--${kind}`)).toHaveLength(1)
+    }
+    expect(host.querySelector('.blocker-group-title--failure')?.textContent).toContain('Root failures')
+    expect(host.querySelector('.blocker-group-title--consequence')?.textContent).toContain(
+      'Blocked steps (consequence)'
     )
-    expect(failureTexts).toContain('Build failed')
-    expect(failureTexts).toContain('Test failed')
+    expect(host.querySelector('.blocker--research')?.textContent).toContain('Information or access needed')
   })
 })

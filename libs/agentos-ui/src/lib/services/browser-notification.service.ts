@@ -155,6 +155,8 @@ export class BrowserNotificationService {
         return `${n.agentName} finished`
       case 'error':
         return `Error: ${n.message}`
+      case 'mention':
+        return `${n.byName} mentioned you: ${n.snippet}`
     }
   }
 

@@ -22,6 +22,7 @@ import {
   CaseStatusEnum,
   Configuration,
   ExchangeFileEntryScopeEnum,
+  MemberItem,
   MessageEvent as CaseMessageEvent,
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
@@ -36,6 +37,7 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { of, Observable, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
+import { CaseMemberStateService } from '../../services/case-member-state.service'
 import { CaseRunCostStateService } from '../../services/case-run-cost-state.service'
 import { AiModelStateService } from '../../services/ai-model-state.service'
 import { VoiceCapabilityStateService } from '../../services/voice-capability-state.service'
@@ -53,13 +55,17 @@ import { ComposerAutocompleteService } from '../composer-autocomplete/composer-a
 import { EFFORT_OPTIONS } from '../composer-autocomplete/effort-command'
 import { AGENT_MODEL_CHOICE } from '../composer-autocomplete/model-command'
 import { SideQuestionApiService } from '../../services/side-question-api.service'
+import { UnsentDraftService } from '../../services/unsent-draft.service'
 import { ConfirmDialogComponent, DrawerComponent, KebabMenuComponent } from '@whoz-oss/design-system'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseUsageComponent } from '../case-usage/case-usage.component'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { VoiceRecorderComponent } from '../voice-recorder/voice-recorder.component'
 import { REWIND_TOOLTIP } from '../message-actions/message-actions.component'
+import { hueOf } from './case-presence'
 import { CaseChatComponent } from './case-chat.component'
+
+/* eslint-disable @angular-eslint/component-selector -- the stubs keep the selector of the element they stand in for */
 
 /*
  * Stand-ins for the parts of the chat around the timeline, used by the few tests that render the template: the
@@ -141,6 +147,8 @@ class StubVoiceRecorderComponent {
   readonly keyPressed = output<KeyboardEvent>()
 }
 
+/* eslint-enable @angular-eslint/component-selector */
+
 /**
  * The component is created WITHOUT rendering (no attachView / detectChanges): ngOnInit never
  * runs, so no SSE connection is opened and the template tree (drawer, exchange shell) stays
@@ -162,6 +170,13 @@ describe('CaseChatComponent — submit with attachments', () => {
   let calls: string[]
   let showTechnical: ReturnType<typeof signal<boolean>>
   let aiModels: { listAvailable: jest.Mock }
+  /** Who the case is shared with: a case only its owner is on is a plain conversation, not a team chat. */
+  let memberState: { listMembers: jest.Mock }
+
+  /** The case is shared with [people] persons in all (the owner included), as the members endpoint would say. */
+  function shareCase(ref: ComponentRef<CaseChatComponent>, people = 2): void {
+    ref.instance['applyMemberCount'](people)
+  }
 
   function makeComponent(): ComponentRef<CaseChatComponent> {
     const environmentInjector = TestBed.inject(EnvironmentInjector)
@@ -184,6 +199,7 @@ describe('CaseChatComponent — submit with attachments', () => {
         ])
       ),
     }
+    memberState = { listMembers: jest.fn().mockReturnValue(of([])) }
     http = {
       post: jest.fn().mockImplementation(() => {
         calls.push('post')
@@ -231,6 +247,7 @@ describe('CaseChatComponent — submit with attachments', () => {
           },
         },
         { provide: AiModelStateService, useValue: aiModels },
+        { provide: CaseMemberStateService, useValue: memberState },
         {
           provide: VoiceMessageControllerService,
           useValue: { capabilityVoiceMessage: jest.fn().mockReturnValue(of({ available: false })) },
@@ -251,6 +268,559 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   afterEach(() => TestBed.resetTestingModule())
+
+  it('opts into live inactive-case SSE only for team discussion', () => {
+    const original = globalThis.EventSource
+    globalThis.EventSource = jest.fn(() =>
+      Object.assign(new EventTarget(), { close: jest.fn() })
+    ) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith('/api/cases/c-1/events')
+      shareCase(ref)
+      ref.instance['connectSse']()
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+      )
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
+  describe('team chat follows who the case is shared with', () => {
+    const people = (count: number): MemberItem[] =>
+      Array.from({ length: count }, (_, i) => ({ id: `u-${i}` }) as MemberItem)
+
+    /** Opens the chat on a case shared with [count] persons, the way the case shell does. */
+    function openChat(count: number): { ref: ComponentRef<CaseChatComponent>; restore: () => void } {
+      memberState.listMembers.mockReturnValue(of(people(count)))
+      const original = globalThis.EventSource
+      globalThis.EventSource = jest.fn(() =>
+        Object.assign(new EventTarget(), { close: jest.fn() })
+      ) as unknown as typeof EventSource
+      const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      return {
+        ref,
+        restore: () => {
+          ref.destroy()
+          globalThis.EventSource = original
+          log.mockRestore()
+        },
+      }
+    }
+
+    it('is a plain conversation until the case is shared with someone else', () => {
+      const { ref, restore } = openChat(1)
+      try {
+        expect(memberState.listMembers).toHaveBeenCalledWith('c-1')
+        expect(ref.instance['teamChat']()).toBe(false)
+        expect(globalThis.EventSource).toHaveBeenLastCalledWith('/api/cases/c-1/events')
+      } finally {
+        restore()
+      }
+    })
+
+    it('is on, with no switch, as soon as one other person is on the case', () => {
+      const { ref, restore } = openChat(2)
+      try {
+        expect(ref.instance['teamChat']()).toBe(true)
+        // The collaborative stream, so that the messages of the others arrive live while the case is idle.
+        expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+          '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+        )
+        // There is nothing left to toggle: the case menu keeps its destructive actions only.
+        ref.instance['onCaseMenuAction']('team-chat')
+        expect(ref.instance['teamChat']()).toBe(true)
+      } finally {
+        restore()
+      }
+    })
+
+    it('reads the members again when the sharing panel closes, and follows the change', () => {
+      const { ref, restore } = openChat(1)
+      try {
+        expect(ref.instance['teamChat']()).toBe(false)
+        ref.instance['exchangeOpen'].set(true)
+        memberState.listMembers.mockReturnValue(of(people(2)))
+
+        ref.instance['onMembersPanelClosed']()
+
+        expect(ref.instance['exchangeOpen']()).toBe(false)
+        expect(ref.instance['teamChat']()).toBe(true)
+
+        memberState.listMembers.mockReturnValue(of(people(1)))
+        ref.instance['onMembersPanelClosed']()
+
+        expect(ref.instance['teamChat']()).toBe(false)
+        expect(globalThis.EventSource).toHaveBeenLastCalledWith('/api/cases/c-1/events')
+      } finally {
+        restore()
+      }
+    })
+
+    it('ignores an answer about the case the chat has left', () => {
+      const members = new Subject<MemberItem[]>()
+      memberState.listMembers.mockReturnValue(members)
+      const ref = makeComponent()
+      try {
+        ref.instance['loadMembers']()
+        ref.instance['caseId'] = 'c-2'
+
+        members.next(people(3))
+
+        expect(ref.instance['teamChat']()).toBe(false)
+      } finally {
+        ref.destroy()
+      }
+    })
+
+    it('names a sender the service could only name by their id with the email of the member', () => {
+      const ref = makeComponent()
+      ref.instance['memberDirectory'].set([{ id: 'U-2', email: 'bob@example.com' } as MemberItem])
+
+      expect(ref.instance['actorLabel']({ id: 'u-2', role: ActorRoleEnum.USER, displayName: 'u-2' })).toBe(
+        'bob@example.com'
+      )
+    })
+
+    it('offers the other people of a shared case for mention, and nobody in a plain conversation', () => {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-0' } as User)
+      const ref = makeComponent()
+      ref.instance['memberDirectory'].set(people(3))
+
+      shareCase(ref, 3)
+      expect(ref.instance['mentionableMembers']().map((member) => member.id)).toEqual(['u-1', 'u-2'])
+
+      shareCase(ref, 1)
+      expect(ref.instance['mentionableMembers']()).toEqual([])
+    })
+
+    it('mentions a person without calling an agent: the message stays a message to the team', async () => {
+      const ref = makeComponent()
+      shareCase(ref)
+      ref.instance['inputValue'].set('hello @bo')
+
+      ref.instance['onMemberMentioned']({ id: 'u-2', handle: 'bob', label: 'Bob', email: 'bob@example.com' })
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+        content: 'hello @bob',
+        userId: 'default-user',
+        mode: 'HUMAN',
+      })
+      expect(ref.instance['isRunning']()).toBe(false)
+    })
+
+    it('shows who else has a shared case open, from the presence frames of the stream, never the current user', () => {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-0' } as User)
+      const original = globalThis.EventSource
+      const source = Object.assign(new EventTarget(), { close: jest.fn(), onerror: null as (() => void) | null })
+      globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+      const ref = makeComponent()
+      try {
+        ref.instance['memberDirectory'].set([
+          { id: 'u-1', email: 'alice@example.com', firstname: 'Alice', lastname: 'Smith' } as MemberItem,
+          { id: 'u-0', email: 'me@example.com' } as MemberItem,
+          { id: 'u-2', email: 'bob@example.com' } as MemberItem,
+        ])
+        shareCase(ref, 3)
+        ref.instance['connectSse']()
+
+        // Nobody is said to be here until the server says so.
+        expect(ref.instance['presentPeople']()).toEqual([])
+
+        source.dispatchEvent(new MessageEvent('case-presence', { data: JSON.stringify({ userIds: ['u-1', 'u-0'] }) }))
+        expect(ref.instance['presentPeople']().map((person) => person.id)).toEqual(['u-1'])
+
+        // Each frame is the whole list: Alice left, only the current user remains, and nobody is shown.
+        source.dispatchEvent(new MessageEvent('case-presence', { data: JSON.stringify({ userIds: ['u-0'] }) }))
+        expect(ref.instance['presentPeople']()).toEqual([])
+
+        // A stream that dropped says nothing about who is there any more.
+        source.onerror?.()
+        expect(ref.instance['presentPeople']()).toEqual([])
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+      }
+    })
+
+    it('shows nobody in a case that is not shared, whatever the stream said', () => {
+      const ref = makeComponent()
+      ref.instance['memberDirectory'].set([{ id: 'u-1', email: 'alice@example.com' } as MemberItem])
+      ref.instance['presentUserIds'].set(['u-1'])
+
+      expect(ref.instance['presentPeople']()).toEqual([])
+    })
+
+    it('ignores a presence frame it cannot read', () => {
+      const original = globalThis.EventSource
+      const source = Object.assign(new EventTarget(), { close: jest.fn() })
+      globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        ref.instance['connectSse']()
+
+        source.dispatchEvent(new MessageEvent('case-presence', { data: 'not json' }))
+
+        expect(ref.instance['presentUserIds']()).toEqual([])
+        expect(warn).toHaveBeenCalled()
+      } finally {
+        ref.destroy()
+        globalThis.EventSource = original
+        warn.mockRestore()
+      }
+    })
+
+    it('says in the header whether the conversation is solo or team, once the members are known', () => {
+      const ref = makeComponent()
+      // Not before: a shared case must not flash as solo while its members load.
+      expect(ref.instance['conversationMode']()).toBeNull()
+
+      shareCase(ref, 1)
+      expect(ref.instance['conversationMode']()).toBe('solo')
+      expect(ref.instance['conversationModeHint']()).toContain('goes straight to the agent')
+
+      shareCase(ref, 2)
+      expect(ref.instance['conversationMode']()).toBe('team')
+      expect(ref.instance['conversationModeHint']()).toContain('@mention an agent')
+    })
+
+    it('stays a plain conversation when the members cannot be loaded', () => {
+      memberState.listMembers.mockReturnValue(throwError(() => new HttpErrorResponse({ status: 500 })))
+      const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+      const ref = makeComponent()
+      try {
+        ref.instance['loadMembers']()
+
+        expect(ref.instance['teamChat']()).toBe(false)
+        expect(warn).toHaveBeenCalled()
+      } finally {
+        ref.destroy()
+        warn.mockRestore()
+      }
+    })
+  })
+
+  it('reconnects on team mode changes without losing drafts, history or a running response', () => {
+    const original = globalThis.EventSource
+    const sources: Array<EventTarget & { close: jest.Mock; onerror?: () => void }> = []
+    globalThis.EventSource = jest.fn(() => {
+      const source = Object.assign(new EventTarget(), { close: jest.fn() })
+      sources.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      ref.instance['inputValue'].set('draft')
+      ref.instance['isRunning'].set(true)
+      ref.instance['streamingText'].set('working')
+      shareCase(ref, 2)
+      expect(sources[0]!.close).toHaveBeenCalledTimes(1)
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+      )
+      expect(ref.instance['inputValue']()).toBe('draft')
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['streamingText']()).toBe('working')
+      shareCase(ref, 1)
+      expect(sources[1]!.close).toHaveBeenCalledTimes(1)
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith('/api/cases/c-1/events')
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
+  it('ignores queued callbacks from a stream replaced by the team mode toggle', () => {
+    const original = globalThis.EventSource
+    const handlers: Array<{ listener?: EventListener; onerror?: () => void; close: jest.Mock; readyState: number }> = []
+    globalThis.EventSource = jest.fn(() => {
+      const source = {
+        close: jest.fn(),
+        readyState: 2,
+        addEventListener: jest.fn((name: string, listener: EventListener) => {
+          if (name === 'case-event') source.listener = listener
+        }),
+        listener: undefined as EventListener | undefined,
+        onerror: undefined as (() => void) | undefined,
+      }
+      handlers.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      shareCase(ref)
+      ref.instance['isRunning'].set(true)
+      handlers[0]!.onerror?.()
+      handlers[0]!.listener?.(
+        new MessageEvent('case-event', {
+          data: JSON.stringify({ id: 'stale', type: 'CaseStatusEvent', caseId: 'c-1', status: 'IDLE' }),
+        })
+      )
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['events']()).toEqual([])
+      expect(ref.instance['streamUnavailable']()).toBe(false)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
+  it('integrates two team readers with a local transport stub and retains a denied invocation draft', async () => {
+    // The transport is a stub, not a live backend or an LLM. Both chat instances are real.
+    const original = globalThis.EventSource
+    const sources: Array<EventTarget & { close: jest.Mock }> = []
+    globalThis.EventSource = jest.fn(() => {
+      const source = Object.assign(new EventTarget(), { close: jest.fn() })
+      sources.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const first = makeComponent()
+    const second = makeComponent()
+    const log = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    let messageNumber = 0
+    http.post.mockImplementation((_url: string, body: { content: string; mode: string }) => {
+      if (body.mode === 'AGENT') return throwError(() => new HttpErrorResponse({ status: 400 }))
+      const event = {
+        id: `passive-${++messageNumber}`,
+        type: 'MessageEvent',
+        caseId: 'c-1',
+        namespaceId: 'ns-1',
+        timestamp: '2026-01-01T00:00:00Z',
+        startsAgentTurn: false,
+        actor: {
+          id: messageNumber === 1 ? 'alice' : 'bob',
+          role: 'USER',
+          displayName: messageNumber === 1 ? 'Alice' : 'Bob',
+        },
+        content: [{ type: 'Text', content: body.content }],
+      }
+      for (const source of sources) {
+        source.dispatchEvent(new MessageEvent('case-event', { data: JSON.stringify(event) }))
+      }
+      return of({})
+    })
+    try {
+      for (const ref of [first, second]) {
+        shareCase(ref)
+        ref.instance['connectSse']()
+      }
+      first.instance['inputValue'].set('Bonjour Bob')
+      await first.instance['submit']()
+      second.instance['inputValue'].set('Bonjour Alice')
+      await second.instance['submit']()
+      for (const ref of [first, second]) {
+        expect(ref.instance['events']().map((event) => event.id)).toEqual(['passive-1', 'passive-2'])
+        expect(ref.instance['isRunning']()).toBe(false)
+        expect(
+          ref.instance['timeline']()
+            .filter((item) => item.kind === 'message')
+            .map((item) => item.isFirstInGroup)
+        ).toEqual([true, true])
+      }
+      first.instance['inputValue'].set('@missing')
+      first.instance['onAgentSelected']({ name: 'missing' } as import('@whoz-oss/agentos-api-client').AgentConfig)
+      await first.instance['submit']()
+      expect(first.instance['inputValue']().trim()).toBe('@missing')
+      expect(first.instance['sendError']()).not.toBe('')
+      expect(first.instance['isRunning']()).toBe(false)
+      expect(second.instance['events']()).toHaveLength(2)
+      expect(globalThis.EventSource).toHaveBeenCalledTimes(2)
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+      )
+    } finally {
+      first.destroy()
+      second.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('keeps collaborative SSE on retry and case switch and deduplicates replayed human messages', () => {
+    const original = globalThis.EventSource
+    const sources: Array<EventTarget & { close: jest.Mock }> = []
+    globalThis.EventSource = jest.fn(() => {
+      const source = Object.assign(new EventTarget(), { close: jest.fn() })
+      sources.push(source)
+      return source
+    }) as unknown as typeof EventSource
+    const ref = makeComponent()
+    const passive = {
+      id: 'passive-replay',
+      type: 'MessageEvent',
+      caseId: 'c-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      actor: { id: 'alice', role: 'USER' },
+      content: [{ type: 'Text', content: 'hello' }],
+      startsAgentTurn: false,
+    }
+    try {
+      shareCase(ref)
+      ref.instance['connectSse']()
+      sources[0]!.dispatchEvent(new MessageEvent('case-event', { data: JSON.stringify(passive) }))
+      ref.instance['retryStream']()
+      sources[1]!.dispatchEvent(new MessageEvent('case-event', { data: JSON.stringify(passive) }))
+      expect(ref.instance['events']()).toHaveLength(1)
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-1/events?includePreviousEvents=true&collaborative=true'
+      )
+      ref.instance['caseId'] = 'c-2'
+      ref.instance['reinitialise']()
+      expect(sources[1]!.close).toHaveBeenCalledTimes(1)
+      expect(ref.instance['events']()).toEqual([])
+      expect(globalThis.EventSource).toHaveBeenLastCalledWith(
+        '/api/cases/c-2/events?includePreviousEvents=true&collaborative=true'
+      )
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+    }
+  })
+
+  it('posts a team message without starting or interrupting an agent', async () => {
+    const ref = makeComponent()
+    shareCase(ref)
+    ref.instance['inputValue'].set('Bonjour équipe')
+    await ref.instance['submit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: 'Bonjour équipe',
+      userId: 'default-user',
+      mode: 'HUMAN',
+    })
+    expect(ref.instance['isRunning']()).toBe(false)
+  })
+
+  it('invokes the explicitly selected agent in team mode', async () => {
+    const ref = makeComponent()
+    shareCase(ref)
+    ref.instance['inputValue'].set('@code')
+    ref.instance['onAgentSelected']({ name: 'code-review' } as import('@whoz-oss/agentos-api-client').AgentConfig)
+    await ref.instance['submit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: '@code-review',
+      userId: 'default-user',
+      mode: 'AGENT',
+      agentName: 'code-review',
+    })
+    expect(ref.instance['isRunning']()).toBe(true)
+  })
+
+  it('allows a human team post while an agent is busy without clearing its streamed response', async () => {
+    const ref = makeComponent()
+    shareCase(ref)
+    ref.instance['isRunning'].set(true)
+    ref.instance['streamingText'].set('réponse en cours')
+    ref.instance['inputValue'].set('Je prépare les données')
+    expect(ref.instance['canSend']).toBe(true)
+    await ref.instance['submit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: 'Je prépare les données',
+      userId: 'default-user',
+      mode: 'HUMAN',
+    })
+    expect(ref.instance['isRunning']()).toBe(true)
+    expect(ref.instance['streamingText']()).toBe('réponse en cours')
+  })
+
+  it('keeps different collaborators in separate author groups', () => {
+    const ref = makeComponent()
+    ref.instance['events'].set(
+      ['alice', 'bob'].map((id) => ({
+        id,
+        type: 'MessageEvent',
+        timestamp: '2026-01-01T00:00:00Z',
+        actor: { id, role: 'USER', displayName: id },
+        content: [{ type: 'Text', content: id }],
+      })) as unknown as CaseMessageEvent[]
+    )
+    const messages = ref.instance['timeline']().filter((item) => item.kind === 'message')
+    expect(messages.map((item) => item.isFirstInGroup)).toEqual([true, true])
+    expect(messages.map((item) => item.isLastInGroup)).toEqual([true, true])
+  })
+
+  it('keeps a team draft on failure and prevents duplicate human posts', async () => {
+    const ref = makeComponent()
+    shareCase(ref)
+    ref.instance['inputValue'].set('draft')
+    const pending = new Subject<object>()
+    http.post.mockReturnValue(pending)
+    const log = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const first = ref.instance['submit']()
+      ref.instance['inputValue'].set('draft')
+      await ref.instance['submit']()
+      expect(http.post).toHaveBeenCalledTimes(1)
+      pending.error(new Error('offline'))
+      await first
+      expect(ref.instance['inputValue']()).toBe('draft')
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('does not let a team message steal the active agent answer’s usage footer', () => {
+    const ref = makeComponent()
+    ref.instance['events'].set([
+      { id: 'run', type: 'AgentRunningEvent', timestamp: '2026-01-01T00:00:00Z' },
+      { id: 'answer', type: 'MessageEvent', actor: { id: 'agent', role: 'AGENT' }, content: [] },
+      { id: 'team', type: 'MessageEvent', startsAgentTurn: false, actor: { id: 'alice', role: 'USER' }, content: [] },
+      {
+        id: 'done',
+        type: 'AgentFinishedEvent',
+        timestamp: '2026-01-01T00:00:01Z',
+        llmUsage: {
+          inputTokens: 1,
+          outputTokens: 1,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalTokens: 2,
+        },
+      },
+    ] as unknown as import('@whoz-oss/agentos-api-client').CaseEvent[])
+    const answer = ref.instance['timeline']().find((item) => item.kind === 'message' && item.event.id === 'answer')
+    expect(answer?.kind === 'message' && answer.metrics?.totalTokens).toBe(2)
+  })
+
+  it('blocks a selected agent invocation while busy but allows an edited human draft', async () => {
+    const ref = makeComponent()
+    shareCase(ref)
+    ref.instance['inputValue'].set('@code')
+    ref.instance['onAgentSelected']({ name: 'code-review' } as import('@whoz-oss/agentos-api-client').AgentConfig)
+    ref.instance['isRunning'].set(true)
+    expect(ref.instance['canSend']).toBe(false)
+    await ref.instance['submit']()
+    expect(http.post).not.toHaveBeenCalled()
+    ref.instance['inputValue'].set('@code-reviewer Bonjour')
+    expect(ref.instance['canSend']).toBe(true)
+    await ref.instance['submit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: '@code-reviewer Bonjour',
+      userId: 'default-user',
+      mode: 'HUMAN',
+    })
+  })
+
+  it('continues an iteration-limited agent even when the composer is in team mode', () => {
+    const ref = makeComponent()
+    shareCase(ref)
+    ref.instance['continueAfterLimit']()
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: 'Continue',
+      userId: 'default-user',
+    })
+    expect(ref.instance['isRunning']()).toBe(true)
+  })
 
   it('does not refresh Files again when a reconnection replays tool and completion events', () => {
     const original = globalThis.EventSource
@@ -284,6 +854,48 @@ describe('CaseChatComponent — submit with attachments', () => {
       ref.destroy()
       globalThis.EventSource = original
       log.mockRestore()
+    }
+  })
+
+  it('refreshes the Files of the case, once, when teammates post messages that carry uploaded files', () => {
+    jest.useFakeTimers()
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+    userState.currentUser.set({ id: 'u-1' } as User)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const post = (id: string, actorId: string, text: string) =>
+        source.dispatchEvent(
+          new MessageEvent('MessageEvent', {
+            data: JSON.stringify({
+              type: 'MessageEvent',
+              id,
+              caseId: 'c-1',
+              timestamp: '2026-01-01T00:00:00Z',
+              actor: { id: actorId, role: 'USER', displayName: actorId },
+              content: [{ type: 'Text', content: text }],
+            }),
+          })
+        )
+      post('m-1', 'u-2', 'look\n\n[Files attached to the case exchange: pasted.png]')
+      post('m-2', 'u-2', 'and\n\n[Files attached to the case exchange: other.png]')
+      // My own upload already refreshed my drawer, a reference adds no file, and a message without files adds none.
+      post('m-3', 'u-1', 'mine\n\n[Files attached to the case exchange: mine.png]')
+      post('m-4', 'u-2', 'see\n\n[Files referenced: namespace:docs/readme.md]')
+      post('m-5', 'u-2', 'no files')
+      expect(exchangeState.refreshCase).not.toHaveBeenCalled()
+
+      jest.advanceTimersByTime(400)
+
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshNamespace).not.toHaveBeenCalled()
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      jest.useRealTimers()
     }
   })
 
@@ -766,6 +1378,55 @@ describe('CaseChatComponent — submit with attachments', () => {
         globalThis.EventSource = original
         log.mockRestore()
       }
+    })
+  })
+
+  describe('unsent prompt (#1788)', () => {
+    const hasDraft = (): boolean => TestBed.inject(UnsentDraftService).hasUnsentDraft()
+
+    it('counts as unsent once something is typed, and not for whitespace', () => {
+      const ref = makeComponent()
+      expect(hasDraft()).toBe(false)
+
+      ref.instance['inputValue'].set('hello')
+      expect(hasDraft()).toBe(true)
+
+      ref.instance['inputValue'].set('  \n ')
+      expect(hasDraft()).toBe(false)
+      ref.destroy()
+    })
+
+    it('is forgotten when the chat is destroyed', () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+
+      ref.destroy()
+
+      expect(hasDraft()).toBe(false)
+    })
+
+    it('is cleared by a successful send, so that nothing is asked afterwards', async () => {
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+
+      await ref.instance['submit']()
+
+      expect(http.post).toHaveBeenCalledTimes(1)
+      expect(hasDraft()).toBe(false)
+      ref.destroy()
+    })
+
+    it('stays unsent when the send fails', async () => {
+      const log = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      http.post.mockReturnValueOnce(throwError(() => new Error('offline')))
+      const ref = makeComponent()
+      ref.instance['inputValue'].set('hello')
+
+      await ref.instance['submit']()
+
+      expect(hasDraft()).toBe(true)
+      log.mockRestore()
+      ref.destroy()
     })
   })
 
@@ -1262,7 +1923,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       const ref = makeComponent()
       ref.instance['_sseStatus'].set('KILLED')
       const stop = ref.instance['caseMenuItems']().find((i: { key: string }) => i.key === 'stop')
-      expect(stop.disabled).toBe(true)
+      expect(stop?.disabled).toBe(true)
       ref.instance['onCaseMenuAction']('stop')
       expect(ref.instance['confirmingKill']()).toBe(false)
     })
@@ -1593,7 +2254,7 @@ describe('CaseChatComponent — submit with attachments', () => {
         expect(ref.instance['canRewindMessage'](message('m-2', 'AGENT', 'an answer'))).toBe(false)
       })
 
-      it('is offered under the message of a collaborator too, unlike the pencil', () => {
+      it("is not offered under the message of a teammate, nor the pencil: a teammate's turn carries no buttons", () => {
         const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
         userState.currentUser.set({ id: 'u-1' } as User)
         const ref = makeComponent()
@@ -1602,7 +2263,7 @@ describe('CaseChatComponent — submit with attachments', () => {
           actor: { id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' },
         } as CaseMessageEvent
 
-        expect(ref.instance['canRewindMessage'](bob)).toBe(true)
+        expect(ref.instance['canRewindMessage'](bob)).toBe(false)
         expect(ref.instance['canEditMessage'](bob)).toBe(false)
       })
 
@@ -1669,6 +2330,18 @@ describe('CaseChatComponent — submit with attachments', () => {
           }
         })
 
+        it('shows an agent reply with a robot avatar, and none on a message of the current user', () => {
+          const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
+          try {
+            const agentTurns = host.querySelectorAll('.case-chat__turn--ai')
+            expect(agentTurns).toHaveLength(1)
+            expect(agentTurns[0]!.querySelector('.case-chat__agent-avatar')).not.toBeNull()
+            expect(host.querySelectorAll('.case-chat__agent-avatar')).toHaveLength(1)
+          } finally {
+            ref.destroy()
+          }
+        })
+
         it('removes the button once the case can no longer be rewound', () => {
           const { ref, host } = renderChat([userMessage('m-1'), message('m-2', 'AGENT', 'an answer')])
           try {
@@ -1701,6 +2374,21 @@ describe('CaseChatComponent — submit with attachments', () => {
           expect(ref.instance['canRewindMessage'](userMessage())).toBe(false)
         }
       })
+    })
+
+    it('is not offered in a shared case, and comes back when the case is no longer shared', () => {
+      const ref = makeComponent()
+      expect(ref.instance['canRewindMessage'](userMessage())).toBe(true)
+
+      // Others read and answer this history: erasing or forking it under them is confusing.
+      shareCase(ref, 2)
+      expect(ref.instance['canRewind']()).toBe(false)
+      expect(ref.instance['canRewindMessage'](userMessage())).toBe(false)
+      ref.instance['askRewind'](userMessage())
+      expect(ref.instance['rewindTarget']()).toBeNull()
+
+      shareCase(ref, 1)
+      expect(ref.instance['canRewindMessage'](userMessage())).toBe(true)
     })
 
     it('is not offered while a message is being sent', () => {
@@ -1750,7 +2438,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     let caseState: { addCase: jest.Mock; updateCaseTitle: jest.Mock; updateCaseStatus: jest.Mock }
 
     beforeEach(() => {
-      caseState = TestBed.inject(CaseStateService) as typeof caseState
+      caseState = TestBed.inject(CaseStateService) as unknown as typeof caseState
     })
 
     it('POSTs to the reopen endpoint, clears terminal state, and notifies CaseStateService', () => {
@@ -1842,9 +2530,6 @@ describe('CaseChatComponent — submit with attachments', () => {
       it('superseded KILLED produces no terminal notice; only the latest CaseStatusEvent does', () => {
         const ref = makeComponent()
         try {
-          const emit = (type: string, id: string, fields: object = {}) =>
-            source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
-
           const original = globalThis.EventSource
           const source = Object.assign(new EventTarget(), { close: jest.fn() })
           globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
@@ -1953,7 +2638,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     const extractedOutput = ref.instance['extractToolOutput']({
       requestId: toolRequestId,
       toolName: request.toolName,
-      args: request.args,
+      args: request.args ?? null,
       response,
     })
     expect(extractedOutput).not.toBeNull()
@@ -2148,6 +2833,52 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(ref.instance['actorLabel']({ id: 'a-1', role: ActorRoleEnum.AGENT, displayName: 'Dev' })).toBe('Dev')
     })
 
+    it('puts a teammate on the left like an agent, with the colour of their avatar, and the current user on the right', () => {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-1' } as User)
+      const ref = makeComponent()
+      const me = { id: 'U-1', role: ActorRoleEnum.USER, displayName: 'Me' }
+      const bob = { id: 'u-2', role: ActorRoleEnum.USER, displayName: 'Bob' }
+      const agent = { id: 'a-1', role: ActorRoleEnum.AGENT, displayName: 'Dev' }
+
+      expect(ref.instance['isTeammate'](bob)).toBe(true)
+      expect(ref.instance['isTeammate'](me)).toBe(false)
+      expect(ref.instance['isTeammate'](agent)).toBe(false)
+      // The hue is the one of the header avatar of that member, which is built from the same id.
+      expect(ref.instance['authorHue'](bob)).toBe(hueOf('u-2'))
+      expect(ref.instance['authorHue'](agent)).toBeNull()
+    })
+
+    it('offers no buttons under a message to the team, whoever wrote it, and keeps them under an agentic message', () => {
+      const userState = TestBed.inject(UserStateService) as unknown as { currentUser: WritableSignal<User | null> }
+      userState.currentUser.set({ id: 'u-1' } as User)
+      const ref = makeComponent()
+      const from = (id: string, role: ActorRoleEnum, startsAgentTurn?: boolean) =>
+        ({
+          id: 'm',
+          type: 'MessageEvent',
+          actor: { id, role, displayName: id },
+          content: [],
+          startsAgentTurn,
+        }) as unknown as CaseMessageEvent
+
+      // My own message to the team: nothing runs from it.
+      expect(ref.instance['isTeamMessage'](from('u-1', ActorRoleEnum.USER, false))).toBe(true)
+      expect(ref.instance['hasMessageActions'](from('u-1', ActorRoleEnum.USER, false))).toBe(false)
+      expect(ref.instance['canEditMessage'](from('u-1', ActorRoleEnum.USER, false))).toBe(false)
+      expect(ref.instance['canRewindMessage'](from('u-1', ActorRoleEnum.USER, false))).toBe(false)
+      // A teammate's message, agentic or not.
+      expect(ref.instance['hasMessageActions'](from('u-2', ActorRoleEnum.USER, false))).toBe(false)
+      expect(ref.instance['hasMessageActions'](from('u-2', ActorRoleEnum.USER, true))).toBe(false)
+      // My own agentic message (startsAgentTurn true or absent) and an agent's keep theirs.
+      expect(ref.instance['isTeamMessage'](from('u-1', ActorRoleEnum.USER, true))).toBe(false)
+      expect(ref.instance['isTeamMessage'](from('u-1', ActorRoleEnum.USER))).toBe(false)
+      expect(ref.instance['hasMessageActions'](from('u-1', ActorRoleEnum.USER))).toBe(true)
+      expect(ref.instance['canEditMessage'](from('u-1', ActorRoleEnum.USER))).toBe(true)
+      expect(ref.instance['hasMessageActions'](from('a-1', ActorRoleEnum.AGENT))).toBe(true)
+      expect(ref.instance['isTeamMessage'](from('a-1', ActorRoleEnum.AGENT, false))).toBe(false)
+    })
+
     it('only treats an unanswered, non-OAuth question as pending (focus target)', () => {
       const ref = makeComponent()
       ref.instance['events'].set([question()])
@@ -2261,6 +2992,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       metadata,
       actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'You' },
       content: [],
+      startsAgentTurn: true,
     })
     const notices = (ref: ComponentRef<CaseChatComponent>): string[] =>
       ref.instance['timeline']()
@@ -2339,6 +3071,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       metadata,
       actor: { id: 'u-1', role: ActorRoleEnum.USER, displayName: 'You' },
       content: [],
+      startsAgentTurn: true,
     })
 
     it('shows a run stopped at its limit outside technical mode, unlike a run that completed', () => {
@@ -3349,15 +4082,6 @@ describe('CaseChatComponent — submit with attachments', () => {
     const metadata = { id: '', created: '', modified: '', removed: false }
     const track = { stop: jest.fn() }
     let voiceApi: { postVoiceMessage: jest.Mock; capabilityVoiceMessage: jest.Mock }
-    let recorder: {
-      state: string
-      ondataavailable: ((event: { data: Blob }) => void) | null
-      onstop: (() => void) | null
-      onerror: (() => void) | null
-      start: jest.Mock
-      stop: jest.Mock
-    }
-
     const flush = async () => {
       for (let i = 0; i < 20; i++) await Promise.resolve()
     }
@@ -3386,7 +4110,6 @@ describe('CaseChatComponent — submit with attachments', () => {
               r.onstop?.()
             }),
           }
-          recorder = r
           return r as unknown as MediaRecorder
         },
       }
@@ -3436,6 +4159,14 @@ describe('CaseChatComponent — submit with attachments', () => {
     describe('canRecord', () => {
       it('is true on an idle, open case', () => {
         expect(makeComponent().instance['canRecord']).toBe(true)
+      })
+
+      it('is true in team chat too: voice is usable while the case is shared', () => {
+        const ref = makeComponent()
+        shareCase(ref)
+
+        expect(ref.instance['teamChat']()).toBe(true)
+        expect(ref.instance['canRecord']).toBe(true)
       })
 
       it('is false while the agent is running', () => {

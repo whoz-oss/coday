@@ -9,6 +9,7 @@ import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.worktree.WorktreeExecutionOccupancyService
 import io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStaleRelease
+import io.whozoss.factory.worktree.domain.WorktreeExecutionOccupancyStatus
 import io.whozoss.factory.worktree.persistence.Neo4jWorktreeExecutionOccupancyRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -136,6 +137,80 @@ class DurableAgentAttemptService(
                 )
             }
         }
+        requireSuccessorPreservesIdentity(predecessor, successor)
+        repository.supersede(
+            scope, predecessor.namespaceId, predecessor.workflowId, predecessor.stepId,
+            predecessor.attemptId, predecessor.revision, now,
+        )
+        var registered = registerRetry(scope, successor, now)
+        if (hasFullHandle) {
+            registered = transferOccupancy(scope, predecessor, successor, registered, now, afterTransferAndBind)
+        }
+        return registered
+    }
+
+    /**
+     * Registers the human RETRY successor of a FAILED (terminal) predecessor and, when the predecessor still holds
+     * its physical worktree, hands that exact occupation over to the successor in the SAME transaction.
+     *
+     * The occupation is never released here: a release commits on its own and would survive a rollback of the
+     * retry, leaving a failed step with a freed worktree and no successor. The transfer joins the caller's
+     * transaction (it is `MANDATORY`), so registration, transfer and binding commit or roll back together.
+     *
+     * The predecessor is left untouched (it is not superseded, a failed attempt is already terminal). When it
+     * carries no handle, or its occupation was already released (an accepted result released it) or is held by
+     * someone else, there is nothing to transfer: the successor is only registered and acquires the worktree
+     * itself when it runs, exactly like a first attempt.
+     */
+    @Transactional
+    fun registerRetryTransferringOccupancy(
+        scope: TenantScope,
+        predecessor: DurableAgentAttempt,
+        successor: DurableAgentAttempt,
+        now: Instant = Instant.now(),
+        afterTransferAndBind: (() -> Unit)? = null,
+    ): DurableAgentAttempt {
+        val handleParts = listOf(
+            predecessor.occupancyResourceIdentity,
+            predecessor.occupancyOwnerKind,
+            predecessor.occupancyOwnerId,
+            predecessor.occupancyGeneration,
+        )
+        if (handleParts.any { it != null } && !handleParts.all { it != null }) {
+            throw WorktreeExecutionOccupancyStaleRelease("Attempt '${predecessor.attemptId}' has a partial worktree occupancy handle")
+        }
+        requireSuccessorPreservesIdentity(predecessor, successor)
+        val transfer = handleParts.all { it != null } && heldByPredecessor(scope, predecessor)
+        if (transfer) {
+            val expectedOwner = WorktreeExecutionOccupancyService.agentOwnerId(
+                predecessor.namespaceId, predecessor.workflowId, predecessor.stepId, predecessor.attemptId,
+            )
+            if (predecessor.environmentRef == null || predecessor.occupancyOwnerKind != AGENT_OWNER_KIND ||
+                predecessor.occupancyOwnerId != expectedOwner
+            ) {
+                throw WorktreeExecutionOccupancyStaleRelease(
+                    "Attempt '${predecessor.attemptId}' has an incoherent worktree occupancy handle",
+                )
+            }
+        }
+        var registered = registerRetry(scope, successor, now)
+        if (transfer) {
+            registered = transferOccupancy(scope, predecessor, successor, registered, now, afterTransferAndBind)
+        }
+        return registered
+    }
+
+    /** True when the predecessor's exact handle is still the ACTIVE owner of its physical worktree. */
+    private fun heldByPredecessor(scope: TenantScope, predecessor: DurableAgentAttempt): Boolean {
+        val current = occupations?.find(predecessor.occupancyResourceIdentity!!) ?: return false
+        return current.status == WorktreeExecutionOccupancyStatus.ACTIVE &&
+            current.ownerScope == scope &&
+            current.ownerKind == predecessor.occupancyOwnerKind &&
+            current.ownerId == predecessor.occupancyOwnerId &&
+            current.generation == predecessor.occupancyGeneration
+    }
+
+    private fun requireSuccessorPreservesIdentity(predecessor: DurableAgentAttempt, successor: DurableAgentAttempt) {
         if (successor.attemptId == predecessor.attemptId ||
             successor.namespaceId != predecessor.namespaceId || successor.workflowId != predecessor.workflowId ||
             successor.stepId != predecessor.stepId || successor.environmentRef != predecessor.environmentRef ||
@@ -145,34 +220,37 @@ class DurableAgentAttemptService(
         ) {
             throw WorktreeExecutionOccupancyStaleRelease("Successor does not preserve predecessor execution identity")
         }
-        repository.supersede(
-            scope, predecessor.namespaceId, predecessor.workflowId, predecessor.stepId,
-            predecessor.attemptId, predecessor.revision, now,
+    }
+
+    /** Fenced hand-off of the predecessor's exact handle to an already registered successor, then bind. */
+    private fun transferOccupancy(
+        scope: TenantScope,
+        predecessor: DurableAgentAttempt,
+        successor: DurableAgentAttempt,
+        registered: DurableAgentAttempt,
+        now: Instant,
+        afterTransferAndBind: (() -> Unit)?,
+    ): DurableAgentAttempt {
+        val occupationRepository = occupations
+            ?: throw WorktreeExecutionOccupancyStaleRelease("Worktree occupancy transfer repository is unavailable")
+        val successorOwnerId = WorktreeExecutionOccupancyService.agentOwnerId(
+            successor.namespaceId, successor.workflowId, successor.stepId, successor.attemptId,
         )
-        var registered = registerRetry(scope, successor, now)
-        if (hasFullHandle) {
-            val occupationRepository = occupations
-                ?: throw WorktreeExecutionOccupancyStaleRelease("Worktree occupancy transfer repository is unavailable")
-            val successorOwnerKind = AGENT_OWNER_KIND
-            val successorOwnerId = WorktreeExecutionOccupancyService.agentOwnerId(
-                successor.namespaceId, successor.workflowId, successor.stepId, successor.attemptId,
-            )
-            val transferred = occupationRepository.transfer(
-                scope = scope,
-                resourceIdentity = predecessor.occupancyResourceIdentity!!,
-                predecessorOwnerKind = predecessor.occupancyOwnerKind!!,
-                predecessorOwnerId = predecessor.occupancyOwnerId!!,
-                predecessorGeneration = predecessor.occupancyGeneration!!,
-                successorOwnerKind = successorOwnerKind,
-                successorOwnerId = successorOwnerId,
-            )
-            registered = repository.bindOccupancy(
-                scope, registered, transferred.resourceIdentity, successorOwnerKind,
-                successorOwnerId, transferred.generation, now,
-            )
-            afterTransferAndBind?.invoke()
-        }
-        return registered
+        val transferred = occupationRepository.transfer(
+            scope = scope,
+            resourceIdentity = predecessor.occupancyResourceIdentity!!,
+            predecessorOwnerKind = predecessor.occupancyOwnerKind!!,
+            predecessorOwnerId = predecessor.occupancyOwnerId!!,
+            predecessorGeneration = predecessor.occupancyGeneration!!,
+            successorOwnerKind = AGENT_OWNER_KIND,
+            successorOwnerId = successorOwnerId,
+        )
+        val bound = repository.bindOccupancy(
+            scope, registered, transferred.resourceIdentity, AGENT_OWNER_KIND,
+            successorOwnerId, transferred.generation, now,
+        )
+        afterTransferAndBind?.invoke()
+        return bound
     }
 
     /**

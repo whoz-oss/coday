@@ -45,11 +45,22 @@ export interface ErrorNotification extends BaseNotification {
   message: string
 }
 
+/** A teammate named the user with `@handle` in a message of a shared case. */
+export interface MentionNotification extends BaseNotification {
+  kind: 'mention'
+  blocking: false
+  /** Who wrote the message. */
+  byName: string
+  /** The start of the message. */
+  snippet: string
+}
+
 export type CompanionNotification =
   | ConfirmationNotification
   | QuestionNotification
   | FinishedNotification
   | ErrorNotification
+  | MentionNotification
 
 export interface CaseGroup {
   caseId: string
@@ -122,6 +133,17 @@ export class CompanionStateService {
     this.sseStarted = true
 
     this.globalStream.caseEvents$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => this.onEvent(event))
+    this.globalStream.mentions$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((mention) =>
+      this.routeNotification({
+        id: mention.id,
+        caseId: mention.caseId,
+        namespaceId: mention.namespaceId,
+        kind: 'mention',
+        blocking: false,
+        byName: mention.byName,
+        snippet: truncate(mention.snippet, INPUT_PREVIEW_MAX_CHARS),
+      })
+    )
   }
 
   // ---------------------------------------------------------------------------

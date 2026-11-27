@@ -295,7 +295,9 @@ class OutboxDrainWorkerTest {
         // The default stub keeps returning the same due candidate, as an expired lease would.
         stubDrain(runRequested("evt-long"))
         val release = CountDownLatch(1)
+        val started = CountDownLatch(1)
         every { sessionRunService.runSession(any(), any(), any(), any(), any()) } answers {
+            started.countDown()
             release.await(30, TimeUnit.SECONDS)
             SessionRunResult("ns-1", "wf-1", "completed", emptyList())
         }
@@ -303,6 +305,8 @@ class OutboxDrainWorkerTest {
         try {
             pooled.drain()
             awaitIdle(pooled, 1)
+            // The in-flight slot is taken before the pool thread calls runSession: wait for the call itself.
+            assertThat(started.await(10, TimeUnit.SECONDS)).isTrue()
 
             pooled.drain()
 

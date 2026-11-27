@@ -47,6 +47,11 @@ export interface RunSummary {
   durationSec: number
   tokens: number | null
   phases: PhaseSegment[]
+  /**
+   * AgentOS case to open from the dashboard Conversation button: the controller case when Factory exposes one,
+   * else the run root case (case of the entry agent step attempt). Absent until the first agent step is dispatched.
+   */
+  mainCaseId?: string
 }
 
 /**
@@ -102,6 +107,11 @@ export interface FactoryRun {
    * (normal state when no agent step has executed yet).
    */
   controllerCaseId?: string
+  /**
+   * AgentOS case to open from the dashboard Conversation button: controller case when Factory exposes one, else the
+   * run root case (entry agent step attempt case). Absent until the first agent step is dispatched.
+   */
+  mainCaseId?: string
   finalCostUsd?: number // destroyed runs (only set when a real teardown exists)
   /** Full run summary (status, current phase, goal…). */
   run?: RunSummary
@@ -573,6 +583,11 @@ export interface SessionDetail {
    * Absent when the backend exposes no controller case.
    */
   controllerCaseId?: string
+  /**
+   * AgentOS case to open for this run: controller case when Factory exposes one, else the run root case (entry agent
+   * step attempt case). Absent until the first agent step is dispatched.
+   */
+  mainCaseId?: string
   status: RunStatus
   /** Authoritative execution state, kept separate from the coarse run status. */
   executionState: TimelineStepStatus

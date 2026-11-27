@@ -7,6 +7,7 @@ import { CaseStateService } from './case-state.service'
 import { CompanionPipService } from './companion-pip.service'
 import { CompanionStateService } from './companion-state.service'
 import { GlobalStreamService } from './global-stream.service'
+import { CaseMention } from './global-case-event-sse.service'
 
 /**
  * The aggregated stream itself — its ownership, relay and retry — is covered by
@@ -15,6 +16,7 @@ import { GlobalStreamService } from './global-stream.service'
  */
 describe('CompanionStateService', () => {
   let events$: Subject<CaseEvent>
+  let mentions$: Subject<CaseMention>
   let casesSignal: ReturnType<typeof signal<Case[]>>
   let isOpenSignal: ReturnType<typeof signal<boolean>>
   let getByIdCase: jest.Mock
@@ -27,6 +29,7 @@ describe('CompanionStateService', () => {
   function configure(): void {
     TestBed.resetTestingModule()
     events$ = new Subject<CaseEvent>()
+    mentions$ = new Subject<CaseMention>()
     casesSignal = signal<Case[]>([])
     isOpenSignal = signal<boolean>(false)
     getByIdCase = jest.fn()
@@ -38,7 +41,10 @@ describe('CompanionStateService', () => {
     TestBed.configureTestingModule({
       providers: [
         CompanionStateService,
-        { provide: GlobalStreamService, useValue: { caseEvents$: events$.asObservable() } },
+        {
+          provide: GlobalStreamService,
+          useValue: { caseEvents$: events$.asObservable(), mentions$: mentions$.asObservable() },
+        },
         { provide: CaseStateService, useValue: { cases: casesSignal } },
         { provide: CaseControllerService, useValue: { getByIdCase } },
         { provide: CompanionPipService, useValue: { playAlertBeep, isOpen: isOpenSignal } },
@@ -237,6 +243,41 @@ describe('CompanionStateService', () => {
       pendingEventId: 'c-1',
     } as unknown as CaseEvent)
 
+    expect(service.groups()).toEqual([])
+  })
+
+  it('turns a mention by a teammate into a non-blocking notification of its case, and closes the browser one on dismiss', () => {
+    casesSignal.set([{ id: 'case-1', namespaceId: 'ns-1', title: 'Shared Case', status: 'IDLE' } as Case])
+
+    mentions$.next({
+      id: 'm-1',
+      caseId: 'case-1',
+      namespaceId: 'ns-1',
+      byUserId: 'u-2',
+      byName: 'Bob',
+      snippet: 'hello @alice, the report is ready',
+      timestamp: '2026-01-01T00:00:00Z',
+    })
+
+    const notification = {
+      id: 'm-1',
+      caseId: 'case-1',
+      namespaceId: 'ns-1',
+      kind: 'mention',
+      blocking: false,
+      byName: 'Bob',
+      snippet: 'hello @alice, the report is ready',
+    }
+    expect(service.groups()).toEqual([
+      { caseId: 'case-1', namespaceId: 'ns-1', caseTitle: 'Shared Case', notifications: [notification] },
+    ])
+    expect(browserNotify).toHaveBeenCalledWith('case-1', 'ns-1', 'Shared Case', expect.objectContaining(notification))
+    // A mention is a message, not a question: no alert beep.
+    expect(playAlertBeep).not.toHaveBeenCalled()
+
+    service.removeNotification('case-1', 'm-1')
+
+    expect(browserClose).toHaveBeenCalledWith('m-1')
     expect(service.groups()).toEqual([])
   })
 

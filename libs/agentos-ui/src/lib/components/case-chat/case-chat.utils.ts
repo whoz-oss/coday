@@ -101,14 +101,25 @@ export function rerunErrorMessage(status: number | undefined): string {
  * - an agent turn: its display name, 'Agent' when it has none;
  * - a human turn from the current user: 'You';
  * - a human turn from someone else (a collaborator on a shared case): their display name;
- * - no display name (legacy events), or current user not loaded yet: the name when there is one, 'You' otherwise.
+ * - no display name (legacy events), or current user not loaded yet: the name when there is one, 'You' otherwise;
+ * - a sender the service could only name by their id: the name [identities] gives for that id (the member
+ *   list of the case: their name, else their email), when it has one.
+ *
+ * [identities] maps lowercase user ids to such a name.
  *
  * Ids are compared regardless of the UUID letter case, like the respondent check of [findLegitimateAnswer].
  */
-export function senderLabel(actor: Actor, currentUserId: string | null | undefined): string {
+export function senderLabel(
+  actor: Actor,
+  currentUserId: string | null | undefined,
+  identities?: ReadonlyMap<string, string>
+): string {
   if (actor.role !== ActorRoleEnum.USER) return actor.displayName || 'Agent'
   if (currentUserId && actor.id?.toLowerCase() === currentUserId.toLowerCase()) return 'You'
-  return actor.displayName || 'You'
+  // A display name that is the id itself is no name: the service falls back to it for a user it knows by nothing else.
+  const named = actor.displayName && actor.displayName !== actor.id ? actor.displayName : undefined
+  const identified = actor.id ? identities?.get(actor.id.toLowerCase()) : undefined
+  return named || identified || actor.displayName || 'You'
 }
 
 /**
@@ -118,6 +129,20 @@ export function senderLabel(actor: Actor, currentUserId: string | null | undefin
  */
 export function isAuthorOf(actor: Actor, currentUserId: string | null | undefined): boolean {
   return actor.role === ActorRoleEnum.USER && !!currentUserId && actor.id?.toLowerCase() === currentUserId.toLowerCase()
+}
+
+/**
+ * Whether [actor] is another human than the current user: a teammate of a shared case. False for an agent, for the
+ * current user, for an event without an actor id (legacy), and while the current user is not loaded yet, so that
+ * nothing is taken for a teammate's turn on a guess.
+ */
+export function isTeammateOf(actor: Actor, currentUserId: string | null | undefined): boolean {
+  return (
+    actor.role === ActorRoleEnum.USER &&
+    !!currentUserId &&
+    !!actor.id &&
+    actor.id.toLowerCase() !== currentUserId.toLowerCase()
+  )
 }
 
 /**

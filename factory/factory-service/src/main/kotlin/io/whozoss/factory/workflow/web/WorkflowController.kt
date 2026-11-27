@@ -706,6 +706,62 @@ class WorkflowController(
         return respond(service.resumeResearch(caller.scope, caller.namespaceId, workflowId, stepId, expectedRevision, additionalContext, caller.actorId, key))
     }
 
+    // ----- failed-step retry ----------------------------------------------
+
+    @PostMapping(path = ["/{workflowId}/steps/{stepId}/failed-step-retries"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Retry a failed agent step as a new attempt of the same run and case.")
+    @io.swagger.v3.oas.annotations.parameters.RequestBody(
+        required = true,
+        content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(implementation = FailedStepRetryRequestDto::class))],
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "Retry created: the step re-runs as the returned attempt."),
+        ApiResponse(responseCode = "200", description = "Idempotent replay of an identical retry (`idempotent: true`)."),
+        ApiResponse(
+            responseCode = "400",
+            description = "INVALID_REQUEST (unknown field, context over 4000 characters, missing Idempotency-Key, repository root not resolvable)",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+        ApiResponse(
+            responseCode = "409",
+            description = "REVISION_CONFLICT, IDEMPOTENCY_KEY_COLLISION, INTERACTION_STALE (run still active, step not failed, " +
+                "attempt not finished or without frozen context), ACTION_NOT_ALLOWED (not an agent step, outcome-managed run or " +
+                "parent Run fragment) or WORKFLOW_SEALED (completed or cancelled run)",
+            content = [Content(schema = Schema(implementation = ErrorResponse::class))],
+        ),
+    )
+    fun retryFailedStep(
+        @PathVariable workflowId: String,
+        @PathVariable stepId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(
+            required = true,
+            description = "Client-chosen key making the command replay-safe (1 to 128 characters).",
+        )
+        @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("namespaceId", "expectedRevision", "additionalContext") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only namespaceId, expectedRevision and additionalContext are accepted.")
+        }
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
+        // additionalContext is optional: absent, null and blank all mean "no extra information".
+        val rawContext = request["additionalContext"]
+        if (rawContext != null && rawContext !is String) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "additionalContext must be a string.")
+        }
+        val key = idempotencyKey?.trim()?.takeIf { it.isNotEmpty() && it.length <= 128 }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Idempotency-Key is required and must not exceed 128 characters.")
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
+        return respond(
+            service.retryFailedStep(
+                caller.scope, caller.namespaceId, workflowId, stepId, expectedRevision, rawContext, caller.actorId, key,
+            ),
+        )
+    }
+
     // ----- lifecycle -----------------------------------------------------
 
     @PostMapping(path = ["/{workflowId}/restore"], produces = [MediaType.APPLICATION_JSON_VALUE])

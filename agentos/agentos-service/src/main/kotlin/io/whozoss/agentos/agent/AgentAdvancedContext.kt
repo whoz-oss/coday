@@ -73,10 +73,10 @@ data class AgentAdvancedContext(
     /**
      * Convert case events to Spring AI messages for the LLM prompt.
      *
-     * When the last user [MessageEvent] carries a non-null [MessageEvent.sessionContext],
+     * When the last invoking user [MessageEvent] carries a non-null [MessageEvent.sessionContext],
      * it is injected as a [UserMessage] immediately before that message to maintain the
      * alternating user/assistant pattern expected by most LLM APIs. Session context on
-     * earlier messages is ignored.
+     * earlier or passive messages is ignored. Passive text remains discussion history.
      */
     internal fun convertEventsToMessages(
         events: List<CaseEvent>,
@@ -91,7 +91,7 @@ data class AgentAdvancedContext(
 
         val lastUserMsgIndex =
             events.indexOfLast {
-                it is MessageEvent && it.actor.role == ActorRole.USER
+                it is MessageEvent && it.actor.role == ActorRole.USER && it.startsAgentTurn
             }
 
         val responsesByRequestId = events.filterIsInstance<ToolResponseEvent>().associateBy { it.toolRequestId }

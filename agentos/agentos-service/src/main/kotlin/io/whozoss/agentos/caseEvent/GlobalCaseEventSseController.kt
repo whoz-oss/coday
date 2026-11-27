@@ -24,6 +24,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
@@ -58,6 +59,8 @@ class GlobalCaseEventSseController(
     private val activeCompanionSessionRegistry: ActiveCompanionSessionRegistry,
     private val permissionService: PermissionService,
     private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
+    /** The mentions of users by their teammates. Optional: without it the stream carries none. */
+    private val mentionBroadcaster: CaseMentionBroadcaster? = null,
 ) {
     private val heartbeatIntervalMs get() = caseConfig.sseHeartbeatIntervalMs
     private val pollIntervalMs get() = caseConfig.globalEventsPollIntervalMs
@@ -111,6 +114,7 @@ class GlobalCaseEventSseController(
         activeCompanionSessionRegistry.markConnected(userId)
 
         startCaseListUpdateJob(scope, userId, authentication, emitter)
+        startMentionJob(scope, userId, emitter)
         startReconciliationJob(scope, userId, authentication, emitter, childJobs)
         startHeartbeatJob(scope, emitter, userId)
 
@@ -259,6 +263,54 @@ class GlobalCaseEventSseController(
             false
         }
 
+    /**
+     * Carries a `case-mention` frame each time a teammate mentions this user with `@handle` in a message of a shared
+     * case: `{id, caseId, namespaceId, byUserId, byName, snippet, timestamp}`, all strings.
+     *
+     * Only the mentions addressed to this user are sent. Subscribed before the handler returns (UNDISPATCHED), for
+     * the same reason as the case-list updates: nothing is replayed. A user who is not connected when the message is
+     * posted is not notified.
+     */
+    private fun startMentionJob(
+        scope: CoroutineScope,
+        userId: UUID,
+        emitter: SseEmitter,
+    ): Job? =
+        mentionBroadcaster?.let { broadcaster ->
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    broadcaster
+                        .events()
+                        .filter { it.userId == userId }
+                        .collect { mention ->
+                            emitter.send(
+                                SseEmitter
+                                    .event()
+                                    .id(mention.id.toString())
+                                    .name(CASE_MENTION_CHANNEL)
+                                    .data(
+                                        mapOf(
+                                            "id" to mention.id.toString(),
+                                            "caseId" to mention.caseId.toString(),
+                                            "namespaceId" to mention.namespaceId.toString(),
+                                            "byUserId" to mention.byUserId,
+                                            "byName" to mention.byName,
+                                            "snippet" to mention.snippet,
+                                            "timestamp" to mention.timestamp.toString(),
+                                        ),
+                                    ),
+                            )
+                        }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.debug { "Failed to send a mention for user $userId: ${e.message}" }
+                    emitter.completeWithError(e)
+                    scope.cancel()
+                }
+            }
+        }
+
     private fun startCaseCollectorJob(
         scope: CoroutineScope,
         runtime: CaseRuntime,
@@ -325,6 +377,9 @@ class GlobalCaseEventSseController(
     companion object : KLogging() {
         /** The per-namespace stream's event name, so a client reads one protocol, not two. */
         const val CASE_LIST_UPDATED_CHANNEL = NamespaceCaseListUpdateSseController.NAMESPACE_CASE_LIST_UPDATED_EVENT
+
+        /** The frame telling a user that a teammate mentioned them in a message. */
+        const val CASE_MENTION_CHANNEL = "case-mention"
     }
 }
 

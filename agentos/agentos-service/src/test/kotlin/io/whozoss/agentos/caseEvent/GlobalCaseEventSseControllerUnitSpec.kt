@@ -255,6 +255,50 @@ class GlobalCaseEventSseControllerUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
+        // Mentions — addressed to one user, carried on the same stream
+        // -------------------------------------------------------------------------
+
+        "the mention subscription is taken before the handler returns, so that no mention falls between connecting and listening" {
+            val userId = UUID.randomUUID()
+            val user = User(metadata = EntityMetadata(id = userId), externalId = "u1")
+            val userService = mockk<UserService> { every { getCurrentUser() } returns user }
+            val caseService =
+                mockk<CaseService> {
+                    every { findConcerningUser(userId) } returns emptyList()
+                    every { getAllActiveCases() } returns emptyList()
+                }
+            val subscribedOn = AtomicReference<Thread?>(null)
+            val mentions =
+                mockk<CaseMentionBroadcaster> {
+                    every { events() } answers {
+                        subscribedOn.set(Thread.currentThread())
+                        MutableSharedFlow<CaseMention>()
+                    }
+                }
+
+            val controller =
+                GlobalCaseEventSseController(
+                    caseService = caseService,
+                    userService = userService,
+                    caseConfig = CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE, globalEventsPollIntervalMs = 20L),
+                    activeCompanionSessionRegistry = ActiveCompanionSessionRegistry(),
+                    permissionService = permissionServiceGrantingNothing(),
+                    caseListUpdateBroadcaster = NamespaceCaseListUpdateBroadcaster(),
+                    mentionBroadcaster = mentions,
+                )
+            val emitter = controller.streamMyEvents()
+
+            subscribedOn.get() shouldBe Thread.currentThread()
+
+            emitter.complete()
+        }
+
+        "the mention channel is the stable case-mention frame" {
+            GlobalCaseEventSseController.CASE_MENTION_CHANNEL shouldBe "case-mention"
+            CaseEventSseController.CASE_PRESENCE_CHANNEL shouldBe "case-presence"
+        }
+
+        // -------------------------------------------------------------------------
         // Case-list updates — carried here instead of one stream per namespace (#1616)
         // -------------------------------------------------------------------------
 

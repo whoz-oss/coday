@@ -761,7 +761,7 @@ class AgentAdvanced(
                 val freeFormText =
                     eventsAfterPending
                         .filterIsInstance<MessageEvent>()
-                        .lastOrNull { it.actor.role == ActorRole.USER }
+                        .lastOrNull { it.actor.role == ActorRole.USER && it.startsAgentTurn }
                         ?.content
                         ?.filterIsInstance<MessageContent.Text>()
                         ?.joinToString(" ") { it.content }
@@ -782,7 +782,9 @@ class AgentAdvanced(
                                 events.size,
                             )
                         val firstLevelCaseEventsAtOrAfterPending =
-                            caseEventsAtOrAfterPending.filter { it.type.isFirstLevel() }
+                            caseEventsAtOrAfterPending.filter {
+                                it.type.isFirstLevel() && (it !is MessageEvent || it.startsAgentTurn)
+                            }
                         val firstLevelHistoryFromPending = context.buildMessages(firstLevelCaseEventsAtOrAfterPending)
                         val decision =
                             context.confirmationManager.analyzeConfirmation(
@@ -1078,7 +1080,7 @@ class AgentAdvanced(
                     )
                 }
                 userFullName?.let {
-                    
+
                     appendLine("Now, continue your conversation with $it.")
                 } ?: appendLine("Now, continue your conversation with the user.")
             }
@@ -1136,7 +1138,7 @@ class AgentAdvanced(
     private fun getSessionPreferredLanguage(events: List<CaseEvent>): String? =
         events
             .filterIsInstance<MessageEvent>()
-            .firstOrNull { it.actor.role == ActorRole.USER }
+            .lastOrNull { it.actor.role == ActorRole.USER && it.startsAgentTurn }
             ?.sessionContext
             ?.preferredLanguage()
 

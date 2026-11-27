@@ -86,12 +86,17 @@ export async function stampVersion(
  * they are published separately via Gradle.
  *
  * Exits with code 1 if any project's publish step fails.
+ *
+ * By default each project's `nx-release-publish` first runs its own `dependsOn` (its build), so a
+ * package is published as soon as its own build ends. Pass `excludeTaskDependencies: true` when the
+ * caller has already built every package (see build-npm-packages.ts) and wants publish tasks only.
  */
 export async function publishPackages(
   releaseGraph: ReleaseGraph,
   projectsVersionData: VersionData,
   distTag: string,
-  dryRun: boolean
+  dryRun: boolean,
+  options: { excludeTaskDependencies?: boolean } = {}
 ): Promise<void> {
   const publishResults = await releasePublish({
     dryRun,
@@ -99,6 +104,7 @@ export async function publishPackages(
     versionData: projectsVersionData,
     tag: distTag,
     verbose: false,
+    excludeTaskDependencies: options.excludeTaskDependencies ?? false,
   })
 
   if (!Object.values(publishResults).every((result) => result.code === 0)) {

@@ -312,7 +312,8 @@ describe('TabCoordinatorService', () => {
   })
 
   it('leaves every tab to its own stream where BroadcastChannel is missing', async () => {
-    ;(globalThis as { BroadcastChannel?: unknown }).BroadcastChannel = undefined
+    const globals = globalThis as { BroadcastChannel?: unknown }
+    globals.BroadcastChannel = undefined
 
     const a = openTab('ns-a')
 

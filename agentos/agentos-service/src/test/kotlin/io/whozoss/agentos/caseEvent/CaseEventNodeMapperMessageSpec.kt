@@ -23,6 +23,13 @@ class CaseEventNodeMapperMessageSpec :
         val userActor = Actor(id = "user-1", displayName = "Alice", role = ActorRole.USER)
         val agentActor = Actor(id = "agent-1", displayName = "Coday", role = ActorRole.AGENT)
 
+        "passive message turn marker survives storage and soft delete" {
+            val original = MessageEvent(namespaceId = UUID.randomUUID(), caseId = UUID.randomUUID(),
+                actor = userActor, content = listOf(MessageContent.Text("Discussion")), startsAgentTurn = false)
+            val roundTripped = nodeMapper.toDomain(nodeMapper.withRemoved(nodeMapper.fromDomain(original), true)) as MessageEvent
+            roundTripped.startsAgentTurn shouldBe false
+        }
+
         "MessageEvent with Text content and USER actor survives the round-trip" {
             val original =
                 MessageEvent(

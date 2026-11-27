@@ -155,6 +155,8 @@ export class ShellSidebarComponent {
   /** Whether the compact Mine / All switch is offered (an administrator of a namespace set to SWITCH). */
   readonly canSwitchListMode = input(false)
   readonly listMode = input<CaseListMode>('mine')
+  /** Disables the New case buttons: the shell already shows the new case composer. */
+  readonly newCaseDisabled = input(false)
 
   protected readonly listModeOptions: ReadonlyArray<SegmentedOption<CaseListMode>> = LIST_MODE_OPTIONS
   protected readonly listModeHint = LIST_MODE_HINT

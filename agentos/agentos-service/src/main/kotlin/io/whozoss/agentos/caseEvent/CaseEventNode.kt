@@ -172,6 +172,8 @@ class MessageEventNode(
     modified: Instant = Instant.now(),
     modifiedBy: String? = null,
     removed: Boolean? = null,
+    /** Null on historical nodes means legacy invocation. */
+    val startsAgentTurn: Boolean? = null,
 ) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
 @Node("ToolRequestEvent")

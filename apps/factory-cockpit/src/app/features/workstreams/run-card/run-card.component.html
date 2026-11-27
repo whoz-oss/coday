@@ -112,48 +112,26 @@
   <!-- Actions: always at the RUN level, targeted by run id -->
   @if (r.status !== 'destroyed') {
     <footer class="actions">
-      @if (supervisorState() === 'done' && supervisorCaseUrl()) {
-        <a
-          mat-flat-button
-          class="sf-primary"
-          [href]="supervisorCaseUrl()!"
-          target="_blank"
-          rel="noopener"
-          title="Open supervisor case"
-        >
-          <mat-icon>open_in_new</mat-icon>
-          View supervisor case
-        </a>
-      } @else if (r.namespaceId) {
-        <button
-          mat-flat-button
-          class="sf-primary supervisor-btn"
-          [disabled]="supervisorState() === 'loading'"
-          (click)="askSupervisor()"
-        >
-          @if (supervisorState() === 'loading') {
-            <mat-icon class="spin-icon">autorenew</mat-icon>
-          }
-          Ask supervisor
-        </button>
-      } @else {
-        <button mat-flat-button class="sf-primary" disabled title="Unknown namespace — cannot open a supervisor case">
-          Ask supervisor
-        </button>
-      }
-
       @if (canStop) {
         <button mat-stroked-button class="sf-secondary" (click)="action.emit('stop')">{{ stopLabel }}</button>
       }
 
       @if (conversationLink) {
-        <a mat-button class="sf-ghost" [href]="conversationLink" target="_blank" rel="noopener">Conversation</a>
+        <a
+          mat-button
+          class="sf-ghost"
+          [href]="conversationLink"
+          target="_blank"
+          rel="noopener"
+          title="Open the main AgentOS case of this run"
+          >Conversation</a
+        >
       } @else {
         <button
           mat-button
           class="sf-ghost"
           disabled
-          title="AgentOS controller case unavailable (no agent step executed for this workflow yet)"
+          title="Main AgentOS case not created yet (the first agent step of this run has not started)"
         >
           Conversation
         </button>

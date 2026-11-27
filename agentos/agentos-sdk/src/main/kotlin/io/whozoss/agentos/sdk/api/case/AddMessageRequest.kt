@@ -6,7 +6,9 @@ import java.util.UUID
 /**
  * Request body for `POST /api/cases/{caseId}/messages`.
  *
- * Adds a user message to a running case. The [content] field is the plain-text
+ * Adds a user message to a case. [mode] HUMAN stores passive team discussion;
+ * AGENT invokes the exact authorized [agentName]. Null preserves legacy agent behavior.
+ * The [content] field is the plain-text
  * message body. [answerToEventId] optionally links this message to a prior
  * [io.whozoss.agentos.sdk.caseEvent.QuestionEvent] so the agent can correlate the
  * user's answer with the question it asked.
@@ -22,8 +24,14 @@ import java.util.UUID
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AddMessageRequest(
-    val content: String,
+    /** Null preserves legacy agent interaction; HUMAN is passive team discussion. */
+    val agentName: String? = null,
     val answerToEventId: UUID? = null,
-    val sessionContext: Map<String, Any?>? = null,
+    val content: String,
+    /** Exact deployed agent name, required only in AGENT mode. */
+    val mode: CaseMessageMode? = null,
     val rerunOf: UUID? = null,
+    val sessionContext: Map<String, Any?>? = null,
 )
+
+enum class CaseMessageMode { HUMAN, AGENT }

@@ -360,12 +360,14 @@ class CaseController(
                 .ifBlank { user.metadata.id.toString() }
         val userActor = Actor(id = user.metadata.id.toString(), displayName = displayName, role = ActorRole.USER)
         caseService.addMessage(
-            caseId = caseId,
             actor = userActor,
-            content = listOf(MessageContent.Text(request.content)),
+            agentName = request.agentName,
             answerToEventId = request.answerToEventId,
-            sessionContext = request.sessionContext,
+            caseId = caseId,
+            content = listOf(MessageContent.Text(request.content)),
+            mode = request.mode,
             rerunOf = request.rerunOf,
+            sessionContext = request.sessionContext,
         )
         logger.info { "Message added to case: $caseId" }
     }

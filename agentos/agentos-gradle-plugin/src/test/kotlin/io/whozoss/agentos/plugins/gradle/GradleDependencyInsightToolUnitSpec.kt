@@ -8,6 +8,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
+import io.whozoss.agentos.sdk.tool.ToolTimeout
 import java.io.File
 import java.nio.file.Files
 

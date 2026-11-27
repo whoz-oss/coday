@@ -19,6 +19,7 @@ import { CostPipe } from '../../pipes/cost.pipe'
 import { TokenCountPipe } from '../../pipes/token-count.pipe'
 import { AiModelStateService } from '../../services/ai-model-state.service'
 import { CaseStateService } from '../../services/case-state.service'
+import { CaseMemberStateService } from '../../services/case-member-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
@@ -134,6 +135,8 @@ describe('CaseChatComponent — cost pause in the composer (rendered)', () => {
         // ngOnInit loads the models for the /model command: without this mock the real API client runs on the
         // bare Configuration above and throws (selectHeaderAccept is not a function).
         { provide: AiModelStateService, useValue: { listAvailable: jest.fn().mockReturnValue(of([])) } },
+        // ngOnInit reads who the case is shared with, which decides the team chat: a case on its own here.
+        { provide: CaseMemberStateService, useValue: { listMembers: jest.fn().mockReturnValue(of([])) } },
         { provide: UserStateService, useValue: { currentUser: signal<User | null>(null) } },
         {
           provide: USER_PREFERENCES_PORT,

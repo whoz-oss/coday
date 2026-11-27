@@ -2,6 +2,7 @@ import { computed, inject, Injectable, signal } from '@angular/core'
 import { ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
 import {
   buildAttachmentMention,
+  isEditableTarget,
   MAX_ATTACHMENTS,
   pastedImageName,
   PendingAttachment,
@@ -95,6 +96,16 @@ export class ComposerAttachmentsService {
     this.addFiles(
       images.map((image, index) => new File([image], pastedImageName(now, index, image.type), { type: image.type }))
     )
+  }
+
+  /**
+   * Document-level variant of [onPaste], so images can be pasted with nothing focused on the
+   * chat screen (a paste goes to the focused element, not to the selection). Skips pastes the
+   * composer already handled (defaultPrevented) and pastes aimed at another text field.
+   */
+  onDocumentPaste(event: ClipboardEvent): void {
+    if (event.defaultPrevented || isEditableTarget(event.target)) return
+    this.onPaste(event)
   }
 
   /** Image files of the clipboard: `items` first (Chrome/Safari/Firefox), `files` as fallback. */

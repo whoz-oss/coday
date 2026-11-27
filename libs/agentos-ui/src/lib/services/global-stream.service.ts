@@ -4,7 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { EMPTY, Observable, of, Subject, throwError, timer } from 'rxjs'
 import { catchError, filter, map, retry, switchMap } from 'rxjs/operators'
 import { CaseEvent } from '@whoz-oss/agentos-api-client'
-import { GlobalCaseEventSseService, GlobalStreamMessage } from './global-case-event-sse.service'
+import { GlobalCaseEventSseService, GlobalStreamMessage, CaseMention } from './global-case-event-sse.service'
 import { TabCoordinatorService } from './tab-coordinator.service'
 import { UserStateService } from './user-state.service'
 
@@ -58,6 +58,14 @@ export class GlobalStreamService {
   readonly connected$: Observable<void> = this.messages.pipe(
     filter((message) => message.kind === 'connected'),
     map(() => undefined)
+  )
+
+  /** The mentions of the user by their teammates, each one once: nothing is replayed after a reconnection. */
+  readonly mentions$: Observable<CaseMention> = this.messages.pipe(
+    filter(
+      (message): message is Extract<GlobalStreamMessage, { kind: 'case-mention' }> => message.kind === 'case-mention'
+    ),
+    map((message) => message.mention)
   )
 
   /** Ids of the namespaces whose case list went stale and should be reloaded. */

@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { signal } from '@angular/core'
 import { provideRouter } from '@angular/router'
-import { of } from 'rxjs'
 import { FactoryStore } from '../../../core/factory.store'
 import { FactoryRun, StopFeedback, WorkstreamView } from '../../../core/models'
 import { WorkstreamActionEvent, WorkstreamCardComponent } from './workstream-card.component'

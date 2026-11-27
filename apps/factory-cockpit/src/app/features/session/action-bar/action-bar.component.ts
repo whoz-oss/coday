@@ -3,7 +3,10 @@ import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 
 import { AgentQuestion, AllowedAction, HumanInteraction, StopFeedback, WorkflowBlocker } from '../../../core/models'
+import { blockerGroupTitle, blockerIcon, classifyBlockers } from '../../../core/blocker-classification'
 import { buildAgentOsCaseUrl } from '../../../core/factory.store'
+import { StepFeedback } from '../../../core/step-command-feedback'
+import { StepContextFormComponent } from '../step-context-form/step-context-form.component'
 
 export interface ReplyIntent {
   interactionId: string
@@ -19,8 +22,8 @@ export interface AgentQuestionAnswerIntent {
 
 export interface RetryIntent {
   stepId: string
-  expectedRevision?: number
-  reasonCode?: string
+  expectedRevision: number
+  additionalContext: string
 }
 
 export interface ResearchResumptionIntent {
@@ -50,7 +53,7 @@ export interface ContinueCostIntent {
  */
 @Component({
   selector: 'sf-action-bar',
-  imports: [MatButtonModule, MatIconModule],
+  imports: [MatButtonModule, MatIconModule, StepContextFormComponent],
   templateUrl: './action-bar.component.html',
   styleUrl: './action-bar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -73,11 +76,9 @@ export class ActionBarComponent {
   readonly answeringQuestionId = input<string | null>(null)
   readonly questionFeedback = input<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(null)
   readonly resumingResearchStepId = input<string | null>(null)
-  readonly researchResumptionFeedback = input<{
-    stepId: string
-    kind: 'conflict' | 'collision' | 'error'
-    message: string
-  } | null>(null)
+  readonly retryingStepId = input<string | null>(null)
+  readonly retryFeedback = input<StepFeedback | null>(null)
+  readonly researchResumptionFeedback = input<StepFeedback | null>(null)
 
   readonly reply = output<ReplyIntent>()
   /** Last refused, unreachable or unconfirmed Stop of this run. */
@@ -115,10 +116,12 @@ export class ActionBarComponent {
     () => this.allowedActions().length > 0 || this.agentQuestions().length > 0 || this.agentQuestionsError() !== null
   )
   protected readonly hasBlockers = computed(() => this.blockers().length > 0)
+  protected readonly blockerGroups = computed(() => classifyBlockers(this.blockers()))
+  protected readonly blockerIcon = blockerIcon
+  protected readonly groupTitle = blockerGroupTitle
 
-  /** Draft texts, keyed by interaction or step id. */
+  /** Draft texts of the replies and agent questions, keyed by interaction or question id. */
   private readonly drafts = signal<Record<string, string>>({})
-  protected readonly researchTouched = signal<Record<string, boolean>>({})
 
   protected draftFor(interactionId: string): string {
     return this.drafts()[interactionId] ?? ''
@@ -131,102 +134,6 @@ export class ActionBarComponent {
   protected interactionFor(action: AllowedAction): HumanInteraction | undefined {
     if (!action.interactionId) return undefined
     return this.interactions().find((interaction) => interaction.interactionId === action.interactionId)
-  }
-
-  /**
-   * Classify a blocker into a severity/kind bucket.
-   *
-   * - `failure`: real execution failures (ATTEMPT_FAILED, VERIFICATION_FAILED)
-   *   — the step actually failed; operator attention is required.
-   * - `consequence`: downstream blocks (STEP_BLOCKED) — a step is blocked as a
-   *   consequence of an upstream failure; they are grouped as mitigated.
-   * - `waiting`: human gate (WAITING_HUMAN_INTERACTION).
-   * - `cost`: budget pause (REAL_COST_PAUSED).
-   * - `indeterminate`: unknown runtime state (UNKNOWN_RUNTIME).
-   * - `unknown`: anything else.
-   */
-  protected blockerKind(
-    blocker: WorkflowBlocker
-  ): 'waiting' | 'research' | 'failure' | 'consequence' | 'cost' | 'indeterminate' | 'unknown' {
-    switch (blocker.code) {
-      case 'WAITING_HUMAN_INTERACTION':
-        return 'waiting'
-      case 'NEEDS_RESEARCH':
-        return 'research'
-      case 'ATTEMPT_FAILED':
-      case 'VERIFICATION_FAILED':
-        return 'failure'
-      case 'STEP_BLOCKED':
-        return 'consequence'
-      case 'REAL_COST_PAUSED':
-        return 'cost'
-      case 'UNKNOWN_RUNTIME':
-        return 'indeterminate'
-      default:
-        return 'unknown'
-    }
-  }
-
-  /**
-   * Computed grouping of blockers by kind, preserving ALL root failures (never
-   * arbitrarily picking a single first one).
-   */
-  protected readonly blockerGroups = computed(() => {
-    const blockers = this.blockers()
-    return {
-      failures: blockers.filter((b) => this.blockerKind(b) === 'failure'),
-      consequences: blockers.filter((b) => this.blockerKind(b) === 'consequence'),
-      waiting: blockers.filter((b) => this.blockerKind(b) === 'waiting'),
-      research: blockers.filter((b) => this.blockerKind(b) === 'research'),
-      cost: blockers.filter((b) => this.blockerKind(b) === 'cost'),
-      indeterminate: blockers.filter((b) => this.blockerKind(b) === 'indeterminate'),
-      unknown: blockers.filter(
-        (b) =>
-          this.blockerKind(b) !== 'failure' &&
-          this.blockerKind(b) !== 'consequence' &&
-          this.blockerKind(b) !== 'waiting' &&
-          this.blockerKind(b) !== 'research' &&
-          this.blockerKind(b) !== 'cost' &&
-          this.blockerKind(b) !== 'indeterminate'
-      ),
-    }
-  })
-
-  protected blockerIcon(blocker: WorkflowBlocker): string {
-    switch (this.blockerKind(blocker)) {
-      case 'waiting':
-        return 'person_alert'
-      case 'research':
-        return 'info'
-      case 'failure':
-        return 'error'
-      case 'consequence':
-        return 'link_off'
-      case 'cost':
-        return 'paid'
-      case 'indeterminate':
-        return 'help'
-      default:
-        return 'warning'
-    }
-  }
-
-  /** Title for a blocker group header. */
-  protected groupTitle(kind: 'failure' | 'consequence' | 'waiting' | 'cost' | 'indeterminate' | 'unknown'): string {
-    switch (kind) {
-      case 'failure':
-        return 'Root failures'
-      case 'consequence':
-        return 'Blocked steps (consequence)'
-      case 'waiting':
-        return 'Waiting for human'
-      case 'cost':
-        return 'Budget pause'
-      case 'indeterminate':
-        return 'Indeterminate state'
-      default:
-        return 'Other blockers'
-    }
   }
 
   protected supportedQuestion(question: AgentQuestion): boolean {
@@ -256,27 +163,13 @@ export class ActionBarComponent {
     this.reply.emit(intent)
   }
 
-  protected requestRetry(action: AllowedAction): void {
-    if (!action.stepId) return
-    const intent: RetryIntent = { stepId: action.stepId, reasonCode: 'human_retry' }
-    if (action.expectedRevision !== undefined) intent.expectedRevision = action.expectedRevision
-    this.retryRequested.emit(intent)
+  protected requestRetry(action: AllowedAction, additionalContext: string): void {
+    if (!action.stepId || action.expectedRevision === undefined || this.retryingStepId()) return
+    this.retryRequested.emit({ stepId: action.stepId, expectedRevision: action.expectedRevision, additionalContext })
   }
 
-  protected markResearchTouched(stepId: string): void {
-    this.researchTouched.update((current) => ({ ...current, [stepId]: true }))
-  }
-
-  protected researchContextValid(stepId: string): boolean {
-    const length = this.draftFor(stepId).trim().length
-    return length >= 1 && length <= 4000
-  }
-
-  protected submitResearchResumption(action: AllowedAction): void {
+  protected submitResearchResumption(action: AllowedAction, additionalContext: string): void {
     if (!action.stepId || action.expectedRevision === undefined || this.resumingResearchStepId()) return
-    this.researchTouched.update((current) => ({ ...current, [action.stepId!]: true }))
-    const additionalContext = this.draftFor(action.stepId).trim()
-    if (!additionalContext || additionalContext.length > 4000) return
     this.researchResumptionRequested.emit({
       stepId: action.stepId,
       expectedRevision: action.expectedRevision,
