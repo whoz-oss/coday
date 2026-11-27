@@ -87,10 +87,7 @@ describe('UserProfileComponent (prompt cache)', () => {
     const element = render()
     const select = element.querySelector('#up-promptCacheTtl') as HTMLSelectElement
 
-    expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual([
-      'Standard',
-      'Extended',
-    ])
+    expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual(['Standard', 'Extended'])
     expect(select.value).toBe(PromptCacheTtl.EXTENDED)
     expect(element.textContent).toContain(
       "Extended keeps the conversation cached through longer pauses (Claude models via Requesty: 1 hour instead of 5 minutes; each cache write costs more). Other models keep their provider's default."

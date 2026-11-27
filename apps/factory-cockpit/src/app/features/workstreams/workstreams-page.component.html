@@ -42,7 +42,9 @@
     >
       <mat-chip-option value="all">All · {{ statusCounts().all }}</mat-chip-option>
       @for (option of statusOptions(); track option.value) {
-        <mat-chip-option [value]="option.value">{{ option.label }} · {{ statusCounts()[option.value] }}</mat-chip-option>
+        <mat-chip-option [value]="option.value"
+          >{{ option.label }} · {{ statusCounts()[option.value] }}</mat-chip-option
+        >
       }
     </mat-chip-listbox>
   </div>

@@ -5,7 +5,7 @@ import { MatCardModule } from '@angular/material/card'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { FactoryStore, buildAgentOsCaseUrl } from '../../../core/factory.store'
-import { FactoryRun } from '../../../core/models'
+import { FactoryRun, StopFeedback } from '../../../core/models'
 import { StatusChipComponent } from '../../../shared/ui/status-chip.component'
 import { MetricChipComponent } from '../../../shared/ui/metric-chip.component'
 import { StepDotsComponent } from '../../../shared/ui/step-dots.component'
@@ -48,14 +48,32 @@ export class RunCardComponent {
   private readonly store = inject(FactoryStore)
 
   /**
-   * A running run can only be stopped when an active attempt is resolvable from
-   * the authoritative store state. The cockpit never fabricates an attempt id:
-   * when none is resolvable the stop action is simply unavailable.
+   * A run can be stopped when an active attempt is resolvable from the authoritative store state: a running
+   * attempt, or a cancelled one whose kill AgentOS has not confirmed (the backend then offers "Retry stop" as a
+   * `cancel_attempt` action). The cockpit never fabricates an attempt id: when none is resolvable the stop action
+   * is simply unavailable, and a removed run cannot be stopped.
    */
   protected get canStop(): boolean {
     const run = this.run()
-    if (run.status !== 'working' || !run.id) return false
+    if (run.status === 'destroyed' || !run.id) return false
     return Boolean(this.store.session(run.id)?.activeAttemptId)
+  }
+
+  /** Label of the Stop button: a Stop whose kill is not confirmed is offered again as a retry. */
+  protected get stopLabel(): string {
+    const feedback = this.stopFeedback
+    return feedback?.kind === 'unconfirmed' || this.isKillUnconfirmed ? 'Retry stop' : 'Stop'
+  }
+
+  /** The last Stop of THIS run that was refused, not confirmed or failed, if any. */
+  protected get stopFeedback(): StopFeedback | null {
+    const feedback = this.store.stopFeedback()
+    return feedback && feedback.workflowId === this.run().id ? feedback : null
+  }
+
+  private get isKillUnconfirmed(): boolean {
+    const session = this.store.session(this.run().id)
+    return Boolean(session?.blockers?.some((blocker) => blocker.code === 'AGENT_KILL_UNCONFIRMED'))
   }
 
   /**

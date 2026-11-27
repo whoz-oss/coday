@@ -51,7 +51,9 @@ export class StepContextFormComponent {
   })
   protected readonly showInvalid = computed(() => !this.valid() && (this.touched() || this.draft().length > 0))
   protected readonly invalidMessage = computed(() =>
-    this.required() ? `Enter between 1 and ${STEP_CONTEXT_MAX} characters.` : `Enter at most ${STEP_CONTEXT_MAX} characters.`
+    this.required()
+      ? `Enter between 1 and ${STEP_CONTEXT_MAX} characters.`
+      : `Enter at most ${STEP_CONTEXT_MAX} characters.`
   )
   protected readonly stepFeedback = computed(() => {
     const feedback = this.feedback()

@@ -28,6 +28,8 @@ export * from './exchange-controller.service'
 import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
 import { FeedbackControllerService } from './feedback-controller.service'
+export * from './filesystem-cache-controller.service'
+import { FilesystemCacheControllerService } from './filesystem-cache-controller.service'
 export * from './git-workspaces-configuration-controller.service'
 import { GitWorkspacesConfigurationControllerService } from './git-workspaces-configuration-controller.service'
 export * from './integration-config-controller.service'
@@ -84,6 +86,7 @@ export const APIS = [
   EffectiveConfigurationControllerService,
   ExchangeControllerService,
   FeedbackControllerService,
+  FilesystemCacheControllerService,
   GitWorkspacesConfigurationControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,

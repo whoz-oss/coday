@@ -59,6 +59,7 @@ class ConditionalRoutingIntegrationTest : Neo4jDomainIntegrationTest() {
             repository.insertInstance(scope, WorkflowInstanceRecord(ns, id, 1, "active", created.creationCommandHash, created.instance, created.projection))
             val capability = mockk<CapabilityExecutionService>()
             every { capability.hasFinalizedAttempt(any(), any(), any(), any()) } returns false
+            every { capability.userCancelledAttemptId(any(), any(), any(), any()) } returns null
             val called = mutableListOf<String>()
             every { capability.acceptedStepResult(any(), any(), any(), "architect", "attempt-architect") } returns AgentStepResultSubmitted(
                 "result-submitted", "result-architect", "attempt-architect", id, "architect", ns, "case", "Executor", "brief",

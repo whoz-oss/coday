@@ -55,6 +55,12 @@ object VerdictDeriver {
     const val AGENT_CASE_ERROR = "AGENT_CASE_ERROR"
     const val AGENT_CASE_KILLED = "AGENT_CASE_KILLED"
 
+    /**
+     * Prefix of an interruption reason that records a user Stop. An [AgentOsExecutionVerdict.Interrupted] whose
+     * reason starts with it is the user's cancellation, not an ordinary interruption failure.
+     */
+    const val USER_CANCELLED_PREFIX = "USER_CANCELLED"
+
     data class DerivationContext(
         val caseId: String,
         val interruptRequested: Boolean = false,
