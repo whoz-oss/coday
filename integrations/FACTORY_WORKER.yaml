@@ -2,13 +2,12 @@
 # To check: responseFormat is masked (****) on read.
 name: FACTORY_WORKER
 integrationType: HTTP_API
-description: "Factory Worker REST API described by the coday-factory OpenAPI spec"
+description: "Submit a result for a Factory step attempt."
 autoGrant: false
-authSettingName: null
 parameters:
-  baseUrl: http://localhost:3000
+  baseUrl: "{{FACTORY_URL}}"
   spec:
-    url: http://localhost:3000/api/factory/openapi/factory-worker.yaml
+    url: "{{FACTORY_URL}}/api/factory/openapi/factory-worker.yaml"
     refreshMinutes: 60
     maxBytes: 5242880
   maxTools: 64
@@ -16,4 +15,3 @@ parameters:
   timeoutSeconds: 30
   maxConcurrentCalls: 4
   allowMutations: true
-  # responseFormat: ...

@@ -201,19 +201,6 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
-  /api/factory/admin/settings/github-token/test:
-    post:
-      tags:
-      - github-token-admin-controller
-      operationId: testGitHubTokenGithubTokenAdmin
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
   /api/factory/workstreams:
     get:
       tags:
@@ -1898,6 +1885,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/factory/admin/settings/github-token/test:
+    post:
+      tags:
+      - github-token-admin-controller
+      operationId: testGitHubTokenGithubTokenAdmin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
   /api/factory/admin/artifacts/{artifactId}/purge:
     post:
       tags:

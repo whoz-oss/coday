@@ -4,11 +4,10 @@ name: FACTORY_AUTHORING
 integrationType: HTTP_API
 description: "Factory workflow definition authoring: validate_definition, register_definition, list_definitions, get_definition. Never launches a run."
 autoGrant: false
-authSettingName: null
 parameters:
-  baseUrl: http://localhost:3000
+  baseUrl: "{{FACTORY_URL}}"
   spec:
-    url: http://localhost:3000/api/factory/openapi/factory-authoring.yaml
+    url: "{{FACTORY_URL}}/api/factory/openapi/factory-authoring.yaml"
     refreshMinutes: 60
   allowMutations: true
   maxConcurrentCalls: 4
