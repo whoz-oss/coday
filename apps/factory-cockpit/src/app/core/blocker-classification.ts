@@ -20,7 +20,8 @@ export interface BlockerGroups {
  * Classify a blocker into a severity/kind bucket.
  *
  * - `failure`: real execution failures (ATTEMPT_FAILED, VERIFICATION_FAILED)
- *   — the step actually failed; operator attention is required.
+ *   and a run refused by the workspace pre-check (WORKSPACE_PRECHECK_FAILED)
+ *   — operator attention is required.
  * - `consequence`: downstream blocks (STEP_BLOCKED) — a step is blocked as a
  *   consequence of an upstream failure; they are grouped as mitigated.
  * - `waiting`: human gate (WAITING_HUMAN_INTERACTION).
@@ -37,6 +38,7 @@ export function blockerKind(blocker: WorkflowBlocker): BlockerKind {
       return 'research'
     case 'ATTEMPT_FAILED':
     case 'VERIFICATION_FAILED':
+    case 'WORKSPACE_PRECHECK_FAILED':
       return 'failure'
     case 'STEP_BLOCKED':
       return 'consequence'

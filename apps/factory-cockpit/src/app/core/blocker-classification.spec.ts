@@ -12,6 +12,7 @@ describe('blocker-classification', () => {
       ['NEEDS_RESEARCH', 'research'],
       ['ATTEMPT_FAILED', 'failure'],
       ['VERIFICATION_FAILED', 'failure'],
+      ['WORKSPACE_PRECHECK_FAILED', 'failure'],
       ['STEP_BLOCKED', 'consequence'],
       ['REAL_COST_PAUSED', 'cost'],
       ['UNKNOWN_RUNTIME', 'indeterminate'],
@@ -53,6 +54,15 @@ describe('blocker-classification', () => {
 
       expect(groups.failures).toEqual([failed])
       expect(groups.consequences).toEqual([test, deploy])
+    })
+
+    it('classifies a refused workspace pre-check as a root failure', () => {
+      const precheck = blocker('WORKSPACE_PRECHECK_FAILED', 'Required agent(s) reviewer are not available.')
+
+      const groups = classifyBlockers([precheck])
+
+      expect(groups.failures).toEqual([precheck])
+      expect(groups.unknown).toEqual([])
     })
 
     it('classifies UNKNOWN_RUNTIME as indeterminate, distinct from failures and consequences', () => {
@@ -105,6 +115,7 @@ describe('blocker-classification', () => {
       ['NEEDS_RESEARCH', 'info'],
       ['ATTEMPT_FAILED', 'error'],
       ['VERIFICATION_FAILED', 'error'],
+      ['WORKSPACE_PRECHECK_FAILED', 'error'],
       ['STEP_BLOCKED', 'link_off'],
       ['REAL_COST_PAUSED', 'paid'],
       ['UNKNOWN_RUNTIME', 'help'],

@@ -669,6 +669,9 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
   summary.unknownCostCount = detail.unknownCostCount
   summary.waitingHuman = detail.executionState === 'waiting_human'
   if (detail.mainCaseId) summary.mainCaseId = detail.mainCaseId
+  // A refused workspace pre-check is a run-level failure: no step carries it, so the card shows its message.
+  const precheckBlocker = (detail.blockers ?? []).find((blocker) => blocker.code === 'WORKSPACE_PRECHECK_FAILED')
+  if (precheckBlocker) summary.failureReason = precheckBlocker.label
   summary.cardState =
     detail.executionState === 'waiting_human'
       ? 'waiting_human'

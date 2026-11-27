@@ -35,6 +35,7 @@ import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import io.whozoss.factory.workspace.RunWorktreeResolver
+import io.whozoss.factory.workspace.WorkspacePrecheckException
 import io.whozoss.factory.workspace.WorkspacePrecheckService
 import io.whozoss.factory.run.service.RunService
 import java.nio.file.Path
@@ -191,8 +192,10 @@ class SessionRunService(
     /**
      * Optional read-only workspace pre-check (Lot F). When present it runs BEFORE
      * the run's root case is created, refusing a run whose namespace/Git/workstream
-     * prerequisites are missing with an actionable error (never a repair). Pure
-     * unit tests may omit it.
+     * prerequisites are missing with an actionable error (never a repair). A
+     * refusal is recorded durably as `workspace-precheck` evidence and fails the
+     * `ready` steps (the run ends `failed`) instead of propagating to the caller.
+     * Pure unit tests may omit it.
      */
     private val workspacePrecheckService: WorkspacePrecheckService? = null,
     /**
@@ -300,15 +303,21 @@ class SessionRunService(
         // Git repository association.
         val requiresGitWorkspace = requiresGitWorkspace(instance, steps)
         val callerExternalUserId = instanceActorId(instance)
-        workspacePrecheckService?.precheck(
-            scope = scope,
-            namespaceId = namespaceId,
-            callerExternalUserId = callerExternalUserId,
-            requiredAgents = steps
-                .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
-                .mapNotNull { it.responsibility.name },
-            requireGitWorkspace = requiresGitWorkspace,
-        )
+        try {
+            workspacePrecheckService?.precheck(
+                scope = scope,
+                namespaceId = namespaceId,
+                callerExternalUserId = callerExternalUserId,
+                requiredAgents = steps
+                    .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
+                    .mapNotNull { it.responsibility.name },
+                requireGitWorkspace = requiresGitWorkspace,
+            )
+        } catch (refused: WorkspacePrecheckException) {
+            // Only the pre-check refusal is handled here: it is recorded and the run ends `failed`
+            // BEFORE the outcome ledger, any agent workspace or any capability is touched.
+            return failOnWorkspacePrecheck(scope, namespaceId, workflowId, steps, refused, effectiveTicket, repoRoot, expectedRevision)
+        }
         check(steps.none { it.outcomeTransitions != null } || outcomeTransitionService != null) { "OUTCOME_ROUTER_UNAVAILABLE" }
         outcomeTransitionService?.initialize(scope, namespaceId, workflowId, steps)
         val statuses = loadProgress(scope, namespaceId, workflowId, steps)
@@ -446,7 +455,21 @@ class SessionRunService(
         }
         val evaluatedStatus = SessionSequencer.terminalStatus(steps, statuses.statuses)
         val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else evaluatedStatus
-        val committedRevision = persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket)
+        return finishSession(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket, effectiveRepoRoot)
+    }
+
+    /** Persists the final projection, announces it over SSE and tells a parent Run fragment about it. */
+    private fun finishSession(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        steps: List<WorkflowStepDefinition>,
+        statuses: SessionProgress,
+        sessionStatus: String,
+        ticket: String?,
+        repoRoot: Path,
+    ): SessionRunResult {
+        val committedRevision = persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, ticket)
         sseHub.publish(
             scope,
             namespaceId,
@@ -463,10 +486,132 @@ class SessionRunService(
             namespaceId = namespaceId,
             fragmentWorkflowId = workflowId,
             sessionResult = sessionResult,
-            repoRoot = effectiveRepoRoot,
+            repoRoot = repoRoot,
             sessionRunService = this,
         )
         return sessionResult
+    }
+
+    /**
+     * Ends a run the read-only workspace pre-check refused: the refusal is recorded once as durable
+     * `workspace-precheck` evidence, every `ready` step fails (its dependants become `blocked`), and the
+     * projection is persisted and announced. Steps that are running, waiting for a human or already
+     * terminal are left untouched. Nothing is executed and the run returns normally, so its outbox
+     * continuation completes instead of dying silently.
+     */
+    private fun failOnWorkspacePrecheck(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        steps: List<WorkflowStepDefinition>,
+        refused: WorkspacePrecheckException,
+        ticket: String?,
+        repoRoot: Path,
+        expectedRevision: () -> Int,
+    ): SessionRunResult {
+        logger.warn { "Workspace pre-check refused workflow '$workflowId' (${refused.errorCode}): ${refused.message}" }
+        recordWorkspacePrecheckEvidence(scope, namespaceId, workflowId, refused)
+        val progress = loadProgress(scope, namespaceId, workflowId, steps)
+        // On a continuation the steps released by the last completion may still be `pending`: promote them
+        // first, so that no step is left `ready` (and the run `ready`) after the refusal.
+        applyEvaluation(scope, namespaceId, workflowId, steps, progress)
+        for (step in steps.filter { progress.statuses[it.id] == WorkflowStatuses.READY }) {
+            failStepOnWorkspacePrecheck(scope, namespaceId, workflowId, step, refused, expectedRevision(), progress)
+        }
+        applyEvaluation(scope, namespaceId, workflowId, steps, progress)
+        val status = SessionSequencer.terminalStatus(steps, progress.statuses)
+        return finishSession(scope, namespaceId, workflowId, steps, progress, status, ticket, repoRoot)
+    }
+
+    /**
+     * Appends the single workflow-level `workspace-precheck` evidence. The idempotency key derives from the
+     * refusal itself, so a replay of the same refusal appends nothing. A persistence error never masks the cause.
+     */
+    private fun recordWorkspacePrecheckEvidence(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        refused: WorkspacePrecheckException,
+    ) {
+        val message = refused.message ?: refused.errorCode
+        val details: Map<String, Any?> =
+            (refused.details as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
+        runCatching {
+            newTransaction {
+                evidenceRepository.append(
+                    scope,
+                    namespaceId,
+                    workflowId,
+                    WorkflowEvidenceItem(
+                        evidenceId = UUID.randomUUID().toString(),
+                        namespaceId = namespaceId,
+                        workflowId = workflowId,
+                        stepId = null,
+                        kind = "workspace-precheck",
+                        outcome = WorkflowStatuses.FAILED,
+                        source = mapOf("kind" to "factory-session-sequencer"),
+                        // The code and the message win over a colliding detail key.
+                        facts = details + mapOf("code" to refused.errorCode, "message" to message),
+                        idempotencyKey = "workspace-precheck-failed:$workflowId:" +
+                            CanonicalHash.sha256Hex("${refused.errorCode}|$message"),
+                        createdAt = null,
+                    ),
+                )
+            }
+        }.onFailure { error ->
+            logger.error(error) { "Workspace pre-check evidence of workflow '$workflowId' could not be persisted: $message" }
+        }
+    }
+
+    /**
+     * Fails one `ready` step refused by the pre-check: failure evidence, transition and state commit in one
+     * fresh short transaction (same shape as [recordStepFailure]). The evidence carries no `executed` fact:
+     * nothing ran and the cockpit reads that fact as a refused code step.
+     */
+    private fun failStepOnWorkspacePrecheck(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        refused: WorkspacePrecheckException,
+        expectedRevision: Int,
+        statuses: SessionProgress,
+    ) {
+        runCatching {
+            newTransaction {
+                evidenceRepository.append(
+                    scope,
+                    namespaceId,
+                    workflowId,
+                    WorkflowEvidenceItem(
+                        evidenceId = UUID.randomUUID().toString(),
+                        namespaceId = namespaceId,
+                        workflowId = workflowId,
+                        stepId = step.id,
+                        kind = "session-step",
+                        outcome = WorkflowStatuses.FAILED,
+                        source = mapOf("kind" to "factory-session-sequencer"),
+                        facts = mapOf(
+                            "stepId" to step.id,
+                            "status" to WorkflowStatuses.FAILED,
+                            "code" to refused.errorCode,
+                            "message" to (refused.message ?: refused.errorCode),
+                        ),
+                        idempotencyKey = null,
+                        createdAt = null,
+                    ),
+                )
+                transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED, expectedRevision)
+                setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.FAILED, statuses)
+            }
+        }.onFailure { recoveryError ->
+            logger.error(recoveryError) {
+                "Workspace pre-check failure of step '${step.id}' of workflow '$workflowId' could not be persisted"
+            }
+            // Keep the fail-closed in-memory classification even if the write itself could not be persisted.
+            statuses.statuses[step.id] = WorkflowStatuses.FAILED
+            statuses.completedAt.putIfAbsent(step.id, nowIso())
+        }
     }
 
     /** The parent Run id carried by a fragment workflow instance, or null for standalone workflows. */

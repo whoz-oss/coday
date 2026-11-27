@@ -75,6 +75,9 @@
   <!-- Run summary -->
   @if (r.run; as summary) {
     <section class="run" aria-label="Run summary">
+      @if (summary.failureReason; as reason) {
+        <p class="failure-reason" role="status" [title]="reason">{{ reason }}</p>
+      }
       @if (summary.status === 'running') {
         @if (summary.waitingHuman) {
           <div class="run-notice">

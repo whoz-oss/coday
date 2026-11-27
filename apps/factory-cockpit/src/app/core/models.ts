@@ -52,6 +52,11 @@ export interface RunSummary {
    * else the run root case (case of the entry agent step attempt). Absent until the first agent step is dispatched.
    */
   mainCaseId?: string
+  /**
+   * Why the run failed, when the backend exposes a run-level reason (a refused workspace pre-check, with its
+   * message and remedy). Absent otherwise.
+   */
+  failureReason?: string
 }
 
 /**
@@ -485,6 +490,7 @@ export type BlockerCode =
   | 'REAL_COST_PAUSED'
   | 'VERIFICATION_FAILED'
   | 'UNKNOWN_RUNTIME'
+  | 'WORKSPACE_PRECHECK_FAILED'
 
 /** One active blocker preventing a workflow from progressing unattended. */
 export interface WorkflowBlocker {

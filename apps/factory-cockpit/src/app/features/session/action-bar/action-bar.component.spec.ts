@@ -319,6 +319,29 @@ describe('ActionBarComponent', () => {
     expect(stops).toBe(1)
   })
 
+  it('renders a refused workspace pre-check as a root failure with its message and details', () => {
+    const host = render(
+      [],
+      [
+        {
+          code: 'WORKSPACE_PRECHECK_FAILED',
+          label: "Required agent(s) reviewer are not available in namespace 'ns'. Remedy: Publish the agents.",
+          details: 'REQUIRED_AGENTS_MISSING',
+        },
+        { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Step failed' },
+      ]
+    )
+
+    const failures = host.querySelectorAll('.blocker--failure')
+    expect(failures).toHaveLength(2)
+    expect(failures[0]?.querySelector('.blocker-label')?.textContent).toContain('Required agent(s) reviewer')
+    expect(failures[0]?.querySelector('.blocker-label')?.textContent).toContain('Remedy: Publish the agents.')
+    expect(failures[0]?.querySelector('.blocker-details')?.textContent).toBe('REQUIRED_AGENTS_MISSING')
+    expect(failures[0]?.querySelector('.blocker-code')?.textContent).toBe('WORKSPACE_PRECHECK_FAILED')
+    // No details line when the blocker carries none.
+    expect(failures[1]?.querySelector('.blocker-details')).toBeNull()
+  })
+
   it('renders blockers with a visual class per blocker nature', () => {
     // Classification itself is covered by core/blocker-classification.spec.ts: this test only proves the
     // template renders every bucket with its visual class and group header.

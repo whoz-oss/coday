@@ -1935,8 +1935,8 @@ class WorkflowService(
         val actions = mutableListOf<AllowedActionDto>()
         val blockers = mutableListOf<WorkflowBlockerDto>()
         val seenBlockers = mutableSetOf<Pair<String, String?>>()
-        fun blocker(code: String, stepId: String?, message: String) {
-            if (seenBlockers.add(code to stepId)) blockers.add(WorkflowBlockerDto(code, stepId, message))
+        fun blocker(code: String, stepId: String?, message: String, details: String? = null) {
+            if (seenBlockers.add(code to stepId)) blockers.add(WorkflowBlockerDto(code, stepId, message, details))
         }
 
         // Open human interactions -> reply action (authorized callers only).
@@ -2115,6 +2115,20 @@ class WorkflowService(
                     "Verification failed for step '${item.stepId ?: "unknown"}'.",
                 )
             }
+
+        // Refused workspace pre-check evidence -> a run-level blocker (message, remedy and pre-check code).
+        if (runStatus != WorkflowStatuses.COMPLETED) {
+            evidence.lastOrNull { it.kind == "workspace-precheck" && it.outcome == WorkflowStatuses.FAILED }?.let { item ->
+                val remedy = (item.facts["remedy"] as? String)?.takeIf { it.isNotBlank() }
+                blocker(
+                    WorkflowBlockerCodes.WORKSPACE_PRECHECK_FAILED,
+                    null,
+                    ((item.facts["message"] as? String) ?: "The workspace pre-check refused this run.") +
+                        (remedy?.let { " Remedy: $it" } ?: ""),
+                    item.facts["code"] as? String,
+                )
+            }
+        }
 
         // Legacy retry is refused for outcome-managed executions; never advertise a command
         // that would bypass the execution ledger or the persisted correction budget.
