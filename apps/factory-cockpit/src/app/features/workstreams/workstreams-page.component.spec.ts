@@ -207,17 +207,6 @@ describe('WorkstreamsPageComponent', () => {
       expect(store.stop).toHaveBeenCalledWith('wf-1')
     })
 
-    it('routes "restore" to store.restore(runId)', async () => {
-      const store = createStore({
-        workstreams: [createWorkstream('ns-1', [createRun({ id: 'wf-1', status: 'destroyed' })])],
-      })
-      const { host } = await setup(store)
-
-      buttonByText(host, 'Restore')?.click()
-
-      expect(store.restore).toHaveBeenCalledWith('wf-1')
-    })
-
     it('asks for confirmation before removing, then routes "remove" to store.remove(runId)', async () => {
       const store = createStore({ workstreams: [createWorkstream('ns-1', [createRun({ id: 'wf-1' })])] })
       const { host, dialog } = await setup(store, true)

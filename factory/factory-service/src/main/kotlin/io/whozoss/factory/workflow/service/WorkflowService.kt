@@ -19,7 +19,6 @@ import io.whozoss.factory.agentattempt.domain.AgentStepResultStatus
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.capability.NeedsResearchRouter
 import io.whozoss.factory.capability.CapabilityOutcome
-import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.FailedAttemptSummary
 import io.whozoss.factory.workflow.domain.ProjectionValidation
 import io.whozoss.factory.workflow.domain.WorkflowException
