@@ -2671,6 +2671,25 @@ paths:
       summary: Stream namespace case-list updates via SSE
       tags:
       - sse
+  /api/namespaces/{namespaceId}/default-agent:
+    get:
+      operationId: getNamespaceDefaultAgent
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceDefaultAgent"
+          description: OK
+      tags:
+      - namespace-default-agent-controller
   /api/namespaces/{namespaceId}/deploy-agents:
     post:
       operationId: deployAgentsNamespace
@@ -6295,6 +6314,11 @@ components:
             format: uuid
       required:
       - agentIds
+    NamespaceDefaultAgent:
+      type: object
+      properties:
+        agentName:
+          type: string
     NamespaceGit:
       type: object
       properties:

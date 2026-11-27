@@ -23,6 +23,7 @@ import {
 import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { AiModelStateService } from '../../services/ai-model-state.service'
+import { DefaultAgentStateService } from '../../services/default-agent-state.service'
 import { ExchangeFileRef, ExchangeStateService } from '../../services/exchange-state.service'
 import { PromptStateService } from '../../services/prompt-state.service'
 import { USER_PREFERENCES_PORT } from '../../services/user-preferences.service'
@@ -70,6 +71,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
   }
   let queryParams$: Subject<Record<string, string>>
   let aiModels: { listAvailable: jest.Mock }
+  let defaultAgents: { resolve: jest.Mock }
   let calls: string[]
   let voiceApi: { postVoiceMessage: jest.Mock; capabilityVoiceMessage: jest.Mock }
   const track = { stop: jest.fn() }
@@ -110,6 +112,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
       ),
     }
     track.stop.mockClear()
+    defaultAgents = { resolve: jest.fn().mockReturnValue(of(null)) }
     voiceApi = {
       postVoiceMessage: jest.fn().mockImplementation(() => {
         calls.push('post-voice')
@@ -155,6 +158,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
         { provide: NamespaceGitControllerService, useValue: gitApi },
         { provide: IntegrationTypeControllerService, useValue: integrationTypes },
         { provide: AiModelStateService, useValue: aiModels },
+        { provide: DefaultAgentStateService, useValue: defaultAgents },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParams: { ns: 'ns-1' } }, queryParams: queryParams$ } },
         { provide: ExchangeStateService, useValue: exchangeState },
@@ -174,6 +178,82 @@ describe('CaseHomeComponent — first message with attachments', () => {
   })
 
   afterEach(() => TestBed.resetTestingModule())
+
+  describe('placeholder naming the default agent (#1793)', () => {
+    const GENERIC = 'Describe your task or ask a question…'
+
+    it('names the agent the server resolved for the namespace', () => {
+      defaultAgents.resolve.mockReturnValue(of('Archay'))
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+
+      expect(defaultAgents.resolve).toHaveBeenCalledWith('ns-1')
+      expect(ref.instance['placeholder']()).toBe('Archay will answer. Type @ to address another agent…')
+      ref.destroy()
+    })
+
+    it('keeps the generic text when no agent would answer', () => {
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+
+      expect(ref.instance['placeholder']()).toBe(GENERIC)
+      ref.destroy()
+    })
+
+    it('renders it on the textarea', () => {
+      defaultAgents.resolve.mockReturnValue(of('Archay'))
+      const ref = makeComponent()
+      TestBed.inject(ApplicationRef).attachView(ref.hostView)
+      ref.instance.ngOnInit()
+      ref.changeDetectorRef.detectChanges()
+
+      const textarea = (ref.location.nativeElement as HTMLElement).querySelector('textarea')!
+      expect(textarea.placeholder).toBe('Archay will answer. Type @ to address another agent…')
+      ref.destroy()
+    })
+
+    it('never shows the agent of the previous namespace after a switch', () => {
+      defaultAgents.resolve.mockReturnValue(of('Archay'))
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      const pending = new Subject<string | null>()
+      defaultAgents.resolve.mockReturnValue(pending)
+
+      queryParams$.next({ ns: 'ns-2' })
+
+      expect(defaultAgents.resolve).toHaveBeenLastCalledWith('ns-2')
+      expect(ref.instance['placeholder']()).toBe(GENERIC)
+      pending.next('Sway')
+      expect(ref.instance['placeholder']()).toBe('Sway will answer. Type @ to address another agent…')
+      ref.destroy()
+    })
+
+    it('ignores a late answer for the namespace left', () => {
+      const late = new Subject<string | null>()
+      defaultAgents.resolve.mockReturnValue(late)
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+      defaultAgents.resolve.mockReturnValue(of(null))
+
+      queryParams$.next({ ns: 'ns-2' })
+      late.next('Archay')
+
+      expect(ref.instance['placeholder']()).toBe(GENERIC)
+      ref.destroy()
+    })
+
+    it('does not ask again when only the parent of a new sub-case changes', () => {
+      defaultAgents.resolve.mockReturnValue(of('Archay'))
+      const ref = makeComponent()
+      ref.instance.ngOnInit()
+
+      queryParams$.next({ ns: 'ns-1', parentCase: 'root' })
+
+      expect(defaultAgents.resolve).toHaveBeenCalledTimes(1)
+      expect(ref.instance['placeholder']()).toBe('Archay will answer. Type @ to address another agent…')
+      ref.destroy()
+    })
+  })
 
   it('initialises the namespace-only exchange on init so the badge gating can work', () => {
     const ref = makeComponent()

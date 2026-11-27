@@ -93,7 +93,7 @@
           <textarea
             #composerInput
             class="case-home__input"
-            placeholder="Describe your task or ask a question…"
+            [placeholder]="placeholder()"
             rows="4"
             [value]="inputValue()"
             [hidden]="voice.isActive()"
