@@ -28,17 +28,130 @@ h1 {
   font-size: 14px;
 }
 
+.admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 640px));
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
+}
+
 .setting {
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding: 20px;
-  max-width: 640px;
+  min-width: 0;
 }
 .setting h2 {
   margin: 0;
   font-size: 17px;
   font-weight: 700;
+}
+.setting__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Connection status pill: tone is a fill, border and background are tints of it, text is a readable tone. */
+.pill {
+  --tone: var(--color-neutral-500);
+  --tone-text: var(--color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill, 0);
+  border: 1px solid color-mix(in srgb, var(--tone) 40%, transparent);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  color: var(--tone-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pill mat-icon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+.pill__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+  flex-shrink: 0;
+}
+.pill--connected {
+  --tone: var(--color-success);
+  --tone-text: var(--sf-success-text);
+}
+.pill--connected .pill__dot {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success) 25%, transparent);
+  animation: sf-github-glow 2s ease-in-out infinite;
+}
+.pill--invalid {
+  --tone: var(--color-error);
+  --tone-text: var(--sf-error-text);
+}
+.pill--unreachable {
+  --tone: var(--color-warning);
+  --tone-text: var(--sf-warning-text);
+}
+@keyframes sf-github-glow {
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-success) 8%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pill--connected .pill__dot {
+    animation: none;
+  }
+}
+
+/* The status block under the header: a left accent in the tone of the status, like a banner. */
+.connection {
+  --tone: var(--color-neutral-500);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 0);
+  border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+  border-left-width: 3px;
+  background: color-mix(in srgb, var(--tone) 8%, transparent);
+  font-size: 13.5px;
+}
+.connection--connected {
+  --tone: var(--color-success);
+}
+.connection--invalid {
+  --tone: var(--color-error);
+}
+.connection--unreachable {
+  --tone: var(--color-warning);
+}
+.connection__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.connection__message,
+.connection p {
+  margin: 0;
+}
+
+.token-input {
+  flex: 1 1 260px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .state {
@@ -61,7 +174,7 @@ h1 {
   align-items: center;
   gap: 12px;
 }
-.field input {
+.field input:not(.token-input) {
   width: 120px;
 }
 .field p {

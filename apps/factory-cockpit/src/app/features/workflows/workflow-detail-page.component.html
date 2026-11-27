@@ -427,8 +427,9 @@
               </label>
               @if (!state.canConfigureFailReturn(step)) {
                 <p class="sf-muted">
-                  FAIL return is available only on agent steps with an accepted structured FAIL. Code and human failures
-                  block, although those steps can be replayed inside an agent-triggered correction scope.
+                  FAIL return is available only on agent steps with an accepted structured FAIL, and on the GitHub PR
+                  checks code step for a real red CI verdict. Other code and human failures block, although those steps
+                  can be replayed inside a triggered correction scope.
                 </p>
               }
               @if (step.outcomeTransitions?.fail?.action === 'return' && state.canConfigureFailReturn(step)) {

@@ -45,6 +45,13 @@ data class OutcomeTransitions(val pass: OutcomeAction? = null, val fail: Outcome
 
 /** Pure replay planning. dependsOn remains an acyclic AND graph. */
 object OutcomeReplayPlan {
+    /**
+     * The only code step (by `responsibility.name`) that may declare `fail.return`: the deterministic GitHub PR
+     * checks step, and only for a real red CI verdict. Duplicated from the capability package on purpose, to keep the
+     * domain free of it; a test asserts both constants are equal.
+     */
+    const val CI_RETURN_CAPABLE = "github-pr-checks"
+
     fun scope(steps: List<WorkflowStepDefinition>, target: String): Set<String> {
         val result = linkedSetOf(target)
         do {
@@ -64,8 +71,10 @@ object OutcomeReplayPlan {
                 if (steps.any { it.decision?.routes?.any { route -> route.target == pass.target } == true }) return "pass_target_is_conditional"
             }
             val fail = transitions.fail?.takeIf { it.action == "return" } ?: continue
-            // Only structured, accepted agent FAIL is eligible in this version. Code/human failures block.
-            if (step.responsibility.kind != ResponsibilityKind.AGENT) return "return_requires_agent_result"
+            // Eligible triggers: an accepted structured agent FAIL, or a real red CI verdict of the CI-check code step.
+            // Every other code/human failure (and a CI timeout or refusal) blocks.
+            val ciReturnCapable = step.responsibility.kind == ResponsibilityKind.CODE && step.responsibility.name == CI_RETURN_CAPABLE
+            if (step.responsibility.kind != ResponsibilityKind.AGENT && !ciReturnCapable) return "return_requires_agent_result"
             val target = fail.target ?: return "return_target_missing"
             if (steps.none { it.id == target } || step.id !in scope(steps, target)) return "return_target_must_be_self_or_ancestor"
             val region = scope(steps, target)

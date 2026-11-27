@@ -19,6 +19,9 @@ sealed interface ProjectionPublishResult {
     data class Conflict(val code: String) : ProjectionPublishResult
 }
 
+/** A step state together with the tenant scope that owns it. */
+data class ScopedStepState(val scope: TenantScope, val state: WorkflowStepStateRecord)
+
 /** Outcome of an evidence append; an identical replay is a no-op. */
 sealed interface EvidenceAppendResult {
     data class Created(val item: WorkflowEvidenceItem) : EvidenceAppendResult
@@ -123,6 +126,12 @@ interface WorkflowRepository {
     // ----- per-step DAG state ---------------------------------------------
     /** All step states of an instance, in insertion order. */
     fun findStepStates(scope: TenantScope, namespaceId: String, workflowId: String): List<WorkflowStepStateRecord>
+
+    /**
+     * Step states currently in [status], across every tenant, oldest update first and bounded by [limit].
+     * Read-only: used by the safety-net sweeper of the steps parked in `waiting_external`.
+     */
+    fun findStepStatesByStatus(status: String, limit: Int = 200): List<ScopedStepState> = emptyList()
 
     /** Insert or update a step state; on conflict the revision is incremented. */
     fun upsertStepState(scope: TenantScope, record: WorkflowStepStateRecord): WorkflowStepStateRecord

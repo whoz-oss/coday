@@ -2579,6 +2579,191 @@ describe('mappers', () => {
     })
   })
 
+  describe('external polling (WZ-36393)', () => {
+    const pollingStep = (status: string, poll?: Record<string, unknown>) => ({
+      id: 'ci',
+      name: 'CI checks',
+      status,
+      startedAt,
+      executionId: 'ci-1',
+      responsibility: { kind: 'code', name: 'github-pr-checks' },
+      ...(poll ? { poll } : {}),
+    })
+    const poll = {
+      executionId: 'ci-1',
+      source: 'ci-checks',
+      pollCount: 3,
+      lastPollAt: isoOffset(120),
+      nextPollAt: isoOffset(180),
+      deadlineAt: isoOffset(1_800),
+      reason: 'CI_CHECKS_PENDING',
+    }
+
+    it('shows a waiting_external run as running, never failed nor waiting for a human', () => {
+      expect(mapWorkflowStateToRunStatus('waiting_external')).toBe('running')
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'poll-run',
+        projection: { status: 'waiting_external', steps: [pollingStep('waiting_external', poll)] },
+      })
+      expect(session.status).toBe('running')
+      expect(session.executionState).toBe('waiting_external')
+      expect(session.activelyRunning).toBe(false)
+      expect(session.steps[0]?.status).toBe('waiting_external')
+      expect(mapSessionDetailToRunSummary({ workflowId: 'poll-run' }, session).cardState).toBe('running')
+    })
+
+    it('renders an AGENT_IN_PROGRESS attempt as a poll and never as a failure', () => {
+      const lanes = mapProjectionToLanes(
+        {
+          projection: {
+            steps: [
+              { id: 'wait', name: 'Wait', status: 'waiting_external', responsibility: { kind: 'agent', name: 'Dev' } },
+            ],
+          },
+        },
+        { startedAt },
+        [
+          {
+            attemptId: 'a-1',
+            stepId: 'wait',
+            attemptNumber: 1,
+            agentName: 'Dev',
+            status: 'indeterminate',
+            caseId: 'c-1',
+            failureCode: 'AGENT_IN_PROGRESS',
+            startedAt,
+            completedAt: isoOffset(30),
+          },
+        ]
+      )
+      expect(lanes[0]?.blocks[0]).toMatchObject({ failureCode: 'AGENT_IN_PROGRESS', status: 'waiting_external' })
+    })
+
+    it('renders the External wait section from the poll state', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'poll-run',
+        projection: { status: 'waiting_external', steps: [pollingStep('waiting_external', poll)] },
+      })
+      const section = session.phase.sections.find((candidate) => candidate.label === 'External wait')
+      expect(section?.items).toEqual(
+        expect.arrayContaining([
+          { title: 'Poll', subtitle: '#3' },
+          { title: 'Last check', subtitle: isoOffset(120) },
+          { title: 'Next check', subtitle: isoOffset(180) },
+          { title: 'Deadline', subtitle: isoOffset(1_800) },
+          { title: 'Reason', subtitle: 'CI_CHECKS_PENDING' },
+        ])
+      )
+    })
+
+    it('has no External wait section for an ordinary step', () => {
+      const session = mapProjectionToSessionDetail(snapshot)
+      expect(session.phase.sections.some((candidate) => candidate.label === 'External wait')).toBe(false)
+    })
+
+    it('ends a polling block at its last observation instead of the wall clock', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(5_000)))
+      try {
+        const lanes = mapProjectionToLanes({
+          projection: { steps: [pollingStep('waiting_external', poll)] },
+        })
+        expect(lanes.find((lane) => lane.id === 'code')?.blocks[0]).toMatchObject({
+          status: 'waiting_external',
+          startSec: 0,
+          endSec: 120,
+        })
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('a CI timeout still ends the run as failed', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'poll-timeout',
+        projection: { status: 'failed', steps: [pollingStep('failed')] },
+      })
+      expect(session.status).toBe('failed')
+    })
+  })
+
+  describe('ci-checks evidence (WZ-36393)', () => {
+    const stepOf = (status: string) => ({
+      id: 'ci',
+      name: 'CI checks',
+      status,
+      startedAt,
+      executionId: 'ci-1',
+      responsibility: { kind: 'code', name: 'github-pr-checks' },
+    })
+    const ciEvidence = (verdict: string, extra: Record<string, unknown> = {}) => ({
+      evidenceId: `ev-${verdict}`,
+      stepId: 'ci',
+      kind: 'ci-checks',
+      outcome: verdict === 'passed' ? 'pass' : verdict === 'failed' ? 'fail' : 'pending',
+      createdAt: startedAt,
+      facts: {
+        stepId: 'ci',
+        executionId: 'ci-1',
+        verdict,
+        prNumber: 7,
+        headSha: '0123456789abcdef0123456789abcdef01234567',
+        ...extra,
+      },
+    })
+    const detailOf = (item: unknown, status = 'completed') =>
+      mapProjectionToSessionDetail(
+        { workflowId: 'ci-run', projection: { status: 'running', steps: [stepOf(status)] } },
+        undefined,
+        { items: [item] }
+      )
+
+    it('renders a red verdict as an Outputs item with the failed check names and no log excerpt', () => {
+      const session = detailOf(
+        ciEvidence('failed', {
+          failedChecks: [
+            { name: 'validate-jvm', conclusion: 'failure', logExcerpt: 'SECRET-LOG-LINE' },
+            { name: 'merge-gate', conclusion: 'timed_out' },
+          ],
+        }),
+        'failed'
+      )
+      const outputs = session.phase.sections.find((section) => section.label === 'Outputs')
+      expect(outputs?.items).toEqual([
+        {
+          title: 'CI checks',
+          status: 'failed',
+          subtitle: 'PR #7 · 01234567',
+          details: 'validate-jvm: failure\nmerge-gate: timed_out',
+        },
+      ])
+      expect(JSON.stringify(outputs)).not.toContain('SECRET-LOG-LINE')
+    })
+
+    it('renders a green verdict without details', () => {
+      const outputs = detailOf(ciEvidence('passed')).phase.sections.find((section) => section.label === 'Outputs')
+      expect(outputs?.items).toEqual([{ title: 'CI checks', status: 'passed', subtitle: 'PR #7 · 01234567' }])
+    })
+
+    it('emits one log event per verdict, without inlining the log excerpt', () => {
+      const red = detailOf(
+        ciEvidence('failed', { failedChecks: [{ name: 'validate-jvm', conclusion: 'failure', logExcerpt: 'SECRET' }] }),
+        'failed'
+      )
+      expect(red.events).toEqual([
+        expect.objectContaining({ type: 'log', text: 'CI checks failed on PR #7: validate-jvm' }),
+      ])
+      expect(JSON.stringify(red.events)).not.toContain('SECRET')
+      const green = detailOf(ciEvidence('passed'))
+      expect(green.events).toEqual([expect.objectContaining({ type: 'log', text: 'CI checks passed on PR #7' })])
+    })
+
+    it('never overrides the projected step status with a ci-checks evidence', () => {
+      const session = detailOf(ciEvidence('failed'), 'waiting_external')
+      expect(session.steps[0]?.status).toBe('waiting_external')
+      expect(session.phase.stepStatus).toBe('waiting_external')
+    })
+  })
+
   describe('mapProjectionToFactoryRun', () => {
     const snapshot = {
       workflowId: 'wf-1',

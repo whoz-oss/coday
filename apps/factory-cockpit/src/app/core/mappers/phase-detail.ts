@@ -41,6 +41,7 @@ function evidenceToItems(evidenceItems: unknown[]): PhaseSectionItem[] {
     const obj = asObject(entry) ?? {}
     const facts = asObject(obj['facts']) ?? {}
     const kind = getString(obj, 'kind') ?? getString(obj, 'evidenceId') ?? `output-${index + 1}`
+    if (kind === CI_CHECKS_KIND) return ciChecksToItem(obj, facts)
     const item: PhaseSectionItem = { title: kind }
     const outcome = getString(obj, 'outcome')
     if (outcome) item.status = outcome
@@ -48,6 +49,65 @@ function evidenceToItems(evidenceItems: unknown[]): PhaseSectionItem[] {
     if (message) item.subtitle = message
     return item
   })
+}
+
+const CI_CHECKS_KIND = 'ci-checks'
+const SHORT_SHA = 8
+const MAX_CI_FAILED_NAMES = 20
+
+/** Verdict, PR and failed check names of a `ci-checks` evidence. The log excerpts are never read here. */
+function ciChecksFacts(obj: Record<string, unknown>, facts: Record<string, unknown>) {
+  const verdict = getString(facts, 'verdict') ?? getString(obj, 'outcome') ?? 'pending'
+  const prNumber = typeof facts['prNumber'] === 'number' ? facts['prNumber'] : undefined
+  const headSha = getString(facts, 'headSha')
+  const failed = (Array.isArray(facts['failedChecks']) ? facts['failedChecks'] : [])
+    .map((raw) => asObject(raw))
+    .filter((check): check is Record<string, unknown> => check !== undefined && getString(check, 'name') !== undefined)
+    .slice(0, MAX_CI_FAILED_NAMES)
+    .map((check) => ({ name: getString(check, 'name') ?? '', conclusion: getString(check, 'conclusion') }))
+  return { verdict, prNumber, headSha, failed }
+}
+
+function ciChecksToItem(obj: Record<string, unknown>, facts: Record<string, unknown>): PhaseSectionItem {
+  const { verdict, prNumber, headSha, failed } = ciChecksFacts(obj, facts)
+  const item: PhaseSectionItem = { title: 'CI checks', status: verdict }
+  const subtitle = [prNumber !== undefined ? `PR #${prNumber}` : undefined, headSha?.slice(0, SHORT_SHA)]
+    .filter((part): part is string => part !== undefined)
+    .join(' · ')
+  if (subtitle) item.subtitle = subtitle
+  if (failed.length > 0) {
+    item.details = failed
+      .map((check) => (check.conclusion ? `${check.name}: ${check.conclusion}` : check.name))
+      .join('\n')
+  }
+  return item
+}
+
+/** One short line per `ci-checks` evidence; the failure log excerpts are deliberately not inlined. */
+function ciChecksEventText(obj: Record<string, unknown>, facts: Record<string, unknown>): string {
+  const { verdict, prNumber, failed } = ciChecksFacts(obj, facts)
+  const head = `CI checks ${verdict}${prNumber !== undefined ? ` on PR #${prNumber}` : ''}`
+  return failed.length > 0 ? `${head}: ${failed.map((check) => check.name).join(', ')}` : head
+}
+
+/** Polling state of a step parked in `waiting_external` (CI checks, agent IN_PROGRESS). */
+export function buildExternalWaitSection(obj: Record<string, unknown>): PhaseSection | null {
+  const poll = asObject(obj['poll'])
+  if (!poll) return null
+  const items: PhaseSectionItem[] = []
+  const count = poll['pollCount']
+  if (typeof count === 'number') items.push({ title: 'Poll', subtitle: `#${count}` })
+  const lastPollAt = getString(poll, 'lastPollAt')
+  if (lastPollAt) items.push({ title: 'Last check', subtitle: lastPollAt })
+  const nextPollAt = getString(poll, 'nextPollAt')
+  if (nextPollAt) items.push({ title: 'Next check', subtitle: nextPollAt })
+  const deadlineAt = getString(poll, 'deadlineAt')
+  if (deadlineAt) items.push({ title: 'Deadline', subtitle: deadlineAt })
+  const reason = getString(poll, 'reason')
+  if (reason) items.push({ title: 'Reason', subtitle: reason })
+  const source = getString(poll, 'source')
+  if (source) items.push({ title: 'Source', subtitle: source })
+  return { label: 'External wait', items }
 }
 
 /** Presentation of routing facts; status codes remain machine-readable. */
@@ -261,6 +321,8 @@ export function buildPhaseDetail(
   if (agentItems.length === 0) agentConfig.body = 'No agent configuration recorded.'
 
   detail.sections = [...stepContractSections(obj), gates, outputs, agentConfig]
+  const externalWait = buildExternalWaitSection(obj)
+  if (externalWait) detail.sections.unshift(externalWait)
   const routing = buildRoutingSection(obj)
   if (routing) detail.sections.unshift(routing)
   if (description) detail.sections.push({ label: 'Description', body: description })
@@ -504,8 +566,12 @@ export function mapEvidenceToEvents(items: unknown[], steps: unknown[]): RunEven
       time: formatClock(getString(obj, 'createdAt') ?? getString(facts, 'startedAt')),
       type: eventTypeFor(kind),
       text:
-        clean(diagnostic?.message ?? facts['message'] ?? facts['text'] ?? obj['outcome'] ?? kind, MAX_EVENT_TEXT) ??
-        kind,
+        kind === CI_CHECKS_KIND
+          ? ciChecksEventText(obj, facts)
+          : (clean(
+              diagnostic?.message ?? facts['message'] ?? facts['text'] ?? obj['outcome'] ?? kind,
+              MAX_EVENT_TEXT
+            ) ?? kind),
     }
     if (diagnostic) event.codeDiagnostic = diagnostic
     const tool = getString(facts, 'tool')

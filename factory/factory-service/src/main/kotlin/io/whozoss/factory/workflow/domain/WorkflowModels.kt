@@ -48,15 +48,26 @@ object WorkflowStatuses {
      */
     const val NEEDS_RESEARCH = "needs_research"
 
+    /**
+     * The step waits for an external condition (for example the CI checks of a pull request)
+     * and is re-polled by Factory through a delayed outbox continuation. Non-terminal: never
+     * sealed, never counted as a failure, and it does not hold a worker slot while it waits.
+     */
+    const val WAITING_EXTERNAL = "waiting_external"
+
     val ALL: Set<String> =
-        setOf(PENDING, READY, RUNNING, WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH, SKIPPED)
+        setOf(
+            PENDING, READY, RUNNING, WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH, SKIPPED,
+            WAITING_EXTERNAL,
+        )
 
     /** Node `WORKFLOW_TRANSITIONS` state machine. */
     val TRANSITIONS: Map<String, Set<String>> = mapOf(
         PENDING to setOf(READY),
         READY to setOf(RUNNING, BLOCKED, FAILED, CANCELLED),
-        RUNNING to setOf(WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH),
+        RUNNING to setOf(WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH, WAITING_EXTERNAL),
         WAITING_HUMAN to setOf(RUNNING, BLOCKED, FAILED, CANCELLED),
+        WAITING_EXTERNAL to setOf(RUNNING, FAILED, CANCELLED),
         BLOCKED to setOf(READY, RUNNING, FAILED, CANCELLED),
         NEEDS_RESEARCH to setOf(READY, RUNNING, FAILED, CANCELLED),
         COMPLETED to emptySet(),

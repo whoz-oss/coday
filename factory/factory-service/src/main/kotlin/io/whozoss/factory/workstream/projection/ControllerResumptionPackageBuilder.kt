@@ -56,6 +56,7 @@ class ControllerResumptionPackageBuilder(
                 humanActions = projection.humanActions.count,
                 failedOracles = projection.failedOracles.count,
                 environments = projection.environments.count,
+                waitingExternal = projection.steps.waitingExternal,
             ),
             activeWorkflows = projection.activeWorkflows.items
                 .take(ControllerCaseBounds.MAX_WORKFLOW_ITEMS)

@@ -249,6 +249,35 @@ class WorkstreamProjectionIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `a waiting_external step is counted apart and changes the revision when a step moves to it`() {
+        createRegistryEntry()
+        publishWorkflow("wf-poll", "wf-demo", listOf("running", "completed"))
+        val running = projection()
+        assertThat(running.steps.running).isEqualTo(1)
+        assertThat(running.steps.waitingExternal).isEqualTo(0)
+
+        // The same step moves from running to waiting_external (a CI poll): same total, different bucket.
+        workflowService.publishProjection(
+            scope, namespace, "wf-poll",
+            linkedMapOf<String, Any?>(
+                "schemaVersion" to "1", "workflowId" to "wf-poll", "workflowType" to "wf-demo", "title" to "Workflow wf-poll",
+                "status" to "running",
+                "steps" to listOf(
+                    linkedMapOf<String, Any?>("id" to "step-1", "name" to "Step 1", "status" to "waiting_external"),
+                    linkedMapOf<String, Any?>("id" to "step-2", "name" to "Step 2", "status" to "completed"),
+                ),
+            ),
+            null, null,
+        )
+        val waiting = projection()
+
+        assertThat(waiting.steps.waitingExternal).isEqualTo(1)
+        assertThat(waiting.steps.running).isEqualTo(0)
+        assertThat(waiting.steps.items.single().status).isEqualTo("waiting_external")
+        assertThat(waiting.workstreamRevision).isNotEqualTo(running.workstreamRevision)
+    }
+
+    @Test
     fun `the revision changes when the aggregated state changes`() {
         createRegistryEntry()
         publishWorkflow("wf-rev", "wf-demo", listOf("running"))

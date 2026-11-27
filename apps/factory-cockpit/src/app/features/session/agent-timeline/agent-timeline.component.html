@@ -60,7 +60,7 @@
             class="block"
             [class]="'block--' + lane.tone"
             [class.block--running]="b.status === 'running'"
-            [class.block--waiting]="b.status === 'waiting_human'"
+            [class.block--waiting]="b.status === 'waiting_human' || b.status === 'waiting_external'"
             [class.block--failed]="b.status === 'failed'"
             [class.block--indeterminate]="b.status === 'indeterminate'"
             [class.block--pending]="b.status === 'pending' || b.status === 'ready'"

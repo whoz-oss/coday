@@ -43,7 +43,15 @@ paths:
                   properties:
                     status:
                       type: string
-                      enum: [PASS, FAIL, NEEDS_RESEARCH]
+                      enum: [PASS, FAIL, NEEDS_RESEARCH, IN_PROGRESS]
+                      description: >-
+                        IN_PROGRESS is non-terminal: submit it only when this step's instructions ask you to wait for an
+                        external condition that is still pending. Factory calls you again later. It is never a failure.
+                    retryAfterSeconds:
+                      type: integer
+                      minimum: 30
+                      maximum: 300
+                      description: Optional delay before Factory polls again. Only allowed with IN_PROGRESS.
                     selectedRoutes:
                       type: array
                       minItems: 1

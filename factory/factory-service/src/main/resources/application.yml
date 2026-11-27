@@ -88,6 +88,30 @@ factory:
     # Maximum workflow continuations run in parallel. This default applies until an admin
     # persists a value in the cockpit Admin page; hard ceiling 20, minimum 1 (serialized).
     max-parallel-runs: ${FACTORY_OUTBOX_MAX_PARALLEL_RUNS:5}
+  polling:
+    # Steps parked in `waiting_external` (CI checks, agent IN_PROGRESS) are re-polled through a delayed
+    # outbox continuation; polls never hold a worker slot and never consume the correction budget.
+    default-interval-seconds: ${FACTORY_POLLING_DEFAULT_INTERVAL_SECONDS:60}
+    min-interval-seconds: ${FACTORY_POLLING_MIN_INTERVAL_SECONDS:30}
+    max-interval-seconds: ${FACTORY_POLLING_MAX_INTERVAL_SECONDS:300}
+    max-wait-seconds: ${FACTORY_POLLING_MAX_WAIT_SECONDS:1800}
+    # Safety net: a parked step whose next poll is overdue by more than the grace, and whose delayed wake is
+    # missing, dead or later than expected, is re-woken (so a step always ends by its deadline + sweep + grace).
+    sweep-interval-ms: ${FACTORY_POLLING_SWEEP_INTERVAL_MS:60000}
+    sweep-grace-seconds: ${FACTORY_POLLING_SWEEP_GRACE_SECONDS:120}
+  ci:
+    github:
+      # Deterministic GitHub PR checks step (`github-pr-checks`); never logged.
+      # Token chain: FACTORY_GITHUB_TOKEN, then GITHUB_TOKEN, then GH_TOKEN, then (gh-cli-fallback) `gh auth token`.
+      token: ${FACTORY_GITHUB_TOKEN:${GITHUB_TOKEN:${GH_TOKEN:}}}
+      gh-cli-fallback: ${FACTORY_GITHUB_GH_CLI_FALLBACK:true}
+      api-base-url: ${FACTORY_GITHUB_API_URL:https://api.github.com}
+      repository: ${FACTORY_GITHUB_REPOSITORY:}
+      request-timeout-ms: ${FACTORY_GITHUB_REQUEST_TIMEOUT_MS:10000}
+      # owner/repo entries (comma separated) the token may be used for; empty = unrestricted unless `repository` is set.
+      allowed-repositories: ${FACTORY_GITHUB_ALLOWED_REPOSITORIES:}
+      max-log-download-bytes: ${FACTORY_GITHUB_MAX_LOG_DOWNLOAD_BYTES:20971520}
+      poll-budget-ms: ${FACTORY_GITHUB_POLL_BUDGET_MS:30000}
   workspace:
     # Lot F: read-only workspace pre-check + run-worktree binding of code steps.
     enabled: ${FACTORY_WORKSPACE_ENABLED:true}

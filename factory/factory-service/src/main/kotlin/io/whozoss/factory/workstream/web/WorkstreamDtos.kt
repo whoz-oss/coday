@@ -69,9 +69,11 @@ data class StepCounts(
     val blocked: Int,
     val items: List<StepSummary>,
     val truncated: Boolean,
+    /** Steps parked in `waiting_external` (polling an external condition such as CI); non-terminal, not blocking. */
+    val waitingExternal: Int = 0,
 )
 
-/** One step of interest (running / waiting_human / blocked). */
+/** One step of interest (running / waiting_human / waiting_external / blocked). */
 data class StepSummary(
     val workflowId: String,
     val stepId: String,

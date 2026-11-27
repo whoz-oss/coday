@@ -22,6 +22,18 @@ Choose the business verdict from evidence:
 - `PASS`: the required acceptance criteria are satisfied and supported by available evidence.
 - `FAIL`: the work or evaluation establishes that required criteria are not satisfied. Explain the failures and remaining blockers.
 - `NEEDS_RESEARCH`: missing information requires research before a reliable business verdict can be made. State the precise unanswered question and what evidence is needed. Do not use this as a generic substitute for a failed check or a tool transport error. Submission does not itself prove that a subsequent research workflow has run.
+- `IN_PROGRESS`: use it ONLY when the step's instructions ask you to wait for an external condition (a CI, a deployment, a review) and that condition is still pending. It is neither a pass nor a failure and consumes no correction budget. Factory calls you again later with a NEW attempt id in the same case, re-run the check then and submit `IN_PROGRESS` again if it is still pending, or `PASS` / `FAIL` once it has settled. Optionally set `retryAfterSeconds` (an integer from 30 to 300, default 60) to tune the delay before the next call. Never combine `IN_PROGRESS` with `selectedRoutes`. Factory stops polling after 30 minutes and fails the step with `POLL_TIMEOUT_EXCEEDED`, so do not use `IN_PROGRESS` to postpone a verdict you can already give.
+
+Example payload while a deployment is still rolling out:
+
+```json
+{
+  "status": "IN_PROGRESS",
+  "summary": "Deployment 4412 is at 60% of the rollout; health checks not complete yet.",
+  "retryAfterSeconds": 60,
+  "claims": { "modifiedFiles": [] }
+}
+```
 
 Follow the step-specific brief for the business information required. Keep the summary concise and factual. Populate `claims.modifiedFiles` with the files actually modified for the attempt, or an empty array if none were modified. Do not claim ownership of pre-existing changes.
 

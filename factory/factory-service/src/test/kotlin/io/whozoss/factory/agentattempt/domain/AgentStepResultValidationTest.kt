@@ -140,6 +140,39 @@ class AgentStepResultValidationTest {
     }
 
     @Test
+    fun `accepts IN_PROGRESS with an optional bounded retryAfterSeconds`() {
+        val plain = json("""{"status":"IN_PROGRESS","summary":"CI running","claims":{"modifiedFiles":[]}}""")
+        assertThat(AgentStepResultValidation.validateBusiness(plain)).isTrue()
+        assertThat(AgentStepResultValidation.parseBusiness(plain).status).isEqualTo(AgentStepResultStatus.IN_PROGRESS)
+        assertThat(AgentStepResultValidation.parseBusiness(plain).retryAfterSeconds).isNull()
+        listOf(30, 60, 300).forEach { seconds ->
+            val node = json("""{"status":"IN_PROGRESS","summary":"x","claims":{"modifiedFiles":[]},"retryAfterSeconds":$seconds}""")
+            assertThat(AgentStepResultValidation.validateBusiness(node)).withFailMessage("$seconds").isTrue()
+            assertThat(AgentStepResultValidation.parseBusiness(node).retryAfterSeconds).isEqualTo(seconds)
+        }
+    }
+
+    @Test
+    fun `rejects an out of bounds or misplaced retryAfterSeconds`() {
+        listOf(0, 29, 301, -5).forEach { seconds ->
+            val node = json("""{"status":"IN_PROGRESS","summary":"x","claims":{"modifiedFiles":[]},"retryAfterSeconds":$seconds}""")
+            assertThat(AgentStepResultValidation.validateBusiness(node)).withFailMessage("$seconds").isFalse()
+        }
+        val fractional = json("""{"status":"IN_PROGRESS","summary":"x","claims":{"modifiedFiles":[]},"retryAfterSeconds":45.5}""")
+        assertThat(AgentStepResultValidation.validateBusiness(fractional)).isFalse()
+        listOf("PASS", "FAIL", "NEEDS_RESEARCH").forEach { status ->
+            val node = json("""{"status":"$status","summary":"x","claims":{"modifiedFiles":[]},"retryAfterSeconds":60}""")
+            assertThat(AgentStepResultValidation.violations(node).map { it.code }).contains("ONLY_WITH_IN_PROGRESS")
+        }
+    }
+
+    @Test
+    fun `rejects selectedRoutes with IN_PROGRESS`() {
+        val node = json("""{"status":"IN_PROGRESS","summary":"x","claims":{"modifiedFiles":[]},"selectedRoutes":["a"]}""")
+        assertThat(AgentStepResultValidation.validateBusiness(node)).isFalse()
+    }
+
+    @Test
     fun `rejects an invalid status`() {
         val node = json("""{"status":"MAYBE","summary":"ok","claims":{"modifiedFiles":[]}}""")
         assertThat(AgentStepResultValidation.validateBusiness(node)).isFalse()

@@ -84,6 +84,7 @@ export class PhaseBarComponent {
         .map((p) => {
           if (p.status === 'running') return `${p.key} running`
           if (p.status === 'waiting_human') return `${p.key} waiting for human`
+          if (p.status === 'waiting_external') return `${p.key} polling`
           if (p.status === 'failed') return `${p.key} failed`
           if (p.status === 'indeterminate') return `${p.key} indeterminate`
           if (p.status === 'cancelled') return `${p.key} cancelled`

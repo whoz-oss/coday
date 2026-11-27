@@ -203,6 +203,21 @@ interface SpringDataNeo4jWorkflowStepStateRepository : Neo4jRepository<WorkflowS
         @Param("workflowId") workflowId: String,
     ): List<WorkflowStepStateNode>
 
+    /** Step states in [status] across every tenant, oldest update first (read-only sweep). */
+    @Query(
+        """
+        MATCH (s:WorkflowStepState)
+        WHERE s.status = ${'$'}status
+        RETURN s
+        ORDER BY s.updatedAt ASC
+        LIMIT toInteger(${'$'}limit)
+        """,
+    )
+    fun findAllByStatus(
+        @Param("status") status: String,
+        @Param("limit") limit: Int,
+    ): List<WorkflowStepStateNode>
+
     /** Compare-and-swaps a step status at [expectedRevision], incrementing it. */
     @Query(
         """

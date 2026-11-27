@@ -109,6 +109,14 @@ Runtime support is currently standalone only. Parent-Run fragments declaring out
 
 Example: review declares `"outcomeTransitions":{"fail":{"action":"return","target":"analyze","maxCycles":2}}`. Review's accepted FAIL returns to analyze, not to a hard-coded agent. After two failed correction cycles the workflow waits for human intervention. This version does not reset the budget through an approval; inspect the evidence and create a separately authorized successor run for further work. No definition or historical run is migrated automatically.
 
+## External polling and CI checks
+
+A step can wait for an external condition without holding a worker. Factory parks it in the non-terminal status `waiting_external`, frees the slot and re-runs the step through a delayed outbox wake every 60 s (agent `retryAfterSeconds` 30–300 tunes it), for at most 30 min per step execution. A poll never consumes the `outcomeTransitions.fail.maxCycles` budget; a step still pending after 30 min fails with `POLL_TIMEOUT_EXCEEDED` (a technical failure: it blocks and never returns).
+
+Two ways to wait: the deterministic code step `responsibility: {"kind":"code","name":"github-pr-checks"}` polls the GitHub checks of the run branch pull request with no LLM call (Factory needs `FACTORY_GITHUB_TOKEN`); or an agent step whose instructions ask it to wait submits `status: IN_PROGRESS` (optional `retryAfterSeconds`, never with `selectedRoutes`), and Factory calls it again as attempt N+1 on the same case.
+
+Place `github-pr-checks` after the step that marks the pull request ready for review: a draft PR is refused (`CI_PR_IS_DRAFT`) because `validate.yml` skips every job on drafts. The verdict is bound to the PR head SHA, so a stale green CI of an older commit never passes the step. `github-pr-checks` is the only code step that may declare `outcomeTransitions.fail.return` (example target: the design step); it is taken only for a real red CI verdict (failed checks and log excerpts are handed over in `correctionContext`). Timeout, missing token, draft or missing PR and authentication errors block and consume no budget.
+
 ## Validation, registration and launch
 
 Before registration, show the agreed human-readable flow with roles, key pre/post-actions, dependencies and any remaining assumptions. For a design-only or ambiguous request, provide the draft and ask whether to register; never interpret “design” as permission to save. When registration is already explicitly authorized and the summary reflects the agreed choices, complete it without another redundant confirmation. Material changes still need user validation. Tool confirmation gates remain separate and must be respected.

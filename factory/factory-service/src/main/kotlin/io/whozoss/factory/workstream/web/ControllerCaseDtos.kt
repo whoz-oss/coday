@@ -89,6 +89,8 @@ data class ControllerContextCounts(
     val humanActions: Int,
     val failedOracles: Int,
     val environments: Int,
+    /** Steps parked in `waiting_external` (polling an external condition). */
+    val waitingExternal: Int = 0,
 )
 
 /** Compact, secret-free summary of an active workflow. */

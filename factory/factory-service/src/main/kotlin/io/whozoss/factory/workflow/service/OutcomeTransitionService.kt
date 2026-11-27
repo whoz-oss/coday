@@ -100,22 +100,17 @@ class OutcomeTransitionService(
             val policy = step.outcomeTransitions?.fail?.takeIf { it.action == "return" } ?: continue
             val state = states[step.id] ?: continue
             if (state.status != WorkflowStatuses.FAILED) continue
-            val latest = attempts.findLatestForStep(scope, namespace, workflow, step.id) ?: continue
-            // FAILED includes runtime errors. Only the exact finalized, accepted business FAIL is eligible.
-            if (latest.status != AgentAttemptStatus.FAILED || latest.failureCode != "FACTORY_STEP_RESULT_FAILED") continue
-            val result = results.acceptedResult(scope, namespace, workflow, step.id, latest.attemptId) ?: continue
-            if (result.status != AgentStepResultStatus.FAIL) continue
-            val current = history(instance).last { it["stepId"] == step.id }
-            val pinnedExecution = latest.contextEnvelope?.let {
-                io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope.fromJson(it).inputs["stepExecutionId"]
-            }
-            if (pinnedExecution != current["executionId"]) continue
-            if (current["attemptId"] != null && current["attemptId"] != latest.attemptId) continue
+            val current = history(instance).lastOrNull { it["stepId"] == step.id } ?: continue
+            val trigger = when (step.responsibility.kind) {
+                ResponsibilityKind.AGENT -> agentTrigger(scope, namespace, workflow, step, current)
+                ResponsibilityKind.CODE -> ciTrigger(scope, namespace, workflow, step, current)
+                ResponsibilityKind.HUMAN -> null
+            } ?: continue
             val handled = (instance.projection["outcomeDecisions"] as? List<*>)?.filterIsInstance<String>().orEmpty()
-            if (result.resultId in handled) continue
+            if (trigger.key in handled) continue
             val target = requireNotNull(policy.target)
             val replay = OutcomeReplayPlan.scope(steps, target)
-            check(replay.none { states[it]?.status in setOf(WorkflowStatuses.RUNNING, WorkflowStatuses.WAITING_HUMAN, WorkflowStatuses.NEEDS_RESEARCH) }) { "CORRECTION_SCOPE_ACTIVE" }
+            check(replay.none { states[it]?.status in CORRECTION_SCOPE_ACTIVE }) { "CORRECTION_SCOPE_ACTIVE" }
             check(attempts.findByWorkflow(scope, namespace, workflow).none { it.stepId in replay && !it.status.terminal }) { "CORRECTION_ATTEMPT_ACTIVE" }
             val regionKey = CanonicalHash.sha256Hex(replay.sorted().joinToString("\n"))
             val counters = (instance.projection["correctionCounts"] as? Map<*, *>)?.entries
@@ -123,19 +118,21 @@ class OutcomeTransitionService(
             val cycle = counters[regionKey] ?: 0
             val max = policy.maxCycles ?: 2
             val metadata = linkedMapOf<String, Any?>(
-                "cycleId" to id("cycle:$workflow:${result.resultId}"), "cycleNumber" to cycle,
+                "cycleId" to id("cycle:$workflow:${trigger.key}"), "cycleNumber" to cycle,
                 "maxCycles" to max, "status" to if (cycle >= max) "waiting_human" else "active",
-                "triggeringStepId" to step.id, "triggeringAttemptId" to latest.attemptId,
+                "triggeringStepId" to step.id, "triggeringAttemptId" to trigger.attemptId,
                 "triggeringExecutionId" to current["executionId"], "returnTargetStepId" to target,
-                "resultId" to result.resultId,
+                "resultId" to trigger.key,
             )
             val relevantEvidence = evidence.list(scope, namespace, workflow).filter {
-                it.facts["attemptId"] == latest.attemptId || it.kind in setOf("branch-preparation", "code-verification")
+                (trigger.attemptId != null && it.facts["attemptId"] == trigger.attemptId) ||
+                    (trigger.resultEvidenceId != null && it.evidenceId == trigger.resultEvidenceId) ||
+                    it.kind in setOf("branch-preparation", "code-verification")
             }
             val context = mapOf(
-                "rejectedResultId" to result.resultId, "rejectedAttemptId" to latest.attemptId,
-                "summary" to result.summary, "findings" to result.findings, "artifacts" to result.artifacts,
-                "claims" to result.claims,
+                "rejectedResultId" to trigger.key, "rejectedAttemptId" to trigger.attemptId,
+                "summary" to trigger.summary, "findings" to trigger.findings, "artifacts" to trigger.artifacts,
+                "claims" to trigger.claims,
                 // References only: historical PASS must not be mistaken for current dependency input.
                 "priorHandoffEvidenceIds" to evidence.list(scope, namespace, workflow).filter {
                     it.kind == "agent-result" && it.outcome == "pass" && it.stepId in replay
@@ -143,12 +140,13 @@ class OutcomeTransitionService(
                 "evidenceIds" to relevantEvidence.map { it.evidenceId },
                 "workspaceEvidence" to relevantEvidence.filter { it.kind in setOf("workspace-delta", "branch-preparation", "code-verification") }.takeLast(20).map { it.facts },
                 "relations" to instance.instance["relations"],
-                "instruction" to "Correct the rejected work in the existing worktree/branch/PR. Read the referenced review and workspace evidence, verify reviewed HEAD against current HEAD, retain the frozen base. Do not initialize a new branch or duplicate the PR. Missing or inconsistent provenance requires human clarification, not reset.",
+                "instruction" to "Correct the rejected work in the existing worktree/branch/PR. Read the referenced review and workspace evidence, verify reviewed HEAD against current HEAD, retain the frozen base. Do not initialize a new branch or duplicate the PR. Missing or inconsistent provenance requires human clarification, not reset." +
+                    if (trigger.ci) " The CI of the pull request failed; analyse the attached failed checks and logs and correct the plan." else "",
             )
-            var projection = instance.projection + mapOf("correction" to metadata, "outcomeDecisions" to (handled + result.resultId), "correctionContext" to context)
+            var projection = instance.projection + mapOf("correction" to metadata, "outcomeDecisions" to (handled + trigger.key), "correctionContext" to context)
             if (cycle >= max) {
                 // Intervention is deliberately not an auto-approved governed retry.
-                val interactionId = id("correction-human:$workflow:${result.resultId}")
+                val interactionId = id("correction-human:$workflow:${trigger.key}")
                 interactions.insert(scope, HumanInteractionRecord(interactionId, namespace, workflow, step.id,
                     "correction_exhausted", "waiting", 1, mapOf(
                         "prompt" to "Correction budget exhausted ($max cycles). Inspect evidence and start an explicitly governed successor run if further work is needed.",
@@ -160,8 +158,8 @@ class OutcomeTransitionService(
                 projection = projection + ("correctionCounts" to (counters + (regionKey to cycle + 1)))
                 val history = history(instance).map { item ->
                     if (item["executionId"] != current["executionId"]) item else item + mapOf(
-                        "status" to WorkflowStatuses.FAILED, "attemptId" to latest.attemptId,
-                        "completedAt" to (latest.completedAt?.toString() ?: nowIso()), "resultEvidenceId" to latest.resultEvidenceId)
+                        "status" to WorkflowStatuses.FAILED, "attemptId" to (trigger.attemptId ?: item["attemptId"]),
+                        "completedAt" to (trigger.completedAt ?: nowIso()), "resultEvidenceId" to trigger.resultEvidenceId)
                 }.toMutableList()
                 for (replayed in steps.filter { it.id in replay }) {
                     val number = history.count { it["stepId"] == replayed.id } + 1
@@ -181,13 +179,104 @@ class OutcomeTransitionService(
             }
             save(scope, instance, projection)
             val appended = evidence.append(scope, namespace, workflow, WorkflowEvidenceItem(
-                id("outcome-evidence:$workflow:${result.resultId}"), namespace, workflow, step.id, "outcome-transition",
+                id("outcome-evidence:$workflow:${trigger.key}"), namespace, workflow, step.id, "outcome-transition",
                 metadata["status"] as String, mapOf("kind" to "factory-outcome-router"), metadata.toMap(),
-                "outcome:${result.resultId}", null))
+                "outcome:${trigger.key}", null))
             check(appended !is EvidenceAppendResult.Collision) { "OUTCOME_DECISION_COLLISION" }
             return true
         }
         return false
+    }
+
+    /**
+     * What made a step eligible for `fail.return`. [key] is the dedup identity of the decision (an accepted result id,
+     * or `ci:<evidenceId>` for a CI verdict), so a replayed advance never opens a second cycle for the same failure.
+     */
+    private class Trigger(
+        val key: String,
+        val attemptId: String?,
+        val resultEvidenceId: String?,
+        val completedAt: String?,
+        val summary: String,
+        val findings: List<Any?>,
+        val artifacts: List<Any?>,
+        val claims: Any?,
+        val ci: Boolean = false,
+    )
+
+    /** Eligible agent trigger: the exact finalized, accepted business FAIL of the step's current execution. */
+    private fun agentTrigger(
+        scope: TenantScope, namespace: String, workflow: String, step: WorkflowStepDefinition, current: Map<String, Any?>,
+    ): Trigger? {
+        val latest = attempts.findLatestForStep(scope, namespace, workflow, step.id) ?: return null
+        // FAILED includes runtime errors. Only the exact finalized, accepted business FAIL is eligible.
+        if (latest.status != AgentAttemptStatus.FAILED || latest.failureCode != "FACTORY_STEP_RESULT_FAILED") return null
+        val result = results.acceptedResult(scope, namespace, workflow, step.id, latest.attemptId) ?: return null
+        if (result.status != AgentStepResultStatus.FAIL) return null
+        val pinnedExecution = latest.contextEnvelope?.let {
+            io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope.fromJson(it).inputs["stepExecutionId"]
+        }
+        if (pinnedExecution != current["executionId"]) return null
+        if (current["attemptId"] != null && current["attemptId"] != latest.attemptId) return null
+        return Trigger(
+            key = result.resultId, attemptId = latest.attemptId, resultEvidenceId = latest.resultEvidenceId,
+            completedAt = latest.completedAt?.toString(), summary = result.summary,
+            findings = result.findings, artifacts = result.artifacts, claims = result.claims,
+        )
+    }
+
+    /**
+     * Eligible CI trigger: the `github-pr-checks` code step failed with a REAL red verdict recorded for its current
+     * execution. A timeout, a refusal (missing token, draft PR, no PR, auth error) or the evidence of an older
+     * execution leaves no such verdict, so the step blocks and no correction budget is consumed.
+     */
+    private fun ciTrigger(
+        scope: TenantScope, namespace: String, workflow: String, step: WorkflowStepDefinition, current: Map<String, Any?>,
+    ): Trigger? {
+        if (step.responsibility.name != OutcomeReplayPlan.CI_RETURN_CAPABLE) return null
+        val verdict = evidence.list(scope, namespace, workflow, step.id).lastOrNull { it.kind == CI_CHECKS_EVIDENCE_KIND } ?: return null
+        if (verdict.outcome != "fail" || verdict.facts["verdict"] != "failed" || verdict.facts["executionId"] != current["executionId"]) return null
+        val failed = (verdict.facts["failedChecks"] as? List<*>).orEmpty().mapNotNull { raw ->
+            (raw as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
+        }
+        val names = failed.mapNotNull { it["name"] as? String }
+        val logs = failed.joinToString("\n\n") { check ->
+            buildString {
+                appendLine("## ${check["name"]} (${check["conclusion"]})")
+                (check["url"] as? String)?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+                (check["summary"] as? String)?.takeIf { it.isNotBlank() }?.let { appendLine(it) }
+                (check["logExcerpt"] as? String)?.takeIf { it.isNotBlank() }?.let {
+                    appendLine("```")
+                    appendLine(it)
+                    appendLine("```")
+                }
+            }
+        }
+        val artifact = boundedArtifact(logs)
+        return Trigger(
+            key = "ci:${verdict.evidenceId}", attemptId = null, resultEvidenceId = verdict.evidenceId, completedAt = null,
+            summary = "CI failed on PR #${verdict.facts["prNumber"]} (${(verdict.facts["headSha"] as? String)?.take(8)}): ${names.joinToString()}",
+            findings = failed.map { check ->
+                mapOf("severity" to "error", "code" to "CI_CHECK_FAILED", "summary" to "${check["name"]}: ${check["conclusion"]}")
+            },
+            artifacts = if (artifact.isEmpty()) emptyList() else listOf(mapOf("kind" to "ci-failure-logs", "encoding" to "markdown", "content" to artifact)),
+            claims = emptyMap<String, Any?>(), ci = true,
+        )
+    }
+
+    /** Keeps a markdown artifact within the 256 KiB bound of the worker result schema. */
+    private fun boundedArtifact(content: String): String {
+        val bytes = content.toByteArray(Charsets.UTF_8)
+        return if (bytes.size <= MAX_ARTIFACT_BYTES) content else String(bytes, 0, MAX_ARTIFACT_BYTES, Charsets.UTF_8).trimEnd('\uFFFD')
+    }
+
+    private companion object {
+        /** A correction scope with a step in one of these states must not be replayed. */
+        val CORRECTION_SCOPE_ACTIVE = setOf(
+            WorkflowStatuses.RUNNING, WorkflowStatuses.WAITING_HUMAN, WorkflowStatuses.NEEDS_RESEARCH, WorkflowStatuses.WAITING_EXTERNAL,
+        )
+        const val CI_CHECKS_EVIDENCE_KIND = "ci-checks"
+        const val MAX_ARTIFACT_BYTES = 262_144
     }
 
     private fun history(instance: WorkflowInstanceRecord): List<Map<String, Any?>> =

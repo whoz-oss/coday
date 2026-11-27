@@ -150,4 +150,46 @@ sealed interface CapabilityOutcome {
         val stepId: String,
         val role: String?,
     ) : CapabilityOutcome
+
+    /**
+     * The step waits for an external condition (CI checks still running, ...). NON-terminal: the step is parked in
+     * `waiting_external` and polled again later; it is neither a success nor a failure.
+     */
+    data class ExternalPending(
+        val stepId: String,
+        /** `ci-checks` or `agent`. */
+        val source: String,
+        val reason: String,
+        val summary: String,
+        val retryAfterSeconds: Int? = null,
+        val facts: Map<String, Any?> = emptyMap(),
+    ) : CapabilityOutcome
+
+    /**
+     * The deterministic CI-check capability reached a verdict on the checks of the pull request head:
+     * [passed] is the verdict, [failedChecks] carry bounded, redacted failure details when it is red.
+     */
+    data class CiChecksCompleted(
+        val stepId: String,
+        val passed: Boolean,
+        val prNumber: Int,
+        val prUrl: String,
+        val headSha: String,
+        val branch: String,
+        val checks: List<Map<String, Any?>>,
+        val failedChecks: List<Map<String, Any?>>,
+    ) : CapabilityOutcome
+
+    /**
+     * An agent turn ended with an accepted `IN_PROGRESS` result: the external condition the step waits for is
+     * still pending. Non-terminal for the step, never a failure; the attempt is closed as indeterminate.
+     */
+    data class AgentInProgress(
+        val stepId: String,
+        val persona: String?,
+        val attemptId: String?,
+        val resultId: String?,
+        val summary: String,
+        val retryAfterSeconds: Int? = null,
+    ) : CapabilityOutcome
 }

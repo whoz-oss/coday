@@ -14,6 +14,7 @@ import io.whozoss.factory.oracle.registry.OracleDefinitionRegistry
 import io.whozoss.factory.oracle.service.OracleExecutionService
 import io.whozoss.factory.oracle.service.OracleRunCommand
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.verification.redaction.SecretRedaction
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
@@ -28,6 +29,7 @@ import io.whozoss.factory.workflow.domain.WorkflowStatuses
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.WorkflowStepStateRecord
 import io.whozoss.factory.workflow.domain.WorkflowTransitionRequest
+import io.whozoss.factory.workflow.config.ExternalPollingProperties
 import io.whozoss.factory.workflow.domain.nowIso
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
@@ -39,6 +41,7 @@ import io.whozoss.factory.workspace.WorkspacePrecheckException
 import io.whozoss.factory.workspace.WorkspacePrecheckService
 import io.whozoss.factory.run.service.RunService
 import java.nio.file.Path
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -79,6 +82,9 @@ private class SessionProgress {
     val routing = HashMap<String, Map<String, Any?>>()
     val executions = HashMap<String, Map<String, Any?>>()
 
+    /** Poll state of a step parked in `waiting_external` (scoped to its current execution). */
+    val polls = HashMap<String, Map<String, Any?>>()
+
     /** Persisted payload of a step state: timings plus bounded intermediate question. */
     fun payload(stepId: String): Map<String, Any?> = buildMap {
         startedAt[stepId]?.let { put("startedAt", it) }
@@ -86,6 +92,7 @@ private class SessionProgress {
         waitingQuestions[stepId]?.let { put("waitingQuestion", it) }
         routing[stepId]?.let { putAll(it) }
         executions[stepId]?.let { put("execution", it) }
+        polls[stepId]?.let { put("poll", it) }
     }
 
     companion object {
@@ -95,6 +102,9 @@ private class SessionProgress {
             for ((stepId, state) in states) {
                 (state.payload["execution"] as? Map<*, *>)?.let { execution ->
                     progress.executions[stepId] = execution.entries.associate { it.key.toString() to it.value }
+                }
+                (state.payload["poll"] as? Map<*, *>)?.let { poll ->
+                    progress.polls[stepId] = poll.entries.associate { it.key.toString() to it.value }
                 }
                 val route = state.payload.filterKeys { it in setOf("routeDecision", "executed", "activation") }
                 if (route.isNotEmpty()) progress.routing[stepId] = route
@@ -209,6 +219,10 @@ class SessionRunService(
     private val runService: RunService? = null,
     private val outboxDrainService: io.whozoss.factory.agentattempt.service.OutboxDrainService? = null,
     private val outcomeTransitionService: OutcomeTransitionService? = null,
+    /** Polling policy of the steps parked in `waiting_external`. */
+    private val pollingProperties: ExternalPollingProperties = ExternalPollingProperties(),
+    /** Clock of every poll timestamp; injectable so the 30-minute window is testable. */
+    private val clock: Clock = Clock.systemUTC(),
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -365,6 +379,9 @@ class SessionRunService(
                 }
                 reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
+                // A step whose 30-minute polling window elapsed fails now; it needs no execution, so it is
+                // handled even while another branch waits for a human.
+                if (failExpiredExternalWaits(scope, namespaceId, workflowId, steps, statuses, expectedRevision())) continue
                 // A user Stop ends the run: dependents were just blocked, and no other step
                 // (independent branch, later continuation) is ever dispatched afterwards.
                 if (statuses.statuses.values.any { it == WorkflowStatuses.CANCELLED }) return@run
@@ -376,6 +393,7 @@ class SessionRunService(
                     continue
                 }
                 val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull()
+                    ?: dueExternalWait(steps, statuses)
                     ?: steps.firstOrNull { step ->
                         statuses.statuses[step.id] == WorkflowStatuses.NEEDS_RESEARCH &&
                             capabilityExecutionService.hasAcceptedFinalResult(scope, namespaceId, workflowId, step.id)
@@ -477,6 +495,7 @@ class SessionRunService(
         val evaluatedStatus = SessionSequencer.terminalStatus(steps, statuses.statuses)
         val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else evaluatedStatus
         val committedRevision = persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket)
+        scheduleNextPoll(scope, namespaceId, workflowId, steps, statuses, effectiveRepoRoot, effectiveTicket)
         sseHub.publish(
             scope,
             namespaceId,
@@ -707,6 +726,7 @@ class SessionRunService(
         progress.waitingQuestions.putAll(restored.waitingQuestions)
         progress.routing.putAll(restored.routing)
         progress.executions.putAll(restored.executions)
+        progress.polls.putAll(restored.polls)
         return progress
     }
 
@@ -727,8 +747,13 @@ class SessionRunService(
                 progress.completedAt.remove(step.id)
                 progress.routing.remove(step.id)
                 progress.waitingQuestions.remove(step.id)
+                progress.polls.remove(step.id)
             }
             if (execution != null) progress.executions[step.id] = execution
+            // A poll window belongs to ONE step execution: a poll of another execution is never reused.
+            (state.payload["poll"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
+                ?.takeIf { it["executionId"] == execution?.get("executionId") }
+                ?.let { progress.polls[step.id] = it } ?: progress.polls.remove(step.id)
             val route = state.payload.filterKeys { it in setOf("routeDecision", "executed", "activation") }
             if (route.isNotEmpty()) progress.routing[step.id] = route
             (state.payload["startedAt"] as? String)?.let { progress.startedAt[step.id] = it }
@@ -882,12 +907,18 @@ class SessionRunService(
             // workflow step.
             return null
         }
-        if (execution.outcome is CapabilityOutcome.AgentCancelled) {
-            // The interruption the sequencer observed records a user Stop (the kill landed before the
-            // durable cancel, or the observation was abandoned): the attempt is already finalized as the
-            // user's cancellation, and the sequencer, the only writer of the step status, seals the step.
-            recordStepCancellation(scope, namespaceId, workflowId, step, execution.outcome.attemptId, expectedRevision, statuses)
-            return WorkflowStatuses.CANCELLED
+        // External polling: a pending CI or an agent IN_PROGRESS parks the step (non-terminal, no worker held,
+        // no correction budget consumed) or, once its window elapsed, fails it with POLL_TIMEOUT_EXCEEDED.
+        if (execution.outcome is CapabilityOutcome.ExternalPending || execution.outcome is CapabilityOutcome.AgentInProgress) {
+            return try {
+                parkExternalWait(scope, namespaceId, workflowId, step, execution, statuses, executionId, expectedRevision, repoRoot, ticket)
+            } catch (schedulingFailure: ExternalWaitSchedulingException) {
+                // The park and its wake commit together: nothing was parked, so fail loud (technical failure,
+                // no return, no budget) instead of leaving a step that nobody will ever wake.
+                reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
+                recordStepFailure(scope, namespaceId, workflowId, step, schedulingFailure, expectedRevision, statuses)
+                WorkflowStatuses.FAILED
+            }
         }
         var terminal = classify(execution.outcome)
         // Lot E: an authoritative NEEDS_RESEARCH verdict BLOCKS the step (its
@@ -1052,6 +1083,194 @@ class SessionRunService(
         is CapabilityOutcome.AgentNeedsResearch -> WorkflowStatuses.NEEDS_RESEARCH
         is CapabilityOutcome.AgentCancelled -> WorkflowStatuses.CANCELLED
         is CapabilityOutcome.HumanCheckpointRequired -> WorkflowStatuses.WAITING_HUMAN
+        is CapabilityOutcome.CiChecksCompleted -> if (outcome.passed) WorkflowStatuses.COMPLETED else WorkflowStatuses.FAILED
+        is CapabilityOutcome.ExternalPending -> WorkflowStatuses.WAITING_EXTERNAL
+        is CapabilityOutcome.AgentInProgress -> WorkflowStatuses.WAITING_EXTERNAL
+    }
+
+    /**
+     * Parks a step whose external condition is still pending in `waiting_external`, or fails it with
+     * `POLL_TIMEOUT_EXCEEDED` when its polling window (counted from the first poll of THIS execution) elapsed.
+     * Nothing here records a FAILED result of the capability: a poll never consumes `maxCycles`.
+     */
+    private fun parkExternalWait(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        execution: CapabilityExecution,
+        statuses: SessionProgress,
+        executionId: String?,
+        expectedRevision: Int,
+        repoRoot: Path,
+        ticket: String?,
+    ): String {
+        val now = clock.instant()
+        val (source, reason, requestedInterval, attemptId) = when (val outcome = execution.outcome) {
+            is CapabilityOutcome.ExternalPending ->
+                PendingWait(outcome.source, outcome.reason, outcome.retryAfterSeconds, execution.attemptId)
+            is CapabilityOutcome.AgentInProgress ->
+                PendingWait("agent", outcome.summary, outcome.retryAfterSeconds, outcome.attemptId ?: execution.attemptId)
+            else -> error("Not a pending outcome")
+        }
+        val previous = statuses.polls[step.id]
+        val firstPollStartedAt = (previous?.get("firstPollStartedAt") as? String)?.let(Instant::parse) ?: now
+        val deadline = firstPollStartedAt.plusSeconds(pollingProperties.effectiveMaxWaitSeconds.toLong())
+        val pollCount = ((previous?.get("pollCount") as? Number)?.toInt() ?: 0) + 1
+        val interval = pollingProperties.clampInterval(requestedInterval)
+        if (!now.isBefore(deadline)) {
+            recordPollTimeout(
+                scope, namespaceId, workflowId, step, statuses, expectedRevision,
+                pollCount = pollCount, firstPollStartedAt = firstPollStartedAt, deadline = deadline, lastReason = reason,
+            )
+            return WorkflowStatuses.FAILED
+        }
+        // The next poll never lands after the deadline: the timeout is enforced at the deadline itself.
+        val nextPollAt = minOf(now.plusSeconds(interval.toLong()), deadline)
+        val poll = linkedMapOf<String, Any?>(
+            "executionId" to executionId,
+            "source" to source,
+            "firstPollStartedAt" to firstPollStartedAt.toString(),
+            "lastPollAt" to now.toString(),
+            "nextPollAt" to nextPollAt.toString(),
+            "deadlineAt" to deadline.toString(),
+            "pollCount" to pollCount,
+            "intervalSeconds" to interval,
+            "reason" to reason.take(MAX_POLL_REASON_CHARS),
+            "attemptId" to attemptId,
+        ).filterValues { it != null }
+        val park = {
+            statuses.polls[step.id] = poll
+            setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.WAITING_EXTERNAL, statuses)
+            outcomeTransitionService?.record(scope, namespaceId, workflowId, step.id, executionId,
+                WorkflowStatuses.WAITING_EXTERNAL, execution.attemptId, execution.evidenceId)
+            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.WAITING_EXTERNAL, expectedRevision)
+            recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.WAITING_EXTERNAL, execution, statuses, mapOf("poll" to poll))
+            // Same transaction as the park: the step is `waiting_external` if and only if a delayed wake exists.
+            outboxDrainService?.scheduleWakeInCurrentTransaction(scope, namespaceId, workflowId, repoRoot, ticket, nextPollAt)
+            Unit
+        }
+        try {
+            newTransaction { park() }
+        } catch (error: Exception) {
+            // The in-memory view was ahead of the rolled back store.
+            statuses.polls.remove(step.id)
+            throw ExternalWaitSchedulingException(error)
+        }
+        return WorkflowStatuses.WAITING_EXTERNAL
+    }
+
+    /** The park of a polling step could not be committed together with its wake: nothing was parked. */
+    private class ExternalWaitSchedulingException(cause: Throwable) :
+        RuntimeException("EXTERNAL_WAIT_SCHEDULING_FAILED: ${cause.message ?: cause.javaClass.simpleName}", cause)
+
+    private data class PendingWait(val source: String, val reason: String, val retryAfterSeconds: Int?, val attemptId: String?)
+
+    /** The first parked step whose next poll is due (a parked step without poll state is polled at once). */
+    private fun dueExternalWait(steps: List<WorkflowStepDefinition>, statuses: SessionProgress): String? {
+        val now = clock.instant()
+        return steps.firstOrNull { step ->
+            statuses.statuses[step.id] == WorkflowStatuses.WAITING_EXTERNAL &&
+                (statuses.polls[step.id]?.get("nextPollAt") as? String)?.let { !Instant.parse(it).isAfter(now) } != false
+        }?.id
+    }
+
+    /** Fails every parked step whose polling window elapsed; true when at least one step was failed. */
+    private fun failExpiredExternalWaits(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        steps: List<WorkflowStepDefinition>,
+        statuses: SessionProgress,
+        expectedRevision: Int,
+    ): Boolean {
+        val now = clock.instant()
+        var failed = false
+        for (step in steps) {
+            if (statuses.statuses[step.id] != WorkflowStatuses.WAITING_EXTERNAL) continue
+            val poll = statuses.polls[step.id] ?: continue
+            val deadline = (poll["deadlineAt"] as? String)?.let(Instant::parse) ?: continue
+            if (now.isBefore(deadline)) continue
+            recordPollTimeout(
+                scope, namespaceId, workflowId, step, statuses, expectedRevision,
+                pollCount = (poll["pollCount"] as? Number)?.toInt() ?: 0,
+                firstPollStartedAt = (poll["firstPollStartedAt"] as? String)?.let(Instant::parse),
+                deadline = deadline, lastReason = poll["reason"] as? String,
+            )
+            failed = true
+        }
+        return failed
+    }
+
+    /**
+     * Terminal technical failure of a step that polled for its whole window. It is evidenced as a `session-step`
+     * FAILED with the explicit code `POLL_TIMEOUT_EXCEEDED`; no CI verdict or accepted agent FAIL backs it, so the
+     * outcome router can never take a `return` on it and no correction budget is consumed.
+     */
+    private fun recordPollTimeout(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        statuses: SessionProgress,
+        expectedRevision: Int,
+        pollCount: Int,
+        firstPollStartedAt: Instant?,
+        deadline: Instant,
+        lastReason: String?,
+    ) {
+        val executionId = statuses.executions[step.id]?.get("executionId") as? String
+        val write = {
+            evidenceRepository.append(
+                scope, namespaceId, workflowId,
+                WorkflowEvidenceItem(
+                    evidenceId = UUID.randomUUID().toString(), namespaceId = namespaceId, workflowId = workflowId,
+                    stepId = step.id, kind = "session-step", outcome = WorkflowStatuses.FAILED,
+                    source = mapOf("kind" to "factory-session-sequencer"),
+                    facts = mapOf(
+                        "stepId" to step.id,
+                        "status" to WorkflowStatuses.FAILED,
+                        "code" to POLL_TIMEOUT_EXCEEDED,
+                        "executed" to true,
+                        "pollCount" to pollCount,
+                        "firstPollStartedAt" to firstPollStartedAt?.toString(),
+                        "deadlineAt" to deadline.toString(),
+                        "lastReason" to lastReason,
+                        "executionId" to executionId,
+                        "message" to "The external condition was still pending after ${pollingProperties.effectiveMaxWaitSeconds} seconds.",
+                    ).filterValues { it != null },
+                    idempotencyKey = "poll-timeout:$workflowId:${step.id}:${executionId ?: "legacy"}",
+                    createdAt = null,
+                ),
+            )
+            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED, expectedRevision)
+            setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.FAILED, statuses)
+        }
+        runCatching { newTransaction { write() } }.onFailure { error ->
+            logger.error(error) { "Poll timeout of step '${step.id}' of workflow '$workflowId' could not be persisted" }
+            statuses.statuses[step.id] = WorkflowStatuses.FAILED
+            statuses.completedAt.putIfAbsent(step.id, nowIso())
+        }
+    }
+
+    /** Requests the delayed wake that re-polls the earliest parked step, without holding a worker slot meanwhile. */
+    private fun scheduleNextPoll(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        steps: List<WorkflowStepDefinition>,
+        statuses: SessionProgress,
+        repoRoot: Path,
+        ticket: String?,
+    ) {
+        val drain = outboxDrainService ?: return
+        val next = steps.filter { statuses.statuses[it.id] == WorkflowStatuses.WAITING_EXTERNAL }
+            .mapNotNull { (statuses.polls[it.id]?.get("nextPollAt") as? String)?.let(Instant::parse) }
+            .minOrNull() ?: return
+        runCatching { drain.scheduleWake(scope, namespaceId, workflowId, repoRoot, ticket, next) }
+            // The park already requested this wake atomically; a failure here only loses the idempotent
+            // re-assertion, but it is still loud because the sweeper is then the only safety net.
+            .onFailure { logger.error(it) { "The next external poll of workflow '$workflowId' could not be re-asserted" } }
     }
 
     /**
@@ -1157,6 +1376,8 @@ class SessionRunService(
                 progress.startedAt.putIfAbsent(stepId, now)
                 progress.completedAt.putIfAbsent(stepId, now)
                 progress.waitingQuestions.remove(stepId)
+                // A settled step no longer polls: its poll window belonged to the execution that just ended.
+                progress.polls.remove(stepId)
             }
         }
         // Preserve ledger metadata written since the last in-memory projection (attempt binding,
@@ -1207,14 +1428,14 @@ class SessionRunService(
             (if (progress.routing.containsKey(stepId)) mapOf("executed" to true) else emptyMap())
         val claimed = if (current != null) {
             check((current.payload["execution"] as? Map<*, *>)?.get("executionId") == expectedExecution) { "EXECUTION_GENERATION_FENCED" }
-            current.status in setOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING, WorkflowStatuses.NEEDS_RESEARCH) &&
+            current.status in setOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING, WorkflowStatuses.NEEDS_RESEARCH, WorkflowStatuses.WAITING_EXTERNAL) &&
                 repository.updateStepStatus(scope, namespaceId, workflowId, stepId, current.revision, WorkflowStatuses.RUNNING, claimPayload)
         } else repository.claimStep(
             scope,
             namespaceId,
             workflowId,
             stepId,
-            fromStatuses = listOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING, WorkflowStatuses.NEEDS_RESEARCH),
+            fromStatuses = listOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING, WorkflowStatuses.NEEDS_RESEARCH, WorkflowStatuses.WAITING_EXTERNAL),
             payload = progress.payload(stepId) + mapOf("startedAt" to startedAt) +
                 (if (progress.routing.containsKey(stepId)) mapOf("executed" to true) else emptyMap()),
         )
@@ -1520,10 +1741,7 @@ class SessionRunService(
 
     private fun safeDiagnostic(error: Exception): String {
         val raw = error.message ?: error.javaClass.simpleName
-        return raw
-            .replace(Regex("(?i)\\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY))\\s*=\\s*[^\\s]+"), "$1=<redacted>")
-            .replace(Regex("(?i)\\b(bearer)\\s+[^\\s]+"), "$1 <redacted>")
-            .take(4_096)
+        return SecretRedaction.redact(raw).take(4_096)
     }
 
     private fun recordFailureEvidence(
@@ -1548,8 +1766,8 @@ class SessionRunService(
                 facts = mapOf(
                     "stepId" to step.id,
                     "status" to WorkflowStatuses.FAILED,
-                    "code" to "STEP_EXECUTION_ERROR",
-                    "message" to (error.message ?: error.toString()),
+                    "code" to if (error is ExternalWaitSchedulingException) "EXTERNAL_WAIT_SCHEDULING_FAILED" else "STEP_EXECUTION_ERROR",
+                    "message" to SecretRedaction.redact(error.message ?: error.toString()).take(4_096),
                 ),
                 idempotencyKey = null,
                 createdAt = null,
@@ -1605,6 +1823,7 @@ class SessionRunService(
             progress.completedAt[stepId]?.let { step["completedAt"] = it } ?: step.remove("completedAt")
             elapsedMs(progress.startedAt[stepId], progress.completedAt[stepId])?.let { step["durationMs"] = it } ?: step.remove("durationMs")
             progress.waitingQuestions[stepId]?.let { step["waitingQuestion"] = it } ?: step.remove("waitingQuestion")
+            progress.polls[stepId]?.let { step["poll"] = it } ?: step.remove("poll")
             step
         } ?: return
         projection["steps"] = projectedSteps
@@ -1622,6 +1841,8 @@ class SessionRunService(
                 } -> WorkflowStatuses.NEEDS_RESEARCH
             progress.statuses.values.any { it == WorkflowStatuses.FAILED } -> WorkflowStatuses.FAILED
             progress.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN } -> WorkflowStatuses.WAITING_HUMAN
+            progress.statuses.values.any { it == WorkflowStatuses.WAITING_EXTERNAL } &&
+                progress.statuses.values.none { it == WorkflowStatuses.RUNNING } -> WorkflowStatuses.WAITING_EXTERNAL
             progress.statuses.values.any { it == WorkflowStatuses.RUNNING } -> WorkflowStatuses.RUNNING
             progress.statuses.values.all { it == WorkflowStatuses.COMPLETED || it == WorkflowStatuses.SKIPPED } -> WorkflowStatuses.COMPLETED
             progress.statuses.values.any { it == WorkflowStatuses.BLOCKED } -> WorkflowStatuses.FAILED
@@ -1708,6 +1929,7 @@ class SessionRunService(
                 "completedAt" to completedAt,
                 "durationMs" to elapsedMs(startedAt, completedAt),
                 "waitingQuestion" to progress.waitingQuestions[step.id],
+                "poll" to progress.polls[step.id],
                 "executionId" to progress.executions[step.id]?.get("executionId"),
             ).apply {
                 step.contract?.let { putAll(it.toJson()) }
@@ -1793,6 +2015,10 @@ class SessionRunService(
          * the same ready step.
          */
         val runLocks = ConcurrentHashMap<String, ReentrantLock>()
+
+        /** Failure code of a step that polled an external condition for its whole window. */
+        const val POLL_TIMEOUT_EXCEEDED = "POLL_TIMEOUT_EXCEEDED"
+        const val MAX_POLL_REASON_CHARS = 1_000
 
         /**
          * Step statuses a live attempt holds, and that a user cancellation of that attempt seals as

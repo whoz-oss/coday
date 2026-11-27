@@ -151,13 +151,15 @@ function mapStepsToSessionSteps(steps: unknown[], blockedStepIds: ReadonlySet<st
           ? 'skipped'
           : state === 'waiting_human'
             ? 'waiting_human'
-            : state === 'running'
-              ? 'running'
-              : state === 'failed'
-                ? 'failed'
-                : state === 'pending' || state === 'ready'
-                  ? 'pending'
-                  : 'done',
+            : state === 'waiting_external'
+              ? 'waiting_external'
+              : state === 'running'
+                ? 'running'
+                : state === 'failed'
+                  ? 'failed'
+                  : state === 'pending' || state === 'ready'
+                    ? 'pending'
+                    : 'done',
     }
     const duration = stepDurationSec(obj)
     if (duration !== null) result.durationSec = Math.round(duration)
@@ -233,6 +235,8 @@ export function mapProjectionToSessionDetail(
   const outcomeManaged = stepExecutions.length > 0
   const stepsForceFailedStatus = derivedStatus === 'failed' && (!outcomeManaged || projectedStatus === 'failed')
   const isActivelyRunning = stepStates.includes('running') || hasRunningAttempt
+  // A step polling an external condition (CI checks, agent IN_PROGRESS) is active, not failed and not waiting for a human.
+  const waitingExternal = !isActivelyRunning && stepStates.includes('waiting_external')
   const waitingHuman =
     !isActivelyRunning &&
     (correction?.status === 'waiting_human' ||
@@ -241,17 +245,23 @@ export function mapProjectionToSessionDetail(
       latestAttempts.some((attempt) => attempt.status === 'waiting_human') ||
       (agentQuestions ?? []).some((q) => !q.answered))
   const status: RunStatus =
-    isActivelyRunning || waitingHuman ? 'running' : stepsForceFailedStatus ? 'failed' : projectedStatus
+    isActivelyRunning || waitingHuman || waitingExternal
+      ? 'running'
+      : stepsForceFailedStatus
+        ? 'failed'
+        : projectedStatus
   const activelyRunning = isActivelyRunning
   const executionState: import('../models').TimelineStepStatus = waitingHuman
     ? 'waiting_human'
-    : activelyRunning
-      ? 'running'
-      : status === 'succeeded'
-        ? 'completed'
-        : status === 'failed'
-          ? 'failed'
-          : 'pending'
+    : waitingExternal
+      ? 'waiting_external'
+      : activelyRunning
+        ? 'running'
+        : status === 'succeeded'
+          ? 'completed'
+          : status === 'failed'
+            ? 'failed'
+            : 'pending'
 
   const enrichedSnapshot = { ...snapshot, projection: { ...projection, steps } }
   const timelineOriginMs = resolveTimelineOriginMs(enrichedSnapshot, timing, mappedAttempts, stepExecutions)
@@ -577,11 +587,13 @@ function mergeCodeEvidenceIntoSteps(steps: unknown[], evidenceItems: unknown[]):
     const evidenceStatus =
       recordedStatus === 'running'
         ? 'running'
-        : recordedStatus === 'needs_research'
-          ? 'waiting_human'
-          : getNumber(facts, 'exitCode') === 0 && facts['timedOut'] !== true
-            ? 'completed'
-            : 'failed'
+        : recordedStatus === 'waiting_external'
+          ? 'waiting_external'
+          : recordedStatus === 'needs_research'
+            ? 'waiting_human'
+            : getNumber(facts, 'exitCode') === 0 && facts['timedOut'] !== true
+              ? 'completed'
+              : 'failed'
     return {
       ...step,
       ...(durationMs !== undefined ? { durationMs } : {}),
@@ -677,13 +689,15 @@ export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionD
       ? 'waiting_human'
       : detail.status === 'failed'
         ? 'failed'
-        : blockedStepIds.size > 0
-          ? 'blocked'
-          : detail.activelyRunning
-            ? 'running'
-            : detail.status === 'succeeded'
-              ? 'succeeded'
-              : 'pending'
+        : detail.executionState === 'waiting_external'
+          ? 'running'
+          : blockedStepIds.size > 0
+            ? 'blocked'
+            : detail.activelyRunning
+              ? 'running'
+              : detail.status === 'succeeded'
+                ? 'succeeded'
+                : 'pending'
   summary.phases = detail.steps.map((step) => ({
     key: step.key,
     ratio: detail.durationSec > 0 ? (step.durationSec ?? 0) / detail.durationSec : 1 / Math.max(detail.steps.length, 1),

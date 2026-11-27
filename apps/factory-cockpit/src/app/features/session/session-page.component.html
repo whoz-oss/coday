@@ -29,6 +29,8 @@
       <div class="meta-row">
         @if (s.executionState === 'waiting_human') {
           <sf-status-chip tone="amber" icon="person_alert">waiting for human</sf-status-chip>
+        } @else if (s.executionState === 'waiting_external') {
+          <sf-status-chip tone="blue" icon="schedule">Polling</sf-status-chip>
         } @else {
           @switch (s.status) {
             @case ('running') {
@@ -209,6 +211,8 @@
             <h2 id="phase-title">{{ phase.name }}</h2>
             @if (phase.stepStatus === 'waiting_human') {
               <sf-status-chip tone="amber" size="sm" icon="person_alert">waiting for human</sf-status-chip>
+            } @else if (phase.stepStatus === 'waiting_external') {
+              <sf-status-chip tone="blue" size="sm" icon="schedule">Polling</sf-status-chip>
             } @else if (phase.stepStatus === 'running') {
               <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>running</sf-status-chip>
             } @else if (phase.stepStatus === 'failed') {

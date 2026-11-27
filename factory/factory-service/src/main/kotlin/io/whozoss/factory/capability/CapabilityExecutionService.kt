@@ -265,6 +265,8 @@ class CapabilityExecutionService(
     /**
      * True when the latest attempt of [stepId] has an accepted PASS or FAIL result
      * (e.g. submitted after an out-of-band resumption of a NEEDS_RESEARCH step).
+     * NEEDS_RESEARCH and IN_PROGRESS are not final: the former is blocked on research, the latter is a poll
+     * the sequencer parks in `waiting_external`.
      */
     fun hasAcceptedFinalResult(
         scope: TenantScope,
@@ -274,7 +276,7 @@ class CapabilityExecutionService(
     ): Boolean {
         val latest = durableAgentAttemptService.findLatestForStep(scope, namespaceId, workflowId, stepId) ?: return false
         val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, stepId, latest.attemptId) ?: return false
-        return accepted.status != AgentStepResultStatus.NEEDS_RESEARCH
+        return accepted.status == AgentStepResultStatus.PASS || accepted.status == AgentStepResultStatus.FAIL
     }
 
     /** A finalized durable attempt may be replayed without dispatching a second turn. */
@@ -377,7 +379,10 @@ class CapabilityExecutionService(
     ): CapabilityExecution {
         val instance = workflowRepository.findInstance(scope, namespaceId, workflowId)
         val parentRunId = parentRunIdOf(instance)
-        val occupancyService = if (parentRunId != null || hasAdoptedStandaloneWorkspace(scope, instance)) {
+        // The CI check only reads `.git` files and calls GitHub: it never writes the worktree, so it must not take
+        // the exclusive occupancy (a writer holding it would otherwise fail every poll).
+        val readOnlyCiCheck = step.responsibility.name == GITHUB_PR_CHECKS
+        val occupancyService = if (!readOnlyCiCheck && (parentRunId != null || hasAdoptedStandaloneWorkspace(scope, instance))) {
             worktreeExecutionOccupancyService
                 ?: error("Worktree execution occupancy service is required for parent Run code fragments")
         } else null
@@ -385,6 +390,15 @@ class CapabilityExecutionService(
         val occupancy = try {
             occupancyService?.acquireForWorkflow(scope, parentRunId ?: workflowId, "code", ownerId, repoRoot)
         } catch (_: WorktreeExecutionOccupancyConflict) {
+            // Second safeguard: a read-only CI poll never fails because of a writer, it just polls again.
+            if (readOnlyCiCheck) {
+                return CapabilityExecution(
+                    CapabilityOutcome.ExternalPending(
+                        stepId = step.id, source = "ci-checks", reason = "CI_WORKTREE_OCCUPIED",
+                        summary = "The run worktree is occupied by another writer; the CI check will be retried.",
+                    ),
+                )
+            }
             return CapabilityExecution(
                 CapabilityOutcome.CodeRefused(
                     stepId = step.id,
@@ -409,6 +423,8 @@ class CapabilityExecutionService(
         val execution = when (outcome) {
             is CapabilityOutcome.CodeExecuted -> newTransaction { recordCode(scope, namespaceId, workflowId, step, outcome) }
             is CapabilityOutcome.BranchPrepared -> newTransaction { recordBranchPreparation(scope, namespaceId, workflowId, step, outcome) }
+            is CapabilityOutcome.CiChecksCompleted -> newTransaction { recordCiChecks(scope, namespaceId, workflowId, step, outcome) }
+            is CapabilityOutcome.ExternalPending -> newTransaction { recordCiChecks(scope, namespaceId, workflowId, step, outcome) }
             else -> CapabilityExecution(outcome)
         }
         // Release only on outcomes whose contract proves that no process was spawned, or that
@@ -418,6 +434,8 @@ class CapabilityExecutionService(
         val safelyFinished = when (outcome) {
             is CapabilityOutcome.CodeExecuted -> !outcome.timedOut
             is CapabilityOutcome.CodeRefused -> outcome.code in PRE_SPAWN_CODE_REFUSALS
+            // The CI check only reads the worktree and calls GitHub: no process was spawned.
+            is CapabilityOutcome.CiChecksCompleted, is CapabilityOutcome.ExternalPending -> true
             else -> false
         }
         if (occupancy != null && safelyFinished) {
@@ -966,6 +984,7 @@ class CapabilityExecutionService(
     private fun resultProtocol(): String = buildString {
         appendLine(resultSubmissionInstruction())
         appendLine("- Submit NEEDS_RESEARCH only when missing research blocks a reliable PASS/FAIL decision; identify the missing business information and useful references in the summary/findings.")
+        appendLine("- Submit IN_PROGRESS only when this step's instructions ask you to wait for an external condition that is still pending; Factory will call you again later (optional retryAfterSeconds 30-300).")
         appendLine("- Otherwise use PASS or FAIL according to this step's criteria. Do not invent criteria.")
         appendLine("- Call the tool with its structured arguments. Do not return free-form JSON as the result.")
         appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
@@ -1104,6 +1123,62 @@ class CapabilityExecutionService(
                     environmentRef = environment?.environmentId ?: predecessor?.environmentRef,
                     expectedEnvironmentRevision = environment?.revision ?: predecessor?.expectedEnvironmentRevision,
                     rootCaseId = family.rootCaseId, parentCaseId = family.parentCaseId,
+                ))
+            }
+        }
+    }
+
+    /**
+     * Re-arms an `IN_PROGRESS` agent step for its next poll: registers attempt N+1 on the SAME case family as the
+     * predecessor, with a fresh capability and a successor brief carrying an `External poll continuation` section.
+     *
+     * It only acts when the sequencer actually parked the step on the latest attempt (the step payload `poll` entry
+     * names that very attempt), so a crash-replay of a finalized attempt replays its outcome instead of dispatching
+     * a poll early. Nothing is dispatched here: the attempt is only registered.
+     */
+    private fun preparePollAttempt(scope: TenantScope, namespace: String, workflow: String, step: WorkflowStepDefinition) {
+        val poll = workflowRepository.findStepStates(scope, namespace, workflow).firstOrNull { it.stepId == step.id }
+            ?.payload?.get("poll") as? Map<*, *> ?: return
+        val parkedAttemptId = poll["attemptId"] as? String ?: return
+        withReservationLock("${scope.organizationId}|${scope.workstreamId}|$namespace|$workflow|${step.id}") {
+            newTransaction<Unit> {
+                val predecessor = durableAgentAttemptService.findLatestForStep(scope, namespace, workflow, step.id)
+                    ?: return@newTransaction
+                if (predecessor.attemptId != parkedAttemptId || !predecessor.status.terminal ||
+                    predecessor.failureCode != AGENT_IN_PROGRESS_CODE
+                ) return@newTransaction
+                val number = durableAgentAttemptService.nextAttemptNumber(scope, namespace, workflow, step.id)
+                val attemptId = retryAttemptId(workflow, step.id, number)
+                val pollNumber = ((poll["pollCount"] as? Number)?.toInt() ?: 1) + 1
+                val supplement = buildString {
+                    appendLine("## External poll continuation")
+                    appendLine("This is poll #$pollNumber of an external condition this step waits for. The previous attempt reported IN_PROGRESS:")
+                    appendLine("<<<")
+                    appendLine((poll["reason"] as? String).orEmpty().take(POLL_SUMMARY_IN_BRIEF))
+                    appendLine(">>>")
+                    append("Re-check the external condition. Submit IN_PROGRESS again only if it is still pending; ")
+                    append("submit PASS or FAIL once it has settled. Use the identifiers above and never reuse those of a previous attempt.")
+                }
+                val brief = SuccessorAttempts.brief(predecessor, attemptId, supplement)
+                durableAgentAttemptService.registerRetry(scope, DurableAgentAttempt(
+                    attemptId = attemptId,
+                    caseId = predecessor.caseId,
+                    namespaceId = namespace,
+                    workflowId = workflow,
+                    stepId = step.id,
+                    attemptNumber = number,
+                    agentName = predecessor.agentName,
+                    capabilityToken = SuccessorAttempts.issueCapability(
+                        agentStepResultService, attemptRepository, scope, predecessor, attemptId, brief, namespace, workflow, step.id,
+                    ),
+                    brief = brief,
+                    contextEnvelope = SuccessorAttempts.envelope(predecessor, brief, number),
+                    resumptionContext = "{\"reason\":\"external-poll\",\"pollNumber\":$pollNumber}",
+                    expectedAmendmentSeq = predecessor.expectedAmendmentSeq,
+                    environmentRef = predecessor.environmentRef,
+                    expectedEnvironmentRevision = predecessor.expectedEnvironmentRevision,
+                    rootCaseId = predecessor.rootCaseId,
+                    parentCaseId = predecessor.parentCaseId,
                 ))
             }
         }
@@ -1254,6 +1329,55 @@ class CapabilityExecutionService(
         return CapabilityExecution(outcome, codeTransitionId = codeTransitionId, evidenceId = evidenceId)
     }
 
+    /**
+     * Records the verdict of the deterministic CI check as a `ci-checks` evidence bound to the current step
+     * execution. A pending poll is recorded too (outcome `pending`) so the cockpit can show the last observation,
+     * but only a `failed` verdict of the current execution can ever trigger a correction return.
+     */
+    private fun recordCiChecks(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        outcome: CapabilityOutcome,
+    ): CapabilityExecution {
+        val executionId = currentExecution(scope, namespaceId, workflowId, step.id)?.get("executionId")
+        val (label, facts) = when (outcome) {
+            is CapabilityOutcome.CiChecksCompleted -> (if (outcome.passed) "pass" else "fail") to mapOf<String, Any?>(
+                "verdict" to if (outcome.passed) "passed" else "failed",
+                "prNumber" to outcome.prNumber,
+                "prUrl" to outcome.prUrl,
+                "headSha" to outcome.headSha,
+                "branch" to outcome.branch,
+                "checks" to outcome.checks.take(MAX_CI_CHECKS),
+                "failedChecks" to outcome.failedChecks.take(MAX_CI_CHECKS),
+            )
+            is CapabilityOutcome.ExternalPending -> "pending" to (
+                mapOf<String, Any?>("verdict" to "pending", "reason" to outcome.reason, "summary" to outcome.summary) + outcome.facts
+                )
+            else -> error("Not a CI checks outcome: ${outcome.javaClass.simpleName}")
+        }
+        val evidenceId = UUID.randomUUID().toString()
+        evidenceRepository.append(
+            scope,
+            namespaceId,
+            workflowId,
+            WorkflowEvidenceItem(
+                evidenceId = evidenceId,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = step.id,
+                kind = CI_CHECKS_EVIDENCE_KIND,
+                outcome = label,
+                source = mapOf("kind" to "factory-ci-checks"),
+                facts = mapOf("stepId" to step.id, "executionId" to executionId).filterValues { it != null } + facts,
+                idempotencyKey = null,
+                createdAt = null,
+            ),
+        )
+        return CapabilityExecution(outcome, evidenceId = evidenceId)
+    }
+
     private fun recordHuman(
         scope: TenantScope,
         namespaceId: String,
@@ -1388,6 +1512,7 @@ class CapabilityExecutionService(
         // otherwise only the recovery scanner can drive N+1 while this path
         // remains anchored to the terminal predecessor.
         prepareCorrectionAttempt(scope, namespaceId, workflowId, step, ticket)
+        preparePollAttempt(scope, namespaceId, workflowId, step)
         val latestAttempt = attempts.findLatestForStep(scope, namespaceId, workflowId, step.id)
         val attemptId = latestAttempt?.attemptId ?: stableAttemptId(workflowId, step.id)
         val ownerToken = UUID.randomUUID().toString()
@@ -1798,7 +1923,8 @@ class CapabilityExecutionService(
         if (existing != null && existing.status.terminal) {
             if (existing.status == AgentAttemptStatus.INDETERMINATE && existing.failureCode == "AGENT_NEEDS_RESEARCH" && step.decision == null) {
                 val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, step.id, attemptId)
-                if (accepted != null && accepted.status != AgentStepResultStatus.NEEDS_RESEARCH) {
+                // Only a final PASS/FAIL is replayed here: an accepted IN_PROGRESS is a poll, never an AgentFailed.
+                if (accepted != null && (accepted.status == AgentStepResultStatus.PASS || accepted.status == AgentStepResultStatus.FAIL)) {
                     val outcome = if (accepted.status == AgentStepResultStatus.PASS) {
                         CapabilityOutcome.AgentCompleted(
                             step.id,
@@ -2200,6 +2326,22 @@ class CapabilityExecutionService(
                             "status" to NEEDS_RESEARCH_MARKER,
                         ),
                     )
+                AgentStepResultStatus.IN_PROGRESS ->
+                    // Waiting for an external condition, not failed: same carrier technique as NEEDS_RESEARCH.
+                    AgentOsExecutionVerdict.Succeeded(
+                        outputs = mapOf(
+                            "summary" to acceptedResult.summary,
+                            "claims" to acceptedResult.claims,
+                            "findings" to acceptedResult.findings,
+                            "artifacts" to acceptedResult.artifacts,
+                            "retryAfterSeconds" to acceptedResult.retryAfterSeconds,
+                        ).filterValues { it != null },
+                        evidence = mapOf(
+                            "resultId" to acceptedResult.resultId,
+                            "source" to "factory-step-result",
+                            "status" to IN_PROGRESS_MARKER,
+                        ),
+                    )
             }
             return AgentOsObservationResult(businessVerdict, observed.runtimeProof)
         }
@@ -2345,7 +2487,38 @@ class CapabilityExecutionService(
         }
         return when (verdict) {
             is AgentOsExecutionVerdict.Succeeded -> {
-                if (verdict.evidence["status"] == NEEDS_RESEARCH_MARKER) {
+                if (verdict.evidence["status"] == IN_PROGRESS_MARKER) {
+                    // Accepted IN_PROGRESS: the external condition is still pending. The attempt is closed as
+                    // `indeterminate` (terminal, neither success nor failure) with a dedicated code; the sequencer
+                    // parks the step in `waiting_external` and re-arms attempt N+1 at the next poll.
+                    val evidenceId = persistEvidence(
+                        "in_progress",
+                        mapOf(
+                            "status" to IN_PROGRESS_MARKER,
+                            "summary" to verdict.outputs["summary"],
+                            "outputs" to verdict.outputs,
+                            "evidence" to verdict.evidence,
+                        ),
+                    )
+                    durableAgentAttemptService.finalize(
+                        scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
+                        AgentAttemptStatus.INDETERMINATE,
+                        failureCode = AGENT_IN_PROGRESS_CODE,
+                        resultEvidenceId = evidenceId,
+                    )
+                    CapabilityExecution(
+                        CapabilityOutcome.AgentInProgress(
+                            stepId = step.id,
+                            persona = step.responsibility.name,
+                            attemptId = reservation.attemptId,
+                            resultId = verdict.evidence["resultId"]?.toString(),
+                            summary = verdict.outputs["summary"]?.toString() ?: "",
+                            retryAfterSeconds = (verdict.outputs["retryAfterSeconds"] as? Number)?.toInt(),
+                        ),
+                        evidenceId = evidenceId,
+                        attemptId = reservation.attemptId,
+                    )
+                } else if (verdict.evidence["status"] == NEEDS_RESEARCH_MARKER) {
                     // Authoritative NEEDS_RESEARCH verdict: the step is BLOCKED, not
                     // failed. Persist the original proof and record the predecessor
                     // attempt as `indeterminate` (terminal, but neither a success nor
@@ -2553,6 +2726,16 @@ class CapabilityExecutionService(
             .filter { it.kind == AGENT_RESULT_EVIDENCE_KIND }
         val evidence = results.lastOrNull { it.facts["attemptId"] == reservation.attemptId }
             ?: results.lastOrNull { it.facts["attemptId"] == null }
+        if (evidence?.outcome == "in_progress") {
+            val accepted = acceptedStepResult(scope, namespaceId, workflowId, step.id, reservation.attemptId)
+            if (accepted?.status == AgentStepResultStatus.IN_PROGRESS) {
+                return CapabilityExecution(
+                    CapabilityOutcome.AgentInProgress(step.id, step.responsibility.name, reservation.attemptId,
+                        accepted.resultId, accepted.summary, accepted.retryAfterSeconds),
+                    evidenceId = evidence.evidenceId, attemptId = reservation.attemptId,
+                )
+            }
+        }
         if (evidence?.outcome == "needs_research") {
             val accepted = acceptedStepResult(scope, namespaceId, workflowId, step.id, reservation.attemptId)
             if (accepted?.status == AgentStepResultStatus.NEEDS_RESEARCH) {
@@ -2808,6 +2991,17 @@ class CapabilityExecutionService(
     companion object {
         /** Evidence kind carrying the durable, structured outputs of an agent step. */
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
+        /** Evidence kind of the deterministic GitHub PR checks step. */
+        const val CI_CHECKS_EVIDENCE_KIND = "ci-checks"
+        private const val MAX_CI_CHECKS = 100
+
+        /** Failure code of an agent attempt closed by an accepted IN_PROGRESS result (not a failure: a poll). */
+        const val AGENT_IN_PROGRESS_CODE = "AGENT_IN_PROGRESS"
+        private const val POLL_SUMMARY_IN_BRIEF = 1_000
+
+        /** Evidence marker of an accepted IN_PROGRESS verdict (waiting for an external condition, not a failure). */
+        const val IN_PROGRESS_MARKER = "IN_PROGRESS"
+
 
         /** Failure code of an attempt sealed by an explicit user cancellation (Stop). */
         const val USER_CANCELLED = "USER_CANCELLED"

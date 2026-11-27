@@ -28,7 +28,12 @@ describe('workflow block composition', () => {
   }
 
   it('exposes only the closed code-verifier authoring presets', () => {
-    expect(CODE_VERIFICATION_PRESETS.map((preset) => preset.id)).toEqual(['build', 'frontend-build', 'frontend-tests'])
+    expect(CODE_VERIFICATION_PRESETS.map((preset) => preset.id)).toEqual([
+      'build',
+      'frontend-build',
+      'frontend-tests',
+      'github-pr-checks',
+    ])
     expect(isCodeVerificationPreset('build')).toBe(true)
     expect(CODE_VERIFICATION_PRESETS.find((preset) => preset.id === 'frontend-build')?.hint).toContain(
       'buildHosts (default: aphrodite, admin, agentic-studio, copilot-chat)'
@@ -323,6 +328,33 @@ describe('workflow block composition', () => {
     base.steps[0].outcomeTransitions.fail.maxCycles = 2
     base.steps[0].responsibility.kind = 'code'
     expect(validateStructure(base)).toContain('agent step')
+    // The deterministic CI-check code step is the single exception (real red CI only).
+    base.steps[0].responsibility.name = 'github-pr-checks'
+    expect(validateStructure(base)).toBeNull()
+  })
+
+  it('offers FAIL return on the github-pr-checks code step only', () => {
+    const { state } = setup()
+    state.definition.set({
+      workflowType: 'ci',
+      title: 'CI',
+      version: '1.0.0',
+      steps: [
+        { id: 'design', name: 'Design', responsibility: { kind: 'agent', name: 'Architect' }, dependsOn: [] },
+        { id: 'ci', name: 'CI', responsibility: { kind: 'code', name: 'github-pr-checks' }, dependsOn: ['design'] },
+        { id: 'build', name: 'Build', responsibility: { kind: 'code', name: 'build' }, dependsOn: ['design'] },
+      ],
+    })
+    state.select('ci')
+    expect(state.canConfigureFailReturn()).toBe(true)
+    state.select('build')
+    expect(state.canConfigureFailReturn()).toBe(false)
+    state.select('ci')
+    state.edit()
+    state.updateOutcome('fail', 'return')
+    state.updateOutcomeTarget('fail', 'design')
+    expect(state.selected()?.outcomeTransitions?.fail).toEqual({ action: 'return', target: 'design', maxCycles: 2 })
+    expect(state.validation()).toBeNull()
   })
 
   it('invalidates server adoption metadata when the loaded responsibility changes', () => {

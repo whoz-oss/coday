@@ -118,10 +118,11 @@ class WorkstreamProjectionService(
             truncated = workflowSummaries.size > boundedLimit,
         )
 
-        // ---- Steps of interest (running / waiting_human / blocked) ----------
+        // ---- Steps of interest (running / waiting_human / waiting_external / blocked) ----------
         val stepsOfInterest = ArrayList<StepSummary>()
         var running = 0
         var waitingHuman = 0
+        var waitingExternal = 0
         var blocked = 0
         for (item in scanned) {
             val workflowId = item["workflowId"] as? String ?: continue
@@ -132,6 +133,7 @@ class WorkstreamProjectionService(
                 when (step["status"] as? String) {
                     WorkflowStatuses.RUNNING -> running++
                     WorkflowStatuses.WAITING_HUMAN -> waitingHuman++
+                    WorkflowStatuses.WAITING_EXTERNAL -> waitingExternal++
                     WorkflowStatuses.BLOCKED -> blocked++
                     else -> continue
                 }
@@ -143,13 +145,14 @@ class WorkstreamProjectionService(
                 )
             }
         }
-        val stepTotal = running + waitingHuman + blocked
+        val stepTotal = running + waitingHuman + waitingExternal + blocked
         val stepCounts = StepCounts(
             running = running,
             waitingHuman = waitingHuman,
             blocked = blocked,
             items = stepsOfInterest.take(boundedLimit),
             truncated = stepTotal > boundedLimit,
+            waitingExternal = waitingExternal,
         )
 
         // ---- Attempts & open human actions (via the owning services) --------
@@ -291,7 +294,7 @@ class WorkstreamProjectionService(
             workstream,
             listOf(
                 "activeWorkflows=${activeWorkflows.count}",
-                "steps=${stepCounts.running},${stepCounts.waitingHuman},${stepCounts.blocked}",
+                "steps=${stepCounts.running},${stepCounts.waitingHuman},${stepCounts.waitingExternal},${stepCounts.blocked}",
                 "attempts=${attempts.count}",
                 "humanActions=${humanActions.count}",
                 "failedOracles=${failedOracles.count}",

@@ -233,6 +233,11 @@ class Neo4jWorkflowRepository(
             .findAllByInstance(scope.organizationId, scope.workstreamId, namespaceId, workflowId)
             .map { it.toDomain(objectMapper) }
 
+    override fun findStepStatesByStatus(status: String, limit: Int): List<ScopedStepState> =
+        stepStates.findAllByStatus(status, limit.coerceIn(1, 1_000)).map {
+            ScopedStepState(TenantScope(it.organizationId, it.workstreamId), it.toDomain(objectMapper))
+        }
+
     override fun upsertStepState(scope: TenantScope, record: WorkflowStepStateRecord): WorkflowStepStateRecord {
         val id = WorkflowStepStateNode.compositeId(
             scope.organizationId,

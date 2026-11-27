@@ -2,6 +2,7 @@ package io.whozoss.factory.workflow.service
 
 import io.whozoss.factory.capability.CapabilityOutcome
 import io.whozoss.factory.capability.PREPARE_WORK_BRANCH
+import io.whozoss.factory.verification.redaction.SecretRedaction
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
@@ -68,6 +69,17 @@ internal fun codeVerificationFacts(outcome: CapabilityOutcome): Map<String, Any?
             else -> "Verification exited with code ${outcome.exitCode}."
         },
     )
+    is CapabilityOutcome.CiChecksCompleted -> mapOf(
+        "verification" to "github-pr-checks",
+        "executed" to true,
+        "code" to if (outcome.passed) "CI_CHECKS_PASSED" else "CI_CHECKS_FAILED",
+        "prNumber" to outcome.prNumber,
+        "prUrl" to outcome.prUrl,
+        "headSha" to outcome.headSha,
+        "failedCheckNames" to outcome.failedChecks.mapNotNull { it["name"] },
+        "message" to if (outcome.passed) "All checks of pull request #${outcome.prNumber} passed."
+        else "Checks failed on pull request #${outcome.prNumber}: ${outcome.failedChecks.mapNotNull { it["name"] }.joinToString()}",
+    )
     else -> emptyMap()
 }
 
@@ -80,11 +92,7 @@ private fun boundedStream(value: String): Map<String, Any?> {
     )
 }
 
-private fun redactAndBound(value: String, limit: Int): String {
-    var result = value
-    REDACTIONS.forEach { pattern -> result = pattern.replace(result, "$1=<redacted>") }
-    return result.take(limit)
-}
+private fun redactAndBound(value: String, limit: Int): String = SecretRedaction.redact(value).take(limit)
 
 private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray(StandardCharsets.UTF_8))
@@ -92,8 +100,3 @@ private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
 
 private const val MAX_OUTPUT_CHARS = 16_384
 private const val MAX_COMMAND_CHARS = 2_048
-private val REDACTIONS = listOf(
-    Regex("(?i)\\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY))\\s*=\\s*[^\\s]+"),
-    Regex("(?i)\\b(authorization)\\s*:\\s*[^\\r\\n]+"),
-    Regex("(?i)\\b(bearer)\\s+[^\\s]+"),
-)

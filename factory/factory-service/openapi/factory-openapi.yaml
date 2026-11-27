@@ -158,6 +158,49 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+  /api/factory/admin/settings/github-token:
+    get:
+      tags:
+      - github-token-admin-controller
+      operationId: getGitHubTokenGithubTokenAdmin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+    put:
+      tags:
+      - github-token-admin-controller
+      operationId: updateGitHubTokenGithubTokenAdmin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+    delete:
+      tags:
+      - github-token-admin-controller
+      operationId: clearGitHubTokenGithubTokenAdmin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
   /api/factory/workstreams:
     get:
       tags:
@@ -1842,6 +1885,19 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/factory/admin/settings/github-token/test:
+    post:
+      tags:
+      - github-token-admin-controller
+      operationId: testGitHubTokenGithubTokenAdmin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
   /api/factory/admin/artifacts/{artifactId}/purge:
     post:
       tags:
@@ -3243,11 +3299,15 @@ components:
             $ref: "#/components/schemas/StepSummary"
         truncated:
           type: boolean
+        waitingExternal:
+          type: integer
+          format: int32
       required:
       - blocked
       - items
       - running
       - truncated
+      - waitingExternal
       - waitingHuman
     StepSummary:
       type: object
@@ -3498,6 +3558,9 @@ components:
         environments:
           type: integer
           format: int32
+        waitingExternal:
+          type: integer
+          format: int32
       required:
       - activeWorkflows
       - attempts
@@ -3506,6 +3569,7 @@ components:
       - failedOracles
       - humanActions
       - running
+      - waitingExternal
       - waitingHuman
     ControllerResumptionPackage:
       type: object

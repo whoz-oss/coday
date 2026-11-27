@@ -2087,6 +2087,9 @@ class WorkflowService(
                         attempt.stepId,
                         "Execution attempt '${attempt.attemptId}' needs additional research or corrected repository access.",
                     )
+                } else if (attempt.failureCode == "AGENT_IN_PROGRESS") {
+                    // An accepted IN_PROGRESS is history while the step polls an external condition: not a blocker.
+                    Unit
                 } else if (!pinnedToPreviousExecution(attempt)) blocker(
                     WorkflowBlockerCodes.UNKNOWN_RUNTIME,
                     attempt.stepId,

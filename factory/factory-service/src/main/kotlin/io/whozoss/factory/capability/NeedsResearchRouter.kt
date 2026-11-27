@@ -251,9 +251,7 @@ class NeedsResearchRouter(
     }
 
     /**
-     * Issues the successor's OWN capability. The result-channel row is registered
-     * first (issuance refuses an unknown attempt) and the capability is bound to
-     * the hash of the successor brief, never to the predecessor's.
+     * Issues the successor's OWN capability (see [SuccessorAttempts.issueCapability]).
      */
     private fun issueSuccessorCapability(
         scope: TenantScope,
@@ -263,30 +261,9 @@ class NeedsResearchRouter(
         namespaceId: String,
         workflowId: String,
         stepId: String,
-    ): String? {
-        val service = resultService ?: return null
-        val source = predecessor ?: return null
-        stepAttempts?.let { repository ->
-            if (!repository.exists(scope, namespaceId, workflowId, stepId, successorId)) {
-                repository.insert(
-                    scope,
-                    AgentStepAttemptRecord(namespaceId, workflowId, stepId, successorId, source.agentName, "running", 1, "{}"),
-                )
-            }
-        }
-        return service.issue(
-            scope,
-            AgentStepResultCapabilityIdentity(
-                attemptId = successorId,
-                caseId = source.caseId,
-                agentName = source.agentName,
-                namespaceId = namespaceId,
-                workflowId = workflowId,
-                stepId = stepId,
-                briefHash = CanonicalJsonHash.sha256(successorBrief ?: ""),
-            ),
-        ).token
-    }
+    ): String? = SuccessorAttempts.issueCapability(
+        resultService, stepAttempts, scope, predecessor, successorId, successorBrief, namespaceId, workflowId, stepId,
+    )
 
     /**
      * Human, governed resumption of a NEEDS_RESEARCH step as attempt `N+1`.
@@ -475,12 +452,8 @@ class NeedsResearchRouter(
      * identifiers rewritten to the successor's, plus an optional supplement. The
      * predecessor's attempt id is a UUID, so a plain textual replacement is exact.
      */
-    private fun successorBrief(predecessor: DurableAgentAttempt, successorId: String, supplement: String?): String? {
-        val frozen = predecessor.brief ?: return supplement
-        // Never replace an empty id: String.replace("", x) would splice x between every character.
-        val base = if (predecessor.attemptId.isBlank()) frozen else frozen.replace(predecessor.attemptId, successorId)
-        return if (supplement == null) base else "$base\n\n$supplement"
-    }
+    private fun successorBrief(predecessor: DurableAgentAttempt, successorId: String, supplement: String?): String? =
+        SuccessorAttempts.brief(predecessor, successorId, supplement)
 
     /** Brief section handed to the resumed turn. The user text is fenced, never interpreted as instructions about tools. */
     private fun researchSupplement(result: CapabilityOutcome.AgentNeedsResearch, additionalContext: String): String =
@@ -497,13 +470,8 @@ class NeedsResearchRouter(
         }
 
     /** Keeps the predecessor envelope verbatim unless the brief changed, in which case only its hash/number are re-pinned. */
-    private fun successorEnvelope(predecessor: DurableAgentAttempt, brief: String?, attemptNumber: Int): String? {
-        val envelope = predecessor.contextEnvelope ?: return null
-        if (brief == null || brief == predecessor.brief || envelope.isBlank()) return envelope
-        // An envelope that cannot be read is kept verbatim: the frozen pair is never replaced by a guess.
-        val parsed = runCatching { AttemptContextEnvelope.fromJson(envelope) }.getOrNull() ?: return envelope
-        return parsed.copy(briefHash = CanonicalJsonHash.sha256(brief), attemptNumber = attemptNumber).toJson()
-    }
+    private fun successorEnvelope(predecessor: DurableAgentAttempt, brief: String?, attemptNumber: Int): String? =
+        SuccessorAttempts.envelope(predecessor, brief, attemptNumber)
 
     /**
      * Bounded resumption context of a human resumption, serialized with Jackson
