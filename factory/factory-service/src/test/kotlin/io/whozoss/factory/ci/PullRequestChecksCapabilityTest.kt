@@ -68,8 +68,8 @@ class PullRequestChecksCapabilityTest {
         }
     }
 
-    private fun pull(draft: Boolean = false, headSha: String = sha, branch: String = "feat/ci") =
-        """[{"number":7,"html_url":"https://github.com/acme/widgets/pull/7","draft":$draft,"head":{"ref":"$branch","sha":"$headSha"}}]"""
+    private fun pull(draft: Boolean = false, headSha: String = sha, branch: String = "feat/ci", state: String = "open", mergedAt: String? = null) =
+        """[{"number":7,"state":"$state","merged_at":${mergedAt?.let { "\"$it\"" } ?: "null"},"html_url":"https://github.com/acme/widgets/pull/7","draft":$draft,"head":{"ref":"$branch","sha":"$headSha"}}]"""
 
     private fun run(id: Long, name: String, status: String, conclusion: String?, app: String = "github-actions") =
         """{"id":$id,"name":"$name","status":"$status","conclusion":${conclusion?.let { "\"$it\"" }},"html_url":"https://ci/$id","app":{"slug":"$app"},"output":{"summary":"summary of $name"}}"""
@@ -241,6 +241,22 @@ class PullRequestChecksCapabilityTest {
     fun `no open pull request is refused`() {
         git(); serve(pull = "[]")
         assertThat(refusedCode(check())).isEqualTo("CI_PR_NOT_FOUND")
+    }
+
+    @Test
+    fun `a closed unmerged pull request is refused`() {
+        git(); serve(pull = pull(state = "closed", mergedAt = null))
+        assertThat(refusedCode(check())).isEqualTo("CI_PR_NOT_FOUND")
+    }
+
+    @Test
+    fun `an already merged pull request on the local head passes immediately for auto-merge`() {
+        git(); serve(pull = pull(state = "closed", mergedAt = "2026-11-27T21:00:00Z"))
+        val outcome = check() as CapabilityOutcome.CiChecksCompleted
+        assertThat(outcome.passed).isTrue()
+        assertThat(outcome.prNumber).isEqualTo(7)
+        assertThat(outcome.headSha).isEqualTo(sha)
+        assertThat(outcome.failedChecks).isEmpty()
     }
 
     @Test

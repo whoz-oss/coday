@@ -43,12 +43,13 @@ sealed interface GitHubTokenVerification {
     data class Unreachable(val message: String) : GitHubTokenVerification
 }
 
-/** One open pull request, as far as the CI check needs it. */
+/** One pull request (open or already merged), as far as the CI check needs it. */
 data class GitHubPullRequest(
     val number: Int,
     val url: String,
     val draft: Boolean,
     val headSha: String,
+    val merged: Boolean = false,
 )
 
 /** The tail of a job log, trimmed to a line boundary. [truncated] is true when the beginning was dropped. */
@@ -111,13 +112,21 @@ class GitHubChecksClient(
 
     fun findOpenPullRequest(owner: String, repo: String, branch: String): GitHubResult<GitHubPullRequest?> {
         val head = URLEncoder.encode("$owner:$branch", StandardCharsets.UTF_8)
-        return getJson("/repos/$owner/$repo/pulls?head=$head&state=open&per_page=10").map { node ->
-            val first = node.firstOrNull { it.path("head").path("ref").asText() == branch } ?: return@map null
+        return getJson("/repos/$owner/$repo/pulls?head=$head&state=all&per_page=10").map { node ->
+            val matching = node.filter { it.path("head").path("ref").asText() == branch }
+            // Prefer an open PR; otherwise accept a PR that was already merged (e.g. GitHub auto-merge completed
+            // between two polls). A closed unmerged PR is ignored so CI_PR_NOT_FOUND still triggers.
+            val selected = matching.firstOrNull { it.path("state").asText() == "open" }
+                ?: matching.firstOrNull { !it.path("merged_at").isMissingNode && !it.path("merged_at").isNull && it.path("merged_at").asText("").isNotBlank() }
+                ?: return@map null
+            val merged = selected.path("state").asText() != "open" &&
+                !selected.path("merged_at").isMissingNode && !selected.path("merged_at").isNull && selected.path("merged_at").asText("").isNotBlank()
             GitHubPullRequest(
-                number = first.path("number").asInt(),
-                url = first.path("html_url").asText(),
-                draft = first.path("draft").asBoolean(false),
-                headSha = first.path("head").path("sha").asText(),
+                number = selected.path("number").asInt(),
+                url = selected.path("html_url").asText(),
+                draft = selected.path("draft").asBoolean(false),
+                headSha = selected.path("head").path("sha").asText(),
+                merged = merged,
             )
         }
     }
