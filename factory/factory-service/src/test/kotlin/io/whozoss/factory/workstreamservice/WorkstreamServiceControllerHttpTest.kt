@@ -216,6 +216,8 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         publish("wf-svc-refused", namespace)
         workflowEvidence.append(
             scope,
+            namespace,
+            "wf-svc-refused",
             WorkflowEvidenceItem(
                 evidenceId = UUID.randomUUID().toString(),
                 namespaceId = namespace,
