@@ -37,6 +37,9 @@ object WorkflowBlockerCodes {
 
     /** A user Stop sealed the run, but AgentOS has not been proven to have killed the agents. */
     const val AGENT_KILL_UNCONFIRMED = "AGENT_KILL_UNCONFIRMED"
+
+    /** The read-only workspace pre-check refused the run; `details` carries the pre-check code. */
+    const val WORKSPACE_PRECHECK_FAILED = "WORKSPACE_PRECHECK_FAILED"
 }
 
 /**
@@ -74,6 +77,8 @@ data class WorkflowBlockerDto(
     val code: String,
     val stepId: String? = null,
     val message: String,
+    /** Optional machine detail of the blocker (e.g. the workspace pre-check code); null when not applicable. */
+    val details: String? = null,
 )
 
 /** Enveloped payload of the authoritative actions/blockers read. */

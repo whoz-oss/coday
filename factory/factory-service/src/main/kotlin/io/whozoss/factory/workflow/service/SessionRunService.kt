@@ -35,6 +35,7 @@ import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import io.whozoss.factory.workspace.RunWorktreeResolver
+import io.whozoss.factory.workspace.WorkspacePrecheckException
 import io.whozoss.factory.workspace.WorkspacePrecheckService
 import io.whozoss.factory.run.service.RunService
 import java.nio.file.Path
@@ -191,7 +192,8 @@ class SessionRunService(
     /**
      * Optional read-only workspace pre-check (Lot F). When present it runs BEFORE
      * the run's root case is created, refusing a run whose namespace/Git/workstream
-     * prerequisites are missing with an actionable error (never a repair). Pure
+     * prerequisites are missing with an actionable error (never a repair). A refusal
+     * is recorded durably and fails the ready steps instead of propagating. Pure
      * unit tests may omit it.
      */
     private val workspacePrecheckService: WorkspacePrecheckService? = null,
@@ -301,6 +303,7 @@ class SessionRunService(
         sealUserCancelledSteps(scope, namespaceId, workflowId, steps, statuses, expectedRevision)
         // Any cancelled step state ends the run. The only producer of such a state is the user Stop
         // (`recordStepCancellation`), so this is in practice a user-Stop rule.
+        var precheckRefused = false
         val runCancelled = statuses.statuses.values.any { it == WorkflowStatuses.CANCELLED }
         if (runCancelled) {
             // Block the dependents of the cancelled step. No pre-check, no replay prelude, no dispatch.
@@ -315,23 +318,32 @@ class SessionRunService(
             // Git repository association.
             val requiresGitWorkspace = requiresGitWorkspace(instance, steps)
             val callerExternalUserId = instanceActorId(instance)
-            workspacePrecheckService?.precheck(
-                scope = scope,
-                namespaceId = namespaceId,
-                callerExternalUserId = callerExternalUserId,
-                requiredAgents = steps
-                    .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
-                    .mapNotNull { it.responsibility.name },
-                requireGitWorkspace = requiresGitWorkspace,
-            )
-            // RUNNING steps retain the terminal-only fence; waiting steps can also resume an answered turn/successor.
-            for (step in steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }) {
-                val currentStatus = statuses.statuses[step.id]
-                val canReplayOrResume = (currentStatus == WorkflowStatuses.RUNNING &&
-                    capabilityExecutionService.hasFinalizedAttempt(scope, namespaceId, workflowId, step.id)) ||
-                    (currentStatus == WorkflowStatuses.WAITING_HUMAN &&
-                        capabilityExecutionService.canResumeWaitingAgentStep(scope, namespaceId, workflowId, step.id))
-                if (canReplayOrResume) setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, statuses)
+            try {
+                workspacePrecheckService?.precheck(
+                    scope = scope,
+                    namespaceId = namespaceId,
+                    callerExternalUserId = callerExternalUserId,
+                    requiredAgents = steps
+                        .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
+                        .mapNotNull { it.responsibility.name },
+                    requireGitWorkspace = requiresGitWorkspace,
+                )
+            } catch (refused: WorkspacePrecheckException) {
+                // A refusal is a durable business outcome, not a crash: the reason is recorded and the ready
+                // steps fail, so the continuation completes instead of dying in the outbox (WZ-36423).
+                failOnWorkspacePrecheck(scope, namespaceId, workflowId, steps, statuses, refused, expectedRevision)
+                precheckRefused = true
+            }
+            if (!precheckRefused) {
+                // RUNNING steps retain the terminal-only fence; waiting steps can also resume an answered turn/successor.
+                for (step in steps.filter { it.responsibility.kind == ResponsibilityKind.AGENT }) {
+                    val currentStatus = statuses.statuses[step.id]
+                    val canReplayOrResume = (currentStatus == WorkflowStatuses.RUNNING &&
+                        capabilityExecutionService.hasFinalizedAttempt(scope, namespaceId, workflowId, step.id)) ||
+                        (currentStatus == WorkflowStatuses.WAITING_HUMAN &&
+                            capabilityExecutionService.canResumeWaitingAgentStep(scope, namespaceId, workflowId, step.id))
+                    if (canReplayOrResume) setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, statuses)
+                }
             }
         }
         var suspended = false
@@ -342,8 +354,8 @@ class SessionRunService(
         val guard = steps.size * (if (steps.any { it.outcomeTransitions != null }) 48 else 4) + 8
         var iterations = 0
         run {
-            // A cancelled run: nothing is dispatched or resumed afterwards.
-            if (runCancelled) return@run
+            // A cancelled or pre-check refused run: nothing is dispatched or resumed afterwards.
+            if (runCancelled || precheckRefused) return@run
             while (iterations++ < guard) {
                 outcomeTransitionService?.advance(scope, namespaceId, workflowId, steps, effectiveRepoRoot.toString(), effectiveTicket)
                 val correction = repository.findInstance(scope, namespaceId, workflowId)?.projection?.get("correction") as? Map<*, *>
@@ -538,6 +550,92 @@ class SessionRunService(
         val executionPlugin = (instance.instance["execution"] as? Map<*, *>)?.get("plugin") as? String
         if (!executionPlugin.isNullOrBlank()) return true
         return steps.any { it.responsibility.kind == ResponsibilityKind.CODE }
+    }
+
+    /**
+     * Durable outcome of a refused workspace pre-check (WZ-36423): ONE workflow-level `workspace-precheck`
+     * evidence carrying the pre-check code, message and details, then every `ready` step fails with a
+     * `session-step` FAILED evidence (never an `executed` or `verification` fact: nothing ran), and the
+     * dependants are blocked by the regular evaluation. The evidence is idempotent, so a replayed continuation
+     * appends nothing new. Each write is best effort so a persistence error never masks the refusal itself.
+     */
+    private fun failOnWorkspacePrecheck(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        steps: List<WorkflowStepDefinition>,
+        statuses: SessionProgress,
+        refused: WorkspacePrecheckException,
+        expectedRevision: () -> Int,
+    ) {
+        val code = refused.errorCode
+        val message = refused.message ?: code
+        logger.warn { "Workspace pre-check refused workflow '$workflowId': $code: $message" }
+        runCatching {
+            newTransaction {
+                evidenceRepository.append(
+                    scope,
+                    namespaceId,
+                    workflowId,
+                    WorkflowEvidenceItem(
+                        evidenceId = UUID.randomUUID().toString(),
+                        namespaceId = namespaceId,
+                        workflowId = workflowId,
+                        stepId = null,
+                        kind = "workspace-precheck",
+                        outcome = "failed",
+                        source = mapOf("kind" to "factory-session-sequencer"),
+                        facts = precheckFacts(refused),
+                        idempotencyKey = "workspace-precheck-failed:$workflowId:${CanonicalHash.sha256Hex("$code|$message")}",
+                        createdAt = null,
+                    ),
+                )
+            }
+        }.onFailure { recoveryError ->
+            logger.error(recoveryError) { "Workspace pre-check evidence of workflow '$workflowId' could not be persisted." }
+        }
+        for (step in steps.filter { statuses.statuses[it.id] == WorkflowStatuses.READY }) {
+            runCatching {
+                newTransaction {
+                    evidenceRepository.append(
+                        scope,
+                        namespaceId,
+                        workflowId,
+                        WorkflowEvidenceItem(
+                            evidenceId = UUID.randomUUID().toString(),
+                            namespaceId = namespaceId,
+                            workflowId = workflowId,
+                            stepId = step.id,
+                            kind = "session-step",
+                            outcome = WorkflowStatuses.FAILED,
+                            source = mapOf("kind" to "factory-session-sequencer"),
+                            facts = mapOf(
+                                "stepId" to step.id,
+                                "status" to WorkflowStatuses.FAILED,
+                                "code" to code,
+                                "message" to message,
+                            ),
+                            idempotencyKey = null,
+                            createdAt = null,
+                        ),
+                    )
+                    transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED, expectedRevision())
+                    setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.FAILED, statuses)
+                }
+            }.onFailure { recoveryError ->
+                logger.error(recoveryError) { "Failure recovery of step '${step.id}' of workflow '$workflowId' could not be persisted." }
+                // Keep the fail-closed in-memory classification even if the recovery write itself failed.
+                statuses.statuses[step.id] = WorkflowStatuses.FAILED
+                statuses.completedAt.putIfAbsent(step.id, nowIso())
+            }
+        }
+        applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
+    }
+
+    /** The pre-check code, message and every detail (missingAgents, availableAgents, remedy...) as evidence facts. */
+    private fun precheckFacts(refused: WorkspacePrecheckException): Map<String, Any?> {
+        val details = (refused.details as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
+        return details + mapOf("code" to refused.errorCode, "message" to (refused.message ?: refused.errorCode))
     }
 
     /** The ticket carried by a persisted instance (top-level or in its relations). */

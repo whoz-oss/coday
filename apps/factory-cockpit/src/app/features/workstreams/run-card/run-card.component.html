@@ -90,6 +90,11 @@
           </div>
         }
       }
+      @if (summary.failureReason) {
+        <p class="failure-reason" role="status" [title]="summary.failureReason">
+          {{ summary.failureReason }}
+        </p>
+      }
       <div class="run-details">
         <div class="run-steps">
           <sf-step-dots [phases]="summary.phases" />

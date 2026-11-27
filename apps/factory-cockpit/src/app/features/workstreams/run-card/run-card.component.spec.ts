@@ -103,6 +103,18 @@ describe('RunCardComponent', () => {
     expect(host.textContent).toContain('$1.5000')
   })
 
+  it('renders the failure reason of a pre-check refused run only when one is set', async () => {
+    await setup()
+    const refused = render({
+      ...run,
+      run: { ...run.run!, cardState: 'failed', failureReason: 'Required agent(s) reviewer are not available.' },
+    })
+    expect(refused.querySelector('.failure-reason')?.textContent).toContain('Required agent(s) reviewer')
+
+    const plain = render()
+    expect(plain.querySelector('.failure-reason')).toBeNull()
+  })
+
   it('preserves the namespace in session navigation links', async () => {
     await setup()
     const host = render()

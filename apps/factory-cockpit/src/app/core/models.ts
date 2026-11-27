@@ -52,6 +52,11 @@ export interface RunSummary {
    * else the run root case (case of the entry agent step attempt). Absent until the first agent step is dispatched.
    */
   mainCaseId?: string
+  /**
+   * Backend reason shown on the run card when a workspace pre-check refused the run (WZ-36423). Mapped from the
+   * `WORKSPACE_PRECHECK_FAILED` blocker of the detail; absent when the run was not refused.
+   */
+  failureReason?: string
 }
 
 /**
@@ -112,7 +117,7 @@ export interface FactoryRun {
    * run root case (entry agent step attempt case). Absent until the first agent step is dispatched.
    */
   mainCaseId?: string
-  finalCostUsd?: number // destroyed runs (only set when a real teardown exists)
+  phases: PhaseSegment[] // destroyed runs (only set when a real teardown exists)
   /** Full run summary (status, current phase, goal…). */
   run?: RunSummary
 }
@@ -486,6 +491,7 @@ export type BlockerCode =
   | 'VERIFICATION_FAILED'
   | 'UNKNOWN_RUNTIME'
   | 'AGENT_KILL_UNCONFIRMED'
+  | 'WORKSPACE_PRECHECK_FAILED'
 
 /**
  * Outcome of the last Stop of a run, when it was refused, not confirmed or failed. A Stop that AgentOS refuses

@@ -1936,8 +1936,8 @@ class WorkflowService(
         val actions = mutableListOf<AllowedActionDto>()
         val blockers = mutableListOf<WorkflowBlockerDto>()
         val seenBlockers = mutableSetOf<Pair<String, String?>>()
-        fun blocker(code: String, stepId: String?, message: String) {
-            if (seenBlockers.add(code to stepId)) blockers.add(WorkflowBlockerDto(code, stepId, message))
+        fun blocker(code: String, stepId: String?, message: String, details: String? = null) {
+            if (seenBlockers.add(code to stepId)) blockers.add(WorkflowBlockerDto(code, stepId, message, details))
         }
 
         // Open human interactions -> reply action (authorized callers only).
@@ -2139,6 +2139,17 @@ class WorkflowService(
                     item.stepId,
                     "Verification failed for step '${item.stepId ?: "unknown"}'.",
                 )
+            }
+
+        // Workspace pre-check refusal (WZ-36423): the run never started, so its reason is the only blocker to surface.
+        evidence
+            .lastOrNull { it.kind == "workspace-precheck" && it.outcome == "failed" }
+            ?.takeIf { runStatus != WorkflowStatuses.COMPLETED }
+            ?.let { item ->
+                val facts = item.facts
+                val message = (facts["message"] as? String ?: "The workspace pre-check refused the run.") +
+                    ((facts["remedy"] as? String)?.let { " Remedy: $it" } ?: "")
+                blocker(WorkflowBlockerCodes.WORKSPACE_PRECHECK_FAILED, null, message, facts["code"] as? String)
             }
 
         // Legacy retry is refused for outcome-managed executions; never advertise a command
