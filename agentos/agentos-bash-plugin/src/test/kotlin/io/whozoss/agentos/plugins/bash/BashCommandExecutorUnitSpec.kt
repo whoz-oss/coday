@@ -104,6 +104,33 @@ class BashCommandExecutorUnitSpec : StringSpec({
         result.stdout shouldBe "unset"
     }
 
+    "a command holding single and double quotes should run verbatim" {
+        val result = completed("""echo "double" 'single' "it's" 'say "hi"'""")
+        result.stdout shouldBe "double single it's say \"hi\"\n"
+        result.workingDirectory shouldBe dir.path
+    }
+
+    "a command with an inline variable and a quoted substitution should run" {
+        val result = completed("""X="two words"; echo "${'$'}X" "${'$'}(echo nested)"""")
+        result.stdout shouldBe "two words nested\n"
+    }
+
+    "a multi-line command should run line by line" {
+        val result = completed("echo one\necho \"two\"\necho three")
+        result.stdout shouldBe "one\ntwo\nthree\n"
+    }
+
+    "the script file should be deleted once the command is done" {
+        fun scripts(): Set<String> =
+            File(System.getProperty("java.io.tmpdir")).list { _, name -> name.startsWith("agentos-bash-") }
+                .orEmpty()
+                .toSet()
+        val before = scripts()
+        completed("echo done")
+        run("sleep 10", timeoutSeconds = 1L)
+        scripts() shouldBe before
+    }
+
     "a command exceeding the timeout should return Timeout" {
         val result = run("sleep 10", timeoutSeconds = 1L)
         result.shouldBeInstanceOf<BashExecutionResult.Timeout>().timeoutSeconds shouldBe 1L
