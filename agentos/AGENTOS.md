@@ -79,6 +79,57 @@ class MyPlugin : AgentPlugin() {
 }
 ```
 
+## Built-in integrations
+
+Beyond the PF4J plugins loaded from `plugins/`, a few integrations ship inside the service itself.
+They are declared exactly like any other: an `IntegrationConfig` of the matching type, which an
+agent opts into by naming it in its `integrations` map.
+
+| Type | What an agent gets |
+|---|---|
+| `QUERY_USER` | Ask the user a question mid-run and resume with the answer (auto-granted by default) |
+| `REDIRECT` | Hand the current request over to another agent |
+| `CASE` | Read another case's transcript, start a new case with another agent |
+| `USER_GROUP` | Query UserGroup membership and agent deployment |
+| `SELF_CONFIG` | Let the user manage **their own** integration configurations |
+
+Each is seeded at platform scope on startup when its `enabled-by-default` property is set, so the
+type appears in the integration catalogue without an administrator having to know the type string.
+Seeding declares **existence, not content**: once the configuration exists it belongs to the
+administrator, and startup never rewrites it.
+
+### `SELF_CONFIG` — self-service configuration
+
+Five tools, prefixed with the configuration's name:
+
+- `listIntegrationTypes` — the catalogue, each type with the JSON Schema of its parameters
+- `listIntegrations` — the user's own configurations, parameters included
+- `createIntegration`, `updateIntegration`, `deleteIntegration`
+
+```yaml
+# in an agent's YAML
+integrations:
+  SELF_CONFIG:                                   # all five tools
+  # SELF_CONFIG: [listIntegrationTypes, listIntegrations]   # read-only variant
+```
+
+**The tools only ever reach configurations owned by the calling user** — their user-global and
+user x namespace overlays. Shared configurations (namespace or platform) are refused for writing
+even when the user is an administrator who could edit them in the UI: an LLM acting on a misread
+instruction would otherwise reconfigure a whole namespace instead of one person's runs. A user who
+wants to change a shared configuration for themselves creates a personal one of the same name,
+which overrides it for their runs through the usual four-tier overlay.
+
+That ownership boundary is also what makes it safe for `listIntegrations` to return parameters in
+clear text: every row it can reach belongs to the person asking.
+
+Two further restrictions: a run with no identified user (webhook, scheduled prompt) is refused
+outright, and the agent cannot set `authSettingName` or `autoGrant` — binding a stored credential,
+and handing a tool to every agent in scope, stay with a human in the configuration interface.
+
+`SELF_CONFIG` is never auto-grantable: an agent able to rewrite configuration is always an explicit,
+reviewed assignment.
+
 ## Persistence (WZ-28667)
 
 AgentOS uses **file-system persistence by default**. Data survives restarts.
