@@ -1,7 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
 import mu.KLogging
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.stereotype.Service
 import java.time.Clock
 import java.time.Instant
@@ -10,14 +9,10 @@ import java.util.UUID
 /**
  * Neo4j-backed implementation of [CaseReadService].
  *
- * Active only when a Neo4j engine is configured (same condition as
- * [io.whozoss.agentos.config.Neo4jPersistenceConfiguration]).
+ * Always registered: every supported persistence mode (`embedded-neo4j`, `neo4j`) runs on a
+ * Neo4j engine, so a Driver bean is always provisioned.
  */
 @Service
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
-)
 class CaseReadServiceImpl(
     private val caseNodeNeo4jRepository: CaseNodeNeo4jRepository,
     private val clock: Clock,

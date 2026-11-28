@@ -1,7 +1,6 @@
 package io.whozoss.agentos.persistence
 
 import mu.KLogging
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.stereotype.Service
 
@@ -23,10 +22,6 @@ import org.springframework.stereotype.Service
  * injection vector.
  */
 @Service
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
-)
 class Neo4jChildLinkService(
     private val neo4jClient: Neo4jClient,
 ) {
